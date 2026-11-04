@@ -1,0 +1,16 @@
+{
+  "name": "ovantaa-crm",
+  "version": "1.0.0",
+  "description": "Ovantaa CRM - enterprise CRM with campaign management. Zero runtime dependencies (Node 22+).",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=22.5" },
+  "scripts": {
+    "start": "node --no-warnings server/index.js",
+    "dev": "node --no-warnings --watch server/index.js",
+    "seed": "node --no-warnings server/seed.js --reset",
+    "test": "node --no-warnings --test test/*.test.js",
+    "e2e": "node --no-warnings test/e2e.mjs"
+  },
+  "license": "UNLICENSED"
+}
