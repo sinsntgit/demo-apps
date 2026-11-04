@@ -41,7 +41,7 @@ function senderInput(b, existing) {
     label: label.slice(0, 80), from_name: oneLine(b.from_name).replace(/"/g, '').slice(0, 100) || null, from_email, reply_to, mode,
     host: mode === 'smtp' ? oneLine(b.host) : null, port, secure: b.secure ? 1 : 0, username: oneLine(b.username) || null,
     daily_limit: daily, delay_ms: delay, active: b.active === false ? 0 : 1,
-    password_enc: b.password ? encryptSecret(b.password) : existing?.password_enc ?? null,
+    password_enc: String(b.password || '').trim() ? encryptSecret(String(b.password).trim()) : existing?.password_enc ?? null,
   };
 }
 const setDefault = (id) => { run('UPDATE senders SET is_default=0'); run('UPDATE senders SET is_default=1 WHERE id=?', id); };

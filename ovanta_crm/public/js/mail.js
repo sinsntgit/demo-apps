@@ -26,13 +26,14 @@ function senderModal(s, done) {
         <div id="phelp" class="banner info small"></div>
         <div class="row">${field({ name: 'host', label: 'SMTP host', placeholder: 'smtp.gmail.com' }, v)}${field({ name: 'port', label: 'Port', type: 'number', min: 1, max: 65535 }, v)}</div>
         ${field({ name: 'secure', label: 'Use SSL/TLS from the start (port 465). Leave off for port 587 (STARTTLS).', type: 'checkbox' }, v)}
-        <div class="row">${field({ name: 'username', label: 'SMTP username', placeholder: 'usually the full email address', }, v)}<label>Password / app password<input type="password" name="password" autocomplete="new-password" placeholder="${s?.has_password ? '•••••••• (leave blank to keep)' : ''}"></label></div></div>
+        <div class="row">${field({ name: 'username', label: 'SMTP username', placeholder: 'usually the full email address', }, v)}<label>Password / app password<input type="password" name="password" autocomplete="new-password" placeholder="${s?.has_password ? '•••••••• (leave blank to keep the saved one)' : ''}"><span class="small" style="font-weight:400"><input type="checkbox" id="showpw" style="vertical-align:middle"> Show password</span></label></div></div>
       <div class="row">${field({ name: 'daily_limit', label: 'Max emails per rolling 24h', type: 'number', min: 1 }, v)}${field({ name: 'delay_ms', label: 'Pause between emails (ms)', type: 'number', min: 0, max: 60000 }, v)}</div>
       ${field({ name: 'active', label: 'Active', type: 'checkbox' }, v)}${field({ name: 'is_default', label: 'Use as the default sender', type: 'checkbox' }, { is_default: s?.is_default })}
       <p class="small muted">Passwords are encrypted at rest and never shown again. Gmail and Yahoo expect SPF, DKIM and DMARC records for your sending domain — see the checklist on the senders page.</p>`,
     onOpen: (form) => {
       const sync = () => { $('#smtpbox', form).hidden = form.mode.value !== 'smtp'; };
       const preset = (apply) => { const p = PRESETS[$('#preset', form).value]; setHtml($('#phelp', form), html`${p.help}`); if (apply) { form.host.value = p.host; form.port.value = p.port; form.secure.checked = p.secure; form.daily_limit.value = p.daily; } };
+      $('#showpw', form).addEventListener('change', (e) => { form.password.type = e.target.checked ? 'text' : 'password'; });
       form.mode.addEventListener('change', sync); $('#preset', form).addEventListener('change', () => preset(true));
       form.from_email.addEventListener('blur', () => { if (!form.username.value) form.username.value = form.from_email.value; });
       sync(); preset(!s);

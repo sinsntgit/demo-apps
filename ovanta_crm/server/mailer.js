@@ -59,7 +59,7 @@ export async function sendMail(sender, msg) {
       const info = await t.sendMail(base);
       if (info.rejected?.length) throw new Error(`Recipient rejected by server: ${info.rejected.join(', ')}`);
       return { status: 'sent', messageId: info.messageId, response: String(info.response || '').slice(0, 300) };
-    } catch (e) { throw new Error(explainSmtpError(e)); }
+    } catch (e) { throw new Error(explainSmtpError(e, sender)); }
   }
   if (!sender && config.mailTransport === 'webhook') {
     if (!config.mailWebhookUrl) throw new Error('MAIL_WEBHOOK_URL is not configured');
@@ -75,10 +75,18 @@ export async function sendMail(sender, msg) {
   return { status: 'simulated', messageId: null, response: 'simulated (nothing was sent)' };
 }
 
-/** Turn low-level SMTP errors into guidance an admin can act on. */
-export function explainSmtpError(e) {
+/** Turn low-level SMTP errors into guidance an admin can act on. `sender` lets the hint match the provider. */
+export function explainSmtpError(e, sender = null) {
   const code = e.responseCode, msg = String(e.response || e.message || e);
-  if (e.code === 'EAUTH' || code === 535 || code === 534) return `Authentication failed (${msg.slice(0, 120)}). Check username and password — Gmail/Google Workspace need an App Password (2-Step Verification on), and Microsoft 365 needs SMTP AUTH enabled for the mailbox.`;
+  const host = String(sender?.host || '').toLowerCase();
+  if (e.code === 'EAUTH' || code === 535 || code === 534) {
+    const hint = host.includes('gmail') || host.includes('google') ? 'Google needs an App Password (2-Step Verification on), not your normal password.'
+      : host.includes('office365') || host.includes('outlook') ? 'Microsoft 365 needs SMTP AUTH enabled for this mailbox by your admin.'
+      : host.includes('titan') ? 'For Titan, use the mailbox password set in Titan (the one that works in Titan webmail). If unsure, reset it in Titan and re-enter it here.'
+      : host.includes('zoho') ? 'Zoho needs an application-specific password if two-factor is on, and the host must match your data centre (smtp.zoho.in for India).'
+      : 'Check the username (usually the full email address) and password.';
+    return `Authentication failed — the server was reached but rejected the login (${msg.replace(/\s+/g, ' ').slice(0, 100)}). ${hint} Re-type the password with “Show password” ticked, then Verify again.`;
+  }
   if (e.code === 'ECONNREFUSED' || e.code === 'ETIMEDOUT' || e.code === 'ESOCKET' || e.code === 'ECONNECTION') return `Cannot reach the mail server (${e.code}). Check host/port and that outbound SMTP isn't blocked by your network or firewall. Port 587 = STARTTLS, 465 = SSL/TLS.`;
   if (e.code === 'ENOTFOUND' || e.code === 'EDNS') return 'Mail server host name not found. Check the host.';
   if (code === 550 || code === 553 || code === 554) return `Rejected by server: ${msg.slice(0, 200)} (the From address may not be allowed for this account, or the recipient is invalid).`;
@@ -89,7 +97,7 @@ export function explainSmtpError(e) {
 export async function verifySender(sender) {
   if (sender.mode !== 'smtp') return { ok: true, note: 'Simulation sender — nothing to verify.' };
   const t = await transportFor(sender);
-  try { await t.verify(); return { ok: true }; } catch (e) { return { ok: false, error: explainSmtpError(e) }; }
+  try { await t.verify(); return { ok: true }; } catch (e) { return { ok: false, error: explainSmtpError(e, sender) }; }
 }
 
 /** Send a one-off system email (notifications, tests) and record it in the email log. */
