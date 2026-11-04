@@ -1,4 +1,4 @@
-import { all, get, run, audit } from './db.js';
+import { all, get, run, audit, nowIso } from './db.js';
 import { bad, notFound, forbidden } from './http.js';
 import { notify, dealEvents } from './notifications.js';
 
@@ -131,6 +131,12 @@ export function getOne(ent, id) {
   return row;
 }
 
+/** Append one stage-movement row. `deal` is the row AFTER the change (joined, with owner_name). */
+export function recordStageChange(deal, fromStage, comment, user) {
+  run(`INSERT INTO deal_stage_history (deal_id,from_stage,to_stage,comment,amount,owner_id,owner_name,changed_by,changed_by_name,changed_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`, deal.id, fromStage, deal.stage, String(comment || '').trim().slice(0, 1000) || null, deal.amount, deal.owner_id, deal.owner_name || null, user?.id ?? null, user?.name ?? null, nowIso());
+}
+
 function insert(table, data) {
   const cols = Object.keys(data);
   const r = run(`INSERT INTO ${table} (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`, ...Object.values(data));
@@ -146,6 +152,7 @@ export function create(ent, body, user) {
   audit(user, 'create', ent.table, id, data.name || data.title || data.first_name);
   const created = getOne(ent, id);
   const ev = { contacts: 'contact.created', deals: 'deal.created', accounts: 'account.created' }[ent.table];
+  if (ent.table === 'deals') recordStageChange(created, null, body.stage_comment || 'Deal created', user);
   if (ev) notify([ev], created, {}, user);
   return created;
 }
@@ -158,7 +165,10 @@ export function update(ent, id, body, user) {
   if (cols.length) run(`UPDATE ${ent.table} SET ${cols.map((c) => `${c}=?`).join(',')} WHERE id=?`, ...Object.values(data), id);
   audit(user, 'update', ent.table, id, existing.name || existing.title || existing.first_name);
   const updated = getOne(ent, id);
-  if (ent.table === 'deals') { const d = dealEvents(existing, updated); if (d.events.length) notify(d.events, updated, { changes: d.changes }, user); }
+  if (ent.table === 'deals') {
+    if (existing.stage !== updated.stage) recordStageChange(updated, existing.stage, body.stage_comment, user);
+    const d = dealEvents(existing, updated); if (d.events.length) notify(d.events, updated, { changes: d.changes, comment: existing.stage !== updated.stage ? String(body.stage_comment || '').trim().slice(0, 1000) : '' }, user);
+  }
   if (ent.table === 'contacts') {
     const changes = ['first_name', 'last_name', 'email', 'phone', 'title', 'status', 'source', 'tags'].filter((k) => (existing[k] ?? null) !== (updated[k] ?? null)).map((k) => ({ field: k, from: existing[k], to: updated[k] }));
     if (changes.length) notify(['contact.updated'], updated, { changes }, user);

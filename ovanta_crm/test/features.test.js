@@ -229,6 +229,41 @@ test('import options: default tag/source, subscribed column, skip-existing', asy
   assert.equal(again.body.skipped, 1); assert.equal(again.body.updated, 0);
 });
 
+test('deal stage history: every move recorded with who/when/owner/comment; none when unchanged', async () => {
+  const { backfillDealHistory } = await import('../server/db.js');
+  const repCookie = (await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'liam@ovantaa.com', password: 'Ovantaa@123' }) })).headers.get('set-cookie').split(';')[0];
+  const d = (await api('POST', '/api/deals', { name: 'History deal', amount: 12000 })).body;
+  let h = (await api('GET', `/api/deals/${d.id}/history`)).body;
+  assert.equal(h.length, 1); assert.equal(h[0].from_stage, null); assert.equal(h[0].to_stage, 'prospecting'); assert.equal(h[0].comment, 'Deal created');
+  assert.equal(h[0].changed_by_name, 'Admin User'); assert.equal(h[0].owner_name, 'Admin User'); assert.equal(h[0].amount, 12000);
+  await api('POST', `/api/deals/${d.id}/stage`, { stage: 'qualification', comment: '  Budget confirmed  ' });
+  await api('POST', `/api/deals/${d.id}/stage`, { stage: 'qualification', comment: 'no change' });           // same stage -> nothing
+  assert.equal((await api('POST', `/api/deals/${d.id}/stage`, { stage: 'bogus' })).status, 400);                // invalid -> nothing
+  await api('PUT', `/api/deals/${d.id}`, { stage: 'proposal', stage_comment: 'Sent proposal', amount: 15000 });   // edit form path
+  await api('PUT', `/api/deals/${d.id}`, { name: 'History deal (renamed)' });                                   // no stage change -> nothing
+  await api('PUT', `/api/deals/${d.id}`, { owner_id: 3 });                                                      // owner reassigned
+  await api('POST', `/api/deals/${d.id}/stage`, { stage: 'won', comment: 'x'.repeat(1500) }, { ck: repCookie });  // moved by a rep, new owner
+  h = (await api('GET', `/api/deals/${d.id}/history`)).body;
+  assert.deepEqual(h.map((r) => `${r.from_stage}>${r.to_stage}`), ['null>prospecting', 'prospecting>qualification', 'qualification>proposal', 'proposal>won']);
+  assert.equal(h[1].comment, 'Budget confirmed'); assert.equal(h[2].comment, 'Sent proposal'); assert.equal(h[2].amount, 15000);
+  assert.equal(h[3].comment.length, 1000, 'comment capped'); assert.equal(h[3].changed_by_name, 'Liam Chen'); assert.equal(h[3].owner_name, 'Liam Chen', 'owner at the time of the move');
+  assert.equal(h[2].owner_name, 'Admin User', 'earlier rows keep the owner they had then');
+  assert.ok(h.every((r) => r.changed_at) && typeof h[1].days_in_previous === 'number' && h[0].days_in_previous === null);
+  const full = (await api('GET', `/api/deals/${d.id}/360`)).body; assert.equal(full.history.length, 4); assert.ok(full.deal.closed_at);
+  // reopening a won deal is recorded too
+  await api('POST', `/api/deals/${d.id}/stage`, { stage: 'negotiation', comment: 'Customer reopened' });
+  assert.equal((await api('GET', `/api/deals/${d.id}/history`)).body.at(-1).from_stage, 'won');
+  // deals that predate history get one starting entry (idempotent); deleting a deal removes its history
+  const old = Number(db.prepare("INSERT INTO deals (name,amount,stage,owner_id) VALUES ('Legacy',500,'proposal',1)").run().lastInsertRowid);
+  backfillDealHistory(); backfillDealHistory();
+  const lh = (await api('GET', `/api/deals/${old}/history`)).body; assert.equal(lh.length, 1); assert.match(lh[0].comment, /Existing deal/); assert.equal(lh[0].to_stage, 'proposal');
+  await api('DELETE', `/api/deals/${d.id}`); assert.equal(db.prepare('SELECT COUNT(*) n FROM deal_stage_history WHERE deal_id=?').get(d.id).n, 0);
+  assert.equal((await api('GET', '/api/deals/999999/history')).status, 404);
+  // seeded demo deals have journeys that end at their current stage
+  const seeded = db.prepare("SELECT d.id, d.stage FROM deals d WHERE d.name LIKE '% – %' LIMIT 15").all();
+  for (const x of seeded) { const j = (await api('GET', `/api/deals/${x.id}/history`)).body; assert.ok(j.length >= 1 && j.at(-1).to_stage === x.stage, `deal ${x.id}`); }
+});
+
 test('delete all: admin-only, typed confirmation, guards, cascades, audited', async () => {
   const repCookie = (await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'liam@ovantaa.com', password: 'Ovantaa@123' }) })).headers.get('set-cookie').split(';')[0];
   const counts = (await api('GET', '/api/admin/data-counts')).body;

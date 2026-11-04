@@ -92,6 +92,7 @@ GET('/api/accounts/:id/360', ({ params }) => {
 });
 GET('/api/deals/:id/360', ({ params }) => ({
   deal: getOne(ENTITIES.deals, params.id),
+  history: dealHistory(params.id),
   activities: all('SELECT a.*, u.name AS user_name FROM activities a LEFT JOIN users u ON u.id=a.user_id WHERE a.deal_id=? ORDER BY a.created_at DESC, a.id DESC', params.id),
   tasks: all('SELECT * FROM tasks WHERE deal_id=? ORDER BY done, due_date', params.id),
 }));
@@ -102,7 +103,18 @@ POST('/api/tasks/:id/toggle', ({ params, user }) => {
   audit(user, 'toggle', 'tasks', params.id);
   return getOne(ENTITIES.tasks, params.id);
 });
-POST('/api/deals/:id/stage', ({ params, body, user }) => update(ENTITIES.deals, params.id, { stage: body.stage }, user));
+POST('/api/deals/:id/stage', ({ params, body, user }) => {
+  if (!STAGES.some((s) => s.key === body.stage)) throw bad('Unknown stage');
+  return update(ENTITIES.deals, params.id, { stage: body.stage, stage_comment: body.comment }, user);
+});
+
+/** Chronological stage journey with the time spent in each stage. */
+export function dealHistory(dealId) {
+  const rows = all('SELECT * FROM deal_stage_history WHERE deal_id=? ORDER BY changed_at, id', dealId);
+  const ts = (s) => new Date(String(s).replace(' ', 'T') + 'Z').getTime();
+  return rows.map((r, i) => ({ ...r, days_in_previous: i && r.from_stage ? Math.max(0, Math.round(((ts(r.changed_at) - ts(rows[i - 1].changed_at)) / 86400000) * 10) / 10) : null }));
+}
+GET('/api/deals/:id/history', ({ params }) => { getOne(ENTITIES.deals, params.id); return dealHistory(params.id); });
 
 // Activities
 POST('/api/activities', ({ body, user }) => {

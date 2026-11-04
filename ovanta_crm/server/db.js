@@ -113,6 +113,14 @@ CREATE TABLE IF NOT EXISTS email_log (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_email_log_created ON email_log(created_at);
+CREATE TABLE IF NOT EXISTS deal_stage_history (
+  id INTEGER PRIMARY KEY, deal_id INTEGER NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+  from_stage TEXT, to_stage TEXT NOT NULL, comment TEXT, amount REAL,
+  owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL, owner_name TEXT,
+  changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL, changed_by_name TEXT,
+  changed_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_stage_history_deal ON deal_stage_history(deal_id, id);
 `);
 
 function ensureColumn(table, col, ddl) {
@@ -125,6 +133,15 @@ ensureColumn('campaigns', 'note', 'TEXT');
 ensureColumn('campaign_recipients', 'sender_id', 'INTEGER');
 ensureColumn('campaign_recipients', 'message_id', 'TEXT');
 ensureColumn('campaign_recipients', 'response', 'TEXT');
+
+/** Give deals that predate history tracking a starting entry so every deal has a timeline. Safe to run repeatedly. */
+export function backfillDealHistory() {
+  db.exec(`INSERT INTO deal_stage_history (deal_id,from_stage,to_stage,comment,amount,owner_id,owner_name,changed_by_name,changed_at)
+    SELECT d.id, NULL, d.stage, 'Existing deal — stage movements before history tracking was added are not available', d.amount, d.owner_id,
+      (SELECT name FROM users WHERE id=d.owner_id), NULL, COALESCE(d.closed_at, d.created_at)
+    FROM deals d WHERE NOT EXISTS (SELECT 1 FROM deal_stage_history h WHERE h.deal_id=d.id)`);
+}
+backfillDealHistory();
 
 /** Run fn inside a transaction. */
 export function tx(fn) {

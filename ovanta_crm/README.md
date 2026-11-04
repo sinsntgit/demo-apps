@@ -58,6 +58,7 @@ Each campaign recipient shows the furthest state reached: **Queued → Sent → 
 Publish **SPF**, **DKIM** and **DMARC** for each sending domain (syncsense.in, ezdatamunch.com…). Gmail and Yahoo require all three for senders above ~5,000 emails/day to them, one-click unsubscribe (added automatically here) and spam complaints below 0.3% (aim for under 0.1%). Warm up new addresses slowly.
 
 ## Features
+* **Deal stage history** — every stage move is stored permanently: from → to, date/time, who moved it, the deal owner *at that moment*, the deal value, an optional comment, and the days spent in the previous stage. Shown on the deal page (*Stage history*), via **🕘 History** on every card/row of the Deals board and list, and recorded however the stage changes (drag-and-drop, *Change stage*, or the edit form). Moving a card on the board asks for an optional comment. Deals that existed before this feature get a single starting entry; earlier movements can't be reconstructed. Deleting a deal deletes its history.
 * **CRM** — dashboard, contacts (360° view, bulk actions), accounts, deals (drag-and-drop board), tasks, activity timeline, audit log, roles (admin / manager / rep).
 * **Campaigns** — rule-based segments, templates, merge tags (`{{first_name|there}}`), live preview, test send, schedule or send now, per-recipient tracking and reports, frozen audience, automatic unsubscribe.
 * **Write with Claude** — in the campaign editor: describe the campaign, get subject + body + alternative subjects, rewrite existing copy, undo. Admin adds an Anthropic API key in *Settings → AI assistant* (or `ANTHROPIC_API_KEY`). Only the text you type is sent to Anthropic — never contact data. Model defaults to `claude-sonnet-5-5` (changeable in Settings or `ANTHROPIC_MODEL`).
@@ -71,7 +72,7 @@ Publish **SPF**, **DKIM** and **DMARC** for each sending domain (syncsense.in, e
 
 ## Tests
 ```bash
-npm test       # 22 API tests: auth, CRUD, injection, campaigns, SMTP sending against a local fake mail server,
+npm test       # 23 API tests: auth, CRUD, injection, campaigns, SMTP sending against a local fake mail server,
                # daily-limit pause/resume, notifications, AI (fake Claude API), themes, import options
 npm run e2e    # browser test (needs Playwright + Chromium): navigation, forms, xlsx import, theme, AI panel, drag-and-drop
 npm run seed   # reset to demo data

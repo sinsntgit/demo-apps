@@ -165,7 +165,7 @@ PUT('/api/settings/ai', ({ body, user }) => {
 export const PURGEABLE = {
   contacts: { table: 'contacts', label: 'contacts', effects: 'Also removes their tasks and activity notes. Deals and campaign history are kept but lose the contact link.' },
   accounts: { table: 'accounts', label: 'accounts', effects: 'Also removes activity notes logged on accounts. Contacts and deals are kept but lose their company link.' },
-  deals: { table: 'deals', label: 'deals', effects: 'Also removes the tasks and activity notes attached to those deals.' },
+  deals: { table: 'deals', label: 'deals', effects: 'Also removes the stage history, tasks and activity notes attached to those deals.' },
   tasks: { table: 'tasks', label: 'tasks', effects: '' },
   activities: { table: 'activities', label: 'activity notes (calls, notes, meetings)', effects: '' },
   campaigns: { table: 'campaigns', label: 'campaigns', effects: 'Also removes all their recipients and open/click tracking history. Not allowed while a campaign is sending.',

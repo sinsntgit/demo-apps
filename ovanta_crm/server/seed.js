@@ -53,13 +53,29 @@ export function seedIfEmpty() {
     }
     const stages = [['prospecting', 10], ['qualification', 25], ['proposal', 50], ['negotiation', 75], ['won', 100], ['lost', 0]];
     const dealWords = ['Platform license', 'Annual subscription', 'Expansion', 'Pilot program', 'Renewal', 'Integration project', 'Support package', 'Analytics add-on'];
-    const dealIds = [];
+    const dealIds = []; const dealMeta = []; const uname = { 1: 'Admin User', 2: 'Maya Patel', 3: 'Liam Chen', 4: 'Sofia Rossi' };
     for (let i = 0; i < 48; i++) {
       const [aid, an] = pick(accIds); const [stage, prob] = pick([...stages, stages[0], stages[1], stages[2], stages[4], stages[4]]);
       const closed = stage === 'won' || stage === 'lost';
-      const created = daysAgo(int(10, 200));
-      dealIds.push(Number(run('INSERT INTO deals (name,amount,stage,probability,close_date,account_id,contact_id,owner_id,closed_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
-        `${an} – ${pick(dealWords)}`, int(5, 180) * 1000, stage, prob, closed ? dateOffset(-int(1, 150)) : dateOffset(int(5, 90)), aid, pick(contactIds), pick(uids), closed ? daysAgo(int(1, 150)) : null, created).lastInsertRowid));
+      const createdDays = int(10, 200); const created = daysAgo(createdDays);
+      const owner = pick(uids); const amount = int(5, 180) * 1000; const closedAt = closed ? daysAgo(int(1, Math.min(150, createdDays - 1))) : null; // always after creation
+      const id = Number(run('INSERT INTO deals (name,amount,stage,probability,close_date,account_id,contact_id,owner_id,closed_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
+        `${an} – ${pick(dealWords)}`, amount, stage, prob, closed ? dateOffset(-int(1, 150)) : dateOffset(int(5, 90)), aid, pick(contactIds), owner, closedAt, created).lastInsertRowid);
+      dealIds.push(id); dealMeta.push({ id, stage, created, closedAt, owner, amount });
+    }
+    // Illustrative stage journeys for the demo deals (real deals record their own history automatically)
+    const order = ['prospecting', 'qualification', 'proposal', 'negotiation', 'won'];
+    const stageNotes = { qualification: ['Budget and need confirmed on discovery call.', 'Decision maker identified.'], proposal: ['Sent proposal and pricing.', 'Demo done, proposal requested.'], negotiation: ['Legal reviewing terms.', 'Discount discussion in progress.'], won: ['Signed! Kick-off scheduled.', 'PO received.'], lost: ['Went with a competitor on price.', 'Project postponed indefinitely.', 'No budget this year.'] };
+    const T = (s) => new Date(s.replace(' ', 'T') + 'Z').getTime(); const fmt = (ms) => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
+    for (const d of dealMeta) {
+      const path = d.stage === 'lost' ? order.slice(0, int(1, 4)).concat('lost') : order.slice(0, order.indexOf(d.stage) + 1);
+      const start = T(d.created), end = d.closedAt ? T(d.closedAt) : Date.now() - int(0, 5) * 86400000;
+      path.forEach((st, i) => {
+        const at = i === 0 ? start : start + ((end - start) * i) / (path.length - 1 || 1);
+        const by = i === 0 ? d.owner : pick(uids);
+        run('INSERT INTO deal_stage_history (deal_id,from_stage,to_stage,comment,amount,owner_id,owner_name,changed_by,changed_by_name,changed_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
+          d.id, i ? path[i - 1] : null, st, i ? pick(stageNotes[st] || ['Moved forward.']) : 'Deal created', d.amount, d.owner, uname[d.owner], by, uname[by], fmt(at));
+      });
     }
     const taskTitles = ['Follow up on proposal', 'Send pricing sheet', 'Schedule demo', 'Prepare contract', 'Check in after onboarding', 'Intro call', 'Share case study', 'Quarterly business review'];
     for (let i = 0; i < 30; i++) {
@@ -109,7 +125,7 @@ export function seedIfEmpty() {
 
 if (process.argv[1]?.endsWith('seed.js')) {
   if (process.argv.includes('--reset')) {
-    for (const t of ['email_log', 'notification_rules', 'campaign_events', 'campaign_recipients', 'campaigns', 'senders', 'settings', 'templates', 'segments', 'activities', 'tasks', 'deals', 'contacts', 'accounts', 'audit_log', 'users']) db.exec(`DELETE FROM ${t}`);
+    for (const t of ['deal_stage_history', 'email_log', 'notification_rules', 'campaign_events', 'campaign_recipients', 'campaigns', 'senders', 'settings', 'templates', 'segments', 'activities', 'tasks', 'deals', 'contacts', 'accounts', 'audit_log', 'users']) db.exec(`DELETE FROM ${t}`);
   }
   seedIfEmpty();
   console.log(`Seed complete. Login: ${config.adminEmail} / ${config.adminPassword}`);

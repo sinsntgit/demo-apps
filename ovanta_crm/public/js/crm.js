@@ -1,5 +1,5 @@
 import {
-  api, qs, html, raw, setHtml, esc, on, store, toast, fail, modal, confirmBox, purgeModal, field, formValues, badge, money, pct, num, fmtDate, ago, initials,
+  api, qs, html, raw, setHtml, esc, on, store, toast, fail, modal, confirmBox, purgeModal, field, formValues, badge, money, pct, num, fmtDate, fmtDateTime, ago, initials,
   fullName, can, todayStr, $, $$, debounce,
 } from './core.js';
 import { mountList } from './list.js';
@@ -233,15 +233,52 @@ export async function accountDetail(root, id) {
 }
 
 // =============== Deals ===============
+const stageLabel = (k) => store.meta.stages.find((s) => s.key === k)?.label || k;
+const stageBadge = (k) => html`<span class="badge ${k}">${stageLabel(k)}</span>`;
+const dayWord = (n) => (n < 1 ? 'under a day' : `${n} day${n === 1 ? '' : 's'}`);
+
+/** The full journey of a deal, oldest first: stage → stage, when, who moved it, owner at the time, comment. */
+export function historyView(history, deal) {
+  if (!history.length) return html`<div class="empty">No stage movements recorded yet.</div>`;
+  const first = history[0], last = history[history.length - 1];
+  const ms = (t) => new Date(String(t).replace(' ', 'T') + 'Z').getTime();
+  const closed = ['won', 'lost'].includes(last.to_stage);
+  const span = Math.max(0, Math.round((((closed ? ms(last.changed_at) : Date.now()) - ms(first.changed_at)) / 86400000) * 10) / 10);
+  const path = history.map((h) => h.to_stage).filter((st, i, a) => i === 0 || st !== a[i - 1]);
+  return html`<div class="small muted" style="margin-bottom:10px">${closed ? `${stageLabel(last.to_stage)} after ${dayWord(span)}` : `Open for ${dayWord(span)}`} · ${history.length} stage ${history.length === 1 ? 'entry' : 'entries'}${deal ? html` · currently <b>${stageLabel(deal.stage)}</b>` : ''}</div>
+    <div class="pill-row" style="margin-bottom:12px">${path.map((st, i) => html`${i ? html`<span class="muted">→</span>` : ''}${stageBadge(st)}`)}</div>
+    <ul class="timeline">${history.map((h, i) => html`<li>
+      <div>${h.from_stage ? html`${stageBadge(h.from_stage)} <span class="muted">→</span> ` : html`<span class="muted small">Started at</span> `}${stageBadge(h.to_stage)} ${i === history.length - 1 ? html`<span class="badge">current</span>` : ''}</div>
+      <div class="small" style="margin-top:3px"><b>${fmtDateTime(h.changed_at)}</b> · moved by <b>${h.changed_by_name || 'unknown'}</b> · owner then: <b>${h.owner_name || '—'}</b> · value ${money(h.amount)}${h.days_in_previous != null ? html` · after <b>${dayWord(h.days_in_previous)}</b> in ${stageLabel(h.from_stage)}` : ''}</div>
+      ${h.comment ? html`<div style="margin-top:4px;padding:6px 10px;background:var(--brand-l);border-radius:8px">💬 ${h.comment}</div>` : ''}</li>`)}</ul>`;
+}
+export async function historyModal(dealId, name) {
+  const [h, d] = await Promise.all([api('GET', `/deals/${dealId}/history`), api('GET', `/deals/${dealId}`)]);
+  modal({ title: `Stage history · ${name || d.name}`, wide: true, hideFooter: true, body: html`${historyView(h, d)}<p class="mt"><a href="#/deals/${dealId}" data-close>Open the full deal page →</a></p>` });
+}
+/** Move a deal to another stage, with an optional comment that is stored in its history. */
+export function stageModal(deal, onDone, target) {
+  const stages = store.meta.stages.map((s) => [s.key, s.label]);
+  modal({ title: `Move deal · ${deal.name}`, submitLabel: 'Move deal',
+    body: html`<p class="small muted">Currently <b>${stageLabel(deal.stage)}</b>. The move, your name, the deal owner and your comment are saved to the deal's history.</p>
+      ${field({ name: 'stage', label: 'Move to stage', type: 'select', options: stages, blank: false }, { stage: target || deal.stage })}
+      ${field({ name: 'comment', label: 'Comment (optional)', type: 'textarea', rows: 3, placeholder: 'Why is it moving? e.g. proposal accepted, waiting on legal, lost on price…' })}`,
+    onSubmit: async (f) => {
+      if (f.stage.value === deal.stage) throw new Error('Choose a different stage to move this deal.');
+      await api('POST', `/deals/${deal.id}/stage`, { stage: f.stage.value, comment: f.comment.value }); toast(`Moved to ${stageLabel(f.stage.value)}`, 'ok'); onDone?.();
+    } });
+}
+
 function dealForm(d = {}, lk, onDone) {
   const stages = store.meta.stages.map((s) => [s.key, s.label]);
   const fields = [{ name: 'name', label: 'Deal name', required: true }, { name: 'amount', label: 'Amount (USD)', type: 'number', min: 0, step: '0.01', default: 0 },
     { name: 'stage', label: 'Stage', type: 'select', options: stages, blank: false, default: 'prospecting' }, { name: 'probability', label: 'Probability %', type: 'number', min: 0, max: 100 },
     { name: 'close_date', label: 'Expected close', type: 'date' }, { name: 'owner_id', label: 'Owner', type: 'select', options: userOpts(), blank: false, default: store.user.id },
-    { name: 'account_id', label: 'Account', type: 'select', options: lk.accounts }, { name: 'contact_id', label: 'Contact', type: 'select', options: lk.contacts }];
+    { name: 'account_id', label: 'Account', type: 'select', options: lk.accounts }, { name: 'contact_id', label: 'Contact', type: 'select', options: lk.contacts },
+    { name: 'stage_comment', label: d.id ? 'Comment on the stage change (optional — saved only if you change the stage)' : 'Note for the deal history (optional)', type: 'textarea', rows: 2 }];
   const f = (n) => field(fields.find((x) => x.name === n), d);
   modal({ title: d.id ? 'Edit deal' : 'New deal', wide: true,
-    body: html`${f('name')}<div class="row">${f('amount')}${f('stage')}</div><div class="row">${f('probability')}${f('close_date')}</div><div class="row">${f('account_id')}${f('contact_id')}</div>${f('owner_id')}<p class="small muted">Leave probability empty to use the stage default.</p>`,
+    body: html`${f('name')}<div class="row">${f('amount')}${f('stage')}</div><div class="row">${f('probability')}${f('close_date')}</div><div class="row">${f('account_id')}${f('contact_id')}</div>${f('owner_id')}${f('stage_comment')}<p class="small muted">Leave probability empty to use the stage default.</p>`,
     onSubmit: async (form) => { const v = formValues(form, fields); const s = d.id ? await api('PUT', `/deals/${d.id}`, v) : await api('POST', '/deals', v); toast('Deal saved', 'ok'); onDone?.(s); } });
 }
 export async function deals(root) {
@@ -258,32 +295,37 @@ export async function deals(root) {
     const l = mountList(body, { key: 'deals', endpoint: '/deals', searchPlaceholder: 'Search deals…', empty: 'No deals yet.',
       filters: [{ name: 'stage', label: 'Stage', options: store.meta.stages.map((s) => [s.key, s.label]) }, { name: 'owner_id', label: 'Owner', options: userOpts() }],
       columns: [{ label: 'Deal', sort: 'name', render: (d) => html`<a href="#/deals/${d.id}"><b>${d.name}</b></a>` }, { label: 'Account', render: (d) => d.account_name || '—' }, { label: 'Amount', sort: 'amount', render: (d) => money(d.amount) },
-        { label: 'Stage', sort: 'stage', render: (d) => badge(d.stage) }, { label: 'Prob.', render: (d) => d.probability + '%' }, { label: 'Close', sort: 'close_date', render: (d) => fmtDate(d.close_date) }, { label: 'Owner', render: (d) => d.owner_name || '—' }] });
+        { label: 'Stage', sort: 'stage', render: (d) => badge(d.stage) }, { label: 'Prob.', render: (d) => d.probability + '%' }, { label: 'Close', sort: 'close_date', render: (d) => fmtDate(d.close_date) }, { label: 'Owner', render: (d) => d.owner_name || '—' },
+        { label: 'History', render: (d) => html`<button class="btn sm" data-act="hist" data-id="${d.id}" data-name="${d.name}">🕘 History</button>` }] });
+    on(body, { hist: (el) => historyModal(el.dataset.id, el.dataset.name) });
     reload = l.reload; return;
   }
   const drawBoard = async () => {
     const { rows } = await api('GET', '/deals?limit=1000&sort=amount&dir=desc');
     setHtml(body, html`<div class="kanban">${store.meta.stages.map((s) => {
       const items = rows.filter((d) => d.stage === s.key); const total = items.reduce((a, d) => a + d.amount, 0);
-      return html`<div class="col" data-stage="${s.key}"><div class="ch"><b>${s.label}</b><span class="small muted">${items.length} · ${money(total, true)}</span></div><div class="cards">${items.map((d) => html`<div class="dcard" draggable="true" data-id="${d.id}"><b><a href="#/deals/${d.id}" draggable="false">${d.name}</a></b><span class="small muted">${d.account_name || ''}</span><div style="display:flex;justify-content:space-between;margin-top:6px"><b>${money(d.amount, true)}</b><span class="small muted">${d.owner_name?.split(' ')[0] || ''}</span></div>${d.close_date ? html`<div class="small muted">Close ${fmtDate(d.close_date)}</div>` : ''}</div>`)}</div></div>`;
-    })}</div><p class="small muted">Drag a card to another column to change its stage.</p>`);
+      return html`<div class="col" data-stage="${s.key}"><div class="ch"><b>${s.label}</b><span class="small muted">${items.length} · ${money(total, true)}</span></div><div class="cards">${items.map((d) => html`<div class="dcard" draggable="true" data-id="${d.id}"><b><a href="#/deals/${d.id}" draggable="false">${d.name}</a></b><span class="small muted">${d.account_name || ''}</span><div style="display:flex;justify-content:space-between;margin-top:6px"><b>${money(d.amount, true)}</b><span class="small muted">${d.owner_name?.split(' ')[0] || ''}</span></div><div style="margin-top:6px"><button class="btn sm" data-act="hist" data-id="${d.id}" data-name="${d.name}" draggable="false">🕘 History</button></div>${d.close_date ? html`<div class="small muted">Close ${fmtDate(d.close_date)}</div>` : ''}</div>`)}</div></div>`;
+    })}</div><p class="small muted">Drag a card to another column (you can add a comment), or open 🕘 History to see how a deal has moved.</p>`);
     let dragId = null;
     $$('.dcard', body).forEach((c) => { c.addEventListener('dragstart', (e) => { dragId = c.dataset.id; c.classList.add('dragging'); e.dataTransfer.setData('text/plain', dragId); e.dataTransfer.effectAllowed = 'move'; }); c.addEventListener('dragend', () => c.classList.remove('dragging')); });
     $$('.col', body).forEach((col) => {
       col.addEventListener('dragover', (e) => { e.preventDefault(); col.classList.add('over'); });
       col.addEventListener('dragleave', () => col.classList.remove('over'));
       col.addEventListener('drop', async (e) => { e.preventDefault(); col.classList.remove('over'); const id = dragId || e.dataTransfer.getData('text/plain'); if (!id) return;
-        try { await api('POST', `/deals/${id}/stage`, { stage: col.dataset.stage }); await drawBoard(); } catch (x) { fail(x); } });
+        const deal = rows.find((r) => String(r.id) === String(id)); if (!deal || deal.stage === col.dataset.stage) return;
+        stageModal(deal, drawBoard, col.dataset.stage); });
     });
   };
+  on(body, { hist: (el) => historyModal(el.dataset.id, el.dataset.name) });
   reload = drawBoard; await drawBoard();
 }
 export async function dealDetail(root, id) {
   const draw = async () => {
     const d = await api('GET', `/deals/${id}/360`); const x = d.deal;
-    setHtml(root, html`<div class="topbar"><a href="#/deals">← Deals</a><span class="grow"></span><button class="btn" data-act="task">+ Task</button><button class="btn" data-act="edit">Edit</button>${can('admin', 'manager') ? html`<button class="btn danger" data-act="del">Delete</button>` : ''}</div>
+    setHtml(root, html`<div class="topbar"><a href="#/deals">← Deals</a><span class="grow"></span><button class="btn primary" data-act="stage">Change stage</button><button class="btn" data-act="task">+ Task</button><button class="btn" data-act="edit">Edit</button>${can('admin', 'manager') ? html`<button class="btn danger" data-act="del">Delete</button>` : ''}</div>
       <div class="grid g21"><div style="display:grid;gap:16px;align-content:start"><div class="card"><div class="bd"><h1>${x.name}</h1><div style="display:flex;gap:12px;align-items:center;margin-top:8px"><span class="stat-big">${money(x.amount)}</span>${badge(x.stage)}<span class="muted">${x.probability}% likely · weighted ${money(x.amount * x.probability / 100)}</span></div>
         <div class="funnel mt" aria-hidden="true">${store.meta.stages.slice(0, 5).map((s, i) => html`<i style="flex:1;background:${i <= store.meta.stages.findIndex((q) => q.key === x.stage) ? 'var(--brand)' : 'transparent'}"></i>`)}</div></div></div>
+        <div class="card"><div class="hd"><h2>Stage history</h2></div><div class="bd">${historyView(d.history, x)}</div></div>
         ${timelineCard(d.activities, 'deal_id', id)}</div>
         <div style="display:grid;gap:16px;align-content:start"><div class="card"><div class="hd"><h2>Details</h2></div><div class="bd" style="display:grid;gap:8px">
           <div><span class="muted small">Account</span><br>${x.account_id ? html`<a href="#/accounts/${x.account_id}">${x.account_name}</a>` : '—'}</div>
@@ -291,7 +333,7 @@ export async function dealDetail(root, id) {
           <div><span class="muted small">Expected close</span><br>${fmtDate(x.close_date)}</div><div><span class="muted small">Owner</span><br>${x.owner_name || '—'}</div></div></div>${miniTasks(d.tasks)}</div></div>`);
     wireTimeline(root, 'deal_id', id, draw);
     on(root, {
-      edit: async () => dealForm(x, await lookups(), draw), task: () => taskForm({ deal_id: id }, draw),
+      edit: async () => dealForm(x, await lookups(), draw), stage: () => stageModal(x, draw), task: () => taskForm({ deal_id: id }, draw),
       del: async () => { if (await confirmBox(`Delete deal "${x.name}"?`, 'Delete')) { await api('DELETE', `/deals/${id}`); location.hash = '#/deals'; } },
       toggletask: async (el) => { await api('POST', `/tasks/${el.dataset.id}/toggle`); draw(); },
     });

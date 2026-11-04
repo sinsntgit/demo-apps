@@ -70,6 +70,7 @@ function render(event, rec, ctx, rule, actor) {
     ${rule.intro ? `<p>${esc(rule.intro)}</p>` : ''}
     ${event === 'contact.imported' ? `<p>${esc(ctx.count)} contacts were imported (${esc(ctx.created)} new, ${esc(ctx.updated)} updated).</p>` : ''}
     ${rows.length ? `<table style="border-collapse:collapse">${rows.map(([k, v]) => `<tr><td style="padding:4px 12px 4px 0;color:#6b7280">${esc(k)}</td><td style="padding:4px 0">${esc(v)}</td></tr>`).join('')}</table>` : ''}
+    ${ctx.comment ? `<p style="margin:12px 0"><b>Comment:</b> ${esc(ctx.comment)}</p>` : ''}
     ${changes ? `<p style="margin:16px 0 4px"><b>What changed</b></p><table style="border-collapse:collapse">${changes}</table>` : ''}
     <p style="margin-top:20px"><a href="${link}" style="background:#4f46e5;color:#fff;padding:9px 16px;border-radius:6px;text-decoration:none">Open in Ovantaa CRM</a></p>
     <p style="font-size:12px;color:#9ca3af">You receive this because of the notification rule “${esc(rule.name)}”. Manage rules in Ovantaa CRM → Notifications.</p></div>`;

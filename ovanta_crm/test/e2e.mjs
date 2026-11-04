@@ -71,9 +71,22 @@ await page.waitForSelector('#segprev b'); await page.click('.modal button[type=s
 await page.click('a[data-nav=deals]'); await page.waitForSelector('.dcard');
 const countIn = (stage) => page.$$eval(`.col[data-stage=${stage}] .dcard`, (e) => e.length);
 const [p0, q0] = [await countIn('prospecting'), await countIn('proposal')];
+const movedId = await page.$eval('.col[data-stage=prospecting] .dcard >> nth=0', (e) => e.dataset.id).catch(async () => (await page.$eval('.col[data-stage=prospecting] .dcard', (e) => e.dataset.id)));
 await page.dragAndDrop('.col[data-stage=prospecting] .dcard >> nth=0', '.col[data-stage=proposal] .cards');
+await page.waitForSelector('.modal textarea[name=comment]'); // drag opens the move dialog
+await page.fill('.modal textarea[name=comment]', 'E2E: proposal accepted by finance'); await page.click('.modal button[type=submit]');
 await page.waitForFunction((n) => document.querySelectorAll('.col[data-stage=proposal] .dcard').length === n, q0 + 1, { timeout: 5000 })
   .catch(() => errors.push('drag-drop did not move a deal into Proposal'));
 if ((await countIn('prospecting')) !== p0 - 1) errors.push('deal was not removed from Prospecting');
+// history: modal from the board, then full page
+const movedCard = await page.$eval('.col[data-stage=proposal] .dcard >> nth=0', (e) => e.dataset.id).catch(() => null);
+const hist = await page.evaluate(async () => { const rows = (await (await fetch('/api/deals?limit=1000')).json()).rows; const out = []; for (const r of rows) { const h = await (await fetch(`/api/deals/${r.id}/history`)).json(); if (h.some((x) => x.comment === 'E2E: proposal accepted by finance')) out.push({ id: r.id, h }); } return out; });
+if (hist.length !== 1 || hist[0].h.at(-1).to_stage !== 'proposal' || hist[0].h.at(-1).changed_by_name !== 'Admin User') errors.push('history not stored for the drag-drop move ' + JSON.stringify(hist).slice(0, 200));
+await page.click(`button[data-act=hist][data-id="${hist[0]?.id}"]`); await page.waitForSelector('.modal .timeline li'); await shot('history-modal');
+if (!(await page.textContent('.modal')).includes('E2E: proposal accepted by finance')) errors.push('comment missing in history modal');
+await page.keyboard.press('Escape');
+await page.goto(`${base}/#/deals/${hist[0]?.id}`); await page.waitForSelector('text=Stage history'); await shot('deal-detail-history');
+await page.click('text=Change stage'); await page.selectOption('.modal select[name=stage]', 'won'); await page.fill('.modal textarea[name=comment]', 'E2E: signed'); await page.click('.modal button[type=submit]');
+await page.waitForSelector('.timeline li:has-text("E2E: signed")', { timeout: 5000 }).catch(() => errors.push('stage change from detail page not shown in history'));
 console.log(errors.length ? 'ERRORS:\n' + errors.join('\n') : 'E2E OK');
 await browser.close(); server.close(); ai.close(); process.exit(errors.length ? 1 : 0);
