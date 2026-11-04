@@ -1,5 +1,5 @@
 import { GET, POST, PUT, DELETE, HttpError, bad, notFound } from './http.js';
-import { all, get, run, audit } from './db.js';
+import { all, get, run, tx, audit } from './db.js';
 import { encryptSecret } from './auth.js';
 import { sentLast24h, getSender, forgetTransport, verifySender, sendLogged } from './mailer.js';
 import { EVENTS, parseEmails, testRule } from './notifications.js';
@@ -159,4 +159,31 @@ PUT('/api/settings/ai', ({ body, user }) => {
   if (body.model !== undefined) setSetting('anthropic_model', oneLine(body.model).slice(0, 80) || null);
   audit(user, 'update', 'settings', null, 'ai');
   return { configured: aiConfigured(), model: aiModel() };
+}, { roles: ADMIN });
+
+// ---------- Data management: delete all (admin only, typed confirmation) ----------
+export const PURGEABLE = {
+  contacts: { table: 'contacts', label: 'contacts', effects: 'Also removes their tasks and activity notes. Deals and campaign history are kept but lose the contact link.' },
+  accounts: { table: 'accounts', label: 'accounts', effects: 'Also removes activity notes logged on accounts. Contacts and deals are kept but lose their company link.' },
+  deals: { table: 'deals', label: 'deals', effects: 'Also removes the tasks and activity notes attached to those deals.' },
+  tasks: { table: 'tasks', label: 'tasks', effects: '' },
+  activities: { table: 'activities', label: 'activity notes (calls, notes, meetings)', effects: '' },
+  campaigns: { table: 'campaigns', label: 'campaigns', effects: 'Also removes all their recipients and open/click tracking history. Not allowed while a campaign is sending.',
+    guard: () => { if (get("SELECT COUNT(*) n FROM campaigns WHERE status='sending'").n) throw bad('A campaign is sending right now. Wait for it to finish first.'); } },
+  segments: { table: 'segments', label: 'segments', effects: 'Draft campaigns that used them will need a new audience. Not allowed while a scheduled or sending campaign uses a segment.',
+    guard: () => { if (get("SELECT COUNT(*) n FROM campaigns WHERE status IN ('scheduled','sending') AND segment_id IS NOT NULL").n) throw bad('A scheduled or sending campaign is using a segment. Unschedule or wait for it first.'); } },
+  templates: { table: 'templates', label: 'email templates', effects: '' },
+  email_log: { table: 'email_log', label: 'notification & test email log entries', effects: 'Campaign delivery history is stored with each campaign and is not affected.' },
+  notification_rules: { table: 'notification_rules', label: 'notification rules', effects: 'Nobody will be emailed about changes until you create new rules.' },
+};
+GET('/api/admin/data-counts', () => Object.fromEntries(Object.entries(PURGEABLE).map(([k, v]) => [k, { label: v.label, effects: v.effects, count: get(`SELECT COUNT(*) n FROM ${v.table}`).n }])), { roles: ADMIN });
+POST('/api/admin/purge', ({ body, user }) => {
+  const def = PURGEABLE[body.entity];
+  if (!def) throw bad('Unknown data type');
+  if (body.confirm !== 'DELETE') throw bad('Type DELETE (in capitals) to confirm');
+  def.guard?.();
+  const before = get(`SELECT COUNT(*) n FROM ${def.table}`).n;
+  tx(() => { run(`DELETE FROM ${def.table}`); });
+  audit(user, 'delete_all', def.table, null, `${before} records`);
+  return { ok: true, deleted: before, entity: body.entity };
 }, { roles: ADMIN });

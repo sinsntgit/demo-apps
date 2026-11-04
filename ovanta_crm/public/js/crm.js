@@ -1,5 +1,5 @@
 import {
-  api, qs, html, raw, setHtml, esc, on, store, toast, fail, modal, confirmBox, field, formValues, badge, money, pct, num, fmtDate, ago, initials,
+  api, qs, html, raw, setHtml, esc, on, store, toast, fail, modal, confirmBox, purgeModal, field, formValues, badge, money, pct, num, fmtDate, ago, initials,
   fullName, can, todayStr, $, $$, debounce,
 } from './core.js';
 import { mountList } from './list.js';
@@ -114,7 +114,7 @@ function importModal(done) {
 export async function contacts(root) {
   root.innerHTML = '';
   const head = document.createElement('div'); const body = document.createElement('div'); root.append(head, body);
-  setHtml(head, page('Contacts', html`<button class="btn" data-act="import">Import CSV</button><a class="btn" href="/api/contacts/export.csv" download>Export CSV</a><button class="btn primary" data-act="new">+ New contact</button>`));
+  setHtml(head, page('Contacts', html`<button class="btn" data-act="import">Import CSV</button><a class="btn" href="/api/contacts/export.csv" download>Export CSV</a><button class="btn primary" data-act="new">+ New contact</button>${can('admin') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`));
   let list;
   list = mountList(body, {
     key: 'contacts', endpoint: '/contacts', selectable: true, searchPlaceholder: 'Search name, email, company…', empty: 'No contacts match. Add one or import a CSV.',
@@ -137,6 +137,7 @@ export async function contacts(root) {
   on(head, {
     new: async () => contactForm({}, await lookups(), (c) => { location.hash = `#/contacts/${c.id}`; }),
     import: () => importModal(() => list.reload()),
+    purge: () => purgeModal('contacts', () => list.reload()),
   });
   // export honours the current search/filters
   head.querySelector('a[download]').addEventListener('click', (e) => {
@@ -198,7 +199,7 @@ function accountForm(a = {}, onDone) {
 }
 export async function accounts(root) {
   root.innerHTML = ''; const head = document.createElement('div'), body = document.createElement('div'); root.append(head, body);
-  setHtml(head, page('Accounts', html`<button class="btn primary" data-act="new">+ New account</button>`));
+  setHtml(head, page('Accounts', html`<button class="btn primary" data-act="new">+ New account</button>${can('admin') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`));
   const list = mountList(body, {
     key: 'accounts', endpoint: '/accounts', searchPlaceholder: 'Search accounts…', empty: 'No accounts yet.',
     filters: [{ name: 'industry', label: 'Industry', options: store.meta.industries }, { name: 'owner_id', label: 'Owner', options: userOpts() }],
@@ -208,7 +209,7 @@ export async function accounts(root) {
       { label: 'Contacts', sort: 'contact_count', render: (a) => a.contact_count }, { label: 'Won value', sort: 'won_value', render: (a) => money(a.won_value) }, { label: 'Owner', render: (a) => a.owner_name || '—' },
     ],
   });
-  on(head, { new: () => accountForm({}, (a) => { location.hash = `#/accounts/${a.id}`; }) });
+  on(head, { new: () => accountForm({}, (a) => { location.hash = `#/accounts/${a.id}`; }), purge: () => purgeModal('accounts', () => list.reload()) });
 }
 export async function accountDetail(root, id) {
   const draw = async () => {
@@ -246,11 +247,12 @@ function dealForm(d = {}, lk, onDone) {
 export async function deals(root) {
   const view = sessionStorage.getItem('dealView') || 'board';
   root.innerHTML = ''; const head = document.createElement('div'), body = document.createElement('div'); root.append(head, body);
-  setHtml(head, page('Deals', html`<div class="tabs" style="margin:0;border:0"><button class="${view === 'board' ? 'on' : ''}" data-act="view" data-v="board">Board</button><button class="${view === 'list' ? 'on' : ''}" data-act="view" data-v="list">List</button></div><button class="btn primary" data-act="new">+ New deal</button>`));
+  setHtml(head, page('Deals', html`<div class="tabs" style="margin:0;border:0"><button class="${view === 'board' ? 'on' : ''}" data-act="view" data-v="board">Board</button><button class="${view === 'list' ? 'on' : ''}" data-act="view" data-v="list">List</button></div><button class="btn primary" data-act="new">+ New deal</button>${can('admin') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`));
   let reload;
   on(head, {
     view: (el) => { sessionStorage.setItem('dealView', el.dataset.v); deals(root); },
     new: async () => dealForm({}, await lookups(), () => reload?.()),
+    purge: () => purgeModal('deals', () => reload?.()),
   });
   if (view === 'list') {
     const l = mountList(body, { key: 'deals', endpoint: '/deals', searchPlaceholder: 'Search deals…', empty: 'No deals yet.',
@@ -308,7 +310,7 @@ async function taskForm(t = {}, onDone) {
 }
 export async function tasks(root) {
   root.innerHTML = ''; const head = document.createElement('div'), body = document.createElement('div'); root.append(head, body);
-  setHtml(head, page('Tasks', html`<button class="btn primary" data-act="new">+ New task</button>`));
+  setHtml(head, page('Tasks', html`<button class="btn primary" data-act="new">+ New task</button>${can('admin') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`));
   const list = mountList(body, { key: 'tasks', endpoint: '/tasks', searchPlaceholder: 'Search tasks…', empty: 'No tasks. Enjoy the quiet!',
     filters: [{ name: 'done', label: 'State', options: [['0', 'Open'], ['1', 'Done']] }, { name: 'due', label: 'Due', options: [['overdue', 'Overdue'], ['today', 'Today'], ['week', 'Next 7 days']] }, { name: 'owner_id', label: 'Assignee', options: userOpts() }, { name: 'priority', label: 'Priority', options: ['low', 'medium', 'high'] }],
     columns: [
@@ -320,7 +322,7 @@ export async function tasks(root) {
       { label: 'Assignee', render: (t) => t.owner_name || '—' },
       { label: '', render: (t) => html`<button class="btn sm" data-act="edit" data-id="${t.id}">Edit</button> <button class="btn sm danger" data-act="del" data-id="${t.id}" aria-label="Delete">✕</button>` },
     ] });
-  on(head, { new: () => taskForm({}, list.reload) });
+  on(head, { new: () => taskForm({}, list.reload), purge: () => purgeModal('tasks', () => list.reload()) });
   body.addEventListener('change', async (e) => { if (e.target.dataset.act === 'toggle') { try { await api('POST', `/tasks/${e.target.dataset.id}/toggle`); list.reload(); } catch (x) { fail(x); } } });
   on(body, {
     edit: async (el) => taskForm(await api('GET', `/tasks/${el.dataset.id}`), list.reload),

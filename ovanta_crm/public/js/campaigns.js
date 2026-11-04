@@ -1,5 +1,5 @@
 import {
-  api, html, raw, setHtml, esc, on, store, toast, fail, modal, confirmBox, field, formValues, badge, money, pct, num, fmtDate, fmtDateTime, ago,
+  api, html, raw, setHtml, esc, on, store, toast, fail, modal, confirmBox, purgeModal, field, formValues, badge, money, pct, num, fmtDate, fmtDateTime, ago,
   fullName, can, $, $$, debounce,
 } from './core.js';
 import { mountList } from './list.js';
@@ -12,7 +12,7 @@ export async function campaignList(root) {
   const camps = await api('GET', '/campaigns');
   const sent = camps.filter((c) => c.sent > 0);
   const tSent = sent.reduce((a, c) => a + c.sent, 0), tOpen = sent.reduce((a, c) => a + c.opened, 0), tClick = sent.reduce((a, c) => a + c.clicked, 0);
-  setHtml(root, html`${page('Campaigns', html`<a class="btn" href="#/segments">Segments</a><a class="btn" href="#/templates">Templates</a><button class="btn primary" data-act="new">+ New campaign</button>`)}
+  setHtml(root, html`${page('Campaigns', html`<a class="btn" href="#/segments">Segments</a><a class="btn" href="#/templates">Templates</a><button class="btn primary" data-act="new">+ New campaign</button>${can('admin') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`)}
     <div class="grid g4"><div class="card kpi"><div class="l">Campaigns</div><div class="v">${camps.length}</div><div class="s">${camps.filter((c) => c.status === 'draft').length} drafts · ${camps.filter((c) => c.status === 'scheduled').length} scheduled</div></div>
       <div class="card kpi"><div class="l">Emails sent</div><div class="v">${num(tSent)}</div></div>
       <div class="card kpi"><div class="l">Avg open rate</div><div class="v">${rate(tOpen, tSent)}</div></div>
@@ -25,6 +25,7 @@ export async function campaignList(root) {
   on(root, {
     new: () => modal({ title: 'New campaign', body: field({ name: 'name', label: 'Campaign name', required: true, placeholder: 'e.g. Autumn webinar invite' }), submitLabel: 'Create',
       onSubmit: async (f) => { const c = await api('POST', '/campaigns', { name: f.name.value, from_name: store.meta.defaults.fromName, from_email: store.meta.defaults.fromEmail }); location.hash = `#/campaigns/${c.id}`; } }),
+    purge: () => purgeModal('campaigns', () => campaignList(root)),
     dup: async (el) => { const c = await api('POST', `/campaigns/${el.dataset.id}/duplicate`); location.hash = `#/campaigns/${c.id}`; },
     del: async (el) => { if (await confirmBox('Delete this campaign and its tracking data?', 'Delete')) { await api('DELETE', `/campaigns/${el.dataset.id}`); campaignList(root); } },
   });
@@ -203,12 +204,12 @@ function segmentModal(seg, done) {
 export async function segments(root) {
   const draw = async () => {
     const segs = await api('GET', '/segments');
-    setHtml(root, html`${page('Segments', html`<a class="btn" href="#/campaigns">← Campaigns</a><button class="btn primary" data-act="new">+ New segment</button>`)}
+    setHtml(root, html`${page('Segments', html`<a class="btn" href="#/campaigns">← Campaigns</a><button class="btn primary" data-act="new">+ New segment</button>${can('admin') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`)}
       <div class="card">${segs.length ? html`<div class="tablewrap"><table><thead><tr><th>Segment</th><th>Rules</th><th>Emailable</th><th></th></tr></thead><tbody>${segs.map((s) => html`<tr><td><b>${s.name}</b><div class="small muted">${s.description || ''}</div></td>
         <td class="small">${s.filter.rules.length ? s.filter.rules.map((r) => `${store.meta.segmentFields[r.field]?.label || r.field} ${r.op.replace(/_/g, ' ')} ${r.value}`).join(s.filter.match === 'any' ? ' OR ' : ' AND ') : 'Everyone'}</td>
         <td><b>${s.size}</b> <span class="muted small">of ${s.total_matching}</span></td><td class="nowrap"><button class="btn sm" data-act="edit" data-id="${s.id}">Edit</button>${can('admin', 'manager') ? html` <button class="btn sm danger" data-act="del" data-id="${s.id}" aria-label="Delete">✕</button>` : ''}</td></tr>`)}</tbody></table></div>` : html`<div class="empty">No segments yet.</div>`}</div>`);
     on(root, {
-      new: () => segmentModal(null, draw), edit: (el) => segmentModal(segs.find((s) => String(s.id) === el.dataset.id), draw),
+      purge: () => purgeModal('segments', draw), new: () => segmentModal(null, draw), edit: (el) => segmentModal(segs.find((s) => String(s.id) === el.dataset.id), draw),
       del: async (el) => { if (await confirmBox('Delete this segment? Campaigns using it will lose their audience.', 'Delete')) { await api('DELETE', `/segments/${el.dataset.id}`); draw(); } },
     });
   };
@@ -219,13 +220,13 @@ export async function segments(root) {
 export async function templates(root) {
   const draw = async () => {
     const list = await api('GET', '/templates');
-    setHtml(root, html`${page('Email templates', html`<a class="btn" href="#/campaigns">← Campaigns</a><button class="btn primary" data-act="new">+ New template</button>`)}
+    setHtml(root, html`${page('Email templates', html`<a class="btn" href="#/campaigns">← Campaigns</a><button class="btn primary" data-act="new">+ New template</button>${can('admin') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`)}
       <div class="grid g3">${list.map((t) => html`<div class="card"><div class="hd"><h2>${t.name}</h2></div><div class="bd"><div class="small muted">Subject</div><div>${t.subject}</div></div><div class="hd" style="border-top:1px solid var(--line);border-bottom:0"><button class="btn sm" data-act="edit" data-id="${t.id}">Edit</button>${can('admin', 'manager') ? html`<button class="btn sm danger" data-act="del" data-id="${t.id}">Delete</button>` : ''}</div></div>`)}</div>
       ${list.length ? '' : html`<div class="card empty">No templates yet.</div>`}`);
     const open = (t) => modal({ title: t ? 'Edit template' : 'New template', wide: true,
       body: html`${field({ name: 'name', label: 'Template name', required: true }, t || {})}${field({ name: 'subject', label: 'Subject', required: true }, t || {})}${field({ name: 'body_html', label: 'HTML content', type: 'textarea', rows: 12, required: true, default: '<p>Hi {{first_name|there}},</p>' }, t || {})}<p class="small muted">Merge tags: ${store.meta.mergeTags.map((m) => `{{${m}}}`).join('  ')}</p>`,
       onSubmit: async (f) => { const v = { name: f.name.value, subject: f.subject.value, body_html: f.body_html.value }; t ? await api('PUT', `/templates/${t.id}`, v) : await api('POST', '/templates', v); toast('Template saved', 'ok'); draw(); } });
-    on(root, { new: () => open(null), edit: (el) => open(list.find((x) => String(x.id) === el.dataset.id)),
+    on(root, { purge: () => purgeModal('templates', draw), new: () => open(null), edit: (el) => open(list.find((x) => String(x.id) === el.dataset.id)),
       del: async (el) => { if (await confirmBox('Delete this template?', 'Delete')) { await api('DELETE', `/templates/${el.dataset.id}`); draw(); } } });
   };
   await draw();

@@ -63,6 +63,7 @@ Publish **SPF**, **DKIM** and **DMARC** for each sending domain (syncsense.in, e
 * **Write with Claude** — in the campaign editor: describe the campaign, get subject + body + alternative subjects, rewrite existing copy, undo. Admin adds an Anthropic API key in *Settings → AI assistant* (or `ANTHROPIC_API_KEY`). Only the text you type is sent to Anthropic — never contact data. Model defaults to `claude-sonnet-5-5` (changeable in Settings or `ANTHROPIC_MODEL`).
 * **Notifications** — *Notifications → Rules*: when a contact is added/updated/deleted/imported, an account is created, or a deal is created/updated/changes stage/is won/lost/deleted, email chosen users, the record owner and/or any addresses. Optional filters (minimum deal amount, stages), custom subject, choice of sender, "send me a test". Recipients get at most one email per action; imports send a single summary. Admins create/edit/delete rules; managers can view them and the email log.
 * **Import contacts** — drag-and-drop **CSV, TSV, TXT or Excel (.xlsx)** (up to 5,000 rows / 8 MB), automatic column detection and mapping, default tag/source/status, update-or-skip existing, sample template download. Old `.xls` files: save as `.xlsx` or CSV.
+* **Delete all** — admins can delete everything of one type (contacts, accounts, deals, tasks, activity notes, campaigns, segments, templates, notification rules, email log) from a **Delete all…** button on each page or from *Settings → Data management*. It shows the count and what else is removed, requires typing `DELETE`, is blocked while campaigns are sending, and is recorded in the audit log. Email senders, users and the audit log are never deleted this way. Managers and reps can still delete or bulk-delete individual records (reps only their own).
 * **Themes** — *Settings → Appearance*: company accent and sidebar colours (presets or custom, live preview, saved for everyone including the login page) plus light/dark/auto; each user can override light/dark for their own browser.
 
 ## Configuration (environment variables)
@@ -70,7 +71,7 @@ Publish **SPF**, **DKIM** and **DMARC** for each sending domain (syncsense.in, e
 
 ## Tests
 ```bash
-npm test       # 21 API tests: auth, CRUD, injection, campaigns, SMTP sending against a local fake mail server,
+npm test       # 22 API tests: auth, CRUD, injection, campaigns, SMTP sending against a local fake mail server,
                # daily-limit pause/resume, notifications, AI (fake Claude API), themes, import options
 npm run e2e    # browser test (needs Playwright + Chromium): navigation, forms, xlsx import, theme, AI panel, drag-and-drop
 npm run seed   # reset to demo data

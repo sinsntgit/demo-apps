@@ -228,3 +228,37 @@ test('import options: default tag/source, subscribed column, skip-existing', asy
   const again = await api('POST', '/api/contacts/import', { options: { update_existing: false }, rows: [{ first_name: 'Opt', email: 'opt1@imp.example' }] });
   assert.equal(again.body.skipped, 1); assert.equal(again.body.updated, 0);
 });
+
+test('delete all: admin-only, typed confirmation, guards, cascades, audited', async () => {
+  const repCookie = (await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'liam@ovantaa.com', password: 'Ovantaa@123' }) })).headers.get('set-cookie').split(';')[0];
+  const counts = (await api('GET', '/api/admin/data-counts')).body;
+  assert.ok(counts.contacts.count > 50 && counts.deals.count > 10 && counts.contacts.effects);
+  assert.equal((await api('GET', '/api/admin/data-counts', null, { ck: repCookie })).status, 403);
+  assert.equal((await api('POST', '/api/admin/purge', { entity: 'contacts', confirm: 'DELETE' }, { ck: repCookie })).status, 403);
+  assert.equal((await api('POST', '/api/admin/purge', { entity: 'contacts' })).status, 400, 'confirmation required');
+  assert.equal((await api('POST', '/api/admin/purge', { entity: 'contacts', confirm: 'delete' })).status, 400, 'case-sensitive');
+  assert.equal((await api('POST', '/api/admin/purge', { entity: 'users', confirm: 'DELETE' })).status, 400, 'users cannot be purged');
+  assert.equal((await api('POST', '/api/admin/purge', { entity: 'audit_log', confirm: 'DELETE' })).status, 400, 'audit log cannot be purged');
+  assert.ok((await api('GET', '/api/contacts?limit=1')).body.total > 0, 'nothing deleted by rejected calls');
+  // guard: sending campaign blocks campaign purge
+  db.prepare("INSERT INTO campaigns (name,subject,body_html,status) VALUES ('Busy','s','b','sending')").run();
+  const blocked = await api('POST', '/api/admin/purge', { entity: 'campaigns', confirm: 'DELETE' });
+  assert.equal(blocked.status, 400); assert.match(blocked.body.error, /sending/);
+  db.prepare("DELETE FROM campaigns WHERE name='Busy'").run();
+  // contacts purge cascades to their tasks/activities; deals survive
+  const tasksBefore = (await api('GET', '/api/tasks?limit=1')).body.total, dealsBefore = counts.deals.count;
+  const r = await api('POST', '/api/admin/purge', { entity: 'contacts', confirm: 'DELETE' });
+  assert.equal(r.status, 200); assert.equal(r.body.deleted, counts.contacts.count);
+  assert.equal((await api('GET', '/api/contacts')).body.total, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM activities WHERE contact_id IS NOT NULL').get().n, 0);
+  assert.ok((await api('GET', '/api/tasks?limit=1')).body.total < tasksBefore, 'contact tasks removed');
+  assert.equal((await api('GET', '/api/deals?limit=1')).body.total, dealsBefore, 'deals are kept');
+  for (const e of ['deals', 'accounts', 'tasks', 'activities', 'campaigns', 'segments', 'templates', 'email_log', 'notification_rules']) {
+    assert.equal((await api('POST', '/api/admin/purge', { entity: e, confirm: 'DELETE' })).status, 200, e);
+  }
+  const after = (await api('GET', '/api/admin/data-counts')).body;
+  assert.ok(Object.values(after).every((v) => v.count === 0), JSON.stringify(Object.fromEntries(Object.entries(after).map(([k, v]) => [k, v.count]))));
+  assert.ok((await api('GET', '/api/senders')).body.length >= 1, 'senders are never purged');
+  assert.ok((await api('GET', '/api/users')).body.length >= 4, 'users are never purged');
+  assert.ok((await api('GET', '/api/audit')).body.some((a) => a.action === 'delete_all' && a.entity === 'contacts'), 'purge is audited');
+});

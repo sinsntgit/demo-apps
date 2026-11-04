@@ -1,4 +1,4 @@
-import { api, html, raw, setHtml, on, store, toast, fail, modal, confirmBox, field, formValues, badge, fmtDateTime, ago, can, $, $$ } from './core.js';
+import { api, html, raw, setHtml, on, store, toast, fail, modal, confirmBox, purgeModal, field, formValues, badge, fmtDateTime, ago, can, $, $$ } from './core.js';
 
 const page = (title, actions = '') => html`<div class="topbar"><h1>${title}</h1><span class="grow"></span>${actions}</div>`;
 
@@ -113,9 +113,9 @@ export async function notifications(root) {
   const draw = async () => {
     const admin = can('admin');
     const body = tab === 'rules' ? await rulesView(admin) : await logView();
-    setHtml(root, html`${page('Notifications', tab === 'rules' && admin ? html`<button class="btn primary" data-act="new">+ New rule</button>` : '')}
+    setHtml(root, html`${page('Notifications', admin ? (tab === 'rules' ? html`<button class="btn primary" data-act="new">+ New rule</button><button class="btn danger" data-act="purge">Delete all rules…</button>` : html`<button class="btn danger" data-act="purge">Clear email log…</button>`) : '')}
       <div class="tabs"><button class="${tab === 'rules' ? 'on' : ''}" data-act="tab" data-t="rules">Rules</button><button class="${tab === 'log' ? 'on' : ''}" data-act="tab" data-t="log">Email log</button></div>${body.view}`);
-    on(root, { tab: (el) => { tab = el.dataset.t; sessionStorage.setItem('notifTab', tab); draw(); }, new: () => ruleModal(null, draw), ...body.handlers(draw) });
+    on(root, { purge: () => purgeModal(tab === 'rules' ? 'notification_rules' : 'email_log', draw), tab: (el) => { tab = el.dataset.t; sessionStorage.setItem('notifTab', tab); draw(); }, new: () => ruleModal(null, draw), ...body.handlers(draw) });
     $('#lf', root)?.addEventListener('change', () => { sessionStorage.setItem('logFilter', $('#lf', root).value); draw(); });
   };
   const rulesView = async (admin) => {

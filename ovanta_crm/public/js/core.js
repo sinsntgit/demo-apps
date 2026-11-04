@@ -151,3 +151,15 @@ export function applyTheme(theme = store.theme || DEFAULT_THEME) {
   const mode = mine && mine !== 'org' ? mine : theme.mode;
   if (mode === 'light' || mode === 'dark') document.documentElement.dataset.theme = mode; else delete document.documentElement.dataset.theme;
 }
+
+/** "Delete all" for one data type (admin only). Shows the count and side effects and requires typing DELETE. */
+export async function purgeModal(entity, done) {
+  const info = (await api('GET', '/admin/data-counts'))[entity];
+  if (!info) throw new Error('Unknown data type');
+  if (!info.count) { toast(`There are no ${info.label} to delete.`); return; }
+  modal({ title: `Delete all ${info.label}?`, danger: true, submitLabel: `Delete all ${info.count}`,
+    body: html`<div class="banner bad"><b>This permanently deletes all ${info.count} ${info.label}.</b> It cannot be undone.${info.effects ? html`<div class="small mt">${info.effects}</div>` : ''}</div>
+      <label>Type <b>DELETE</b> to confirm<input name="confirm" autocomplete="off" placeholder="DELETE"></label>`,
+    onOpen: (form) => { const b = form.querySelector('button[type=submit]'); b.disabled = true; form.confirm.addEventListener('input', () => { b.disabled = form.confirm.value !== 'DELETE'; }); },
+    onSubmit: async (form) => { const r = await api('POST', '/admin/purge', { entity, confirm: form.confirm.value }); toast(`Deleted ${r.deleted} ${info.label}`, 'ok'); done?.(r); } });
+}

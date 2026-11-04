@@ -1,4 +1,4 @@
-import { api, html, raw, setHtml, on, store, toast, fail, modal, confirmBox, field, formValues, badge, fmtDate, fmtDateTime, ago, applyTheme, THEME_PRESETS, DEFAULT_THEME, $ } from './core.js';
+import { api, html, raw, setHtml, on, store, toast, fail, modal, confirmBox, field, formValues, badge, fmtDate, fmtDateTime, ago, applyTheme, purgeModal, THEME_PRESETS, DEFAULT_THEME, $ } from './core.js';
 
 const page = (title, actions = '') => html`<div class="topbar"><h1>${title}</h1><span class="grow"></span>${actions}</div>`;
 
@@ -26,6 +26,7 @@ export async function team(root) {
 
 export async function settings(root) {
   const admin = store.user.role === 'admin';
+  const dataCounts = admin ? await api('GET', '/admin/data-counts') : null;
   const [outbox, ai] = await Promise.all([['admin', 'manager'].includes(store.user.role) ? api('GET', '/campaigns/outbox') : [], api('GET', '/ai/status')]);
   let draft = { ...store.theme };
   let mine = 'org'; try { mine = localStorage.getItem('ovantaa_mode') || 'org'; } catch {}
@@ -53,6 +54,7 @@ export async function settings(root) {
       <div class="card"><div class="hd"><h2>Email delivery</h2></div><div class="bd">
         <p>Sending is configured per sender mailbox under <a href="#/senders"><b>Email senders</b></a> (Google, Microsoft 365, Zoho or any SMTP server) — add one entry per address you send from. Notification emails are configured under <a href="#/notifications"><b>Notifications</b></a>.</p>
         <p class="muted small">Tracking links use <span class="mono">${m_baseUrl()}</span>. Set the <span class="mono">BASE_URL</span> environment variable to your public address so opens, clicks and unsubscribes reach this server.</p></div></div></div>
+    ${admin ? html`<div class="card mt"><div class="hd"><h2>Data management</h2><span class="muted small">admin only · deletions are permanent and recorded in the audit log</span></div><div class="tablewrap"><table><tbody>${Object.entries(dataCounts).map(([k, v]) => html`<tr><td><b>${v.count}</b> ${v.label}${v.effects ? html`<div class="small muted">${v.effects}</div>` : ''}</td><td class="right"><button class="btn sm danger" data-act="purge" data-e="${k}" ${v.count ? '' : raw('disabled')}>Delete all…</button></td></tr>`)}</tbody></table></div><div class="bd small muted">Email senders, users and the audit log are never deleted from here.</div></div>` : ''}
     ${outbox.length ? html`<div class="card mt"><div class="hd"><h2>Recent simulated mail</h2><span class="muted small">emails handled by simulation senders since server start — nothing was delivered</span></div><div class="tablewrap" style="max-height:320px;overflow:auto"><table><tbody>${outbox.map((o) => html`<tr><td class="small muted nowrap">${ago(o.at)}</td><td>${o.to}</td><td>${o.subject}</td></tr>`)}</tbody></table></div></div>` : ''}`);
   function m_baseUrl() { return store.meta.baseUrl; }
   $('#pw', root).addEventListener('submit', async (e) => {
@@ -67,6 +69,7 @@ export async function settings(root) {
       preset: (el) => { $('#c_primary', root).value = el.dataset.p; $('#c_side', root).value = el.dataset.s; preview(); },
       savetheme: async () => { const t = await api('PUT', '/theme', draft); store.meta.theme = t; applyTheme(t); toast('Company theme saved', 'ok'); },
       resettheme: async () => { const t = await api('PUT', '/theme', DEFAULT_THEME); store.meta.theme = t; applyTheme(t); toast('Theme reset', 'ok'); settings(root); },
+      purge: (el) => purgeModal(el.dataset.e, () => settings(root)),
       aiclear: async () => { await api('PUT', '/settings/ai', { clear_key: true }); store.meta.ai = await api('GET', '/ai/status'); toast('API key removed'); settings(root); },
     });
     $('#aiform', root).addEventListener('submit', async (e) => {

@@ -58,6 +58,13 @@ await page.waitForSelector('#senderwarn .banner'); // simulation banner visible 
 await page.evaluate(() => fetch('/api/auth/logout', { method: 'POST' })); await page.goto(base); await page.waitForSelector('#login');
 if ((await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--brand').trim())) !== '#0d9488') errors.push('saved theme missing on login page');
 await page.fill('input[name=email]', 'admin@ovantaa.com'); await page.fill('input[name=password]', 'Ovantaa@123'); await page.click('button.primary'); await page.waitForSelector('.kpi');
+// delete all: submit stays disabled until DELETE is typed
+await page.click('a[data-nav=templates]'); await page.click('text=Delete all…');
+if (!(await page.isDisabled('.modal button[type=submit]'))) errors.push('delete-all submit should start disabled');
+await page.fill('.modal input[name=confirm]', 'delete'); if (!(await page.isDisabled('.modal button[type=submit]'))) errors.push('lowercase should not enable delete');
+await page.fill('.modal input[name=confirm]', 'DELETE'); await page.click('.modal button[type=submit]'); await page.waitForSelector('.toast:has-text("Deleted 3 email templates")');
+await page.waitForSelector('text=No templates yet'); await shot('purged-templates');
+await page.click('a[data-nav=settings]'); await page.waitForSelector('text=Data management'); await shot('data-management');
 // segment builder + deal drag/drop
 await page.click('a[data-nav=segments]'); await page.click('text=+ New segment'); await page.fill('.modal input[name=name]', 'E2E seg');
 await page.waitForSelector('#segprev b'); await page.click('.modal button[type=submit]'); await page.waitForSelector('td:has-text("E2E seg")');
