@@ -1,5 +1,4 @@
 import crypto from 'node:crypto';
-import QRCode from 'qrcode';
 import { all, get, run, tx, nowIso } from './db.js';
 import { getSetting, setSetting, getSecretSetting, setSecretSetting } from './settings.js';
 import { bad } from './http.js';
@@ -200,7 +199,13 @@ export function qrPayload({ seller, vat, timestamp, total, vatTotal, hash }) {
   return Buffer.concat([tlv(1, seller), tlv(2, vat), tlv(3, timestamp), tlv(4, money(total)), tlv(5, money(vatTotal)), tlv(6, hash)]).toString('base64');
 }
 export const decodeQr = (b64) => { const b = Buffer.from(b64, 'base64'); const out = {}; for (let i = 0; i < b.length;) { out[b[i]] = b.subarray(i + 2, i + 2 + b[i + 1]).toString('utf8'); i += 2 + b[i + 1]; } return out; };
-export const qrSvg = (text) => QRCode.toString(text, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
+let QRCode, qrWarned = false;
+/** SVG QR image. If the optional "qrcode" package is not installed the app still runs; invoices just show no QR picture (the QR data is still stored). */
+export async function qrSvg(text) {
+  try { QRCode ??= (await import('qrcode')).default; }
+  catch { if (!qrWarned) { qrWarned = true; console.warn('The "qrcode" package is missing — run "npm install" to show QR images on invoices.'); } return ''; }
+  return QRCode.toString(text, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
+}
 
 // ======================= Loading, audit trail =======================
 export function logEvent(invoiceId, type, detail, user) {
