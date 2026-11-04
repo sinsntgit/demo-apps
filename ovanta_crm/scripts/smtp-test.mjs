@@ -2,7 +2,7 @@
 //   node scripts/smtp-test.mjs --list                 show saved senders
 //   node scripts/smtp-test.mjs --sender 1             test the credentials SAVED in the app for sender #1
 //   node scripts/smtp-test.mjs --host smtp.titan.email --user me@x.com   (password read from env SMTP_PASS, or prompted)
-//   add --port 587 to test one port only; add --ipv4 to connect over IPv4 only (use if every attempt says "Greeting never received")
+//   (waits up to 60s for slow servers) add --port 587 to test one port only; add --ipv4 to connect over IPv4 only (use if every attempt says "Greeting never received")
 // Tries port 465 (SSL/TLS) and 587 (STARTTLS) with both AUTH PLAIN and AUTH LOGIN and prints the server's replies.
 // Credentials are never printed (only length and first/last character of the password).
 import { format } from 'node:util';
@@ -35,11 +35,12 @@ const combos = args.port ? [[Number(args.port), Number(args.port) === 465 || arg
 for (const [port, secure] of combos) for (const authMethod of ['PLAIN', 'LOGIN']) {
   const lines = [];
   const logger = { level() {}, trace() {}, debug: (_d, m, ...a) => lines.push(format(m, ...a)), info() {}, warn() {}, error: (_d, m, ...a) => lines.push(format(m, ...a)), fatal() {} };
-  const t = nodemailer.createTransport({ host: connectHost, port, secure, requireTLS: !secure, auth: { user, pass, method: authMethod }, logger, debug: true, tls: { ...tlsExtra, ...(process.env.SMTP_TLS_INSECURE === '1' ? { rejectUnauthorized: false } : {}) }, connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 20000 });
+  const t = nodemailer.createTransport({ host: connectHost, port, secure, requireTLS: !secure, auth: { user, pass, method: authMethod }, logger, debug: true, tls: { ...tlsExtra, ...(process.env.SMTP_TLS_INSECURE === '1' ? { rejectUnauthorized: false } : {}) }, connectionTimeout: 90000, greetingTimeout: 60000, socketTimeout: 90000 });
+  const t0 = Date.now();
   process.stdout.write(`${host}:${port} ${secure ? 'SSL/TLS' : 'STARTTLS'} AUTH ${authMethod} … `);
-  try { await t.verify(); console.log('✅ LOGIN OK'); ok = true; break; }
+  try { await t.verify(); console.log(`✅ LOGIN OK (${((Date.now() - t0) / 1000).toFixed(1)}s)`); ok = true; break; }
   catch (e) {
-    console.log(`❌ ${e.code || ''} ${e.responseCode || ''} ${String(e.response || e.message).slice(0, 150)}`);
+    console.log(`❌ (${((Date.now() - t0) / 1000).toFixed(1)}s) ${e.code || ''} ${e.responseCode || ''} ${String(e.response || e.message).slice(0, 150)}`);
     for (const l of lines.filter((x) => /^(S|C): /.test(x) || /EHLO|AUTH|STARTTLS|250|334|235|535|5\d\d /.test(x)).slice(-12)) console.log('     ' + l.replace(/(AUTH (PLAIN|LOGIN)) \S+/i, '$1 ***').replace(/^(C: )[A-Za-z0-9+/=]{8,}$/, '$1***'));
   } finally { t.close(); }
 }

@@ -24,7 +24,7 @@ const ai = http.createServer((req, res) => {
 });
 await new Promise((r) => smtp.listen(0, '127.0.0.1', r)); await new Promise((r) => ai.listen(0, '127.0.0.1', r));
 process.env.DB_PATH = ':memory:'; process.env.SESSION_SECRET = 'feat-secret'; process.env.SEND_DELAY_MS = '1';
-process.env.BASE_URL = 'http://crm.test'; process.env.SMTP_TLS_INSECURE = '1';
+process.env.SMTP_TIMEOUT_MS = '1200'; process.env.BASE_URL = 'http://crm.test'; process.env.SMTP_TLS_INSECURE = '1';
 process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${ai.address().port}`;
 const { server } = await import('../server/index.js');
 const { seedIfEmpty } = await import('../server/seed.js');
@@ -82,6 +82,16 @@ test('passwords with spaces/special characters survive storage; pasted outer spa
   await api('PUT', `/api/senders/${t.body.id}`, { ...smtpSender({ label: 'Titan-like', from_email: 'titan@syncsense.in', username: 'titan@syncsense.in' }), password: '' }); // blank keeps saved ('nope')
   assert.equal((await api('POST', `/api/senders/${t.body.id}/verify`)).body.ok, false, 'blank password keeps the previously saved one');
   await api('DELETE', `/api/senders/${t.body.id}`);
+});
+
+test('a server that greets too slowly gets a clear message (not "cannot reach")', async () => {
+  const net = await import('node:net');
+  const slow = net.createServer((sock) => { setTimeout(() => { try { sock.write('220 slow.example ESMTP\r\n'); } catch {} }, 4000); sock.on('error', () => {}); });
+  await new Promise((r) => slow.listen(0, '127.0.0.1', r));
+  const s = await api('POST', '/api/senders', { label: 'Slow', from_email: 'slow@syncsense.in', host: '127.0.0.1', port: slow.address().port, username: 'x', password: 'y' });
+  const v = await api('POST', `/api/senders/${s.body.id}/verify`);
+  assert.equal(v.body.ok, false); assert.match(v.body.error, /did not greet us within/); assert.match(v.body.error, /wait 15/);
+  await api('DELETE', `/api/senders/${s.body.id}`); slow.close();
 });
 
 test('campaign sends through SMTP sender: headers, tracking, per-recipient failure, statuses', async () => {

@@ -33,7 +33,7 @@ async function transportFor(sender) {
     host, port: sender.port, secure: !!sender.secure, requireTLS: !sender.secure,
     auth: sender.username ? { user: sender.username, pass: decryptSecret(sender.password_enc) } : undefined,
     pool: true, maxConnections: 2, maxMessages: 100,
-    connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 30000,
+    connectionTimeout: config.smtpTimeoutMs, greetingTimeout: Math.round(config.smtpTimeoutMs * 0.75), socketTimeout: config.smtpTimeoutMs,
     tls: { ...tlsExtra, ...(config.smtpTlsInsecure ? { rejectUnauthorized: false } : {}) },
   });
   transports.set(sender.id, { sig, transporter });
@@ -94,6 +94,7 @@ export function explainSmtpError(e, sender = null) {
       : 'Check the username (usually the full email address) and password.';
     return `Authentication failed — the server was reached but rejected the login (${msg.replace(/\s+/g, ' ').slice(0, 100)}). ${hint} Re-type the password with “Show password” ticked, then Verify again.`;
   }
+  if (/Greeting never received/i.test(msg) || e.code === 'GREETING_TIMEOUT') return `The mail server accepted the connection but did not greet us within ${Math.round(config.smtpTimeoutMs * 0.75 / 1000)}s. Some providers (Titan, for example) slow down or stall connections from clients that recently failed to log in — wait 15–30 minutes without retrying, fix the password if the last error was a login failure, then try again.`;
   if (e.code === 'ECONNREFUSED' || e.code === 'ETIMEDOUT' || e.code === 'ESOCKET' || e.code === 'ECONNECTION') return `Cannot reach the mail server (${e.code}). Check host/port and that outbound SMTP isn't blocked by your network or firewall. Port 587 = STARTTLS, 465 = SSL/TLS.`;
   if (e.code === 'ENOTFOUND' || e.code === 'EDNS') return 'Mail server host name not found. Check the host.';
   if (code === 550 || code === 553 || code === 554) return `Rejected by server: ${msg.slice(0, 200)} (the From address may not be allowed for this account, or the recipient is invalid).`;
