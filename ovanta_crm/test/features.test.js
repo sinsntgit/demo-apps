@@ -8,7 +8,7 @@ const { SMTPServer } = createRequire(import.meta.url)('smtp-server');
 const inbox = []; let rejectAddr = null;
 const smtp = new SMTPServer({
   authOptional: false, logger: false,
-  onAuth(auth, _s, cb) { auth.username === 'santosh@syncsense.in' && auth.password === 'app-pass-1234' ? cb(null, { user: 1 }) : cb(new Error('Invalid login')); },
+  onAuth(auth, _s, cb) { const ok = (auth.username === 'santosh@syncsense.in' && auth.password === 'app-pass-1234') || (auth.username === 'titan@syncsense.in' && auth.password === 'P#ss w0rd é$!&"<>'); ok ? cb(null, { user: 1 }) : cb(Object.assign(new Error('authentication failed: '), { responseCode: 535 })); },
   onRcptTo(addr, _s, cb) { if (addr.address === rejectAddr) { const e = new Error('550 mailbox unavailable'); e.responseCode = 550; return cb(e); } cb(); },
   onData(stream, session, cb) { let raw = ''; stream.on('data', (c) => (raw += c)); stream.on('end', () => { inbox.push({ raw, to: session.envelope.rcptTo.map((r) => r.address), from: session.envelope.mailFrom.address }); cb(); }); },
 });
@@ -70,6 +70,18 @@ test('senders: validation, encrypted password, never returned, verify + test sen
   const list = (await api('GET', '/api/senders')).body; assert.equal(list.filter((s) => s.is_default).length, 1); assert.equal(list.find((s) => s.is_default).id, s2.body.id);
   await api('PUT', `/api/senders/${good.body.id}`, { ...smtpSender(), is_default: true });
   assert.equal((await api('GET', '/api/senders')).body.find((s) => s.is_default).label, 'Santosh (SyncSense)');
+});
+
+test('passwords with spaces/special characters survive storage; pasted outer spaces are trimmed; error names the provider', async () => {
+  const t = await api('POST', '/api/senders', smtpSender({ label: 'Titan-like', from_email: 'titan@syncsense.in', username: 'titan@syncsense.in', host: '127.0.0.1', password: '  P#ss w0rd é$!&"<>  ' }));
+  assert.equal(t.status, 200);
+  assert.equal((await api('POST', `/api/senders/${t.body.id}/verify`)).body.ok, true);
+  const bad = await api('PUT', `/api/senders/${t.body.id}`, { ...smtpSender({ label: 'Titan-like', from_email: 'titan@syncsense.in', username: 'titan@syncsense.in' }), password: 'nope' });
+  const v = await api('POST', `/api/senders/${bad.body.id}/verify`);
+  assert.equal(v.body.ok, false); assert.match(v.body.error, /server was reached but rejected the login/);
+  await api('PUT', `/api/senders/${t.body.id}`, { ...smtpSender({ label: 'Titan-like', from_email: 'titan@syncsense.in', username: 'titan@syncsense.in' }), password: '' }); // blank keeps saved ('nope')
+  assert.equal((await api('POST', `/api/senders/${t.body.id}/verify`)).body.ok, false, 'blank password keeps the previously saved one');
+  await api('DELETE', `/api/senders/${t.body.id}`);
 });
 
 test('campaign sends through SMTP sender: headers, tracking, per-recipient failure, statuses', async () => {

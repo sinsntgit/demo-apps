@@ -12,7 +12,8 @@
     "dev": "node --no-warnings --watch server/index.js",
     "seed": "node --no-warnings server/seed.js --reset",
     "test": "node --no-warnings --test test/*.test.js",
-    "e2e": "node --no-warnings test/e2e.mjs"
+    "e2e": "node --no-warnings test/e2e.mjs",
+    "smtp-test": "node --no-warnings scripts/smtp-test.mjs"
   },
   "license": "UNLICENSED",
   "dependencies": {

@@ -34,6 +34,15 @@ Example for several addresses: create three senders — `santosh@syncsense.in`, 
 
 Passwords and API keys are encrypted at rest (AES-256-GCM, key derived from `SESSION_SECRET` / `data/.secret`). **Keep `data/.secret` with your database** — if it is lost the saved passwords must be re-entered.
 
+### If a sender will not log in
+Run the built-in diagnostic — it tests the credentials *saved in the app* on both ports and both login methods and prints the server's replies (never the password):
+```bash
+npm run smtp-test -- --list          # shows saved senders and their ids
+npm run smtp-test -- --sender 1      # tests sender #1 exactly as saved
+npm run smtp-test -- --host smtp.titan.email --user you@domain.com   # tests typed-in credentials (prompts for the password)
+```
+`535 authentication failed` = the server rejected the username/password. Re-type the password with "Show password" ticked (browser autofill can insert the wrong one), and confirm the same host/user/password works in Thunderbird or Outlook.
+
 ### Delivery statuses
 Each campaign recipient shows the furthest state reached: **Queued → Sent → Opened → Clicked**, or **Failed** (with the mail server's reason), or **Unsubscribed**.
 * *Sent* means the receiving mail server **accepted** the message. SMTP cannot confirm inbox delivery.
@@ -57,7 +66,7 @@ Publish **SPF**, **DKIM** and **DMARC** for each sending domain (syncsense.in, e
 
 ## Tests
 ```bash
-npm test       # 19 API tests: auth, CRUD, injection, campaigns, SMTP sending against a local fake mail server,
+npm test       # 20 API tests: auth, CRUD, injection, campaigns, SMTP sending against a local fake mail server,
                # daily-limit pause/resume, notifications, AI (fake Claude API), themes, import options
 npm run e2e    # browser test (needs Playwright + Chromium): navigation, forms, xlsx import, theme, AI panel, drag-and-drop
 npm run seed   # reset to demo data
