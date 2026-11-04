@@ -29,3 +29,5 @@ config.anthropicModel = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5';
 config.anthropicBaseUrl = (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com').replace(/\/$/, '');
 // Only for internal relays / tests that present self-signed certificates. Leave unset for Gmail, Microsoft 365, Zoho etc.
 config.smtpTlsInsecure = process.env.SMTP_TLS_INSECURE === '1';
+// Workaround for networks where IPv6 connects but then stalls: connect to the server's IPv4 address only.
+config.smtpForceIpv4 = process.env.SMTP_FORCE_IPV4 === '1';

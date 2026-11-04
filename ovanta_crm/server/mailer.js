@@ -1,6 +1,7 @@
 import { get, all, run } from './db.js';
 import { config } from './config.js';
 import { decryptSecret } from './auth.js';
+import dns from 'node:dns/promises';
 
 /** Recent simulated messages (shown in the UI when a sender is in simulation mode). */
 export const outboxLog = [];
@@ -22,12 +23,18 @@ async function transportFor(sender) {
   if (hit && hit.sig === sig) return hit.transporter;
   hit?.transporter.close?.();
   const nm = await loadNodemailer();
+  let host = sender.host, tlsExtra = {};
+  if (config.smtpForceIpv4) {
+    // Resolve with the OS resolver, IPv4 only, and connect by IP while still verifying the certificate against the host name.
+    try { host = (await dns.lookup(sender.host, { family: 4 })).address; tlsExtra = { servername: sender.host }; }
+    catch (e) { throw new Error(`Could not find an IPv4 address for ${sender.host} (${e.code || e.message}).`); }
+  }
   const transporter = nm.createTransport({
-    host: sender.host, port: sender.port, secure: !!sender.secure, requireTLS: !sender.secure,
+    host, port: sender.port, secure: !!sender.secure, requireTLS: !sender.secure,
     auth: sender.username ? { user: sender.username, pass: decryptSecret(sender.password_enc) } : undefined,
     pool: true, maxConnections: 2, maxMessages: 100,
     connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 30000,
-    ...(config.smtpTlsInsecure ? { tls: { rejectUnauthorized: false } } : {}),
+    tls: { ...tlsExtra, ...(config.smtpTlsInsecure ? { rejectUnauthorized: false } : {}) },
   });
   transports.set(sender.id, { sig, transporter });
   return transporter;

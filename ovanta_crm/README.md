@@ -41,6 +41,8 @@ npm run smtp-test -- --list          # shows saved senders and their ids
 npm run smtp-test -- --sender 1      # tests sender #1 exactly as saved
 npm run smtp-test -- --host smtp.titan.email --user you@domain.com   # tests typed-in credentials (prompts for the password)
 ```
+If every attempt says **"Greeting never received"** although `Test-NetConnection` to the port succeeds, your network may be connecting over IPv6 and stalling. Retry with `npm run smtp-test -- --sender 1 --ipv4`; if that works, start the app with `SMTP_FORCE_IPV4=1` (PowerShell: `$env:SMTP_FORCE_IPV4=1; npm start`, or `setx SMTP_FORCE_IPV4 1` once and reopen the terminal).
+
 `535 authentication failed` = the server rejected the username/password. Re-type the password with "Show password" ticked (browser autofill can insert the wrong one), and confirm the same host/user/password works in Thunderbird or Outlook.
 
 ### Delivery statuses
@@ -62,7 +64,7 @@ Publish **SPF**, **DKIM** and **DMARC** for each sending domain (syncsense.in, e
 * **Themes** — *Settings → Appearance*: company accent and sidebar colours (presets or custom, live preview, saved for everyone including the login page) plus light/dark/auto; each user can override light/dark for their own browser.
 
 ## Configuration (environment variables)
-`PORT` (3000) · `DB_PATH` · `BASE_URL` (**public address, needed for tracking links and unsubscribe**) · `SESSION_SECRET` · `SECURE_COOKIES=1` (behind HTTPS) · `COMPANY_ADDRESS` (email footer) · `SEND_BATCH_SIZE` · `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` · `SMTP_TLS_INSECURE=1` (only for internal relays with self-signed certificates) · `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `SEED_DEMO` · legacy `MAIL_TRANSPORT=webhook` + `MAIL_WEBHOOK_URL`/`MAIL_WEBHOOK_TOKEN` (used only when no sender exists).
+`PORT` (3000) · `DB_PATH` · `BASE_URL` (**public address, needed for tracking links and unsubscribe**) · `SESSION_SECRET` · `SECURE_COOKIES=1` (behind HTTPS) · `COMPANY_ADDRESS` (email footer) · `SEND_BATCH_SIZE` · `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` · `SMTP_TLS_INSECURE=1` (only for internal relays with self-signed certificates) · `SMTP_FORCE_IPV4=1` (connect to mail servers over IPv4 only) · `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `SEED_DEMO` · legacy `MAIL_TRANSPORT=webhook` + `MAIL_WEBHOOK_URL`/`MAIL_WEBHOOK_TOKEN` (used only when no sender exists).
 
 ## Tests
 ```bash
