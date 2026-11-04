@@ -91,3 +91,27 @@ export function applyMapping(rows, map) {
   return rows.slice(1).map((r) => Object.fromEntries(FIELDS.map(([k]) => [k, map[k] >= 0 ? String(r[map[k]] ?? '').trim() : ''])));
 }
 export const TEMPLATE_CSV = 'first_name,last_name,email,phone,title,company,status,source,tags,subscribed\nAsha,Rao,asha.rao@example.com,+91 98765 43210,Head of Operations,Example Pvt Ltd,lead,Website,"newsletter, expo-2026",yes\n';
+
+// ---- invoice import (Zoho Books, QuickBooks, Xero and generic exports) ----
+const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
+export const INVOICE_FIELDS = [
+  ['invoice_number', 'Invoice number', ['invoicenumber', 'invoiceno', 'invoice', 'num', 'number', 'invoiceid', 'docnumber', 'billnumber']],
+  ['issue_date', 'Invoice date', ['invoicedate', 'date', 'txndate', 'issuedate', 'created']],
+  ['due_date', 'Due date', ['duedate', 'due', 'paymentdue']],
+  ['customer', 'Customer name', ['customername', 'customer', 'contactname', 'contact', 'clientname', 'client', 'billto', 'name']],
+  ['customer_vat', 'Customer VAT / TRN', ['taxregistrationnumber', 'taxregistrationno', 'trn', 'vatnumber', 'vatno', 'vat', 'taxnumber', 'customervat', 'taxid', 'customertrn']],
+  ['customer_email', 'Customer email', ['email', 'emailaddress', 'customeremail', 'contactemail']],
+  ['customer_phone', 'Customer phone', ['phone', 'mobile', 'customerphone', 'phonenumber']],
+  ['currency', 'Currency', ['currencycode', 'currency']],
+  ['description', 'Item / description', ['itemdescription', 'description', 'itemdesc', 'itemname', 'productservice', 'productservicedescription', 'item', 'lineitemdescription']],
+  ['qty', 'Quantity', ['quantity', 'qty']],
+  ['unit_price', 'Unit price', ['itemprice', 'unitamount', 'unitprice', 'rate', 'price', 'unitcost']],
+  ['discount', 'Discount amount', ['discount', 'discountamount', 'itemdiscount']],
+  ['vat_rate', 'VAT rate %', ['itemtaxpercentage', 'itemtax', 'taxpercentage', 'taxrate', 'vatrate', 'vat', 'tax']],
+];
+export function guessInvoiceMapping(headers) {
+  const h = headers.map(norm); const m = {}; const used = new Set();
+  for (const [key, , names] of INVOICE_FIELDS) { const i = h.findIndex((x, idx) => !used.has(idx) && names.includes(x)); m[key] = i; if (i >= 0) used.add(i); }
+  return m;
+}
+export const applyInvoiceMapping = (rows, map) => rows.slice(1).map((r) => Object.fromEntries(INVOICE_FIELDS.map(([k]) => [k, map[k] >= 0 ? String(r[map[k]] ?? '').trim() : ''])));

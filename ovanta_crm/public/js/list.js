@@ -32,7 +32,7 @@ export function mountList(root, cfg) {
     if (!data.rows.length) setHtml(tbody, html`<tr><td colspan="${cfg.columns.length + (cfg.selectable ? 1 : 0)}" class="empty">${cfg.empty || 'Nothing here yet.'}</td></tr>`);
     else setHtml(tbody, html`${data.rows.map((r) => html`<tr class="${cfg.rowClass?.(r) || ''}">${cfg.selectable ? html`<td><input type="checkbox" data-id="${r.id}" data-act="sel" ${selected.has(r.id) ? raw('checked') : ''} aria-label="Select row"></td>` : ''}${cfg.columns.map((c) => html`<td class="${c.cls || ''}">${c.render(r)}</td>`)}</tr>`)}`);
     const pages = Math.max(1, Math.ceil(data.total / (cfg.pageSize || 25)));
-    setHtml(pager, html`<span>${data.total} ${data.total === 1 ? 'record' : 'records'}</span><span class="grow"></span>
+    setHtml(pager, html`<span>${data.total} ${data.total === 1 ? 'record' : 'records'}${cfg.pagerExtra ? cfg.pagerExtra(data) : ''}</span><span class="grow"></span>
       <button class="btn sm" data-act="prev" ${st.page <= 1 ? raw('disabled') : ''}>‹ Prev</button><span>Page ${st.page} of ${pages}</span><button class="btn sm" data-act="next" ${st.page >= pages ? raw('disabled') : ''}>Next ›</button>`);
     drawBulk();
   }

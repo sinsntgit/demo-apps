@@ -8,7 +8,7 @@ Requires **Node.js 22.5 or newer** (`node -v`).
 
 ```bash
 cd ovanta_crm
-npm install        # one dependency: nodemailer (real SMTP sending). Required once, and again after upgrading.
+npm install        # runtime dependencies: nodemailer (real SMTP) and qrcode (invoice QR). Required once, and again after upgrading.
 npm start          # http://localhost:3000
 ```
 
@@ -57,6 +57,25 @@ Each campaign recipient shows the furthest state reached: **Queued → Sent → 
 ### Deliverability checklist
 Publish **SPF**, **DKIM** and **DMARC** for each sending domain (syncsense.in, ezdatamunch.com…). Gmail and Yahoo require all three for senders above ~5,000 emails/day to them, one-click unsubscribe (added automatically here) and spam complaints below 0.3% (aim for under 0.1%). Warm up new addresses slowly.
 
+## E-invoicing, invoices & collections (KSA first, UAE-ready)
+
+Menu **Billing**: *Invoices · Receivables · E-invoicing readiness · Billing settings*. Start in **Billing settings**: enter your registered name, VAT number (KSA: 15 digits, starts and ends with 3) / TRN, address and bank IBAN.
+
+**What it does**
+* **Arabic / English invoices** — tax invoices (B2B), simplified invoices (B2C), credit notes and debit notes; bilingual or single-language, right-to-left Arabic, VAT per line (standard / zero-rated / exempt / out-of-scope with reason), printable/PDF view with QR code.
+* **Compliant numbering & integrity** — gap-free sequential numbers per series (`INV-`, `CN-`, `DN-`), a global invoice counter (ICV), each invoice hash-chained to the previous one (PIH), UUID, UBL 2.1 XML in the ZATCA structure and a TLV QR. **Issued invoices are immutable** — the API *and the database itself* refuse edits or deletes; corrections are credit/debit notes that reference the original and require a reason. The audit trail is append-only and a chain check re-verifies every hash.
+* **Pre-submission validation** — about 40 rules before an invoice can be issued: seller/buyer VAT format, buyer address, exemption reasons, dates, totals, currency, advance-payment lines, credit limits, duplicates. Errors block issuing; warnings are shown. The **E-invoicing readiness** page scans everything — customer master data, drafts, imports, submission status (e.g. simplified invoices not reported within 24 h), reconciliation gaps and chain integrity — and links to the fix. Switch the regime between **KSA** and **UAE** in Billing settings.
+* **Import & check** — upload an export from Zoho Books, QuickBooks, Xero or any system (CSV/Excel, one row per line). Columns are matched automatically; invoices become *drafts* with an exception report; nothing is issued or submitted.
+* **Get paid** — a public **payment page** per invoice (bilingual, bank-transfer instructions, "I have paid" notice that you confirm against your bank), **automatic reminders** (email through your senders; WhatsApp as ready-to-send links or via your gateway; SMS via your gateway) on a before/after-due schedule that then repeats, **collection tasks** for overdue invoices that close when paid, and payment recording with bank-reconciliation tick-boxes.
+* **Owner dashboard** — outstanding, overdue, collected this month, days sales outstanding, **ageing** buckets, **overdue customers**, an **8-week cash-in forecast** (due date + each customer's historical lateness) and billed-vs-collected by month.
+
+**What is NOT included (be aware before relying on it for compliance)**
+* **Live ZATCA clearance/reporting is not built in.** It requires your onboarding with ZATCA (CSID/OTP) and a cryptographically signed XML (XAdES) plus the Phase-2 signature QR tags and PDF/A-3. This app prepares, validates, numbers, chains and builds the unsigned UBL/QR, then hands the invoice to **your certified provider/solution** through *Billing settings → E-invoicing provider* (JSON webhook; replies `cleared`/`reported`/`rejected`). Until a provider is connected invoices show **"Ready · not submitted"** and the app warns not to send B2B invoices to customers. I could not test against ZATCA's sandbox from here.
+* **UAE (Peppol PINT-AE) export is not built** — UAE currently gets the validation rules and workflow only.
+* WhatsApp Business API / SMS use *your* gateway; without one WhatsApp reminders are one-click links. Bank feeds are not connected (reconciliation is manual). Zoho/QuickBooks/Xero are file-import only, not live connectors.
+* Rules are a strong subset of ZATCA/FTA requirements, not the full official schematron — treat a clean "ready" as a good pre-check, not as legal assurance. Have your accountant confirm VAT treatment.
+* Issued invoices can never be deleted (tax records must be kept); "Delete all" does not include them.
+
 ## Features
 * **Deal stage history** — every stage move is stored permanently: from → to, date/time, who moved it, the deal owner *at that moment*, the deal value, an optional comment, and the days spent in the previous stage. Shown on the deal page (*Stage history*), via **🕘 History** on every card/row of the Deals board and list, and recorded however the stage changes (drag-and-drop, *Change stage*, or the edit form). Moving a card on the board asks for an optional comment. Deals that existed before this feature get a single starting entry; earlier movements can't be reconstructed. Deleting a deal deletes its history.
 * **CRM** — dashboard, contacts (360° view, bulk actions), accounts, deals (drag-and-drop board), tasks, activity timeline, audit log, roles (admin / manager / rep).
@@ -68,11 +87,11 @@ Publish **SPF**, **DKIM** and **DMARC** for each sending domain (syncsense.in, e
 * **Themes** — *Settings → Appearance*: company accent and sidebar colours (presets or custom, live preview, saved for everyone including the login page) plus light/dark/auto; each user can override light/dark for their own browser.
 
 ## Configuration (environment variables)
-`PORT` (3000) · `DB_PATH` · `BASE_URL` (**public address, needed for tracking links and unsubscribe**) · `SESSION_SECRET` · `SECURE_COOKIES=1` (behind HTTPS) · `COMPANY_ADDRESS` (email footer) · `SEND_BATCH_SIZE` · `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` · `SMTP_TLS_INSECURE=1` (only for internal relays with self-signed certificates) · `SMTP_FORCE_IPV4=1` (connect to mail servers over IPv4 only) · `SMTP_TIMEOUT_MS` (default 60000) · `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `SEED_DEMO` · legacy `MAIL_TRANSPORT=webhook` + `MAIL_WEBHOOK_URL`/`MAIL_WEBHOOK_TOKEN` (used only when no sender exists).
+`PORT` (3000) · `DB_PATH` · `BASE_URL` (**public address, needed for tracking links and unsubscribe**) · `SESSION_SECRET` · `SECURE_COOKIES=1` (behind HTTPS) · `COMPANY_ADDRESS` (email footer) · `SEND_BATCH_SIZE` · `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` · `SMTP_TLS_INSECURE=1` (only for internal relays with self-signed certificates) · `SEED_BILLING_DEMO=0` (skip demo invoices) · `SMTP_FORCE_IPV4=1` (connect to mail servers over IPv4 only) · `SMTP_TIMEOUT_MS` (default 60000) · `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `SEED_DEMO` · legacy `MAIL_TRANSPORT=webhook` + `MAIL_WEBHOOK_URL`/`MAIL_WEBHOOK_TOKEN` (used only when no sender exists).
 
 ## Tests
 ```bash
-npm test       # 23 API tests: auth, CRUD, injection, campaigns, SMTP sending against a local fake mail server,
+npm test       # 38 API tests: auth, CRUD, injection, campaigns, SMTP sending against a local fake mail server,
                # daily-limit pause/resume, notifications, AI (fake Claude API), themes, import options
 npm run e2e    # browser test (needs Playwright + Chromium): navigation, forms, xlsx import, theme, AI panel, drag-and-drop
 npm run seed   # reset to demo data

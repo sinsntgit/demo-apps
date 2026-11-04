@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 const { chromium } = createRequire(import.meta.url)('playwright'); // not a project dependency; preinstalled globally
 import http from 'node:http';
 import { makeXlsx } from './fixtures.mjs';
-process.env.DB_PATH = ':memory:'; process.env.SESSION_SECRET = 'e2e'; process.env.SEND_DELAY_MS = '1';
+process.env.SEED_BILLING_DEMO = '0'; process.env.DB_PATH = ':memory:'; process.env.SESSION_SECRET = 'e2e'; process.env.SEND_DELAY_MS = '1';
 const ai = http.createServer((q, r) => { let b = ''; q.on('data', (c) => (b += c)); q.on('end', () => { r.writeHead(200, { 'content-type': 'application/json' }); r.end(JSON.stringify({ model: 'claude-sonnet-5-5', content: [{ type: 'text', text: JSON.stringify({ subject: 'AI subject line', subject_alternatives: ['Alt one', 'Alt two'], preheader: 'p', body_html: '<p>Hi {{first_name|there}}, AI wrote this.</p>' }) }] })); }); });
 await new Promise((r) => ai.listen(0, '127.0.0.1', r)); process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${ai.address().port}`;
 const { server } = await import('../server/index.js');
@@ -65,6 +65,36 @@ await page.fill('.modal input[name=confirm]', 'delete'); if (!(await page.isDisa
 await page.fill('.modal input[name=confirm]', 'DELETE'); await page.click('.modal button[type=submit]'); await page.waitForSelector('.toast:has-text("Deleted 3 email templates")');
 await page.waitForSelector('text=No templates yet'); await shot('purged-templates');
 await page.click('a[data-nav=settings]'); await page.waitForSelector('text=Data management'); await shot('data-management');
+// ===== Billing: settings -> invoice (live compliance check) -> issue -> pay -> credit note -> portal -> receivables -> readiness -> import =====
+await page.click('a[data-nav=billing-settings]'); await page.waitForSelector('text=Business profile');
+await page.fill('input[name=seller_name]', 'E2E Trading Co'); await page.fill('input[name=seller_name_ar]', 'شركة الاختبار'); await page.fill('input[name=vat_number]', '399999999900003');
+await page.fill('input[name=a_street]', 'King Fahd Rd'); await page.fill('input[name=a_building_no]', '1234'); await page.fill('input[name=a_district]', 'Olaya'); await page.fill('input[name=a_city]', 'Riyadh'); await page.fill('input[name=a_postal_code]', '12211');
+await page.fill('input[name=b_iban]', 'SA0380000000608010167519'); await page.fill('input[name=b_bank_name]', 'Al Rajhi'); await page.click('text=Save settings'); await page.waitForSelector('.toast:has-text("Billing settings saved")'); await shot('billing-settings');
+const acct = await page.evaluate(async () => (await (await fetch('/api/accounts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'E2E Customer', name_ar: 'عميل', vat_number: '311111111100003', street: 'Prince Sultan', building_no: '4321', district: 'Malaz', city: 'Riyadh', postal_code: '11564', country_code: 'SA', billing_email: 'ap@e2e.example', billing_phone: '0501234567' }) })).json()).id);
+await page.click('a[data-nav=invoices]'); await page.click('text=+ New invoice'); await page.waitForSelector('select[name=account_id]');
+await page.waitForSelector('#issues .issue'); // compliance check runs immediately (customer missing)
+await page.selectOption('select[name=account_id]', String(acct)); await page.fill('#lines tr:first-child [data-k=description]', 'Consulting services'); await page.fill('#lines tr:first-child [data-k=description_ar]', 'خدمات استشارية');
+await page.fill('#lines tr:first-child [data-k=qty]', '2'); await page.fill('#lines tr:first-child [data-k=unit_price]', '500');
+await page.waitForSelector('#issues:has-text("Ready to issue")', { timeout: 6000 }).catch(() => errors.push('live compliance check never reported ready')); await shot('invoice-editor');
+if (!(await page.textContent('#totals')).includes('1,150.00')) errors.push('live totals wrong: ' + (await page.textContent('#totals')));
+await page.click('text=Save & issue'); await page.waitForSelector('h1:has-text("INV-")', { timeout: 8000 }); await shot('invoice-detail');
+const invId = Number(page.url().split('/invoices/')[1]);
+if (!(await page.textContent('body')).includes('INV-000001')) errors.push('first invoice should be INV-000001');
+await page.click('button:has-text("Record payment")'); await page.fill('.modal input[name=amount]', '400'); await page.click('.modal button[type=submit]'); await page.waitForSelector('text=Partially paid');
+await page.click('button:has-text("Credit note")'); await page.fill('.modal input[name=reason]', 'E2E: service cancelled'); await page.click('.modal button[type=submit]'); await page.waitForSelector('text=against');
+await page.fill('#lines tr:first-child [data-k=unit_price]', '100'); await page.click('text=Save & issue'); await page.waitForSelector('h1:has-text("CN-000001")', { timeout: 8000 });
+await page.goto(`${base}/#/invoices/${invId}`); await page.waitForSelector('text=Credit / debit notes');
+const portal = (await page.$eval('a[href*="/pay/"]:has-text("Open")', (a) => a.href)).replace('http://localhost:3000', base); await page.goto(portal); await page.waitForSelector('text=How to pay'); await shot('portal');
+if (!(await page.textContent('body')).includes('SA0380000000608010167519')) errors.push('portal missing IBAN');
+await page.fill('input[name=paid_on]', new Date().toISOString().slice(0, 10)); await page.fill('input[name=reference]', 'E2E-REF'); await page.click('button:has-text("Notify payment")'); await page.waitForSelector('text=recorded your payment notice');
+await page.goto(`${portal}?lang=ar`); if ((await page.getAttribute('html', 'dir')) !== 'rtl') errors.push('Arabic portal is not RTL'); await shot('portal-ar');
+await page.goto(`${base}/#/invoices/${invId}`); await page.waitForSelector('text=Customer says they paid'); await page.click('button:has-text("Confirm received")'); await page.waitForSelector('.toast:has-text("Payment confirmed")');
+await page.click('a[data-nav=receivables]'); await page.waitForSelector('text=Ageing'); await shot('receivables');
+await page.click('a[data-nav=readiness]'); await page.waitForSelector('text=Audit chain integrity'); await shot('readiness');
+await page.click('button:has-text("Import & check invoices")');
+await page.setInputFiles('#csvfile', { name: 'zoho.csv', mimeType: 'text/csv', buffer: Buffer.from('Invoice Number,Invoice Date,Due Date,Customer Name,Tax Registration Number,Item Name,Quantity,Item Price,Item Tax %\nZB-1,15/03/2026,14/04/2026,Tabuk Foods,344444444400003,Rice,10,90,15\nZB-1,15/03/2026,14/04/2026,Tabuk Foods,344444444400003,Oil,4,25.5,15\nZB-2,16/03/2026,,Bad VAT Ltd,999,Service,1,100,15\n') });
+await page.waitForSelector('text=3 rows found'); await page.click('.modal button[type=submit]'); await page.waitForSelector('text=Imported 2 invoice drafts'); await shot('import-result');
+if (!(await page.textContent('.modal')).includes('2 with errors')) errors.push('import should flag the bad VAT number and the missing customer address'); await page.keyboard.press('Escape');
 // segment builder + deal drag/drop
 await page.click('a[data-nav=segments]'); await page.click('text=+ New segment'); await page.fill('.modal input[name=name]', 'E2E seg');
 await page.waitForSelector('#segprev b'); await page.click('.modal button[type=submit]'); await page.waitForSelector('td:has-text("E2E seg")');

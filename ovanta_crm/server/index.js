@@ -7,6 +7,8 @@ import { db, get, run, nowIso } from './db.js';
 import { handleApi, readBody } from './http.js';
 import './api.js';
 import './api2.js';
+import './api3.js';
+import { portalGet, portalClaim } from './api3.js';
 import { recordEvent, signUrl, startScheduler } from './campaigns.js';
 import { seedIfEmpty } from './seed.js';
 
@@ -55,6 +57,16 @@ async function handlePublic(req, res, url) {
     res.writeHead(200);
     return res.end(page('Unsubscribe', `<h1>Unsubscribe</h1><p>Stop sending marketing email to <b>${masked}</b>?</p><form method="post" action="/u/${m[1]}"><button>Yes, unsubscribe me</button></form>`));
   }
+  if ((m = url.pathname.match(/^\/pay\/([\w-]+)$/)) && req.method === 'GET') {
+    const r = await portalGet(m[1], url.searchParams);
+    res.writeHead(r.status, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' }); return res.end(r.html);
+  }
+  if ((m = url.pathname.match(/^\/pay\/([\w-]+)\/claim$/)) && req.method === 'POST') {
+    const form = new URLSearchParams(await readBody(req, 8192).catch(() => ''));
+    const r = portalClaim(m[1], form, req.socket.remoteAddress || '?');
+    if (r.status === 404) { res.writeHead(404, { 'Content-Type': 'text/plain' }); return res.end('Not found'); }
+    res.writeHead(303, { Location: r.redirect }); return res.end();
+  }
   return false;
 }
 
@@ -79,7 +91,8 @@ export const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
     if (url.pathname === '/healthz') { res.writeHead(200, { 'Content-Type': 'text/plain' }); return res.end('ok'); }
     if (url.pathname.startsWith('/api/')) return await handleApi(req, res, url);
-    if (/^\/(t|u)\//.test(url.pathname)) { if (req.method === 'POST') await readBody(req, 1024).catch(() => {}); if (await handlePublic(req, res, url) !== false) return; }
+    if (/^\/(t|u)\//.test(url.pathname) && req.method === 'POST') await readBody(req, 1024).catch(() => {});
+    if (/^\/(t|u|pay)\//.test(url.pathname)) { if (await handlePublic(req, res, url) !== false) return; }
     if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); return res.end(); }
     serveStatic(req, res, url);
   } catch (e) { console.error(e); if (!res.headersSent) res.writeHead(500); res.end('Server error'); }

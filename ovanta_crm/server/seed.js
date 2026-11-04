@@ -1,7 +1,8 @@
 import crypto from 'node:crypto';
-import { get, run, tx, db, all } from './db.js';
+import { get, run, tx, db, all, withoutImmutability } from './db.js';
 import { config } from './config.js';
 import { hashPassword } from './auth.js';
+import { seedBillingDemo } from './seed-billing.js';
 
 // deterministic PRNG so demo data is stable
 let seed = 42;
@@ -121,11 +122,14 @@ export function seedIfEmpty() {
       if (clicked) run("INSERT INTO campaign_events (campaign_id,recipient_id,type,url,created_at) VALUES (?,?,'click',?,?)", sentId, rid, rnd() > 0.4 ? 'https://www.ovantaa.example/spring' : 'https://www.ovantaa.example/demo', daysAgo(int(8, 12)));
     }
   });
+  if (config.seedDemo && config.seedBillingDemo) seedBillingDemo();
 }
 
 if (process.argv[1]?.endsWith('seed.js')) {
   if (process.argv.includes('--reset')) {
-    for (const t of ['deal_stage_history', 'email_log', 'notification_rules', 'campaign_events', 'campaign_recipients', 'campaigns', 'senders', 'settings', 'templates', 'segments', 'activities', 'tasks', 'deals', 'contacts', 'accounts', 'audit_log', 'users']) db.exec(`DELETE FROM ${t}`);
+    withoutImmutability(() => {
+    for (const t of ['reminder_log', 'payment_claims', 'payments', 'invoice_events', 'invoice_lines', 'invoices', 'counters', 'deal_stage_history', 'email_log', 'notification_rules', 'campaign_events', 'campaign_recipients', 'campaigns', 'senders', 'settings', 'templates', 'segments', 'activities', 'tasks', 'deals', 'contacts', 'accounts', 'audit_log', 'users']) db.exec(`DELETE FROM ${t}`);
+    });
   }
   seedIfEmpty();
   console.log(`Seed complete. Login: ${config.adminEmail} / ${config.adminPassword}`);

@@ -30,6 +30,7 @@ config.anthropicBaseUrl = (process.env.ANTHROPIC_BASE_URL || 'https://api.anthro
 // Only for internal relays / tests that present self-signed certificates. Leave unset for Gmail, Microsoft 365, Zoho etc.
 config.smtpTlsInsecure = process.env.SMTP_TLS_INSECURE === '1';
 // Workaround for networks where IPv6 connects but then stalls: connect to the server's IPv4 address only.
+config.seedBillingDemo = process.env.SEED_BILLING_DEMO !== '0';
 config.smtpForceIpv4 = process.env.SMTP_FORCE_IPV4 === '1';
 // Some providers (e.g. Titan) delay the SMTP greeting by 20s+ for clients that recently failed to log in.
 config.smtpTimeoutMs = Number(process.env.SMTP_TIMEOUT_MS || 60000);

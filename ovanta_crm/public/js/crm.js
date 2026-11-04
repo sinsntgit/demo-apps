@@ -191,10 +191,11 @@ export async function contactDetail(root, id) {
 // =============== Accounts ===============
 function accountForm(a = {}, onDone) {
   const fields = [{ name: 'name', label: 'Company name', required: true }, { name: 'industry', label: 'Industry' }, { name: 'website', label: 'Website', type: 'url', placeholder: 'https://' }, { name: 'size', label: 'Company size', type: 'select', options: ['1-50', '51-200', '201-1000', '1000+'] },
-    { name: 'city', label: 'City' }, { name: 'country', label: 'Country' }, { name: 'phone', label: 'Phone' }, { name: 'owner_id', label: 'Owner', type: 'select', options: userOpts(), blank: false, default: store.user.id }, { name: 'notes', label: 'Notes', type: 'textarea' }];
+    { name: 'city', label: 'City' }, { name: 'country', label: 'Country' }, { name: 'phone', label: 'Phone' }, { name: 'owner_id', label: 'Owner', type: 'select', options: userOpts(), blank: false, default: store.user.id }, { name: 'notes', label: 'Notes', type: 'textarea' },
+    { name: 'name_ar', label: 'Name (Arabic)' }, { name: 'vat_number', label: 'VAT / TRN number', placeholder: '15 digits' }, { name: 'street', label: 'Street' }, { name: 'building_no', label: 'Building no.' }, { name: 'district', label: 'District' }, { name: 'postal_code', label: 'Postal code' }, { name: 'country_code', label: 'Country code', placeholder: 'SA / AE' }, { name: 'billing_email', label: 'Billing email', type: 'email' }, { name: 'billing_phone', label: 'Billing phone / WhatsApp' }];
   const f = (n) => field(fields.find((x) => x.name === n), a);
   modal({ title: a.id ? 'Edit account' : 'New account', wide: true,
-    body: html`<div class="row">${f('name')}${f('industry')}</div><div class="row">${f('website')}${f('size')}</div><div class="row">${f('city')}${f('country')}</div><div class="row">${f('phone')}${f('owner_id')}</div>${f('notes')}`,
+    body: html`<div class="row">${f('name')}${f('industry')}</div><div class="row">${f('website')}${f('size')}</div><div class="row">${f('city')}${f('country')}</div><div class="row">${f('phone')}${f('owner_id')}</div>${f('notes')}<h3 style="margin:8px 0">Invoicing details</h3><div class="row">${f('name_ar')}${f('vat_number')}</div><div class="row">${f('street')}${f('building_no')}</div><div class="row">${f('district')}${f('postal_code')}</div><div class="row">${f('country_code')}${f('billing_email')}</div>${f('billing_phone')}`,
     onSubmit: async (form) => { const v = formValues(form, fields); const s = a.id ? await api('PUT', `/accounts/${a.id}`, v) : await api('POST', '/accounts', v); toast('Account saved', 'ok'); onDone?.(s); } });
 }
 export async function accounts(root) {

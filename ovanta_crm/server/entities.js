@@ -17,7 +17,8 @@ const T = { text: 'text', int: 'int', real: 'real', bool: 'bool', date: 'date', 
 export const ENTITIES = {
   accounts: {
     table: 'accounts', alias: 'a', noun: 'Account',
-    fields: { name: T.text, industry: T.text, website: T.text, size: T.text, city: T.text, country: T.text, phone: T.text, notes: T.text, owner_id: T.fk },
+    fields: { name: T.text, industry: T.text, website: T.text, size: T.text, city: T.text, country: T.text, phone: T.text, notes: T.text, owner_id: T.fk,
+      name_ar: T.text, vat_number: T.text, street: T.text, building_no: T.text, district: T.text, postal_code: T.text, country_code: T.text, billing_email: T.text, billing_phone: T.text },
     required: ['name'],
     search: ['a.name', 'a.industry', 'a.city', 'a.country'],
     filters: { industry: 'a.industry', country: 'a.country', owner_id: 'a.owner_id' },

@@ -3,11 +3,14 @@ import * as crm from './crm.js';
 import * as camp from './campaigns.js';
 import * as admin from './admin.js';
 import * as mail from './mail.js';
+import * as inv from './invoices.js';
+import * as bill from './billing.js';
 
 const app = $('#app');
 
 const NAV = [
   ['Workspace', [['dashboard', 'Dashboard', 'home'], ['contacts', 'Contacts', 'users'], ['accounts', 'Accounts', 'building'], ['deals', 'Deals', 'deal'], ['tasks', 'Tasks', 'task']]],
+  ['Billing', [['invoices', 'Invoices', 'invoice'], ['receivables', 'Receivables', 'wallet', ['admin', 'manager']], ['readiness', 'E-invoicing readiness', 'shield', ['admin', 'manager']], ['billing-settings', 'Billing settings', 'cog', ['admin', 'manager']]]],
   ['Marketing', [['campaigns', 'Campaigns', 'mail'], ['segments', 'Segments', 'seg'], ['templates', 'Templates', 'tpl'], ['senders', 'Email senders', 'send', ['admin', 'manager']]]],
   ['Admin', [['notifications', 'Notifications', 'bell', ['admin', 'manager']], ['team', 'Team & audit', 'team', ['admin']], ['settings', 'Settings', 'cog']]],
 ];
@@ -18,6 +21,8 @@ const ROUTES = [
   [/^deals$/, (r) => crm.deals(r)], [/^deals\/(\d+)$/, (r, id) => crm.dealDetail(r, id)], [/^tasks$/, (r) => crm.tasks(r)],
   [/^campaigns$/, (r) => camp.campaignList(r)], [/^campaigns\/(\d+)$/, (r, id) => camp.campaignDetail(r, id)],
   [/^segments$/, (r) => camp.segments(r)], [/^templates$/, (r) => camp.templates(r)],
+  [/^invoices$/, (r) => inv.invoiceList(r, () => bill.importInvoices(() => { location.hash = '#/readiness'; }))], [/^invoices\/new$/, (r) => inv.invoiceEditor(r, null)], [/^invoices\/(\d+)\/edit$/, (r, id) => inv.invoiceEditor(r, id)], [/^invoices\/(\d+)$/, (r, id) => inv.invoiceDetail(r, id)],
+  [/^receivables$/, (r) => bill.receivables(r)], [/^readiness$/, (r) => bill.readiness(r, (done) => bill.importInvoices(done))], [/^billing-settings$/, (r) => bill.billingSettings(r)],
   [/^senders$/, (r) => mail.senders(r)], [/^notifications$/, (r) => mail.notifications(r)],
   [/^team$/, (r) => admin.team(r)], [/^settings$/, (r) => admin.settings(r)],
 ];
@@ -47,7 +52,7 @@ function shell() {
 let renderId = 0;
 async function route() {
   if (!store.user) return;
-  const path = location.hash.replace(/^#\/?/, '') || 'dashboard';
+  const path = (location.hash.replace(/^#\/?/, '') || 'dashboard').split('?')[0];
   if (path === 'login') { location.hash = '#/dashboard'; return; }
   const view = $('#view'); if (!view) return;
   const id = ++renderId;
