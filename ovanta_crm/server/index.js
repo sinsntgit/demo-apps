@@ -1,6 +1,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
 import { db, get, run, nowIso } from './db.js';
 import { handleApi, readBody } from './http.js';
@@ -83,7 +84,7 @@ export const server = http.createServer(async (req, res) => {
   } catch (e) { console.error(e); if (!res.headersSent) res.writeHead(500); res.end('Server error'); }
 });
 
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname)) {
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
   seedIfEmpty();
   startScheduler();
   server.listen(config.port, () => console.log(`Ovantaa CRM running at ${config.baseUrl}  (mail transport: ${config.mailTransport})`));
