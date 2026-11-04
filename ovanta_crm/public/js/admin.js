@@ -1,4 +1,4 @@
-import { api, html, raw, setHtml, on, store, toast, fail, modal, confirmBox, field, formValues, badge, fmtDate, fmtDateTime, ago, $ } from './core.js';
+import { api, html, raw, setHtml, on, store, toast, fail, modal, confirmBox, field, formValues, badge, fmtDate, fmtDateTime, ago, applyTheme, THEME_PRESETS, DEFAULT_THEME, $ } from './core.js';
 
 const page = (title, actions = '') => html`<div class="topbar"><h1>${title}</h1><span class="grow"></span>${actions}</div>`;
 
@@ -25,18 +25,54 @@ export async function team(root) {
 }
 
 export async function settings(root) {
-  const m = store.meta;
-  const outbox = ['admin', 'manager'].includes(store.user.role) ? await api('GET', '/campaigns/outbox') : [];
+  const admin = store.user.role === 'admin';
+  const [outbox, ai] = await Promise.all([['admin', 'manager'].includes(store.user.role) ? api('GET', '/campaigns/outbox') : [], api('GET', '/ai/status')]);
+  let draft = { ...store.theme };
+  let mine = 'org'; try { mine = localStorage.getItem('ovantaa_mode') || 'org'; } catch {}
   setHtml(root, html`${page('Settings')}
     <div class="grid g2"><div class="card"><div class="hd"><h2>My account</h2></div><div class="bd"><p><b>${store.user.name}</b><br><span class="muted">${store.user.email} · ${store.user.role}</span></p>
       <form id="pw"><label>Current password<input type="password" name="current" required autocomplete="current-password"></label><label>New password<input type="password" name="next" required minlength="8" autocomplete="new-password"></label><button class="btn primary">Change password</button></form></div></div>
+
+      <div class="card"><div class="hd"><h2>Appearance</h2></div><div class="bd">
+        <label style="max-width:320px">My display mode (this browser only)<select id="mymode">${[['org', 'Follow company default'], ['auto', 'Match my device'], ['light', 'Light'], ['dark', 'Dark']].map(([v, l]) => html`<option value="${v}" ${v === mine ? raw('selected') : ''}>${l}</option>`)}</select></label>
+        ${admin ? html`<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><h3>Company theme <span class="muted small">(everyone sees this)</span></h3>
+          <div class="swatches">${THEME_PRESETS.map(([n, p, sd]) => html`<button type="button" class="swatch" title="${n}" data-act="preset" data-p="${p}" data-s="${sd}" style="background:${p};box-shadow:inset -14px 0 0 ${sd}" aria-label="${n} theme"></button>`)}</div>
+          <div class="row"><label>Accent colour<input type="color" id="c_primary" value="${draft.primary}"></label><label>Sidebar colour<input type="color" id="c_side" value="${draft.sidebar}"></label></div>
+          <label style="max-width:320px">Default mode<select id="c_mode">${['auto', 'light', 'dark'].map((m) => html`<option value="${m}" ${m === draft.mode ? raw('selected') : ''}>${m === 'auto' ? 'Match each user’s device' : m[0].toUpperCase() + m.slice(1)}</option>`)}</select></label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" data-act="savetheme">Save company theme</button><button class="btn" data-act="resettheme">Reset to default</button></div>
+          <p class="small muted">Changes preview instantly; they are only saved for everyone when you click Save.</p>` : html`<p class="small muted mt">Colours are set by your administrator.</p>`}</div></div></div>
+
+    <div class="grid g2 mt"><div class="card"><div class="hd"><h2>✨ AI assistant (Claude)</h2></div><div class="bd">
+      <p>Status: ${ai.configured ? html`<span class="badge sent">connected</span> <span class="muted small">model ${ai.model}${ai.from_env ? ' · key from server environment' : ''}</span>` : html`<span class="badge draft">not configured</span>`}</p>
+      <p class="small muted">Powers “Write with Claude” in the campaign editor. Only the text typed into the AI box (and the content being rewritten) is sent to Anthropic — never contact records. Get a key at console.anthropic.com.</p>
+      ${admin ? html`<form id="aiform"><label>Anthropic API key<input type="password" name="api_key" autocomplete="off" placeholder="${ai.configured && !ai.from_env ? '•••••••• saved (enter a new one to replace)' : 'sk-ant-…'}"></label>
+        <label>Model<input name="model" value="${ai.model}"></label>
+        <div style="display:flex;gap:8px"><button class="btn primary">Save</button>${ai.configured && !ai.from_env ? html`<button type="button" class="btn danger" data-act="aiclear">Remove key</button>` : ''}</div></form>
+        <p class="small muted">Alternatively set the <span class="mono">ANTHROPIC_API_KEY</span> environment variable before starting the server.</p>` : ''}</div></div>
+
       <div class="card"><div class="hd"><h2>Email delivery</h2></div><div class="bd">
-        <p>Transport: <b>${m.mailTransport === 'webhook' ? 'Webhook (live delivery)' : 'Simulation (no real email leaves the server)'}</b></p>
-        <p class="muted small">Configure with environment variables: <code>MAIL_TRANSPORT=webhook</code>, <code>MAIL_WEBHOOK_URL</code>, optional <code>MAIL_WEBHOOK_TOKEN</code>. Each message is POSTed as JSON (<code>from, to, subject, html, text, headers</code>) so you can bridge to SES, SendGrid, Postmark, SMTP relay, etc.</p>
-        <p class="muted small">Tracking links use <code>${m.baseUrl}</code> — set <code>BASE_URL</code> to your public address so opens, clicks and unsubscribes reach this server.</p></div></div></div>
-    ${outbox.length || ['admin', 'manager'].includes(store.user.role) ? html`<div class="card mt"><div class="hd"><h2>Recent outbound mail</h2><span class="muted small">since server start</span></div>${outbox.length ? html`<div class="tablewrap" style="max-height:320px;overflow:auto"><table><tbody>${outbox.map((o) => html`<tr><td class="small muted nowrap">${ago(o.at)}</td><td>${o.to}</td><td>${o.subject}</td></tr>`)}</tbody></table></div>` : html`<div class="empty">No mail sent since the server started.</div>`}</div>` : ''}`);
+        <p>Sending is configured per sender mailbox under <a href="#/senders"><b>Email senders</b></a> (Google, Microsoft 365, Zoho or any SMTP server) — add one entry per address you send from. Notification emails are configured under <a href="#/notifications"><b>Notifications</b></a>.</p>
+        <p class="muted small">Tracking links use <span class="mono">${m_baseUrl()}</span>. Set the <span class="mono">BASE_URL</span> environment variable to your public address so opens, clicks and unsubscribes reach this server.</p></div></div></div>
+    ${outbox.length ? html`<div class="card mt"><div class="hd"><h2>Recent simulated mail</h2><span class="muted small">emails handled by simulation senders since server start — nothing was delivered</span></div><div class="tablewrap" style="max-height:320px;overflow:auto"><table><tbody>${outbox.map((o) => html`<tr><td class="small muted nowrap">${ago(o.at)}</td><td>${o.to}</td><td>${o.subject}</td></tr>`)}</tbody></table></div></div>` : ''}`);
+  function m_baseUrl() { return store.meta.baseUrl; }
   $('#pw', root).addEventListener('submit', async (e) => {
     e.preventDefault(); const f = e.currentTarget;
     try { await api('POST', '/auth/password', { current: f.current.value, next: f.next.value }); toast('Password changed', 'ok'); f.reset(); } catch (x) { fail(x); }
   });
+  $('#mymode', root).addEventListener('change', (e) => { try { localStorage.setItem('ovantaa_mode', e.target.value); } catch {} applyTheme(store.theme); });
+  const preview = () => { draft = { primary: $('#c_primary', root).value, sidebar: $('#c_side', root).value, mode: $('#c_mode', root).value }; applyTheme(draft); };
+  if (admin) {
+    ['#c_primary', '#c_side', '#c_mode'].forEach((id) => $(id, root).addEventListener('input', preview));
+    on(root, {
+      preset: (el) => { $('#c_primary', root).value = el.dataset.p; $('#c_side', root).value = el.dataset.s; preview(); },
+      savetheme: async () => { const t = await api('PUT', '/theme', draft); store.meta.theme = t; applyTheme(t); toast('Company theme saved', 'ok'); },
+      resettheme: async () => { const t = await api('PUT', '/theme', DEFAULT_THEME); store.meta.theme = t; applyTheme(t); toast('Theme reset', 'ok'); settings(root); },
+      aiclear: async () => { await api('PUT', '/settings/ai', { clear_key: true }); store.meta.ai = await api('GET', '/ai/status'); toast('API key removed'); settings(root); },
+    });
+    $('#aiform', root).addEventListener('submit', async (e) => {
+      e.preventDefault(); const f = e.currentTarget;
+      try { await api('PUT', '/settings/ai', { api_key: f.api_key.value || undefined, model: f.model.value }); store.meta.ai = await api('GET', '/ai/status'); toast('AI settings saved', 'ok'); settings(root); } catch (x) { fail(x); }
+    });
+    window.addEventListener('hashchange', () => applyTheme(store.meta.theme), { once: true }); // discard unsaved preview when leaving
+  }
 }

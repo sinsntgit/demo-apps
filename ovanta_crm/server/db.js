@@ -90,6 +90,42 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 `);
 
+db.exec(`
+CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT, updated_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS senders (
+  id INTEGER PRIMARY KEY, label TEXT NOT NULL, from_name TEXT, from_email TEXT NOT NULL, reply_to TEXT,
+  mode TEXT NOT NULL DEFAULT 'smtp' CHECK (mode IN ('smtp','simulate')),
+  host TEXT, port INTEGER DEFAULT 587, secure INTEGER NOT NULL DEFAULT 0, username TEXT, password_enc TEXT,
+  daily_limit INTEGER NOT NULL DEFAULT 500, delay_ms INTEGER NOT NULL DEFAULT 1000,
+  active INTEGER NOT NULL DEFAULT 1, is_default INTEGER NOT NULL DEFAULT 0,
+  last_verified_at TEXT, last_error TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS notification_rules (
+  id INTEGER PRIMARY KEY, name TEXT NOT NULL, event TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1,
+  notify_owner INTEGER NOT NULL DEFAULT 0, user_ids TEXT NOT NULL DEFAULT '[]', extra_emails TEXT,
+  sender_id INTEGER REFERENCES senders(id) ON DELETE SET NULL,
+  min_amount REAL, only_stage TEXT, subject_template TEXT, intro TEXT,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL, created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS email_log (
+  id INTEGER PRIMARY KEY, kind TEXT NOT NULL, to_email TEXT NOT NULL, subject TEXT, sender_id INTEGER REFERENCES senders(id) ON DELETE SET NULL,
+  status TEXT NOT NULL CHECK (status IN ('sent','failed','simulated')), error TEXT, message_id TEXT, response TEXT, rule_id INTEGER, event TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_email_log_created ON email_log(created_at);
+`);
+
+function ensureColumn(table, col, ddl) {
+  if (!db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${ddl}`);
+}
+// Migrations for databases created by earlier versions
+ensureColumn('campaigns', 'sender_id', 'INTEGER REFERENCES senders(id) ON DELETE SET NULL');
+ensureColumn('campaigns', 'simulated', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('campaigns', 'note', 'TEXT');
+ensureColumn('campaign_recipients', 'sender_id', 'INTEGER');
+ensureColumn('campaign_recipients', 'message_id', 'TEXT');
+ensureColumn('campaign_recipients', 'response', 'TEXT');
+
 /** Run fn inside a transaction. */
 export function tx(fn) {
   db.exec('BEGIN');

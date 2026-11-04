@@ -3,7 +3,7 @@ import {
   fullName, can, todayStr, $, $$, debounce,
 } from './core.js';
 import { mountList } from './list.js';
-import { csvToContacts } from './csv.js';
+import { readTable, FIELDS, guessMapping, applyMapping, TEMPLATE_CSV } from './csv.js';
 
 const userOpts = () => store.meta.users.map((u) => [u.id, u.name]);
 const lookups = async () => {
@@ -70,21 +70,43 @@ function contactForm(c = {}, lk, onDone) {
 }
 
 function importModal(done) {
-  let rows = [];
-  modal({ title: 'Import contacts from CSV', submitLabel: 'Import', wide: true,
-    body: html`<p class="muted">Columns recognised: first_name, last_name, email, phone, title, company, status, source, tags. Existing contacts are matched by email and updated; new companies are created automatically (max 5,000 rows).</p>
-      <input type="file" accept=".csv,text/csv" id="csvfile"><div id="csvinfo" class="small muted mt"></div>`,
+  let table = null; let map = {};
+  const drawMap = (form) => {
+    const headers = table[0].map((h, i) => [i, h || `Column ${i + 1}`]);
+    const preview = applyMapping(table, map).slice(0, 3);
+    setHtml($('#imp_map', form), html`<div class="banner info small"><b>${table.length - 1}</b> rows found. Check how your columns map to contact fields (at least a first name or an email is needed).</div>
+      <div class="mapgrid">${FIELDS.map(([k, label]) => html`<span>${label}</span><select data-map="${k}"><option value="-1">— ignore —</option>${headers.map(([i, h]) => html`<option value="${i}" ${map[k] === i ? raw('selected') : ''}>${h}</option>`)}</select>`)}</div>
+      <div class="small muted mt">Preview: ${preview.map((r) => [r.first_name, r.last_name, r.email].filter(Boolean).join(' ')).join(' · ') || '—'}</div>
+      <div class="row mt">${field({ name: 'tag', label: 'Add this tag to every imported contact', placeholder: 'e.g. expo-2026' })}${field({ name: 'source', label: 'Default source (if blank in file)', placeholder: 'e.g. Trade show' })}</div>
+      <div class="row">${field({ name: 'status', label: 'Default status (if blank in file)', type: 'select', options: STATUS, blank: '— keep "lead" —' })}<span></span></div>
+      ${field({ name: 'update_existing', label: 'Update contacts that already exist (matched by email)', type: 'checkbox' }, { update_existing: true })}
+      <p class="small muted">Only import people who have agreed to hear from you. Contacts marked "no" in a Subscribed column are imported as unsubscribed.</p>`);
+  };
+  modal({ title: 'Import contacts from a file', submitLabel: 'Import', wide: true,
+    body: html`<div class="dropzone" id="imp_drop" tabindex="0" role="button">📄 <b>Drop a file here</b> or click to choose<div class="small">CSV, TSV, TXT or Excel (.xlsx) · up to 5,000 rows · max 8 MB</div><input type="file" id="csvfile" accept=".csv,.tsv,.txt,.xlsx,text/csv" hidden></div>
+      <div class="small mt"><a href="#" id="imp_tpl">Download a sample template (CSV)</a> · Existing contacts are matched by email · New companies are created automatically.</div><div id="imp_file" class="small muted mt"></div><div id="imp_map" class="mt"></div>`,
     onOpen: (form) => {
-      $('#csvfile', form).addEventListener('change', async (e) => {
-        try { rows = csvToContacts(await e.target.files[0].text()); setHtml($('#csvinfo', form), html`<b>${rows.length}</b> rows ready. Preview: ${rows.slice(0, 3).map((r) => `${r.first_name} ${r.last_name} <${r.email}>`).join(' · ')}`); }
-        catch (x) { rows = []; setHtml($('#csvinfo', form), html`<span style="color:var(--bad)">${x.message}</span>`); }
-      });
+      const input = $('#csvfile', form), drop = $('#imp_drop', form);
+      const load = async (file) => {
+        if (!file) return;
+        try { table = await readTable(file); map = guessMapping(table[0]); setHtml($('#imp_file', form), html`📎 ${file.name}`); drawMap(form); }
+        catch (x) { table = null; setHtml($('#imp_map', form), html`<div class="err">${x.message}</div>`); }
+      };
+      drop.addEventListener('click', () => input.click()); drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') input.click(); });
+      input.addEventListener('change', () => load(input.files[0]));
+      ['dragenter', 'dragover'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+      ['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
+      drop.addEventListener('drop', (e) => load(e.dataTransfer.files[0]));
+      form.addEventListener('change', (e) => { if (e.target.dataset.map) { map[e.target.dataset.map] = Number(e.target.value); const keep = formValues(form, [{ name: 'tag' }, { name: 'source' }, { name: 'status' }]); drawMap(form); Object.entries(keep).forEach(([k, v]) => { form[k].value = v; }); } });
+      $('#imp_tpl', form).addEventListener('click', (e) => { e.preventDefault(); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([TEMPLATE_CSV], { type: 'text/csv' })); a.download = 'ovantaa-contacts-template.csv'; a.click(); URL.revokeObjectURL(a.href); });
     },
-    onSubmit: async () => {
-      if (!rows.length) throw new Error('Choose a CSV file with at least one data row');
-      const r = await api('POST', '/contacts/import', { rows });
+    onSubmit: async (form) => {
+      if (!table) throw new Error('Choose a file first');
+      if (map.first_name < 0 && map.email < 0) throw new Error('Map at least a first name or an email column');
+      const rows = applyMapping(table, map); if (rows.length > 5000) throw new Error(`The file has ${rows.length} rows; the limit is 5,000 per import.`);
+      const r = await api('POST', '/contacts/import', { rows, options: { tag: form.tag.value, source: form.source.value, status: form.status.value, update_existing: form.update_existing.checked } });
       toast(`Imported: ${r.created} new, ${r.updated} updated, ${r.skipped} skipped`, 'ok');
-      if (r.errors.length) alert('Some rows were skipped:\n' + r.errors.join('\n'));
+      if (r.errors.length) modal({ title: `${r.skipped} rows skipped`, hideFooter: true, body: html`<ul class="small">${r.errors.map((e) => html`<li>${e}</li>`)}</ul>${r.skipped > r.errors.length ? html`<p class="muted small">…and ${r.skipped - r.errors.length} more.</p>` : ''}` });
       done();
     } });
 }

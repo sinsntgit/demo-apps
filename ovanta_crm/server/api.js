@@ -7,8 +7,11 @@ import {
 import { ENTITIES, STAGES, list, getOne, create, update, remove, clean } from './entities.js';
 import { SEGMENT_FIELDS, SEGMENT_OPS, parseFilter, resolveSegment } from './segments.js';
 import {
-  MERGE_TAGS, renderMessage, sendTest, launchCampaign, validateForLaunch, campaignStats, outboxLog,
+  MERGE_TAGS, renderMessage, sendTest, launchCampaign, validateForLaunch, campaignStats, outboxLog, resolveSender, isSimulated,
 } from './campaigns.js';
+import { notify, EVENTS } from './notifications.js';
+import { aiConfigured, aiModel } from './ai.js';
+import { getTheme } from './settings.js';
 
 const MGR = ['admin', 'manager'];
 
@@ -45,6 +48,8 @@ GET('/api/meta', () => ({
   industries: all("SELECT DISTINCT industry v FROM accounts WHERE industry IS NOT NULL ORDER BY 1").map((r) => r.v),
   sources: all("SELECT DISTINCT source v FROM contacts WHERE source IS NOT NULL ORDER BY 1").map((r) => r.v),
   mailTransport: config.mailTransport, baseUrl: config.baseUrl, defaults: { fromName: config.defaultFromName, fromEmail: config.defaultFromEmail },
+  senders: all('SELECT id,label,from_email,mode,active,is_default FROM senders ORDER BY is_default DESC, label'),
+  events: EVENTS, ai: { configured: aiConfigured(), model: aiModel() }, theme: getTheme(),
 }));
 GET('/api/lookup', ({ query }) => {
   const q = `%${String(query.q || '').replace(/[\\%_]/g, (m) => '\\' + m)}%`;
@@ -123,6 +128,10 @@ POST('/api/contacts/import', ({ body, user }) => {
   const rows = Array.isArray(body.rows) ? body.rows : null;
   if (!rows) throw bad('rows array required');
   if (rows.length > 5000) throw bad('Import is limited to 5,000 rows at a time');
+  const opts = body.options || {};
+  const defTag = String(opts.tag || '').trim().replace(/,/g, '').slice(0, 60);
+  const defSource = String(opts.source || '').trim().slice(0, 80);
+  const defStatus = ['lead', 'qualified', 'customer', 'churned'].includes(opts.status) ? opts.status : null;
   const res = { created: 0, updated: 0, skipped: 0, errors: [] };
   tx(() => {
     rows.forEach((row, i) => {
@@ -131,12 +140,17 @@ POST('/api/contacts/import', ({ body, user }) => {
         const data = clean(ENTITIES.contacts, {
           first_name: row.first_name, last_name: row.last_name, email: row.email, phone: row.phone, title: row.title,
           status: row.status ? String(row.status).toLowerCase() : undefined, source: row.source, tags: row.tags,
+          ...(row.subscribed !== undefined && row.subscribed !== '' ? { subscribed: !/^(0|no|false|n|unsub.*)$/i.test(String(row.subscribed).trim()) } : {}),
           ...(account ? { account_id: account } : {}),
         }, { partial: true });
         if (!data.first_name && !data.email) { res.skipped++; return; }
         if (!data.first_name) data.first_name = data.email.split('@')[0];
-        const existing = data.email ? get('SELECT id FROM contacts WHERE email=?', data.email) : null;
+        if (defSource && !data.source) data.source = defSource;
+        if (defStatus && !row.status) data.status = defStatus;
+        const existing = data.email ? get('SELECT id, tags FROM contacts WHERE email=?', data.email) : null;
+        if (defTag) { const t = new Set([...(existing?.tags || '').split(','), ...(data.tags || '').split(',')].map((x) => x.trim()).filter(Boolean)); t.add(defTag); data.tags = [...t].join(', '); }
         if (existing) {
+          if (opts.update_existing === false) { res.skipped++; return; }
           const cols = Object.keys(data).filter((k) => data[k] !== null);
           run(`UPDATE contacts SET ${cols.map((c) => `${c}=?`).join(',')} WHERE id=?`, ...cols.map((c) => data[c]), existing.id);
           res.updated++;
@@ -150,6 +164,7 @@ POST('/api/contacts/import', ({ body, user }) => {
     });
   });
   audit(user, 'import', 'contacts', null, `${res.created} created, ${res.updated} updated`);
+  if (res.created + res.updated > 0) notify(['contact.imported'], { name: 'Import' }, { count: res.created + res.updated, created: res.created, updated: res.updated }, user);
   return res;
 });
 function findOrCreateAccount(name, user) {
@@ -241,18 +256,22 @@ PUT('/api/templates/:id', ({ params, body }) => {
 DELETE('/api/templates/:id', ({ params }) => { run('DELETE FROM templates WHERE id=?', params.id); return { ok: true }; }, { roles: MGR });
 
 // ---------- Campaigns ----------
-const CAMPAIGN_LIST = `SELECT c.*, s.name AS segment_name, u.name AS created_by_name,
+const CAMPAIGN_LIST = `SELECT c.*, s.name AS segment_name, u.name AS created_by_name, sd.label AS sender_label, sd.from_email AS sender_email, sd.mode AS sender_mode,
   (SELECT COUNT(*) FROM campaign_recipients r WHERE r.campaign_id=c.id) AS recipients,
   (SELECT COUNT(*) FROM campaign_recipients r WHERE r.campaign_id=c.id AND r.status='sent') AS sent,
   (SELECT COUNT(*) FROM campaign_recipients r WHERE r.campaign_id=c.id AND r.first_open_at IS NOT NULL) AS opened,
   (SELECT COUNT(*) FROM campaign_recipients r WHERE r.campaign_id=c.id AND r.first_click_at IS NOT NULL) AS clicked
-  FROM campaigns c LEFT JOIN segments s ON s.id=c.segment_id LEFT JOIN users u ON u.id=c.created_by`;
+  FROM campaigns c LEFT JOIN segments s ON s.id=c.segment_id LEFT JOIN users u ON u.id=c.created_by LEFT JOIN senders sd ON sd.id=c.sender_id`;
 const campaignById = (id) => { const c = get(`${CAMPAIGN_LIST} WHERE c.id=?`, id); if (!c) throw notFound('Campaign not found'); return c; };
 
 function campaignInput(b, existing) {
   const out = {};
   const str = (k, max) => { if (k in b) out[k] = String(b[k] ?? '').trim().slice(0, max) || null; };
-  str('name', 150); str('subject', 250); str('from_name', 100); str('from_email', 200);
+  str('name', 150); str('subject', 250);
+  if ('sender_id' in b) {
+    out.sender_id = b.sender_id ? Number(b.sender_id) : null;
+    if (out.sender_id && !get('SELECT id FROM senders WHERE id=?', out.sender_id)) throw bad('Sender not found');
+  }
   if ('body_html' in b) out.body_html = String(b.body_html ?? '');
   if ('segment_id' in b) {
     out.segment_id = b.segment_id ? Number(b.segment_id) : null;
@@ -260,7 +279,6 @@ function campaignInput(b, existing) {
   }
   if (!existing && !out.name) throw bad('Campaign name is required');
   if ('name' in out && !out.name) throw bad('Campaign name is required');
-  if (out.from_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(out.from_email)) throw bad('From email is not valid');
   return out;
 }
 GET('/api/campaigns', () => all(`${CAMPAIGN_LIST} ORDER BY c.created_at DESC, c.id DESC`));
@@ -296,7 +314,7 @@ DELETE('/api/campaigns/:id', ({ params, user }) => {
 }, { roles: MGR });
 POST('/api/campaigns/:id/duplicate', ({ params, user }) => {
   const c = campaignById(params.id);
-  const id = Number(run('INSERT INTO campaigns (name,subject,body_html,from_name,from_email,segment_id,created_by) VALUES (?,?,?,?,?,?,?)', `${c.name} (copy)`, c.subject, c.body_html, c.from_name, c.from_email, c.segment_id, user.id).lastInsertRowid);
+  const id = Number(run('INSERT INTO campaigns (name,subject,body_html,sender_id,segment_id,created_by) VALUES (?,?,?,?,?,?)', `${c.name} (copy)`, c.subject, c.body_html, c.sender_id, c.segment_id, user.id).lastInsertRowid);
   return campaignById(id);
 });
 POST('/api/campaigns/preview', ({ body }) => {
@@ -307,9 +325,10 @@ POST('/api/campaigns/:id/test', async ({ params, body, user }) => {
   const c = campaignById(params.id);
   const to = String(body.to || user.email).trim();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) throw bad('Enter a valid test email address');
-  try { await sendTest(c, to, { first_name: user.name.split(' ')[0], last_name: user.name.split(' ').slice(1).join(' '), email: to, title: 'Test', account_name: 'Test Company' }); }
+  let r;
+  try { r = await sendTest(c, to, { first_name: user.name.split(' ')[0], last_name: user.name.split(' ').slice(1).join(' '), email: to, title: 'Test', account_name: 'Test Company' }); }
   catch (e) { throw bad(`Test send failed: ${e.message}`); }
-  return { ok: true, to };
+  return { ok: true, to, simulated: r.status === 'simulated', sender: r.sender?.label || null };
 }, { roles: MGR });
 POST('/api/campaigns/:id/launch', ({ params, user }) => {
   const c = campaignById(params.id);
@@ -336,10 +355,12 @@ POST('/api/campaigns/:id/unschedule', ({ params }) => {
 }, { roles: MGR });
 GET('/api/campaigns/:id/recipients', ({ params, query }) => {
   campaignById(params.id);
-  const f = { opened: 'AND r.first_open_at IS NOT NULL', clicked: 'AND r.first_click_at IS NOT NULL', unsubscribed: 'AND r.unsubscribed_at IS NOT NULL', failed: "AND r.status='failed'" }[query.filter] || '';
-  return all(`SELECT r.id, r.email, r.status, r.error, r.sent_at, r.first_open_at, r.first_click_at, r.unsubscribed_at, r.open_count, r.click_count, r.contact_id,
+  const f = { opened: 'AND r.first_open_at IS NOT NULL', clicked: 'AND r.first_click_at IS NOT NULL', unsubscribed: 'AND r.unsubscribed_at IS NOT NULL', failed: "AND r.status='failed'", queued: "AND r.status='queued'", sent: "AND r.status='sent'" }[query.filter] || '';
+  const rows = all(`SELECT r.id, r.email, r.status, r.error, r.response, r.message_id, r.sent_at, r.first_open_at, r.first_click_at, r.unsubscribed_at, r.open_count, r.click_count, r.contact_id,
     TRIM(COALESCE(c.first_name,'')||' '||COALESCE(c.last_name,'')) AS name FROM campaign_recipients r LEFT JOIN contacts c ON c.id=r.contact_id
     WHERE r.campaign_id=? ${f} ORDER BY r.id LIMIT 500`, params.id);
+  // One headline state per recipient: the furthest point they reached.
+  return rows.map((r) => ({ ...r, state: r.unsubscribed_at ? 'unsubscribed' : r.first_click_at ? 'clicked' : r.first_open_at ? 'opened' : r.status }));
 });
 
 // ---------- Users (admin) ----------

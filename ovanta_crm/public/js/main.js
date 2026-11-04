@@ -1,14 +1,15 @@
-import { api, html, raw, setHtml, store, toast, fail, icon, initials, on, $, $$ } from './core.js';
+import { api, html, raw, setHtml, store, toast, fail, icon, initials, on, applyTheme, $, $$ } from './core.js';
 import * as crm from './crm.js';
 import * as camp from './campaigns.js';
 import * as admin from './admin.js';
+import * as mail from './mail.js';
 
 const app = $('#app');
 
 const NAV = [
   ['Workspace', [['dashboard', 'Dashboard', 'home'], ['contacts', 'Contacts', 'users'], ['accounts', 'Accounts', 'building'], ['deals', 'Deals', 'deal'], ['tasks', 'Tasks', 'task']]],
-  ['Marketing', [['campaigns', 'Campaigns', 'mail'], ['segments', 'Segments', 'seg'], ['templates', 'Templates', 'tpl']]],
-  ['Admin', [['team', 'Team & audit', 'team', ['admin']], ['settings', 'Settings', 'cog']]],
+  ['Marketing', [['campaigns', 'Campaigns', 'mail'], ['segments', 'Segments', 'seg'], ['templates', 'Templates', 'tpl'], ['senders', 'Email senders', 'send', ['admin', 'manager']]]],
+  ['Admin', [['notifications', 'Notifications', 'bell', ['admin', 'manager']], ['team', 'Team & audit', 'team', ['admin']], ['settings', 'Settings', 'cog']]],
 ];
 
 const ROUTES = [
@@ -17,6 +18,7 @@ const ROUTES = [
   [/^deals$/, (r) => crm.deals(r)], [/^deals\/(\d+)$/, (r, id) => crm.dealDetail(r, id)], [/^tasks$/, (r) => crm.tasks(r)],
   [/^campaigns$/, (r) => camp.campaignList(r)], [/^campaigns\/(\d+)$/, (r, id) => camp.campaignDetail(r, id)],
   [/^segments$/, (r) => camp.segments(r)], [/^templates$/, (r) => camp.templates(r)],
+  [/^senders$/, (r) => mail.senders(r)], [/^notifications$/, (r) => mail.notifications(r)],
   [/^team$/, (r) => admin.team(r)], [/^settings$/, (r) => admin.settings(r)],
 ];
 
@@ -75,5 +77,6 @@ async function boot() {
 window.addEventListener('hashchange', route);
 window.addEventListener('ovantaa:logout', () => loginView('Your session expired. Please sign in again.'));
 (async () => {
+  try { applyTheme(await api('GET', '/theme')); } catch {}
   try { const r = await api('GET', '/auth/me'); store.user = r.user; await boot(); } catch { loginView(); }
 })();

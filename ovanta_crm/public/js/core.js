@@ -125,6 +125,29 @@ export const icons = {
   seg: '<path d="M3 5h18l-7 8v6l-4-2v-4z"/>',
   tpl: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>',
   team: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.5-7 8-7s8 3 8 7"/>',
+  send: '<path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/>',
+  bell: '<path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 003.4 0"/>',
   cog: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
 };
 export const icon = (n) => raw(`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[n]}</svg>`);
+
+// ---- theming ----
+const lum = (hex) => { const n = parseInt(hex.slice(1), 16); const c = [n >> 16, (n >> 8) & 255, n & 255].map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+export const DEFAULT_THEME = { primary: '#4f46e5', sidebar: '#12142b', mode: 'auto' };
+export const THEME_PRESETS = [
+  ['Indigo', '#4f46e5', '#12142b'], ['Teal', '#0d9488', '#0b2a2e'], ['Emerald', '#059669', '#10261f'], ['Rose', '#e11d48', '#2a1219'],
+  ['Amber', '#d97706', '#2a1f0e'], ['Sky', '#0284c7', '#0c2233'], ['Violet', '#7c3aed', '#1c1233'], ['Slate', '#334155', '#0f172a'],
+];
+/** Apply org theme + this browser's personal light/dark choice. */
+export function applyTheme(theme = store.theme || DEFAULT_THEME) {
+  store.theme = theme; const r = document.documentElement.style;
+  const ok = (h, d) => (/^#[0-9a-f]{6}$/i.test(h) ? h : d);
+  const primary = ok(theme.primary, DEFAULT_THEME.primary), side = ok(theme.sidebar, DEFAULT_THEME.sidebar);
+  r.setProperty('--brand', primary); r.setProperty('--side', side);
+  r.setProperty('--on-brand', lum(primary) > 0.5 ? '#111827' : '#ffffff');
+  const light = lum(side) > 0.45;
+  r.setProperty('--side-ink', light ? '#111827' : '#ffffff'); r.setProperty('--side-ink2', light ? '#374151' : '#c9cde6');
+  let mine = null; try { mine = localStorage.getItem('ovantaa_mode'); } catch {}
+  const mode = mine && mine !== 'org' ? mine : theme.mode;
+  if (mode === 'light' || mode === 'dark') document.documentElement.dataset.theme = mode; else delete document.documentElement.dataset.theme;
+}

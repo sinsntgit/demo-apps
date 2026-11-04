@@ -23,3 +23,9 @@ export const config = {
   adminPassword: process.env.ADMIN_PASSWORD || 'Ovantaa@123',
   secureCookies: process.env.SECURE_COOKIES === '1',
 };
+
+config.anthropicApiKey = process.env.ANTHROPIC_API_KEY || '';
+config.anthropicModel = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5';
+config.anthropicBaseUrl = (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com').replace(/\/$/, '');
+// Only for internal relays / tests that present self-signed certificates. Leave unset for Gmail, Microsoft 365, Zoho etc.
+config.smtpTlsInsecure = process.env.SMTP_TLS_INSECURE === '1';

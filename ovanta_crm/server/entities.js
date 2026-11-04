@@ -1,5 +1,6 @@
 import { all, get, run, audit } from './db.js';
 import { bad, notFound, forbidden } from './http.js';
+import { notify, dealEvents } from './notifications.js';
 
 export const STAGES = [
   { key: 'prospecting', label: 'Prospecting', prob: 10 },
@@ -143,7 +144,10 @@ export function create(ent, body, user) {
   if (!('owner_id' in data) && ent.fields.owner_id) data.owner_id = user.id;
   const id = insert(ent.table, data);
   audit(user, 'create', ent.table, id, data.name || data.title || data.first_name);
-  return getOne(ent, id);
+  const created = getOne(ent, id);
+  const ev = { contacts: 'contact.created', deals: 'deal.created', accounts: 'account.created' }[ent.table];
+  if (ev) notify([ev], created, {}, user);
+  return created;
 }
 
 export function update(ent, id, body, user) {
@@ -153,7 +157,13 @@ export function update(ent, id, body, user) {
   const cols = Object.keys(data);
   if (cols.length) run(`UPDATE ${ent.table} SET ${cols.map((c) => `${c}=?`).join(',')} WHERE id=?`, ...Object.values(data), id);
   audit(user, 'update', ent.table, id, existing.name || existing.title || existing.first_name);
-  return getOne(ent, id);
+  const updated = getOne(ent, id);
+  if (ent.table === 'deals') { const d = dealEvents(existing, updated); if (d.events.length) notify(d.events, updated, { changes: d.changes }, user); }
+  if (ent.table === 'contacts') {
+    const changes = ['first_name', 'last_name', 'email', 'phone', 'title', 'status', 'source', 'tags'].filter((k) => (existing[k] ?? null) !== (updated[k] ?? null)).map((k) => ({ field: k, from: existing[k], to: updated[k] }));
+    if (changes.length) notify(['contact.updated'], updated, { changes }, user);
+  }
+  return updated;
 }
 
 export function remove(ent, id, user) {
@@ -161,6 +171,8 @@ export function remove(ent, id, user) {
   if (user.role === 'rep' && existing.owner_id !== user.id) throw forbidden('Reps can only delete records they own');
   run(`DELETE FROM ${ent.table} WHERE id=?`, id);
   audit(user, 'delete', ent.table, id, existing.name || existing.title || existing.first_name);
+  if (ent.table === 'deals') notify(['deal.deleted'], existing, {}, user);
+  if (ent.table === 'contacts') notify(['contact.deleted'], existing, {}, user);
   return { ok: true };
 }
 

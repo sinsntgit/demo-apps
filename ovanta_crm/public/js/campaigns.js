@@ -37,6 +37,14 @@ export async function campaignDetail(root, id) {
   return report(root, c);
 }
 
+const aiPanel = () => html`<div class="ai"><h3>✨ Write with Claude</h3>${store.meta.ai.configured ? html`
+  <p class="small muted" style="margin:4px 0 8px">Describe the campaign and Claude drafts the subject and email. Only what you type here is sent to Claude — no contact data. Always review before sending.</p>
+  <textarea id="ai_brief" rows="3" placeholder="e.g. Announce our new analytics module to existing customers and invite them to a 20-minute demo next week."></textarea>
+  <div class="row" style="margin-top:8px"><label>Audience<input id="ai_aud" placeholder="e.g. finance heads at mid-size companies"></label><label>Call-to-action link (optional)<input id="ai_cta" type="url" placeholder="https://…"></label></div>
+  <div class="row"><label>Tone<select id="ai_tone"><option>Friendly and professional</option><option>Formal</option><option>Casual</option><option>Urgent but respectful</option><option>Warm and personal</option></select></label><label>Length<select id="ai_len"><option>Short (under 100 words)</option><option selected>Medium (100–180 words)</option><option>Long (180–300 words)</option></select></label></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn primary" data-act="aigen">Generate draft</button><button type="button" class="btn" data-act="airewrite">Rewrite current content…</button><button type="button" class="btn" data-act="aiundo" hidden>Undo</button></div>
+  <div id="ai_alts" class="chips"></div><div id="ai_msg" class="small muted"></div>` : html`<p class="small muted" style="margin:4px 0 0">AI drafting is not set up yet. ${can('admin') ? html`Add an Anthropic API key in <a href="#/settings">Settings → AI assistant</a>.` : 'Ask an admin to add an Anthropic API key in Settings.'}</p>`}</div>`;
+
 async function editor(root, c) {
   const [segments, templates] = await Promise.all([api('GET', '/segments'), api('GET', '/templates')]);
   const locked = c.status === 'scheduled';
@@ -47,9 +55,11 @@ async function editor(root, c) {
     ${locked ? html`<div class="card kpi" style="border-color:var(--warn)"><b>Scheduled for ${fmtDateTime(c.scheduled_at)}.</b> Unschedule to keep editing — edits are saved but the audience is frozen at send time.</div>` : ''}
     <div class="editor mt"><div class="card"><div class="bd"><form id="cform">
       <label>Campaign name<input name="name" value="${c.name}" required maxlength="150"></label>
-      <div class="row"><label>From name<input name="from_name" value="${c.from_name || ''}"></label><label>From email<input name="from_email" type="email" value="${c.from_email || ''}"></label></div>
+      <label>Send from<select name="sender_id"><option value="">Default sender${store.meta.senders.find((x) => x.is_default) ? ` (${store.meta.senders.find((x) => x.is_default).from_email})` : ''}</option>${store.meta.senders.filter((x) => x.active).map((x) => html`<option value="${x.id}" ${c.sender_id === x.id ? raw('selected') : ''}>${x.label} &lt;${x.from_email}&gt;${x.mode === 'simulate' ? ' — simulation' : ''}</option>`)}</select></label>
+      <div id="senderwarn"></div>
       <label>Audience segment<select name="segment_id"><option value="">Choose a segment…</option>${segments.map((s) => html`<option value="${s.id}" ${c.segment_id === s.id ? raw('selected') : ''}>${s.name} (${s.size} emailable)</option>`)}</select></label>
       <div id="audience" class="small muted" style="margin:-4px 0 12px"></div>
+      ${aiPanel()}
       <label>Start from template<select id="tplpick"><option value="">— keep current content —</option>${templates.map((t) => html`<option value="${t.id}">${t.name}</option>`)}</select></label>
       <label>Subject line<input name="subject" value="${c.subject}" maxlength="250" placeholder="Use merge tags, e.g. {{first_name|there}}"></label>
       <div class="small muted">Insert merge tag:</div><div class="chips">${store.meta.mergeTags.map((t) => html`<button type="button" class="chip" data-act="tag" data-tag="${t}">{{${t}}}</button>`)}</div>
@@ -59,7 +69,7 @@ async function editor(root, c) {
     <div class="card"><div class="hd"><h2>Live preview</h2><span class="grow"></span><span class="small muted" id="subjprev"></span></div><div class="bd"><iframe class="preview" sandbox="" title="Email preview"></iframe></div></div></div>`);
   const form = $('#cform', root); form.addEventListener('submit', (e) => e.preventDefault());
   const frame = $('iframe', root);
-  const val = () => ({ name: form.name.value, from_name: form.from_name.value, from_email: form.from_email.value, segment_id: form.segment_id.value || null, subject: form.subject.value, body_html: form.body_html.value });
+  const val = () => ({ name: form.name.value, sender_id: form.sender_id.value || null, segment_id: form.segment_id.value || null, subject: form.subject.value, body_html: form.body_html.value });
   const refreshPreview = debounce(async () => {
     try { const p = await api('POST', '/campaigns/preview', { subject: form.subject.value, body_html: form.body_html.value }); frame.srcdoc = p.html; $('#subjprev', root).textContent = 'Subject: ' + p.subject; } catch (e) { fail(e); }
   }, 350);
@@ -71,13 +81,36 @@ async function editor(root, c) {
   };
   form.addEventListener('input', refreshPreview); form.segment_id.addEventListener('change', () => refreshAudience().catch(fail));
   $('#tplpick', root).addEventListener('change', (e) => { const t = templates.find((x) => String(x.id) === e.target.value); if (t) { form.subject.value = t.subject; form.body_html.value = t.body_html; refreshPreview(); } e.target.value = ''; });
+  const senderWarn = () => {
+    const sel = store.meta.senders.find((x) => String(x.id) === form.sender_id.value) || store.meta.senders.find((x) => x.is_default);
+    const sim = !sel || sel.mode === 'simulate';
+    setHtml($('#senderwarn', root), sim ? html`<div class="banner small"><b>Simulation mode:</b> ${sel ? `"${sel.label}" is a simulation sender` : 'no sender is configured'} — nothing will actually be emailed. ${can('admin') ? html`<a href="#/senders">Set up a real sender</a>` : 'Ask an admin to configure a real sender.'}</div>` : '');
+  };
+  form.sender_id.addEventListener('change', senderWarn); senderWarn();
   refreshPreview(); refreshAudience().catch(() => {});
+  let aiPrev = null;
+  const aiCall = async (btn, payload) => {
+    btn.disabled = true; const label = btn.textContent; btn.textContent = 'Claude is writing…'; $('#ai_msg', root).textContent = '';
+    try {
+      const r = await api('POST', '/ai/campaign', payload);
+      aiPrev = { subject: form.subject.value, body: form.body_html.value };
+      form.subject.value = r.subject; form.body_html.value = r.body_html; refreshPreview();
+      $('[data-act=aiundo]', root).hidden = false;
+      setHtml($('#ai_alts', root), html`${r.subject_alternatives.map((a) => html`<button type="button" class="chip" data-act="aialt" data-s="${a}" style="font-family:inherit">${a}</button>`)}`);
+      $('#ai_msg', root).textContent = `Draft applied (${r.model}).${r.subject_alternatives.length ? ' Click an alternative subject to swap it in.' : ''} Review the copy and links before sending.`;
+    } finally { btn.disabled = false; btn.textContent = label; }
+  };
   const save = async (quiet) => { await api('PUT', `/campaigns/${c.id}`, val()); if (!quiet) toast('Draft saved', 'ok'); };
   on(root, {
     tag: (el) => { const t = form.body_html; const s = t.selectionStart; t.setRangeText(`{{${el.dataset.tag}}}`, s, t.selectionEnd, 'end'); t.focus(); refreshPreview(); },
     save: () => save(),
-    test: () => modal({ title: 'Send test email', submitLabel: 'Send test', body: html`${field({ name: 'to', label: 'Send to', type: 'email', required: true, default: store.user.email })}<p class="small muted">Test emails use sample merge data and are not tracked.${store.meta.mailTransport === 'log' ? ' Mail transport is in simulation mode — see Settings.' : ''}</p>`,
-      onSubmit: async (f) => { await save(true); const r = await api('POST', `/campaigns/${c.id}/test`, { to: f.to.value }); toast(`Test sent to ${r.to}`, 'ok'); } }),
+    aigen: (el) => aiCall(el, { task: 'draft', brief: $('#ai_brief', root).value, audience: $('#ai_aud', root).value, cta_url: $('#ai_cta', root).value, tone: $('#ai_tone', root).value, length: $('#ai_len', root).value }),
+    airewrite: (el) => modal({ title: 'Rewrite with Claude', submitLabel: 'Rewrite', body: field({ name: 'instruction', label: 'How should it change?', required: true, placeholder: 'e.g. make it shorter and more direct; add urgency; translate to formal tone' }),
+      onSubmit: async (f) => aiCall(el, { task: 'rewrite', instruction: f.instruction.value, current_subject: form.subject.value, current_html: form.body_html.value, tone: $('#ai_tone', root).value, audience: $('#ai_aud', root).value, cta_url: $('#ai_cta', root).value }) }),
+    aiundo: (el) => { if (aiPrev) { form.subject.value = aiPrev.subject; form.body_html.value = aiPrev.body; refreshPreview(); el.hidden = true; $('#ai_alts', root).innerHTML = ''; $('#ai_msg', root).textContent = 'Reverted to your previous content.'; } },
+    aialt: (el) => { form.subject.value = el.dataset.s; refreshPreview(); },
+    test: () => modal({ title: 'Send test email', submitLabel: 'Send test', body: html`${field({ name: 'to', label: 'Send to', type: 'email', required: true, default: store.user.email })}<p class="small muted">Test emails use sample merge data and are not tracked.</p>`,
+      onSubmit: async (f) => { await save(true); const r = await api('POST', `/campaigns/${c.id}/test`, { to: f.to.value }); toast(r.simulated ? `Simulated — nothing was actually sent to ${r.to}` : `Test email sent to ${r.to} via ${r.sender || 'default sender'}`, r.simulated ? '' : 'ok'); } }),
     schedule: () => modal({ title: 'Schedule campaign', submitLabel: 'Schedule', body: field({ name: 'at', label: 'Send at (your local time)', type: 'datetime-local', required: true }),
       onSubmit: async (f) => { await save(true); await api('POST', `/campaigns/${c.id}/schedule`, { at: new Date(f.at.value).toISOString() }); toast('Campaign scheduled', 'ok'); campaignDetail(root, c.id); } }),
     unschedule: async () => { await api('POST', `/campaigns/${c.id}/unschedule`); campaignDetail(root, c.id); },
@@ -85,8 +118,10 @@ async function editor(root, c) {
       await save(true);
       if (!form.segment_id.value) throw new Error('Choose an audience segment first');
       const seg = segments.find((s) => String(s.id) === form.segment_id.value); const p = await api('POST', '/segments/preview', { filter: seg.filter });
-      if (await confirmBox(`Send "${form.subject.value || c.name}" to ${p.emailable} contacts in "${seg.name}" now? This cannot be undone.`, `Send to ${p.emailable}`, false)) {
-        const r = await api('POST', `/campaigns/${c.id}/launch`); toast(`Sending to ${r.recipients} recipients…`, 'ok'); campaignDetail(root, c.id);
+      const sd = store.meta.senders.find((x) => String(x.id) === form.sender_id.value) || store.meta.senders.find((x) => x.is_default);
+      const via = !sd || sd.mode === 'simulate' ? 'SIMULATION MODE — nobody will actually receive this email' : `from ${sd.from_name || ''} <${sd.from_email}>`;
+      if (await confirmBox(`Send "${form.subject.value || c.name}" to ${p.emailable} contacts in "${seg.name}" now, ${via}? This cannot be undone.`, `Send to ${p.emailable}`, false)) {
+        const r = await api('POST', `/campaigns/${c.id}/launch`); toast(r.simulated ? `Simulated send to ${r.recipients} recipients (no real email)` : `Sending to ${r.recipients} recipients…`, 'ok'); campaignDetail(root, c.id);
       }
     },
   });
@@ -100,14 +135,18 @@ async function report(root, c) {
     const maxT = Math.max(...s.timeline.map((t) => t.opens + t.clicks), 1);
     const tile = (label, v, sub, w) => html`<div class="card kpi"><div class="l">${label}</div><div class="v">${v}</div><div class="s">${sub}</div>${w != null ? html`<div class="ring"><i style="width:${Math.min(100, w * 100)}%"></i></div>` : ''}</div>`;
     setHtml(root, html`<div class="topbar"><a href="#/campaigns">← Campaigns</a><h1>${c.name}</h1>${badge(c.status)}<span class="grow"></span><button class="btn" data-act="dup">Duplicate</button><button class="btn" data-act="preview">View email</button></div>
-      <div class="muted" style="margin:-10px 0 16px">Subject: <b>${c.subject}</b> · Audience: ${c.segment_name || 'deleted segment'} · ${c.sent_at ? 'Sent ' + fmtDateTime(c.sent_at) : 'Sending…'}</div>
+      <div class="muted" style="margin:-10px 0 16px">Subject: <b>${c.subject}</b> · Audience: ${c.segment_name || 'deleted segment'} · From: ${c.sender_label ? `${c.sender_label} <${c.sender_email}>` : 'default sender'} · ${c.sent_at ? 'Sent ' + fmtDateTime(c.sent_at) : 'Sending…'}</div>
+      ${c.simulated ? html`<div class="banner"><b>This was a simulation.</b> No email was actually sent — the statuses below are simulated. Configure a real sender under <a href="#/senders">Email senders</a>.</div>` : ''}
+      ${c.note ? html`<div class="banner">${c.note}</div>` : ''}
+      ${s.failed ? html`<div class="banner bad"><b>${s.failed} email${s.failed === 1 ? '' : 's'} failed.</b> ${s.failures.map((f) => html`<div class="small">${f.n}× ${f.error}</div>`)}</div>` : ''}
+      <div class="pill-row" style="margin-bottom:12px"><span class="badge queued">Queued ${s.queued}</span><span class="badge sent">Sent ${s.sent}</span><span class="badge failed">Failed ${s.failed}</span><span class="badge opened">Opened ${s.opened}</span><span class="badge clicked">Clicked ${s.clicked}</span><span class="badge unsubscribed">Unsubscribed ${s.unsubscribed}</span></div>
       ${c.status === 'sending' ? html`<div class="card kpi" style="border-color:var(--warn)">Sending in progress — ${s.sent + s.failed} of ${s.total} processed. <a href="#/campaigns/${c.id}" data-act="refresh">Refresh</a></div>` : ''}
       <div class="grid g4 mt">${tile('Delivered', num(s.sent), `${s.total} recipients${s.failed ? ` · ${s.failed} failed` : ''}`, s.total ? s.sent / s.total : 0)}${tile('Open rate', rate(s.opened, s.sent), `${s.opened} unique · ${s.total_opens} total opens`, s.open_rate)}
         ${tile('Click rate', rate(s.clicked, s.sent), `${s.clicked} unique · click-to-open ${rate(s.clicked, s.opened)}`, s.click_rate)}${tile('Unsubscribes', s.unsubscribed, rate(s.unsubscribed, s.sent) + ' of delivered', null)}</div>
       <div class="grid g2 mt"><div class="card"><div class="hd"><h2>Engagement over time</h2></div><div class="bd">${s.timeline.length ? html`<div class="bars">${s.timeline.map((t) => html`<div class="b"><em>${t.opens}/${t.clicks}</em><i style="height:${Math.max(2, ((t.opens + t.clicks) / maxT) * 100)}%"></i><span>${fmtDate(t.day)}</span></div>`)}</div><div class="small muted">opens / clicks per day</div>` : html`<div class="empty">No engagement yet.</div>`}</div></div>
         <div class="card"><div class="hd"><h2>Top links</h2></div>${s.top_links.length ? html`<div class="tablewrap"><table><tbody>${s.top_links.map((l) => html`<tr><td style="word-break:break-all">${l.url}</td><td class="right nowrap"><b>${l.clicks}</b> clicks<div class="small muted">${l.unique_clicks} unique</div></td></tr>`)}</tbody></table></div>` : html`<div class="empty">No link clicks yet.</div>`}</div></div>
-      <div class="card mt"><div class="hd"><h2>Recipients</h2><span class="grow"></span><select id="rf" aria-label="Filter recipients">${[['', 'All'], ['opened', 'Opened'], ['clicked', 'Clicked'], ['unsubscribed', 'Unsubscribed'], ['failed', 'Failed']].map(([v, l]) => html`<option value="${v}" ${filter === v ? raw('selected') : ''}>${l}</option>`)}</select></div>
-        <div class="tablewrap"><table><thead><tr><th>Recipient</th><th>Status</th><th>Sent</th><th>Opens</th><th>Clicks</th><th>Notes</th></tr></thead><tbody>${recips.length ? recips.map((r) => html`<tr><td>${r.contact_id ? html`<a href="#/contacts/${r.contact_id}">${r.name || r.email}</a>` : r.email}<div class="small muted">${r.email}</div></td><td>${badge(r.status)}</td><td class="small">${ago(r.sent_at)}</td><td>${r.open_count}</td><td>${r.click_count}</td><td class="small muted">${r.unsubscribed_at ? 'Unsubscribed' : ''}${r.error || ''}</td></tr>`) : html`<tr><td colspan="6" class="empty">No recipients match.</td></tr>`}</tbody></table></div>
+      <div class="card mt"><div class="hd"><h2>Recipients</h2><span class="grow"></span><select id="rf" aria-label="Filter recipients">${[['', 'All'], ['queued', 'Queued'], ['sent', 'Sent'], ['failed', 'Failed'], ['opened', 'Opened'], ['clicked', 'Clicked'], ['unsubscribed', 'Unsubscribed']].map(([v, l]) => html`<option value="${v}" ${filter === v ? raw('selected') : ''}>${l}</option>`)}</select></div>
+        <div class="tablewrap"><table><thead><tr><th>Recipient</th><th>Status</th><th>Sent</th><th>Opened</th><th>Clicked</th><th>Detail</th></tr></thead><tbody>${recips.length ? recips.map((r) => html`<tr><td>${r.contact_id ? html`<a href="#/contacts/${r.contact_id}">${r.name || r.email}</a>` : r.email}<div class="small muted">${r.email}</div></td><td>${badge(r.state)}</td><td class="small">${r.sent_at ? ago(r.sent_at) : '—'}</td><td class="small">${r.first_open_at ? html`${ago(r.first_open_at)}${r.open_count > 1 ? ` ×${r.open_count}` : ''}` : '—'}</td><td class="small">${r.first_click_at ? html`${ago(r.first_click_at)}${r.click_count > 1 ? ` ×${r.click_count}` : ''}` : '—'}</td><td class="small ${r.error ? '' : 'muted'}" style="${r.error ? 'color:var(--bad)' : ''};max-width:300px">${r.unsubscribed_at ? 'Unsubscribed ' : ''}${r.error || (r.status === 'sent' ? (r.response || '').slice(0, 60) : '')}</td></tr>`) : html`<tr><td colspan="6" class="empty">No recipients match.</td></tr>`}</tbody></table></div>
         ${recips.length >= 500 ? html`<div class="pager">Showing first 500 recipients.</div>` : ''}</div>`);
     $('#rf', root)?.addEventListener('change', (e) => { filter = e.target.value; draw().catch(fail); });
     if (c.status === 'sending') { clearTimeout(report.t); report.t = setTimeout(() => { if (location.hash === `#/campaigns/${c.id}`) draw().catch(() => {}); }, 2000); }

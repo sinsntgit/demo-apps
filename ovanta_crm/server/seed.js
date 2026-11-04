@@ -22,6 +22,7 @@ export function seedIfEmpty() {
     run("INSERT INTO users (name,email,password_hash,role) VALUES ('Liam Chen','liam@ovantaa.com',?,'rep')", pw);
     run("INSERT INTO users (name,email,password_hash,role) VALUES ('Sofia Rossi','sofia@ovantaa.com',?,'rep')", pw);
     const uids = [1, 2, 3, 4];
+    run("INSERT INTO senders (label,from_name,from_email,mode,is_default) VALUES ('Demo sender (simulation)','Ovantaa Team','hello@ovantaa.example','simulate',1)");
 
     const industries = ['Software', 'Manufacturing', 'Healthcare', 'Finance', 'Retail', 'Logistics', 'Education', 'Energy'];
     const places = [['San Francisco', 'USA'], ['Austin', 'USA'], ['New York', 'USA'], ['London', 'UK'], ['Berlin', 'Germany'], ['Mumbai', 'India'], ['Singapore', 'Singapore'], ['Toronto', 'Canada']];
@@ -92,6 +93,7 @@ export function seedIfEmpty() {
     const sentId = cmp('Spring product launch', 'Spring release: what\'s new for {{company|you}}', body, sLeads, 'sent', 12);
     cmp('Customer summit invite', 'You\'re invited: Ovantaa Customer Summit', '<h2>Join us, {{first_name|friend}}</h2><p><a href="https://www.ovantaa.example/summit">Reserve your seat</a></p>', sCust, 'draft', 0);
     cmp('Monthly newsletter', 'Ovantaa monthly digest', '<p>Hi {{first_name|there}}, here is your monthly digest.</p><p><a href="https://www.ovantaa.example/blog">Read more</a></p>', sAll, 'draft', 0);
+    run('UPDATE campaigns SET simulated=1 WHERE id=?', sentId); // demo history is illustrative, not real delivery
     // historical recipients (illustrative demo data)
     const rec = all("SELECT c.id,c.email FROM contacts c WHERE c.status IN ('lead','qualified') AND c.subscribed=1 AND c.email IS NOT NULL");
     for (const c of rec) {
@@ -107,7 +109,7 @@ export function seedIfEmpty() {
 
 if (process.argv[1]?.endsWith('seed.js')) {
   if (process.argv.includes('--reset')) {
-    for (const t of ['campaign_events', 'campaign_recipients', 'campaigns', 'templates', 'segments', 'activities', 'tasks', 'deals', 'contacts', 'accounts', 'audit_log', 'users']) db.exec(`DELETE FROM ${t}`);
+    for (const t of ['email_log', 'notification_rules', 'campaign_events', 'campaign_recipients', 'campaigns', 'senders', 'settings', 'templates', 'segments', 'activities', 'tasks', 'deals', 'contacts', 'accounts', 'audit_log', 'users']) db.exec(`DELETE FROM ${t}`);
   }
   seedIfEmpty();
   console.log(`Seed complete. Login: ${config.adminEmail} / ${config.adminPassword}`);

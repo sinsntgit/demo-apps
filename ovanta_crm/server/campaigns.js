@@ -4,6 +4,7 @@ import { config } from './config.js';
 import { hmac } from './auth.js';
 import { resolveSegment } from './segments.js';
 import { bad } from './http.js';
+import { sendMail, getSender, defaultSender, sentLast24h } from './mailer.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -51,29 +52,21 @@ export function renderMessage(campaign, contact, token) {
   return { subject, html, text };
 }
 
-// ---- Transports ----------------------------------------------------------
-export const outboxLog = []; // last messages handled by the "log" transport (for the in-app Outbox view)
+// ---- Sender resolution & sending -------------------------------------------
+export { outboxLog } from './mailer.js';
 
-async function deliver(msg) {
-  if (config.mailTransport === 'webhook') {
-    if (!config.mailWebhookUrl) throw new Error('MAIL_WEBHOOK_URL is not configured');
-    const r = await fetch(config.mailWebhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(config.mailWebhookToken ? { Authorization: `Bearer ${config.mailWebhookToken}` } : {}) },
-      body: JSON.stringify(msg), signal: AbortSignal.timeout(15000),
-    });
-    if (!r.ok) throw new Error(`Mail webhook responded ${r.status}`);
-    return;
-  }
-  outboxLog.unshift({ at: new Date().toISOString(), to: msg.to, subject: msg.subject, from: msg.from, campaign_id: msg.campaign_id });
-  if (outboxLog.length > 200) outboxLog.length = 200;
+/** The sender a campaign will use: its chosen one, else the default, else null (legacy env transport / simulation). */
+export function resolveSender(c) {
+  const s = c.sender_id ? getSender(c.sender_id) : defaultSender();
+  return s || null;
 }
-
-const fromOf = (c) => `${c.from_name || config.defaultFromName} <${c.from_email || config.defaultFromEmail}>`;
+export const isSimulated = (sender) => (sender ? sender.mode === 'simulate' : config.mailTransport !== 'webhook');
 
 export async function sendTest(campaign, to, sampleContact) {
   const m = renderMessage(campaign, sampleContact, null);
-  await deliver({ from: fromOf(campaign), to, subject: `[TEST] ${m.subject}`, html: m.html, text: m.text, campaign_id: campaign.id });
+  const sender = resolveSender(campaign);
+  const r = await sendMail(sender, { to, subject: `[TEST] ${m.subject}`, html: m.html, text: m.text, campaign_id: campaign.id });
+  return { ...r, sender };
 }
 
 // ---- Launch / send engine --------------------------------------------------
@@ -85,6 +78,11 @@ export function validateForLaunch(c) {
   if (!c.body_html?.trim()) throw bad('Campaign content is empty');
   const seg = get('SELECT * FROM segments WHERE id=?', c.segment_id);
   if (!seg) throw bad('The selected segment no longer exists');
+  if (c.sender_id) {
+    const s = getSender(c.sender_id);
+    if (!s) throw bad('The selected sender no longer exists');
+    if (!s.active) throw bad(`Sender "${s.label}" is disabled`);
+  }
   return seg;
 }
 
@@ -94,17 +92,20 @@ export function launchCampaign(id) {
   if (!c) throw bad('Campaign not found');
   if (!['draft', 'scheduled'].includes(c.status)) throw bad(`Campaign is already ${c.status}`);
   const seg = validateForLaunch(c);
+  const sender = resolveSender(c);
   const contacts = resolveSegment(seg.filter);
   if (!contacts.length) throw bad('This segment has no emailable (subscribed, with email) contacts');
   tx(() => {
     for (const ct of contacts) {
-      run('INSERT INTO campaign_recipients (campaign_id,contact_id,email,token) VALUES (?,?,?,?)', id, ct.id, ct.email, crypto.randomBytes(12).toString('base64url'));
+      run('INSERT INTO campaign_recipients (campaign_id,contact_id,email,token,sender_id) VALUES (?,?,?,?,?)', id, ct.id, ct.email, crypto.randomBytes(12).toString('base64url'), sender?.id ?? null);
     }
-    run("UPDATE campaigns SET status='sending' WHERE id=?", id);
+    run("UPDATE campaigns SET status='sending', sender_id=?, simulated=?, note=NULL WHERE id=?", sender?.id ?? null, isSimulated(sender) ? 1 : 0, id);
   });
   processCampaign(id);
-  return { recipients: contacts.length };
+  return { recipients: contacts.length, simulated: isSimulated(sender), sender: sender?.label || null };
 }
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export function processCampaign(id) {
   if (active.has(id)) return;
@@ -112,27 +113,33 @@ export function processCampaign(id) {
   (async () => {
     try {
       const c = get('SELECT * FROM campaigns WHERE id=?', id);
+      const sender = c.sender_id ? getSender(c.sender_id) : null;
+      const delay = sender && sender.mode === 'smtp' ? sender.delay_ms : config.sendDelayMs;
+      let paused = false;
       for (;;) {
         const batch = all(`SELECT r.*, ct.first_name, ct.last_name, ct.title, ac.name AS account_name
           FROM campaign_recipients r LEFT JOIN contacts ct ON ct.id=r.contact_id LEFT JOIN accounts ac ON ac.id=ct.account_id
           WHERE r.campaign_id=? AND r.status='queued' LIMIT ?`, id, config.sendBatchSize);
         if (!batch.length) break;
         for (const r of batch) {
+          if (sender && sender.mode === 'smtp' && sentLast24h(sender.id) >= sender.daily_limit) { paused = true; break; }
           // Skip anyone who unsubscribed after the audience was frozen
           const still = r.contact_id ? get('SELECT subscribed FROM contacts WHERE id=?', r.contact_id) : { subscribed: 1 };
           if (still && !still.subscribed) { run("UPDATE campaign_recipients SET status='failed', error='Unsubscribed before send' WHERE id=?", r.id); continue; }
           try {
             const m = renderMessage(c, { ...r, email: r.email }, r.token);
-            await deliver({ from: fromOf(c), to: r.email, subject: m.subject, html: m.html, text: m.text, campaign_id: id,
+            const res = await sendMail(sender, { to: r.email, subject: m.subject, html: m.html, text: m.text, campaign_id: id,
               headers: { 'List-Unsubscribe': `<${config.baseUrl}/u/${r.token}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } });
-            run("UPDATE campaign_recipients SET status='sent', sent_at=? WHERE id=?", nowIso(), r.id);
+            run("UPDATE campaign_recipients SET status='sent', sent_at=?, message_id=?, response=?, error=NULL WHERE id=?", nowIso(), res.messageId, res.response, r.id);
           } catch (e) {
-            run("UPDATE campaign_recipients SET status='failed', error=? WHERE id=?", String(e.message).slice(0, 300), r.id);
+            run("UPDATE campaign_recipients SET status='failed', error=? WHERE id=?", String(e.message).slice(0, 400), r.id);
           }
+          await sleep(delay);
         }
-        await new Promise((res) => setTimeout(res, config.sendDelayMs));
+        if (paused) break;
       }
-      run("UPDATE campaigns SET status='sent', sent_at=? WHERE id=? AND status='sending'", nowIso(), id);
+      if (paused) run("UPDATE campaigns SET note=? WHERE id=?", `Paused: "${sender.label}" reached its daily limit of ${sender.daily_limit}. Remaining emails send automatically as the 24-hour window frees up.`, id);
+      else run("UPDATE campaigns SET status='sent', sent_at=?, note=NULL WHERE id=? AND status='sending'", nowIso(), id);
     } catch (e) { console.error('Campaign send failed', id, e); }
     finally { active.delete(id); }
   })();
@@ -142,9 +149,9 @@ export function startScheduler() {
   const tick = () => {
     try {
       for (const c of all("SELECT id FROM campaigns WHERE status='scheduled' AND scheduled_at <= ?", nowIso())) {
-        try { launchCampaign(c.id); } catch (e) { console.error('Scheduled launch failed', c.id, e.message); run("UPDATE campaigns SET status='draft' WHERE id=?", c.id); }
+        try { launchCampaign(c.id); } catch (e) { console.error('Scheduled launch failed', c.id, e.message); run("UPDATE campaigns SET status='draft', note=? WHERE id=?", `Scheduled send failed: ${e.message}`, c.id); }
       }
-      for (const c of all("SELECT id FROM campaigns WHERE status='sending'")) processCampaign(c.id); // resume after restart
+      for (const c of all("SELECT id FROM campaigns WHERE status='sending'")) processCampaign(c.id); // resume after restart / daily-limit pause
     } catch (e) { console.error('Scheduler error', e); }
   };
   tick();
@@ -175,6 +182,7 @@ export function campaignStats(id) {
   out.click_rate = base ? out.clicked / base : 0;
   out.click_to_open = out.opened ? out.clicked / out.opened : 0;
   out.unsub_rate = base ? out.unsubscribed / base : 0;
+  out.failures = all("SELECT error, COUNT(*) AS n FROM campaign_recipients WHERE campaign_id=? AND status='failed' GROUP BY error ORDER BY n DESC LIMIT 5", id);
   out.top_links = all("SELECT url, COUNT(*) AS clicks, COUNT(DISTINCT recipient_id) AS unique_clicks FROM campaign_events WHERE campaign_id=? AND type='click' GROUP BY url ORDER BY clicks DESC LIMIT 10", id);
   out.timeline = all("SELECT DATE(created_at) AS day, SUM(type='open') AS opens, SUM(type='click') AS clicks FROM campaign_events WHERE campaign_id=? AND type IN ('open','click') GROUP BY DATE(created_at) ORDER BY day", id)
     .map((r) => ({ day: r.day, opens: n(r.opens), clicks: n(r.clicks) }));

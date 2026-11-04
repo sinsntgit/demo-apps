@@ -6,6 +6,7 @@ import { config } from './config.js';
 import { db, get, run, nowIso } from './db.js';
 import { handleApi, readBody } from './http.js';
 import './api.js';
+import './api2.js';
 import { recordEvent, signUrl, startScheduler } from './campaigns.js';
 import { seedIfEmpty } from './seed.js';
 
