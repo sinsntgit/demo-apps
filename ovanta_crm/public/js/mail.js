@@ -7,6 +7,8 @@ const PRESETS = {
     help: 'Use the full email address as username and a 16-character App Password (Google Account → Security → 2-Step Verification → App passwords). Regular passwords are rejected. Gmail allows roughly 500 messages/day (about 2,000 on Google Workspace); the From address must be this account or a verified "Send mail as" alias.' },
   microsoft: { label: 'Microsoft 365 / Outlook', host: 'smtp.office365.com', port: 587, secure: false, daily: 1000,
     help: 'SMTP AUTH must be enabled for the mailbox by your Microsoft 365 admin. Microsoft is phasing out Basic-auth SMTP (disabled by default for existing tenants from the end of December 2026), so for Microsoft mailboxes prefer a transactional relay long-term.' },
+  titan: { label: 'Titan Mail (GoDaddy / Hostinger / BigRock etc.)', host: 'smtp.titan.email', port: 465, secure: true, daily: 300,
+    help: 'Username is the full email address and the password is your normal mailbox password (set it in the Titan webmail/control panel). EU-region accounts use smtp0101.titan.email. If 465 fails, try port 587 with SSL/TLS off. Avoid a # character in the password. Titan plans have modest daily sending limits — check yours before large campaigns.' },
   zoho_in: { label: 'Zoho Mail (India data centre)', host: 'smtp.zoho.in', port: 465, secure: true, daily: 500,
     help: 'Use the full address as username. With two-factor auth on, create an application-specific password in Zoho Accounts → Security. Accounts in other regions use smtp.zoho.com / .eu / .com.au.' },
   zoho: { label: 'Zoho Mail (global)', host: 'smtp.zoho.com', port: 465, secure: true, daily: 500, help: 'Use the full address as username; use an app-specific password if two-factor auth is on.' },
@@ -15,7 +17,7 @@ const PRESETS = {
 
 function senderModal(s, done) {
   const v = s || { mode: 'smtp', port: 587, daily_limit: 500, delay_ms: 1000, active: true };
-  const guess = s ? Object.entries(PRESETS).find(([, p]) => p.host === s.host)?.[0] || 'custom' : 'google';
+  const guess = s ? Object.entries(PRESETS).find(([, p]) => p.host === s.host)?.[0] || 'custom' : 'titan';
   modal({ title: s ? `Edit sender · ${s.label}` : 'Add email sender', wide: true, submitLabel: 'Save sender',
     body: html`<div class="row">${field({ name: 'label', label: 'Label (shown in the app)', required: true, placeholder: 'e.g. Santosh – SyncSense' }, v)}${field({ name: 'from_name', label: 'From name', placeholder: 'Santosh T' }, v)}</div>
       <div class="row">${field({ name: 'from_email', label: 'From email address', type: 'email', required: true, placeholder: 'santosh@syncsense.in' }, v)}${field({ name: 'reply_to', label: 'Reply-to (optional)', type: 'email' }, v)}</div>
