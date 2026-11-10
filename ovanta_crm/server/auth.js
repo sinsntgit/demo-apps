@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
 import { get } from './db.js';
+import { normalizePerms } from './permissions.js';
 
 function loadSecret() {
   if (process.env.SESSION_SECRET) return process.env.SESSION_SECRET;
@@ -59,8 +60,17 @@ export function readSession(token) {
   try {
     const { uid, exp } = JSON.parse(Buffer.from(payload, 'base64url').toString());
     if (exp < Date.now()) return null;
-    return get('SELECT id,name,email,role FROM users WHERE id=? AND active=1', uid) || null;
+    return loadUser(uid);
   } catch { return null; }
+}
+/** Load an active user with their role name and resolved permissions. */
+export function loadUser(uid) {
+  const u = get(`SELECT u.id, u.name, u.email, u.role_id, COALESCE(r.name, u.role) AS role, COALESCE(r.label, u.role) AS role_label, r.permissions AS perms_json
+    FROM users u LEFT JOIN roles r ON r.id = u.role_id WHERE u.id = ? AND u.active = 1`, uid);
+  if (!u) return null;
+  let raw = {}; try { raw = JSON.parse(u.perms_json || '{}'); } catch {}
+  const { perms_json, ...rest } = u;
+  return { ...rest, perms: normalizePerms(raw) };
 }
 export function parseCookies(header = '') {
   const out = {};

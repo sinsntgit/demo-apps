@@ -1,6 +1,5 @@
 import {
-  api, qs, html, raw, setHtml, esc, on, store, toast, fail, modal, confirmBox, purgeModal, field, formValues, badge, money, pct, num, fmtDate, fmtDateTime, ago, initials,
-  fullName, can, todayStr, $, $$, debounce,
+  api, qs, html, raw, setHtml, esc, on, store, toast, fail, modal, confirmBox, purgeModal, field, formValues, badge, money, pct, num, fmtDate, fmtDateTime, ago, initials, fullName, todayStr, $, $$, debounce, allow, allowAll,
 } from './core.js';
 import { mountList } from './list.js';
 import { readTable, FIELDS, guessMapping, applyMapping, TEMPLATE_CSV } from './csv.js';
@@ -114,7 +113,7 @@ function importModal(done) {
 export async function contacts(root) {
   root.innerHTML = '';
   const head = document.createElement('div'); const body = document.createElement('div'); root.append(head, body);
-  setHtml(head, page('Contacts', html`<button class="btn" data-act="import">Import CSV</button><a class="btn" href="/api/contacts/export.csv" download>Export CSV</a><button class="btn primary" data-act="new">+ New contact</button>${can('admin') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`));
+  setHtml(head, page('Contacts', html`<button class="btn" data-act="import">Import CSV</button><a class="btn" href="/api/contacts/export.csv" download>Export CSV</a><button class="btn primary" data-act="new">+ New contact</button>${allow('data.purge') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`));
   let list;
   list = mountList(body, {
     key: 'contacts', endpoint: '/contacts', selectable: true, searchPlaceholder: 'Search name, email, company…', empty: 'No contacts match. Add one or import a CSV.',
@@ -126,7 +125,7 @@ export async function contacts(root) {
       { label: 'Status', sort: 'status', render: (c) => badge(c.status) }, { label: 'Source', render: (c) => c.source || '—' },
       { label: 'Owner', render: (c) => c.owner_name || '—' }, { label: 'Added', sort: 'created_at', render: (c) => fmtDate(c.created_at) },
     ],
-    bulk: [{ key: 'status', label: 'Set status' }, { key: 'tag', label: 'Add tag' }, { key: 'owner', label: 'Assign owner' }, ...(can('admin', 'manager') ? [{ key: 'delete', label: 'Delete', danger: true }] : [])],
+    bulk: [{ key: 'status', label: 'Set status' }, { key: 'tag', label: 'Add tag' }, { key: 'owner', label: 'Assign owner' }, ...(allowAll('contacts.delete') ? [{ key: 'delete', label: 'Delete', danger: true }] : [])],
     onBulk: async (action, ids, done) => {
       const run = async (value) => { await api('POST', '/contacts/bulk', { action, ids, value }); toast(`Updated ${ids.length} contacts`, 'ok'); done(); };
       if (action === 'delete') { if (await confirmBox(`Delete ${ids.length} contacts permanently?`, 'Delete')) await run(); return; }
@@ -164,7 +163,7 @@ const miniTasks = (tasks) => html`<div class="card"><div class="hd"><h2>Tasks</h
 export async function contactDetail(root, id) {
   const draw = async () => {
     const d = await api('GET', `/contacts/${id}/360`); const c = d.contact;
-    setHtml(root, html`<div class="topbar"><a href="#/contacts">← Contacts</a><span class="grow"></span><button class="btn" data-act="task">+ Task</button><button class="btn" data-act="edit">Edit</button>${can('admin', 'manager') ? html`<button class="btn danger" data-act="del">Delete</button>` : ''}</div>
+    setHtml(root, html`<div class="topbar"><a href="#/contacts">← Contacts</a><span class="grow"></span><button class="btn" data-act="task">+ Task</button><button class="btn" data-act="edit">Edit</button>${allow('contacts.delete') ? html`<button class="btn danger" data-act="del">Delete</button>` : ''}</div>
       <div class="grid g21"><div style="display:grid;gap:16px;align-content:start">
         <div class="card"><div class="bd" style="display:flex;gap:16px;align-items:center"><span class="avatar" style="width:56px;height:56px;font-size:18px">${initials(fullName(c))}</span><div class="grow"><h1>${fullName(c)}</h1><div class="muted">${c.title || ''} ${c.account_id ? html`at <a href="#/accounts/${c.account_id}">${c.account_name}</a>` : ''}</div></div>${badge(c.status)}</div></div>
         ${timelineCard(d.activities, 'contact_id', id)}
@@ -200,7 +199,7 @@ function accountForm(a = {}, onDone) {
 }
 export async function accounts(root) {
   root.innerHTML = ''; const head = document.createElement('div'), body = document.createElement('div'); root.append(head, body);
-  setHtml(head, page('Accounts', html`<button class="btn primary" data-act="new">+ New account</button>${can('admin') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`));
+  setHtml(head, page('Accounts', html`<button class="btn primary" data-act="new">+ New account</button>${allow('data.purge') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`));
   const list = mountList(body, {
     key: 'accounts', endpoint: '/accounts', searchPlaceholder: 'Search accounts…', empty: 'No accounts yet.',
     filters: [{ name: 'industry', label: 'Industry', options: store.meta.industries }, { name: 'owner_id', label: 'Owner', options: userOpts() }],
@@ -215,7 +214,7 @@ export async function accounts(root) {
 export async function accountDetail(root, id) {
   const draw = async () => {
     const d = await api('GET', `/accounts/${id}/360`); const a = d.account;
-    setHtml(root, html`<div class="topbar"><a href="#/accounts">← Accounts</a><span class="grow"></span><button class="btn" data-act="edit">Edit</button>${can('admin', 'manager') ? html`<button class="btn danger" data-act="del">Delete</button>` : ''}</div>
+    setHtml(root, html`<div class="topbar"><a href="#/accounts">← Accounts</a><span class="grow"></span><button class="btn" data-act="edit">Edit</button>${allow('accounts.delete') ? html`<button class="btn danger" data-act="del">Delete</button>` : ''}</div>
       <div class="grid g21"><div style="display:grid;gap:16px;align-content:start">
         <div class="card"><div class="bd"><h1>${a.name}</h1><div class="muted">${[a.industry, a.size && a.size + ' employees', [a.city, a.country].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}</div>
           ${a.website ? html`<div><a href="${/^https?:\/\//.test(a.website) ? a.website : '#'}" target="_blank" rel="noopener noreferrer">${a.website}</a></div>` : ''}${a.notes ? html`<p>${a.notes}</p>` : ''}</div></div>
@@ -285,7 +284,7 @@ function dealForm(d = {}, lk, onDone) {
 export async function deals(root) {
   const view = sessionStorage.getItem('dealView') || 'board';
   root.innerHTML = ''; const head = document.createElement('div'), body = document.createElement('div'); root.append(head, body);
-  setHtml(head, page('Deals', html`<div class="tabs" style="margin:0;border:0"><button class="${view === 'board' ? 'on' : ''}" data-act="view" data-v="board">Board</button><button class="${view === 'list' ? 'on' : ''}" data-act="view" data-v="list">List</button></div><button class="btn primary" data-act="new">+ New deal</button>${can('admin') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`));
+  setHtml(head, page('Deals', html`<div class="tabs" style="margin:0;border:0"><button class="${view === 'board' ? 'on' : ''}" data-act="view" data-v="board">Board</button><button class="${view === 'list' ? 'on' : ''}" data-act="view" data-v="list">List</button></div><button class="btn primary" data-act="new">+ New deal</button>${allow('data.purge') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`));
   let reload;
   on(head, {
     view: (el) => { sessionStorage.setItem('dealView', el.dataset.v); deals(root); },
@@ -323,7 +322,7 @@ export async function deals(root) {
 export async function dealDetail(root, id) {
   const draw = async () => {
     const d = await api('GET', `/deals/${id}/360`); const x = d.deal;
-    setHtml(root, html`<div class="topbar"><a href="#/deals">← Deals</a><span class="grow"></span><button class="btn primary" data-act="stage">Change stage</button><button class="btn" data-act="task">+ Task</button><button class="btn" data-act="edit">Edit</button>${can('admin', 'manager') ? html`<button class="btn danger" data-act="del">Delete</button>` : ''}</div>
+    setHtml(root, html`<div class="topbar"><a href="#/deals">← Deals</a><span class="grow"></span><button class="btn primary" data-act="stage">Change stage</button><button class="btn" data-act="task">+ Task</button><button class="btn" data-act="edit">Edit</button>${allow('deals.delete') ? html`<button class="btn danger" data-act="del">Delete</button>` : ''}</div>
       <div class="grid g21"><div style="display:grid;gap:16px;align-content:start"><div class="card"><div class="bd"><h1>${x.name}</h1><div style="display:flex;gap:12px;align-items:center;margin-top:8px"><span class="stat-big">${money(x.amount)}</span>${badge(x.stage)}<span class="muted">${x.probability}% likely · weighted ${money(x.amount * x.probability / 100)}</span></div>
         <div class="funnel mt" aria-hidden="true">${store.meta.stages.slice(0, 5).map((s, i) => html`<i style="flex:1;background:${i <= store.meta.stages.findIndex((q) => q.key === x.stage) ? 'var(--brand)' : 'transparent'}"></i>`)}</div></div></div>
         <div class="card"><div class="hd"><h2>Stage history</h2></div><div class="bd">${historyView(d.history, x)}</div></div>
@@ -353,7 +352,7 @@ async function taskForm(t = {}, onDone) {
 }
 export async function tasks(root) {
   root.innerHTML = ''; const head = document.createElement('div'), body = document.createElement('div'); root.append(head, body);
-  setHtml(head, page('Tasks', html`<button class="btn primary" data-act="new">+ New task</button>${can('admin') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`));
+  setHtml(head, page('Tasks', html`<button class="btn primary" data-act="new">+ New task</button>${allow('data.purge') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`));
   const list = mountList(body, { key: 'tasks', endpoint: '/tasks', searchPlaceholder: 'Search tasks…', empty: 'No tasks. Enjoy the quiet!',
     filters: [{ name: 'done', label: 'State', options: [['0', 'Open'], ['1', 'Done']] }, { name: 'due', label: 'Due', options: [['overdue', 'Overdue'], ['today', 'Today'], ['week', 'Next 7 days']] }, { name: 'owner_id', label: 'Assignee', options: userOpts() }, { name: 'priority', label: 'Priority', options: ['low', 'medium', 'high'] }],
     columns: [

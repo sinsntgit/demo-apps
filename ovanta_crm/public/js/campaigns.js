@@ -1,6 +1,5 @@
 import {
-  api, html, raw, setHtml, esc, on, store, toast, fail, modal, confirmBox, purgeModal, field, formValues, badge, money, pct, num, fmtDate, fmtDateTime, ago,
-  fullName, can, $, $$, debounce,
+  api, html, raw, setHtml, esc, on, store, toast, fail, modal, confirmBox, purgeModal, field, formValues, badge, money, pct, num, fmtDate, fmtDateTime, ago, fullName, $, $$, debounce, allow,
 } from './core.js';
 import { mountList } from './list.js';
 
@@ -12,7 +11,7 @@ export async function campaignList(root) {
   const camps = await api('GET', '/campaigns');
   const sent = camps.filter((c) => c.sent > 0);
   const tSent = sent.reduce((a, c) => a + c.sent, 0), tOpen = sent.reduce((a, c) => a + c.opened, 0), tClick = sent.reduce((a, c) => a + c.clicked, 0);
-  setHtml(root, html`${page('Campaigns', html`<a class="btn" href="#/segments">Segments</a><a class="btn" href="#/templates">Templates</a><button class="btn primary" data-act="new">+ New campaign</button>${can('admin') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`)}
+  setHtml(root, html`${page('Campaigns', html`<a class="btn" href="#/segments">Segments</a><a class="btn" href="#/templates">Templates</a><button class="btn primary" data-act="new">+ New campaign</button>${allow('data.purge') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`)}
     <div class="grid g4"><div class="card kpi"><div class="l">Campaigns</div><div class="v">${camps.length}</div><div class="s">${camps.filter((c) => c.status === 'draft').length} drafts · ${camps.filter((c) => c.status === 'scheduled').length} scheduled</div></div>
       <div class="card kpi"><div class="l">Emails sent</div><div class="v">${num(tSent)}</div></div>
       <div class="card kpi"><div class="l">Avg open rate</div><div class="v">${rate(tOpen, tSent)}</div></div>
@@ -21,7 +20,7 @@ export async function campaignList(root) {
       ${camps.map((c) => html`<tr><td><a href="#/campaigns/${c.id}"><b>${c.name}</b></a><div class="small muted">${c.subject}</div></td><td>${badge(c.status)}</td><td>${c.segment_name || html`<span class="muted">—</span>`}</td>
         <td>${c.sent || '—'}</td><td>${c.sent ? rate(c.opened, c.sent) : '—'}</td><td>${c.sent ? rate(c.clicked, c.sent) : '—'}</td>
         <td class="small">${c.status === 'scheduled' ? 'Sends ' + fmtDateTime(c.scheduled_at) : c.sent_at ? fmtDate(c.sent_at) : 'Created ' + fmtDate(c.created_at)}</td>
-        <td class="nowrap"><button class="btn sm" data-act="dup" data-id="${c.id}">Duplicate</button>${can('admin', 'manager') && c.status !== 'sending' ? html` <button class="btn sm danger" data-act="del" data-id="${c.id}" aria-label="Delete">✕</button>` : ''}</td></tr>`)}</tbody></table></div>` : html`<div class="empty">No campaigns yet. Create your first one.</div>`}</div>`);
+        <td class="nowrap"><button class="btn sm" data-act="dup" data-id="${c.id}">Duplicate</button>${allow('campaigns.delete') && c.status !== 'sending' ? html` <button class="btn sm danger" data-act="del" data-id="${c.id}" aria-label="Delete">✕</button>` : ''}</td></tr>`)}</tbody></table></div>` : html`<div class="empty">No campaigns yet. Create your first one.</div>`}</div>`);
   on(root, {
     new: () => modal({ title: 'New campaign', body: field({ name: 'name', label: 'Campaign name', required: true, placeholder: 'e.g. Autumn webinar invite' }), submitLabel: 'Create',
       onSubmit: async (f) => { const c = await api('POST', '/campaigns', { name: f.name.value, from_name: store.meta.defaults.fromName, from_email: store.meta.defaults.fromEmail }); location.hash = `#/campaigns/${c.id}`; } }),
@@ -44,12 +43,12 @@ const aiPanel = () => html`<div class="ai"><h3>✨ Write with Claude</h3>${store
   <div class="row" style="margin-top:8px"><label>Audience<input id="ai_aud" placeholder="e.g. finance heads at mid-size companies"></label><label>Call-to-action link (optional)<input id="ai_cta" type="url" placeholder="https://…"></label></div>
   <div class="row"><label>Tone<select id="ai_tone"><option>Friendly and professional</option><option>Formal</option><option>Casual</option><option>Urgent but respectful</option><option>Warm and personal</option></select></label><label>Length<select id="ai_len"><option>Short (under 100 words)</option><option selected>Medium (100–180 words)</option><option>Long (180–300 words)</option></select></label></div>
   <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn primary" data-act="aigen">Generate draft</button><button type="button" class="btn" data-act="airewrite">Rewrite current content…</button><button type="button" class="btn" data-act="aiundo" hidden>Undo</button></div>
-  <div id="ai_alts" class="chips"></div><div id="ai_msg" class="small muted"></div>` : html`<p class="small muted" style="margin:4px 0 0">AI drafting is not set up yet. ${can('admin') ? html`Add an Anthropic API key in <a href="#/settings">Settings → AI assistant</a>.` : 'Ask an admin to add an Anthropic API key in Settings.'}</p>`}</div>`;
+  <div id="ai_alts" class="chips"></div><div id="ai_msg" class="small muted"></div>` : html`<p class="small muted" style="margin:4px 0 0">AI drafting is not set up yet. ${allow('settings.manage') ? html`Add an Anthropic API key in <a href="#/settings">Settings → AI assistant</a>.` : 'Ask an admin to add an Anthropic API key in Settings.'}</p>`}</div>`;
 
 async function editor(root, c) {
   const [segments, templates] = await Promise.all([api('GET', '/segments'), api('GET', '/templates')]);
   const locked = c.status === 'scheduled';
-  const canSend = can('admin', 'manager');
+  const canSend = allow('campaigns.send');
   setHtml(root, html`<div class="topbar"><a href="#/campaigns">← Campaigns</a><h1>${c.name}</h1>${badge(c.status)}<span class="grow"></span>
       <button class="btn" data-act="save">Save draft</button>
       ${canSend ? html`<button class="btn" data-act="test">Send test</button>${locked ? html`<button class="btn" data-act="unschedule">Unschedule</button>` : html`<button class="btn" data-act="schedule">Schedule…</button>`}<button class="btn primary" data-act="send">Send now</button>` : html`<span class="muted small">Managers can send campaigns</span>`}</div>
@@ -85,7 +84,7 @@ async function editor(root, c) {
   const senderWarn = () => {
     const sel = store.meta.senders.find((x) => String(x.id) === form.sender_id.value) || store.meta.senders.find((x) => x.is_default);
     const sim = !sel || sel.mode === 'simulate';
-    setHtml($('#senderwarn', root), sim ? html`<div class="banner small"><b>Simulation mode:</b> ${sel ? `"${sel.label}" is a simulation sender` : 'no sender is configured'} — nothing will actually be emailed. ${can('admin') ? html`<a href="#/senders">Set up a real sender</a>` : 'Ask an admin to configure a real sender.'}</div>` : '');
+    setHtml($('#senderwarn', root), sim ? html`<div class="banner small"><b>Simulation mode:</b> ${sel ? `"${sel.label}" is a simulation sender` : 'no sender is configured'} — nothing will actually be emailed. ${allow('senders.manage') ? html`<a href="#/senders">Set up a real sender</a>` : 'Ask an admin to configure a real sender.'}</div>` : '');
   };
   form.sender_id.addEventListener('change', senderWarn); senderWarn();
   refreshPreview(); refreshAudience().catch(() => {});
@@ -204,10 +203,10 @@ function segmentModal(seg, done) {
 export async function segments(root) {
   const draw = async () => {
     const segs = await api('GET', '/segments');
-    setHtml(root, html`${page('Segments', html`<a class="btn" href="#/campaigns">← Campaigns</a><button class="btn primary" data-act="new">+ New segment</button>${can('admin') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`)}
+    setHtml(root, html`${page('Segments', html`<a class="btn" href="#/campaigns">← Campaigns</a><button class="btn primary" data-act="new">+ New segment</button>${allow('data.purge') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`)}
       <div class="card">${segs.length ? html`<div class="tablewrap"><table><thead><tr><th>Segment</th><th>Rules</th><th>Emailable</th><th></th></tr></thead><tbody>${segs.map((s) => html`<tr><td><b>${s.name}</b><div class="small muted">${s.description || ''}</div></td>
         <td class="small">${s.filter.rules.length ? s.filter.rules.map((r) => `${store.meta.segmentFields[r.field]?.label || r.field} ${r.op.replace(/_/g, ' ')} ${r.value}`).join(s.filter.match === 'any' ? ' OR ' : ' AND ') : 'Everyone'}</td>
-        <td><b>${s.size}</b> <span class="muted small">of ${s.total_matching}</span></td><td class="nowrap"><button class="btn sm" data-act="edit" data-id="${s.id}">Edit</button>${can('admin', 'manager') ? html` <button class="btn sm danger" data-act="del" data-id="${s.id}" aria-label="Delete">✕</button>` : ''}</td></tr>`)}</tbody></table></div>` : html`<div class="empty">No segments yet.</div>`}</div>`);
+        <td><b>${s.size}</b> <span class="muted small">of ${s.total_matching}</span></td><td class="nowrap"><button class="btn sm" data-act="edit" data-id="${s.id}">Edit</button>${allow('segments.delete') ? html` <button class="btn sm danger" data-act="del" data-id="${s.id}" aria-label="Delete">✕</button>` : ''}</td></tr>`)}</tbody></table></div>` : html`<div class="empty">No segments yet.</div>`}</div>`);
     on(root, {
       purge: () => purgeModal('segments', draw), new: () => segmentModal(null, draw), edit: (el) => segmentModal(segs.find((s) => String(s.id) === el.dataset.id), draw),
       del: async (el) => { if (await confirmBox('Delete this segment? Campaigns using it will lose their audience.', 'Delete')) { await api('DELETE', `/segments/${el.dataset.id}`); draw(); } },
@@ -220,8 +219,8 @@ export async function segments(root) {
 export async function templates(root) {
   const draw = async () => {
     const list = await api('GET', '/templates');
-    setHtml(root, html`${page('Email templates', html`<a class="btn" href="#/campaigns">← Campaigns</a><button class="btn primary" data-act="new">+ New template</button>${can('admin') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`)}
-      <div class="grid g3">${list.map((t) => html`<div class="card"><div class="hd"><h2>${t.name}</h2></div><div class="bd"><div class="small muted">Subject</div><div>${t.subject}</div></div><div class="hd" style="border-top:1px solid var(--line);border-bottom:0"><button class="btn sm" data-act="edit" data-id="${t.id}">Edit</button>${can('admin', 'manager') ? html`<button class="btn sm danger" data-act="del" data-id="${t.id}">Delete</button>` : ''}</div></div>`)}</div>
+    setHtml(root, html`${page('Email templates', html`<a class="btn" href="#/campaigns">← Campaigns</a><button class="btn primary" data-act="new">+ New template</button>${allow('data.purge') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`)}
+      <div class="grid g3">${list.map((t) => html`<div class="card"><div class="hd"><h2>${t.name}</h2></div><div class="bd"><div class="small muted">Subject</div><div>${t.subject}</div></div><div class="hd" style="border-top:1px solid var(--line);border-bottom:0"><button class="btn sm" data-act="edit" data-id="${t.id}">Edit</button>${allow('templates.delete') ? html`<button class="btn sm danger" data-act="del" data-id="${t.id}">Delete</button>` : ''}</div></div>`)}</div>
       ${list.length ? '' : html`<div class="card empty">No templates yet.</div>`}`);
     const open = (t) => modal({ title: t ? 'Edit template' : 'New template', wide: true,
       body: html`${field({ name: 'name', label: 'Template name', required: true }, t || {})}${field({ name: 'subject', label: 'Subject', required: true }, t || {})}${field({ name: 'body_html', label: 'HTML content', type: 'textarea', rows: 12, required: true, default: '<p>Hi {{first_name|there}},</p>' }, t || {})}<p class="small muted">Merge tags: ${store.meta.mergeTags.map((m) => `{{${m}}}`).join('  ')}</p>`,

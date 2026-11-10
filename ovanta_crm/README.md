@@ -76,6 +76,29 @@ Menu **Billing**: *Invoices · Receivables · E-invoicing readiness · Billing s
 * Rules are a strong subset of ZATCA/FTA requirements, not the full official schematron — treat a clean "ready" as a good pre-check, not as legal assurance. Have your accountant confirm VAT treatment.
 * Issued invoices can never be deleted (tax records must be kept); "Delete all" does not include them.
 
+## Roles & permissions
+
+**Team & roles → Roles & permissions** (administrators). A role is a set of permissions per area (contacts, accounts, deals, tasks, invoices, campaigns, segments, templates, receivables, billing settings, senders, notifications, users, audit log, data management…). For the core records — contacts, accounts, deals, tasks, invoices and activity notes — each of view / edit / delete can be **None, Own or All**: with *Own*, a person only sees and changes records they own; records owned by others behave as if they do not exist (list, search, lookups, exports, bulk actions, dashboard totals and imports all follow).
+
+* Three built-in roles keep today's behaviour exactly: **Administrator** (locked, full access), **Manager** and **Sales rep** (both editable).
+* Create your own roles (or duplicate one), assign them to users on the Users tab. Changes apply **immediately**, even to people already logged in.
+* **No privilege escalation**: you can only grant permissions you hold yourself, so a delegated "manage users" role cannot create a more powerful one. The last active administrator cannot be removed, and you cannot change your own role.
+* The complete API access matrix is one readable file, `server/route-permissions.js`; a test fails if a new route is added without being classified.
+* Scope applies to the CRM records above. Campaigns, segments and templates are organisation-wide by design — restrict them with their own permissions.
+* Small tightening vs. earlier versions: the *Email senders* list now needs the "view senders" permission (reps no longer have it by default).
+
+## Backups, upgrades & restore
+
+* An **automatic backup is taken every day** (the newest 14 are kept) in `data/backups/`; `BACKUP_DAILY=0` turns this off, `BACKUP_KEEP` changes the count.
+* **Before any upgrade that changes the database structure, a restore point is saved first** (`…-premigration-…db`). Migrations are versioned and run in a transaction; if one fails it is rolled back, nothing is half-applied, and the app says so.
+* `npm run backup` — verified backup now. *Settings → Backups* — create a backup or download one (administrators).
+* **Restore**: stop the server, then `npm run restore` (lists backups) and `npm run restore -- data/backups/<file>.db --yes`. The current database is copied aside first, so a restore can be undone.
+* Backups contain password hashes and encrypted credentials. Keep **`data/.secret`** safe together with them: saved SMTP passwords and API keys cannot be decrypted without it.
+
+## Roadmap
+
+See [`docs/ROADMAP-CRITICAL-GAPS.md`](docs/ROADMAP-CRITICAL-GAPS.md): lead conversion, attachments, two-factor login, custom fields, quotes → invoices, automation rules, email/calendar sync.
+
 ## Features
 * **Deal stage history** — every stage move is stored permanently: from → to, date/time, who moved it, the deal owner *at that moment*, the deal value, an optional comment, and the days spent in the previous stage. Shown on the deal page (*Stage history*), via **🕘 History** on every card/row of the Deals board and list, and recorded however the stage changes (drag-and-drop, *Change stage*, or the edit form). Moving a card on the board asks for an optional comment. Deals that existed before this feature get a single starting entry; earlier movements can't be reconstructed. Deleting a deal deletes its history.
 * **CRM** — dashboard, contacts (360° view, bulk actions), accounts, deals (drag-and-drop board), tasks, activity timeline, audit log, roles (admin / manager / rep).
@@ -87,11 +110,11 @@ Menu **Billing**: *Invoices · Receivables · E-invoicing readiness · Billing s
 * **Themes** — *Settings → Appearance*: company accent and sidebar colours (presets or custom, live preview, saved for everyone including the login page) plus light/dark/auto; each user can override light/dark for their own browser.
 
 ## Configuration (environment variables)
-`PORT` (3000) · `DB_PATH` · `BASE_URL` (**public address, needed for tracking links and unsubscribe**) · `SESSION_SECRET` · `SECURE_COOKIES=1` (behind HTTPS) · `COMPANY_ADDRESS` (email footer) · `SEND_BATCH_SIZE` · `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` · `SMTP_TLS_INSECURE=1` (only for internal relays with self-signed certificates) · `SEED_BILLING_DEMO=0` (skip demo invoices) · `SMTP_FORCE_IPV4=1` (connect to mail servers over IPv4 only) · `SMTP_TIMEOUT_MS` (default 60000) · `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `SEED_DEMO` · legacy `MAIL_TRANSPORT=webhook` + `MAIL_WEBHOOK_URL`/`MAIL_WEBHOOK_TOKEN` (used only when no sender exists).
+`PORT` (3000) · `DB_PATH` · `BASE_URL` (**public address, needed for tracking links and unsubscribe**) · `SESSION_SECRET` · `SECURE_COOKIES=1` (behind HTTPS) · `COMPANY_ADDRESS` (email footer) · `SEND_BATCH_SIZE` · `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` · `SMTP_TLS_INSECURE=1` (only for internal relays with self-signed certificates) · `SEED_BILLING_DEMO=0` (skip demo invoices) · `SMTP_FORCE_IPV4=1` (connect to mail servers over IPv4 only) · `SMTP_TIMEOUT_MS` (default 60000) · `BACKUP_DIR`, `BACKUP_KEEP` (14), `BACKUP_DAILY=0`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `SEED_DEMO` · legacy `MAIL_TRANSPORT=webhook` + `MAIL_WEBHOOK_URL`/`MAIL_WEBHOOK_TOKEN` (used only when no sender exists).
 
 ## Tests
 ```bash
-npm test       # 38 API tests: auth, CRUD, injection, campaigns, SMTP sending against a local fake mail server,
+npm test       # 53 tests (API, permissions, migrations, backups): auth, CRUD, injection, campaigns, SMTP sending against a local fake mail server,
                # daily-limit pause/resume, notifications, AI (fake Claude API), themes, import options
 npm run e2e    # browser test (needs Playwright + Chromium): navigation, forms, xlsx import, theme, AI panel, drag-and-drop
 npm run seed   # reset to demo data

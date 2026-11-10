@@ -8,6 +8,7 @@ import { handleApi, readBody } from './http.js';
 import './api.js';
 import './api2.js';
 import './api3.js';
+import './api4.js';
 import { portalGet, portalClaim } from './api3.js';
 import { recordEvent, signUrl, startScheduler } from './campaigns.js';
 import { seedIfEmpty } from './seed.js';

@@ -14,7 +14,7 @@ const oneLine = (s) => String(s ?? '').replace(/[\r\n]+/g, ' ').trim();
 
 // ---------- Theme (public so the login page can be branded) ----------
 GET('/api/theme', () => getTheme(), { public: true });
-PUT('/api/theme', ({ body, user }) => { const t = saveTheme(body); audit(user, 'update', 'theme', null); return t; }, { roles: ADMIN });
+PUT('/api/theme', ({ body, user }) => { const t = saveTheme(body); audit(user, 'update', 'theme', null); return t; });
 
 // ---------- Senders ----------
 const pub = (s) => ({
@@ -53,7 +53,7 @@ POST('/api/senders', ({ body, user }) => {
   if (body.is_default || get('SELECT COUNT(*) n FROM senders').n === 1) setDefault(id);
   audit(user, 'create', 'senders', id, d.from_email);
   return pub(senderById(id));
-}, { roles: ADMIN });
+});
 PUT('/api/senders/:id', ({ params, body, user }) => {
   const s = senderById(params.id); const d = senderInput(body, s);
   run(`UPDATE senders SET ${Object.keys(d).map((k) => `${k}=?`).join(',')}, last_error=NULL WHERE id=?`, ...Object.values(d), s.id);
@@ -61,7 +61,7 @@ PUT('/api/senders/:id', ({ params, body, user }) => {
   if (body.is_default) setDefault(s.id);
   audit(user, 'update', 'senders', s.id, d.from_email);
   return pub(senderById(s.id));
-}, { roles: ADMIN });
+});
 DELETE('/api/senders/:id', ({ params, user }) => {
   const s = senderById(params.id);
   const inUse = get("SELECT COUNT(*) n FROM campaigns WHERE sender_id=? AND status IN ('scheduled','sending')", s.id).n;
@@ -69,13 +69,13 @@ DELETE('/api/senders/:id', ({ params, user }) => {
   forgetTransport(s.id); run('DELETE FROM senders WHERE id=?', s.id);
   audit(user, 'delete', 'senders', s.id, s.from_email);
   return { ok: true };
-}, { roles: ADMIN });
+});
 POST('/api/senders/:id/verify', async ({ params, user }) => {
   const s = senderById(params.id); const r = await verifySender(s);
   run("UPDATE senders SET last_verified_at=CASE WHEN ? THEN datetime('now') ELSE last_verified_at END, last_error=? WHERE id=?", r.ok ? 1 : 0, r.ok ? null : r.error, s.id);
   audit(user, 'verify', 'senders', s.id, r.ok ? 'ok' : 'failed');
   return r;
-}, { roles: ADMIN });
+});
 POST('/api/senders/:id/test', async ({ params, body, user }) => {
   const s = senderById(params.id); const to = oneLine(body.to || user.email);
   if (!EMAIL_RE.test(to)) throw bad('Enter a valid recipient email');
@@ -84,7 +84,7 @@ POST('/api/senders/:id/test', async ({ params, body, user }) => {
     text: `This is a test message from Ovantaa CRM sent through ${s.label} (${s.from_email}).` });
   if (r.status === 'failed') throw bad(r.error);
   return { ok: true, simulated: r.status === 'simulated', to };
-}, { roles: ADMIN });
+});
 
 // ---------- Email log ----------
 GET('/api/email-log', ({ query }) => {
@@ -92,7 +92,7 @@ GET('/api/email-log', ({ query }) => {
   if (query.kind) { w.push('l.kind=?'); p.push(query.kind); }
   if (query.status) { w.push('l.status=?'); p.push(query.status); }
   return all(`SELECT l.*, s.label AS sender_label FROM email_log l LEFT JOIN senders s ON s.id=l.sender_id ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY l.id DESC LIMIT 300`, ...p);
-}, { roles: MGR });
+});
 
 // ---------- Notification rules ----------
 const ruleOut = (r) => ({ ...r, active: !!r.active, notify_owner: !!r.notify_owner, user_ids: JSON.parse(r.user_ids || '[]') });
@@ -115,25 +115,25 @@ function ruleInput(b) {
     subject_template: oneLine(b.subject_template).slice(0, 200) || null, intro: String(b.intro || '').trim().slice(0, 500) || null };
 }
 GET('/api/notifications/events', () => EVENTS);
-GET('/api/notifications/rules', () => all('SELECT * FROM notification_rules ORDER BY id DESC').map(ruleOut), { roles: MGR });
+GET('/api/notifications/rules', () => all('SELECT * FROM notification_rules ORDER BY id DESC').map(ruleOut));
 POST('/api/notifications/rules', ({ body, user }) => {
   const d = ruleInput(body); const cols = [...Object.keys(d), 'created_by'];
   const id = Number(run(`INSERT INTO notification_rules (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`, ...Object.values(d), user.id).lastInsertRowid);
   audit(user, 'create', 'notification_rules', id, d.name);
   return ruleOut(ruleById(id));
-}, { roles: ADMIN });
+});
 PUT('/api/notifications/rules/:id', ({ params, body, user }) => {
   ruleById(params.id); const d = ruleInput(body);
   run(`UPDATE notification_rules SET ${Object.keys(d).map((k) => `${k}=?`).join(',')} WHERE id=?`, ...Object.values(d), params.id);
   audit(user, 'update', 'notification_rules', params.id, d.name);
   return ruleOut(ruleById(params.id));
-}, { roles: ADMIN });
-DELETE('/api/notifications/rules/:id', ({ params, user }) => { const r = ruleById(params.id); run('DELETE FROM notification_rules WHERE id=?', r.id); audit(user, 'delete', 'notification_rules', r.id, r.name); return { ok: true }; }, { roles: ADMIN });
+});
+DELETE('/api/notifications/rules/:id', ({ params, user }) => { const r = ruleById(params.id); run('DELETE FROM notification_rules WHERE id=?', r.id); audit(user, 'delete', 'notification_rules', r.id, r.name); return { ok: true }; });
 POST('/api/notifications/rules/:id/test', async ({ params, user }) => {
   const r = await testRule(ruleById(params.id), user);
   if (r.status === 'failed') throw bad(r.error);
   return { ok: true, simulated: r.status === 'simulated', to: user.email };
-}, { roles: ADMIN });
+});
 
 // ---------- AI (Claude) ----------
 const aiHits = new Map();
@@ -159,7 +159,7 @@ PUT('/api/settings/ai', ({ body, user }) => {
   if (body.model !== undefined) setSetting('anthropic_model', oneLine(body.model).slice(0, 80) || null);
   audit(user, 'update', 'settings', null, 'ai');
   return { configured: aiConfigured(), model: aiModel() };
-}, { roles: ADMIN });
+});
 
 // ---------- Data management: delete all (admin only, typed confirmation) ----------
 export const PURGEABLE = {
@@ -176,7 +176,7 @@ export const PURGEABLE = {
   email_log: { table: 'email_log', label: 'notification & test email log entries', effects: 'Campaign delivery history is stored with each campaign and is not affected.' },
   notification_rules: { table: 'notification_rules', label: 'notification rules', effects: 'Nobody will be emailed about changes until you create new rules.' },
 };
-GET('/api/admin/data-counts', () => Object.fromEntries(Object.entries(PURGEABLE).map(([k, v]) => [k, { label: v.label, effects: v.effects, count: get(`SELECT COUNT(*) n FROM ${v.table}`).n }])), { roles: ADMIN });
+GET('/api/admin/data-counts', () => Object.fromEntries(Object.entries(PURGEABLE).map(([k, v]) => [k, { label: v.label, effects: v.effects, count: get(`SELECT COUNT(*) n FROM ${v.table}`).n }])));
 POST('/api/admin/purge', ({ body, user }) => {
   const def = PURGEABLE[body.entity];
   if (!def) throw bad('Unknown data type');
@@ -186,4 +186,4 @@ POST('/api/admin/purge', ({ body, user }) => {
   tx(() => { run(`DELETE FROM ${def.table}`); });
   audit(user, 'delete_all', def.table, null, `${before} records`);
   return { ok: true, deleted: before, entity: body.entity };
-}, { roles: ADMIN });
+});

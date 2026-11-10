@@ -1,5 +1,5 @@
 import {
-  api, html, raw, setHtml, esc, on, store, toast, fail, modal, confirmBox, field, formValues, fmtDate, fmtDateTime, ago, can, $, $$,
+  api, html, raw, setHtml, esc, on, store, toast, fail, modal, confirmBox, field, formValues, fmtDate, fmtDateTime, ago, $, $$, allow,
 } from './core.js';
 import { fmt, invLabel } from './invoices.js';
 import { readTable, INVOICE_FIELDS, guessInvoiceMapping, applyInvoiceMapping } from './csv.js';
@@ -14,7 +14,7 @@ export async function receivables(root) {
     const cur = s.currency; const k = s.kpis; const maxA = Math.max(...s.aging.map((b) => b.amount), 1);
     const maxF = Math.max(...s.forecast.weeks.map((w) => w.amount), 1), maxM = Math.max(...s.monthly.map((m) => Math.max(m.billed, m.collected)), 1);
     const colors = ['var(--ok)', '#84cc16', 'var(--warn)', '#f97316', 'var(--bad)'];
-    setHtml(root, html`${page('Receivables', html`<a class="btn" href="#/invoices?status=overdue">Overdue invoices</a>${can('admin') ? html`<button class="btn" data-act="runrem" title="Send any due reminders now">Run reminders now</button>` : ''}<a class="btn primary" href="#/invoices/new">+ New invoice</a>`)}
+    setHtml(root, html`${page('Receivables', html`<a class="btn" href="#/invoices?status=overdue">Overdue invoices</a>${allow('billing_settings.edit') ? html`<button class="btn" data-act="runrem" title="Send any due reminders now">Run reminders now</button>` : ''}<a class="btn primary" href="#/invoices/new">+ New invoice</a>`)}
       <div class="grid g4"><div class="card kpi"><div class="l">Outstanding</div><div class="v">${fmt(k.outstanding, cur)}</div><div class="s">${k.open_invoices} open invoices</div></div>
         <div class="card kpi"><div class="l">Overdue</div><div class="v" style="color:${k.overdue ? 'var(--bad)' : 'inherit'}">${fmt(k.overdue, cur)}</div><div class="s">${k.overdue_invoices} invoices · ${k.outstanding ? Math.round((k.overdue / k.outstanding) * 100) : 0}% of outstanding</div></div>
         <div class="card kpi"><div class="l">Collected this month</div><div class="v">${fmt(k.collected_this_month, cur)}</div><div class="s">billed ${fmt(k.billed_this_month, cur)}${k.collection_rate != null ? ` · ${Math.round(k.collection_rate * 100)}%` : ''}</div></div>
@@ -41,7 +41,7 @@ export async function readiness(root, importFlow) {
     const filt = (a) => a.filter((x) => (show === 'all' || x.severity === show));
     const sec = (title, sub, arr, empty) => html`<div class="card mt"><div class="hd"><h2>${title}</h2><span class="muted small">${sub}</span><span class="grow"></span>${arr.length ? chip(arr.some((x) => x.severity === 'error') ? 'b-bad' : 'b-warn', arr.length) : chip('b-ok', '✓')}</div>${filt(arr).length ? html`<div class="tablewrap"><table><tbody>${filt(arr).slice(0, 200).map((x) => html`<tr><td style="width:70px">${sevChip(x)}</td><td>${x.ref?.label && !x.message.startsWith(x.ref.label) ? html`<b>${x.ref.label}</b> ` : ''}${x.message}${x.source === 'import' ? html` <span class="badge b-grey">imported</span>` : ''}</td><td class="right nowrap"><a class="btn sm" href="${link(x)}">${x.ref?.type === 'invoice' ? 'Open' : 'Fix'}</a></td></tr>`)}</tbody></table></div>` : html`<div class="empty">${empty}</div>`}</div>`;
     const customers = r.sections.customers.filter((c) => !onlyUsed || c.used);
-    setHtml(root, html`${page('E-invoicing readiness', html`<select id="sev" aria-label="Show"><option value="all" ${show === 'all' ? raw('selected') : ''}>All findings</option><option value="error" ${show === 'error' ? raw('selected') : ''}>Errors only</option><option value="warning" ${show === 'warning' ? raw('selected') : ''}>Warnings only</option></select><button class="btn" data-act="rescan">Re-scan</button>${can('admin', 'manager') ? html`<button class="btn primary" data-act="import">Import & check invoices</button>` : ''}`)}
+    setHtml(root, html`${page('E-invoicing readiness', html`<select id="sev" aria-label="Show"><option value="all" ${show === 'all' ? raw('selected') : ''}>All findings</option><option value="error" ${show === 'error' ? raw('selected') : ''}>Errors only</option><option value="warning" ${show === 'warning' ? raw('selected') : ''}>Warnings only</option></select><button class="btn" data-act="rescan">Re-scan</button>${allow('invoices.import') ? html`<button class="btn primary" data-act="import">Import & check invoices</button>` : ''}`)}
       <p class="muted" style="margin-top:-8px">Find and fix errors <b>before</b> invoices are submitted — customer data, VAT treatment, mandatory fields, credit notes, advance payments and reconciliation gaps. Rules applied: <b>${r.jurisdiction === 'UAE' ? 'UAE (TRN, 5% VAT, Peppol-style mandatory data)' : 'KSA / ZATCA (15-digit VAT number, buyer address, 15% VAT, reporting & clearance status)'}</b>.</p>
       <div class="grid g4"><div class="card kpi"><div class="l">Errors to fix</div><div class="v" style="color:${s.errors ? 'var(--bad)' : 'var(--ok)'}">${s.errors}</div></div><div class="card kpi"><div class="l">Warnings</div><div class="v" style="color:${s.warnings ? 'var(--warn)' : 'var(--ok)'}">${s.warnings}</div></div>
         <div class="card kpi"><div class="l">Drafts ready to issue</div><div class="v">${s.drafts_ready}<span class="small muted"> / ${s.drafts}</span></div></div><div class="card kpi"><div class="l">Customers with problems</div><div class="v">${s.customers_in_use_with_issues}</div><div class="s">of ${s.customers_checked} checked</div></div></div>
@@ -94,7 +94,7 @@ export function importInvoices(done) {
 
 // ================= Billing settings =================
 export async function billingSettings(root) {
-  const { settings: s, issues } = await api('GET', '/billing/settings'); const admin = can('admin');
+  const { settings: s, issues } = await api('GET', '/billing/settings'); const admin = allow('billing_settings.edit');
   const senders = store.meta.senders.filter((x) => x.active);
   const ro = admin ? '' : raw('disabled');
   const F = (n, label, v, o = {}) => html`<label>${label}<input name="${n}" value="${v ?? ''}" ${o.type ? raw(`type="${o.type}"`) : ''} ${o.ph ? raw(`placeholder="${esc(o.ph)}"`) : ''} ${o.dir ? raw(`dir="${o.dir}"`) : ''} ${ro}></label>`;

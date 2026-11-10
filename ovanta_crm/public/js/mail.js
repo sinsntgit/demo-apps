@@ -1,4 +1,6 @@
-import { api, html, raw, setHtml, on, store, toast, fail, modal, confirmBox, purgeModal, field, formValues, badge, fmtDateTime, ago, can, $, $$ } from './core.js';
+import {
+  api, html, raw, setHtml, on, store, toast, fail, modal, confirmBox, purgeModal, field, formValues, badge, fmtDateTime, ago, $, $$, allow,
+} from './core.js';
 
 const page = (title, actions = '') => html`<div class="topbar"><h1>${title}</h1><span class="grow"></span>${actions}</div>`;
 
@@ -47,7 +49,7 @@ function senderModal(s, done) {
 
 export async function senders(root) {
   const draw = async () => {
-    const list = await api('GET', '/senders'); const admin = can('admin');
+    const list = await api('GET', '/senders'); const admin = allow('senders.manage');
     setHtml(root, html`${page('Email senders', admin ? html`<button class="btn primary" data-act="new">+ Add sender</button>` : '')}
       ${list.every((s) => s.mode === 'simulate') ? html`<div class="banner"><b>No real sending is configured yet.</b> ${list.length ? 'Your senders are in simulation mode.' : 'Add a sender'} — campaigns will be recorded as sent but <b>no email leaves the server</b> until you add a sender with real SMTP details.</div>` : ''}
       <div class="card">${list.length ? html`<div class="tablewrap"><table><thead><tr><th>Sender</th><th>Server</th><th>Status</th><th>Last 24h</th><th></th></tr></thead><tbody>
@@ -111,7 +113,7 @@ function ruleModal(rule, done) {
 export async function notifications(root) {
   let tab = sessionStorage.getItem('notifTab') || 'rules';
   const draw = async () => {
-    const admin = can('admin');
+    const admin = allow('notifications.manage');
     const body = tab === 'rules' ? await rulesView(admin) : await logView();
     setHtml(root, html`${page('Notifications', admin ? (tab === 'rules' ? html`<button class="btn primary" data-act="new">+ New rule</button><button class="btn danger" data-act="purge">Delete all rules…</button>` : html`<button class="btn danger" data-act="purge">Clear email log…</button>`) : '')}
       <div class="tabs"><button class="${tab === 'rules' ? 'on' : ''}" data-act="tab" data-t="rules">Rules</button><button class="${tab === 'log' ? 'on' : ''}" data-act="tab" data-t="log">Email log</button></div>${body.view}`);

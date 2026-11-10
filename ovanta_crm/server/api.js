@@ -2,9 +2,10 @@ import { GET, POST, PUT, DELETE, HttpError, bad, notFound, forbidden } from './h
 import { all, get, run, tx, audit } from './db.js';
 import { config } from './config.js';
 import {
-  hashPassword, verifyPassword, makeSession, sessionCookie, throttled, recordFail, clearFails,
+  hashPassword, verifyPassword, makeSession, sessionCookie, throttled, recordFail, clearFails, loadUser,
 } from './auth.js';
 import { ENTITIES, STAGES, list, getOne, create, update, remove, clean } from './entities.js';
+import { scopeOf, canOnRecord, hasPerm } from './permissions.js';
 import { SEGMENT_FIELDS, SEGMENT_OPS, parseFilter, resolveSegment } from './segments.js';
 import {
   MERGE_TAGS, renderMessage, sendTest, launchCampaign, validateForLaunch, campaignStats, outboxLog, resolveSender, isSimulated,
@@ -24,7 +25,7 @@ POST('/api/auth/login', ({ body, req, send }) => {
   if (!u || !verifyPassword(String(body.password || ''), u.password_hash)) { recordFail(key); throw Object.assign(bad('Invalid email or password'), { status: 401 }); }
   clearFails(key);
   audit(u, 'login', 'users', u.id);
-  send(200, { user: { id: u.id, name: u.name, email: u.email, role: u.role } }, { 'Set-Cookie': sessionCookie(makeSession(u.id)) });
+  send(200, { user: loadUser(u.id) }, { 'Set-Cookie': sessionCookie(makeSession(u.id)) });
 }, { public: true });
 POST('/api/auth/logout', ({ send }) => send(200, { ok: true }, { 'Set-Cookie': sessionCookie('', 0) }), { public: true });
 GET('/api/auth/me', ({ user }) => ({ user }), { public: false });
@@ -51,27 +52,28 @@ GET('/api/meta', () => ({
   senders: all('SELECT id,label,from_email,mode,active,is_default FROM senders ORDER BY is_default DESC, label'),
   events: EVENTS, ai: { configured: aiConfigured(), model: aiModel() }, theme: getTheme(),
 }));
-GET('/api/lookup', ({ query }) => {
+GET('/api/lookup', ({ query, user }) => {
   const q = `%${String(query.q || '').replace(/[\\%_]/g, (m) => '\\' + m)}%`;
   const type = query.type;
-  if (type === 'accounts') return all("SELECT id, name AS label FROM accounts WHERE name LIKE ? ESCAPE '\\' ORDER BY name LIMIT 20", q);
-  if (type === 'contacts') return all("SELECT id, TRIM(first_name||' '||COALESCE(last_name,'')) AS label FROM contacts WHERE first_name||' '||COALESCE(last_name,'') LIKE ? ESCAPE '\\' ORDER BY first_name LIMIT 20", q);
-  if (type === 'deals') return all("SELECT id, name AS label FROM deals WHERE name LIKE ? ESCAPE '\\' ORDER BY name LIMIT 20", q);
+  const own = (res) => { const s = scopeOf(user, `${res}.view`); return s === 'own' ? ` AND owner_id = ${Number(user.id)}` : s ? '' : ' AND 0'; };
+  if (type === 'accounts') return all(`SELECT id, name AS label FROM accounts WHERE name LIKE ? ESCAPE '\\'${own('accounts')} ORDER BY name LIMIT 20`, q);
+  if (type === 'contacts') return all(`SELECT id, TRIM(first_name||' '||COALESCE(last_name,'')) AS label FROM contacts WHERE first_name||' '||COALESCE(last_name,'') LIKE ? ESCAPE '\\'${own('contacts')} ORDER BY first_name LIMIT 20`, q);
+  if (type === 'deals') return all(`SELECT id, name AS label FROM deals WHERE name LIKE ? ESCAPE '\\'${own('deals')} ORDER BY name LIMIT 20`, q);
   throw bad('Unknown lookup type');
 });
 
 // ---------- Generic CRUD for core entities ----------
 for (const [name, ent] of Object.entries(ENTITIES)) {
-  GET(`/api/${name}`, ({ query }) => list(ent, query));
-  GET(`/api/${name}/:id`, ({ params }) => getOne(ent, params.id));
+  GET(`/api/${name}`, ({ query, user }) => list(ent, query, user));
+  GET(`/api/${name}/:id`, ({ params, user }) => getOne(ent, params.id, user));
   POST(`/api/${name}`, ({ body, user }) => create(ent, body, user));
   PUT(`/api/${name}/:id`, ({ params, body, user }) => update(ent, params.id, body, user));
   DELETE(`/api/${name}/:id`, ({ params, user }) => remove(ent, params.id, user));
 }
 
 // Contact 360 / Account 360
-GET('/api/contacts/:id/360', ({ params }) => {
-  const contact = getOne(ENTITIES.contacts, params.id);
+GET('/api/contacts/:id/360', ({ params, user }) => {
+  const contact = getOne(ENTITIES.contacts, params.id, user);
   return {
     contact,
     activities: all('SELECT a.*, u.name AS user_name FROM activities a LEFT JOIN users u ON u.id=a.user_id WHERE a.contact_id=? ORDER BY a.created_at DESC, a.id DESC', params.id),
@@ -81,8 +83,8 @@ GET('/api/contacts/:id/360', ({ params }) => {
       FROM campaign_recipients r JOIN campaigns c ON c.id=r.campaign_id WHERE r.contact_id=? ORDER BY r.id DESC`, params.id),
   };
 });
-GET('/api/accounts/:id/360', ({ params }) => {
-  const account = getOne(ENTITIES.accounts, params.id);
+GET('/api/accounts/:id/360', ({ params, user }) => {
+  const account = getOne(ENTITIES.accounts, params.id, user);
   return {
     account,
     contacts: all('SELECT id, first_name, last_name, email, title, status FROM contacts WHERE account_id=? ORDER BY first_name', params.id),
@@ -90,15 +92,16 @@ GET('/api/accounts/:id/360', ({ params }) => {
     activities: all('SELECT a.*, u.name AS user_name FROM activities a LEFT JOIN users u ON u.id=a.user_id WHERE a.account_id=? ORDER BY a.created_at DESC LIMIT 50', params.id),
   };
 });
-GET('/api/deals/:id/360', ({ params }) => ({
-  deal: getOne(ENTITIES.deals, params.id),
+GET('/api/deals/:id/360', ({ params, user }) => ({
+  deal: getOne(ENTITIES.deals, params.id, user),
   history: dealHistory(params.id),
   activities: all('SELECT a.*, u.name AS user_name FROM activities a LEFT JOIN users u ON u.id=a.user_id WHERE a.deal_id=? ORDER BY a.created_at DESC, a.id DESC', params.id),
   tasks: all('SELECT * FROM tasks WHERE deal_id=? ORDER BY done, due_date', params.id),
 }));
 
 POST('/api/tasks/:id/toggle', ({ params, user }) => {
-  getOne(ENTITIES.tasks, params.id);
+  const t = getOne(ENTITIES.tasks, params.id, user);
+  if (!canOnRecord(user, 'tasks.edit', t.owner_id)) throw forbidden('Your role can only edit tasks you own.');
   run('UPDATE tasks SET done = 1 - done WHERE id=?', params.id);
   audit(user, 'toggle', 'tasks', params.id);
   return getOne(ENTITIES.tasks, params.id);
@@ -114,7 +117,7 @@ export function dealHistory(dealId) {
   const ts = (s) => new Date(String(s).replace(' ', 'T') + 'Z').getTime();
   return rows.map((r, i) => ({ ...r, days_in_previous: i && r.from_stage ? Math.max(0, Math.round(((ts(r.changed_at) - ts(rows[i - 1].changed_at)) / 86400000) * 10) / 10) : null }));
 }
-GET('/api/deals/:id/history', ({ params }) => { getOne(ENTITIES.deals, params.id); return dealHistory(params.id); });
+GET('/api/deals/:id/history', ({ params, user }) => { getOne(ENTITIES.deals, params.id, user); return dealHistory(params.id); });
 
 // Activities
 POST('/api/activities', ({ body, user }) => {
@@ -130,7 +133,7 @@ POST('/api/activities', ({ body, user }) => {
 DELETE('/api/activities/:id', ({ params, user }) => {
   const a = get('SELECT * FROM activities WHERE id=?', params.id);
   if (!a) throw notFound();
-  if (a.user_id !== user.id && user.role === 'rep') throw forbidden();
+  if (!canOnRecord(user, 'activities.delete', a.user_id)) throw forbidden('Your role can only delete activity notes you wrote.');
   run('DELETE FROM activities WHERE id=?', params.id);
   return { ok: true };
 });
@@ -159,7 +162,8 @@ POST('/api/contacts/import', ({ body, user }) => {
         if (!data.first_name) data.first_name = data.email.split('@')[0];
         if (defSource && !data.source) data.source = defSource;
         if (defStatus && !row.status) data.status = defStatus;
-        const existing = data.email ? get('SELECT id, tags FROM contacts WHERE email=?', data.email) : null;
+        const existing = data.email ? get('SELECT id, tags, owner_id FROM contacts WHERE email=?', data.email) : null;
+        if (existing && !canOnRecord(user, 'contacts.edit', existing.owner_id)) { res.skipped++; if (res.errors.length < 20) res.errors.push(`Row ${i + 2}: ${data.email} belongs to someone else`); return; }
         if (defTag) { const t = new Set([...(existing?.tags || '').split(','), ...(data.tags || '').split(',')].map((x) => x.trim()).filter(Boolean)); t.add(defTag); data.tags = [...t].join(', '); }
         if (existing) {
           if (opts.update_existing === false) { res.skipped++; return; }
@@ -190,7 +194,7 @@ const csvCell = (v) => {
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 GET('/api/contacts/export.csv', ({ res, query, user }) => {
-  const rows = list({ ...ENTITIES.contacts }, { ...query, limit: 1000, page: 1 }).rows;
+  const rows = list({ ...ENTITIES.contacts }, { ...query, limit: 1000, page: 1 }, user).rows;
   audit(user, 'export', 'contacts', null, `${rows.length} rows`);
   const head = ['first_name', 'last_name', 'email', 'phone', 'title', 'company', 'status', 'source', 'tags', 'subscribed', 'owner', 'created_at'];
   const lines = [head.join(',')].concat(rows.map((r) => [r.first_name, r.last_name, r.email, r.phone, r.title, r.account_name, r.status, r.source, r.tags, r.subscribed ? 'yes' : 'no', r.owner_name, r.created_at].map(csvCell).join(',')));
@@ -201,16 +205,17 @@ POST('/api/contacts/bulk', ({ body, user }) => {
   const ids = (Array.isArray(body.ids) ? body.ids : []).map(Number).filter(Boolean).slice(0, 1000);
   if (!ids.length) throw bad('No contacts selected');
   const ph = ids.map(() => '?').join(',');
-  if (body.action === 'status') { const d = clean(ENTITIES.contacts, { status: body.value }, { partial: true }); run(`UPDATE contacts SET status=? WHERE id IN (${ph})`, d.status, ...ids); }
-  else if (body.action === 'owner') run(`UPDATE contacts SET owner_id=? WHERE id IN (${ph})`, Number(body.value) || null, ...ids);
+  const editScope = scopeOf(user, 'contacts.edit'); const mine = editScope === 'own' ? ` AND owner_id = ${Number(user.id)}` : '';
+  if (body.action === 'status') { const d = clean(ENTITIES.contacts, { status: body.value }, { partial: true }); run(`UPDATE contacts SET status=? WHERE id IN (${ph})${mine}`, d.status, ...ids); }
+  else if (body.action === 'owner') run(`UPDATE contacts SET owner_id=? WHERE id IN (${ph})${mine}`, Number(body.value) || null, ...ids);
   else if (body.action === 'tag') {
     const tag = String(body.value || '').trim().replace(/[,]/g, '');
     if (!tag) throw bad('Tag required');
-    for (const c of all(`SELECT id,tags FROM contacts WHERE id IN (${ph})`, ...ids)) {
+    for (const c of all(`SELECT id,tags FROM contacts WHERE id IN (${ph})${mine}`, ...ids)) {
       const t = new Set((c.tags || '').split(',').map((x) => x.trim()).filter(Boolean)); t.add(tag);
       run('UPDATE contacts SET tags=? WHERE id=?', [...t].join(', '), c.id);
     }
-  } else if (body.action === 'delete') { if (user.role === 'rep') throw forbidden(); run(`DELETE FROM contacts WHERE id IN (${ph})`, ...ids); }
+  } else if (body.action === 'delete') { if (scopeOf(user, 'contacts.delete') !== 'all') throw forbidden('Bulk delete needs permission to delete all contacts.'); run(`DELETE FROM contacts WHERE id IN (${ph})`, ...ids); }
   else throw bad('Unknown bulk action');
   audit(user, `bulk_${body.action}`, 'contacts', null, `${ids.length} contacts`);
   return { ok: true, count: ids.length };
@@ -245,7 +250,7 @@ DELETE('/api/segments/:id', ({ params }) => {
   if (inUse) throw bad('Segment is used by a scheduled or sending campaign');
   run('DELETE FROM segments WHERE id=?', params.id);
   return { ok: true };
-}, { roles: MGR });
+});
 
 // ---------- Templates ----------
 GET('/api/templates', () => all('SELECT * FROM templates ORDER BY name'));
@@ -265,7 +270,7 @@ PUT('/api/templates/:id', ({ params, body }) => {
   run('UPDATE templates SET name=?, subject=?, body_html=? WHERE id=?', d.name, d.subject, d.body_html, params.id);
   return get('SELECT * FROM templates WHERE id=?', params.id);
 });
-DELETE('/api/templates/:id', ({ params }) => { run('DELETE FROM templates WHERE id=?', params.id); return { ok: true }; }, { roles: MGR });
+DELETE('/api/templates/:id', ({ params }) => { run('DELETE FROM templates WHERE id=?', params.id); return { ok: true }; });
 
 // ---------- Campaigns ----------
 const CAMPAIGN_LIST = `SELECT c.*, s.name AS segment_name, u.name AS created_by_name, sd.label AS sender_label, sd.from_email AS sender_email, sd.mode AS sender_mode,
@@ -294,7 +299,7 @@ function campaignInput(b, existing) {
   return out;
 }
 GET('/api/campaigns', () => all(`${CAMPAIGN_LIST} ORDER BY c.created_at DESC, c.id DESC`));
-GET('/api/campaigns/outbox', () => outboxLog.slice(0, 100), { roles: MGR });
+GET('/api/campaigns/outbox', () => outboxLog.slice(0, 100));
 GET('/api/campaigns/:id', ({ params }) => {
   const c = campaignById(params.id);
   return { ...c, stats: campaignStats(c.id) };
@@ -323,7 +328,7 @@ DELETE('/api/campaigns/:id', ({ params, user }) => {
   run('DELETE FROM campaigns WHERE id=?', c.id);
   audit(user, 'delete', 'campaigns', c.id, c.name);
   return { ok: true };
-}, { roles: MGR });
+});
 POST('/api/campaigns/:id/duplicate', ({ params, user }) => {
   const c = campaignById(params.id);
   const id = Number(run('INSERT INTO campaigns (name,subject,body_html,sender_id,segment_id,created_by) VALUES (?,?,?,?,?,?)', `${c.name} (copy)`, c.subject, c.body_html, c.sender_id, c.segment_id, user.id).lastInsertRowid);
@@ -341,13 +346,13 @@ POST('/api/campaigns/:id/test', async ({ params, body, user }) => {
   try { r = await sendTest(c, to, { first_name: user.name.split(' ')[0], last_name: user.name.split(' ').slice(1).join(' '), email: to, title: 'Test', account_name: 'Test Company' }); }
   catch (e) { throw bad(`Test send failed: ${e.message}`); }
   return { ok: true, to, simulated: r.status === 'simulated', sender: r.sender?.label || null };
-}, { roles: MGR });
+});
 POST('/api/campaigns/:id/launch', ({ params, user }) => {
   const c = campaignById(params.id);
   const r = launchCampaign(c.id);
   audit(user, 'launch', 'campaigns', c.id, `${r.recipients} recipients`);
   return { ok: true, ...r, campaign: campaignById(c.id) };
-}, { roles: MGR });
+});
 POST('/api/campaigns/:id/schedule', ({ params, body, user }) => {
   const c = campaignById(params.id);
   if (!['draft', 'scheduled'].includes(c.status)) throw bad(`Campaign is already ${c.status}`);
@@ -358,13 +363,13 @@ POST('/api/campaigns/:id/schedule', ({ params, body, user }) => {
   run("UPDATE campaigns SET status='scheduled', scheduled_at=? WHERE id=?", when.toISOString().replace('T', ' ').slice(0, 19), c.id);
   audit(user, 'schedule', 'campaigns', c.id, when.toISOString());
   return campaignById(c.id);
-}, { roles: MGR });
+});
 POST('/api/campaigns/:id/unschedule', ({ params }) => {
   const c = campaignById(params.id);
   if (c.status !== 'scheduled') throw bad('Campaign is not scheduled');
   run("UPDATE campaigns SET status='draft', scheduled_at=NULL WHERE id=?", c.id);
   return campaignById(c.id);
-}, { roles: MGR });
+});
 GET('/api/campaigns/:id/recipients', ({ params, query }) => {
   campaignById(params.id);
   const f = { opened: 'AND r.first_open_at IS NOT NULL', clicked: 'AND r.first_click_at IS NOT NULL', unsubscribed: 'AND r.unsubscribed_at IS NOT NULL', failed: "AND r.status='failed'", queued: "AND r.status='queued'", sent: "AND r.status='sent'" }[query.filter] || '';
@@ -375,33 +380,44 @@ GET('/api/campaigns/:id/recipients', ({ params, query }) => {
   return rows.map((r) => ({ ...r, state: r.unsubscribed_at ? 'unsubscribed' : r.first_click_at ? 'clicked' : r.first_open_at ? 'opened' : r.status }));
 });
 
-// ---------- Users (admin) ----------
-GET('/api/users', () => all('SELECT id,name,email,role,active,created_at FROM users ORDER BY name'), { roles: ['admin'] });
+// ---------- Users & roles ----------
+const USER_SELECT = `SELECT u.id, u.name, u.email, u.active, u.created_at, u.role_id, COALESCE(r.name, u.role) AS role, COALESCE(r.label, u.role) AS role_label
+  FROM users u LEFT JOIN roles r ON r.id = u.role_id`;
+GET('/api/users', () => all(`${USER_SELECT} ORDER BY u.name`));
+function resolveRole(body, fallback) {
+  const r = body.role_id ? get('SELECT * FROM roles WHERE id=?', Number(body.role_id)) : body.role ? get('SELECT * FROM roles WHERE name=?', String(body.role)) : fallback;
+  if (!r) throw bad('Choose a valid role');
+  return r;
+}
+const baseRole = (r) => (r.is_system ? r.name : 'rep'); // legacy users.role column: system roles keep their name, custom roles store the neutral base
+const activeAdmins = (exceptId) => get("SELECT COUNT(*) n FROM users u JOIN roles r ON r.id=u.role_id WHERE r.name='admin' AND r.is_system=1 AND u.active=1 AND u.id<>?", exceptId ?? -1).n;
 POST('/api/users', ({ body, user }) => {
   const name = String(body.name || '').trim(), email = String(body.email || '').trim().toLowerCase();
   if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw bad('Name and a valid email are required');
-  if (!['admin', 'manager', 'rep'].includes(body.role)) throw bad('Invalid role');
+  const role = resolveRole(body);
   checkPassword(body.password);
-  const id = Number(run('INSERT INTO users (name,email,password_hash,role) VALUES (?,?,?,?)', name, email, hashPassword(body.password), body.role).lastInsertRowid);
-  audit(user, 'create', 'users', id, email);
-  return get('SELECT id,name,email,role,active,created_at FROM users WHERE id=?', id);
-}, { roles: ['admin'] });
+  const id = Number(run('INSERT INTO users (name,email,password_hash,role,role_id) VALUES (?,?,?,?,?)', name, email, hashPassword(body.password), baseRole(role), role.id).lastInsertRowid);
+  audit(user, 'create', 'users', id, `${email} as ${role.name}`);
+  return get(`${USER_SELECT} WHERE u.id=?`, id);
+});
 PUT('/api/users/:id', ({ params, body, user }) => {
-  const u = get('SELECT * FROM users WHERE id=?', params.id);
+  const u = get(`${USER_SELECT} WHERE u.id=?`, params.id);
   if (!u) throw notFound();
-  const role = body.role ?? u.role, active = body.active === undefined ? u.active : body.active ? 1 : 0;
-  if (!['admin', 'manager', 'rep'].includes(role)) throw bad('Invalid role');
-  if (u.id === user.id && (role !== 'admin' || !active)) throw bad('You cannot demote or deactivate yourself');
-  run('UPDATE users SET name=?, role=?, active=? WHERE id=?', String(body.name ?? u.name).trim() || u.name, role, active, u.id);
+  const cur = get('SELECT * FROM roles WHERE id=?', u.role_id);
+  const role = resolveRole(body, cur); const active = body.active === undefined ? u.active : body.active ? 1 : 0;
+  if (u.id === user.id && (role.id !== u.role_id || !active)) throw bad('You cannot change your own role or deactivate yourself');
+  const wasAdmin = cur?.name === 'admin' && cur.is_system; const stillAdmin = role.name === 'admin' && role.is_system && active;
+  if (wasAdmin && !stillAdmin && activeAdmins(u.id) < 1) throw bad('There must always be at least one active administrator');
+  run('UPDATE users SET name=?, role=?, role_id=?, active=? WHERE id=?', String(body.name ?? u.name).trim() || u.name, baseRole(role), role.id, active, u.id);
   if (body.password) { checkPassword(body.password); run('UPDATE users SET password_hash=? WHERE id=?', hashPassword(body.password), u.id); }
-  audit(user, 'update', 'users', u.id, u.email);
-  return get('SELECT id,name,email,role,active,created_at FROM users WHERE id=?', u.id);
-}, { roles: ['admin'] });
-GET('/api/audit', () => all('SELECT * FROM audit_log ORDER BY id DESC LIMIT 200'), { roles: ['admin'] });
+  audit(user, 'update', 'users', u.id, `${u.email}${role.id !== u.role_id ? ` role ${cur?.name} → ${role.name}` : ''}`);
+  return get(`${USER_SELECT} WHERE u.id=?`, u.id);
+});
+GET('/api/audit', () => all('SELECT * FROM audit_log ORDER BY id DESC LIMIT 200'));
 
 // ---------- Dashboard & reports ----------
 GET('/api/dashboard', ({ user, query }) => {
-  const mine = query.scope === 'mine';
+  const mine = query.scope === 'mine' || scopeOf(user, 'deals.view') === 'own' || scopeOf(user, 'contacts.view') === 'own';
   const o = mine ? ` AND owner_id=${Number(user.id)}` : '';
   const month = (col) => `strftime('%Y-%m', ${col})`;
   const pipeline = STAGES.map((s) => ({ ...s, ...get(`SELECT COUNT(*) AS count, COALESCE(SUM(amount),0) AS amount FROM deals WHERE stage=?${o}`, s.key) }));

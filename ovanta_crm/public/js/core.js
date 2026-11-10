@@ -38,7 +38,9 @@ export const initials = (n) => String(n || '?').split(/\s+/).slice(0, 2).map((x)
 export const fullName = (c) => [c.first_name, c.last_name].filter(Boolean).join(' ');
 export const badge = (v) => html`<span class="badge ${String(v).replace(/[^a-z]/gi, '')}">${v}</span>`;
 export const todayStr = () => new Date().toISOString().slice(0, 10);
-export const can = (...roles) => roles.includes(store.user?.role);
+/** Permission checks for the logged-in user (the server enforces the same rules; this only hides controls). */
+export const allow = (key) => { const [r, a] = key.split('.'); const v = store.user?.perms?.[r]?.[a]; return v === true || v === 'all' || v === 'own'; };
+export const allowAll = (key) => { const [r, a] = key.split('.'); const v = store.user?.perms?.[r]?.[a]; return v === true || v === 'all'; };
 
 // ---- toasts ----
 export function toast(msg, type = '') {

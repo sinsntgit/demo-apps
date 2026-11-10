@@ -1,4 +1,6 @@
 import { parseCookies, readSession } from './auth.js';
+import { ROUTE_PERMS } from './route-permissions.js';
+import { hasPerm } from './permissions.js';
 
 export class HttpError extends Error {
   constructor(status, message, extra) { super(message); this.status = status; this.extra = extra; }
@@ -11,7 +13,7 @@ const routes = [];
 export function route(method, pattern, handler, opts = {}) {
   const keys = [];
   const re = new RegExp('^' + pattern.replace(/:(\w+)/g, (_, k) => { keys.push(k); return '([^/]+)'; }) + '/?$');
-  (keys.length ? routes.push.bind(routes) : routes.unshift.bind(routes))({ method, re, keys, handler, opts });
+  (keys.length ? routes.push.bind(routes) : routes.unshift.bind(routes))({ method, pattern, re, keys, handler, opts });
 }
 export const GET = (p, h, o) => route('GET', p, h, o);
 export const POST = (p, h, o) => route('POST', p, h, o);
@@ -39,7 +41,8 @@ export async function handleApi(req, res, url) {
       const params = {};
       r.keys.forEach((k, i) => (params[k] = decodeURIComponent(m[i + 1])));
       if (!r.opts.public && !user) throw new HttpError(401, 'Authentication required');
-      if (r.opts.roles && !r.opts.roles.includes(user.role)) throw forbidden();
+      const need = ROUTE_PERMS[`${r.method} ${r.pattern}`];
+      if (need && !hasPerm(user, need)) throw forbidden(`Your role does not allow this (${need}).`);
       let body = {};
       if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
         const raw = await readBody(req);
@@ -61,3 +64,6 @@ export async function handleApi(req, res, url) {
     send(500, { error: 'Internal server error' });
   }
 }
+
+/** Every registered route, for the access-matrix completeness test. */
+export const listRoutes = () => routes.map((r) => ({ method: r.method, pattern: r.pattern, public: !!r.opts.public }));

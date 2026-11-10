@@ -1,4 +1,4 @@
-import { api, html, raw, setHtml, store, toast, fail, icon, initials, on, applyTheme, $, $$ } from './core.js';
+import { api, html, raw, setHtml, store, toast, fail, icon, initials, on, applyTheme, allow, $, $$ } from './core.js';
 import * as crm from './crm.js';
 import * as camp from './campaigns.js';
 import * as admin from './admin.js';
@@ -10,9 +10,9 @@ const app = $('#app');
 
 const NAV = [
   ['Workspace', [['dashboard', 'Dashboard', 'home'], ['contacts', 'Contacts', 'users'], ['accounts', 'Accounts', 'building'], ['deals', 'Deals', 'deal'], ['tasks', 'Tasks', 'task']]],
-  ['Billing', [['invoices', 'Invoices', 'invoice'], ['receivables', 'Receivables', 'wallet', ['admin', 'manager']], ['readiness', 'E-invoicing readiness', 'shield', ['admin', 'manager']], ['billing-settings', 'Billing settings', 'cog', ['admin', 'manager']]]],
-  ['Marketing', [['campaigns', 'Campaigns', 'mail'], ['segments', 'Segments', 'seg'], ['templates', 'Templates', 'tpl'], ['senders', 'Email senders', 'send', ['admin', 'manager']]]],
-  ['Admin', [['notifications', 'Notifications', 'bell', ['admin', 'manager']], ['team', 'Team & audit', 'team', ['admin']], ['settings', 'Settings', 'cog']]],
+  ['Billing', [['invoices', 'Invoices', 'invoice'], ['receivables', 'Receivables', 'wallet', 'receivables.view'], ['readiness', 'E-invoicing readiness', 'shield', 'readiness.view'], ['billing-settings', 'Billing settings', 'cog', 'billing_settings.view']]],
+  ['Marketing', [['campaigns', 'Campaigns', 'mail'], ['segments', 'Segments', 'seg'], ['templates', 'Templates', 'tpl'], ['senders', 'Email senders', 'send', 'senders.view']]],
+  ['Admin', [['notifications', 'Notifications', 'bell', 'notifications.view'], ['team', 'Team & roles', 'team', 'users.view'], ['settings', 'Settings', 'cog']]],
 ];
 
 const ROUTES = [
@@ -43,8 +43,8 @@ function loginView(msg = '') {
 
 function shell() {
   setHtml(app, html`<div class="shell"><aside class="side" id="side"><div class="brand"><span class="logo"><i></i></span>Ovantaa CRM</div>
-    <nav class="nav" aria-label="Main">${NAV.map(([group, items]) => html`<h4>${group}</h4>${items.filter((i) => !i[3] || i[3].includes(store.user.role)).map(([k, l, ic]) => html`<a href="#/${k}" data-nav="${k}">${icon(ic)}${l}</a>`)}`)}</nav>
-    <div class="me"><span class="avatar">${initials(store.user.name)}</span><div class="who"><b>${store.user.name}</b><span>${store.user.role}</span></div><button class="btn sm" data-act="logout" title="Sign out">Sign out</button></div></aside>
+    <nav class="nav" aria-label="Main">${NAV.map(([group, items]) => html`<h4>${group}</h4>${items.filter((i) => !i[3] || allow(i[3])).map(([k, l, ic]) => html`<a href="#/${k}" data-nav="${k}">${icon(ic)}${l}</a>`)}`)}</nav>
+    <div class="me"><span class="avatar">${initials(store.user.name)}</span><div class="who"><b>${store.user.name}</b><span>${store.user.role_label || store.user.role}</span></div><button class="btn sm" data-act="logout" title="Sign out">Sign out</button></div></aside>
     <main class="main"><button class="btn menu-btn" data-act="menu" style="margin-bottom:12px" aria-label="Open menu">☰ Menu</button><div id="view"></div></main></div>`);
   on($('.shell'), { menu: () => $('#side').classList.toggle('open'), logout: async () => { await api('POST', '/auth/logout'); store.user = null; location.hash = '#/login'; loginView(); } });
 }

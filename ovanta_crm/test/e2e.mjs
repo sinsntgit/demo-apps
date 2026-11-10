@@ -3,7 +3,8 @@ import { createRequire } from 'node:module';
 const { chromium } = createRequire(import.meta.url)('playwright'); // not a project dependency; preinstalled globally
 import http from 'node:http';
 import { makeXlsx } from './fixtures.mjs';
-process.env.SEED_BILLING_DEMO = '0'; process.env.DB_PATH = ':memory:'; process.env.SESSION_SECRET = 'e2e'; process.env.SEND_DELAY_MS = '1';
+process.env.SEED_BILLING_DEMO = '0'; import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
+const e2eDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ovantaa-e2e-')); process.env.DB_PATH = path.join(e2eDir, 'e2e.db'); process.env.DATA_DIR = e2eDir; process.env.SESSION_SECRET = 'e2e'; process.env.SEND_DELAY_MS = '1';
 const ai = http.createServer((q, r) => { let b = ''; q.on('data', (c) => (b += c)); q.on('end', () => { r.writeHead(200, { 'content-type': 'application/json' }); r.end(JSON.stringify({ model: 'claude-sonnet-5-5', content: [{ type: 'text', text: JSON.stringify({ subject: 'AI subject line', subject_alternatives: ['Alt one', 'Alt two'], preheader: 'p', body_html: '<p>Hi {{first_name|there}}, AI wrote this.</p>' }) }] })); }); });
 await new Promise((r) => ai.listen(0, '127.0.0.1', r)); process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${ai.address().port}`;
 const { server } = await import('../server/index.js');
@@ -95,6 +96,21 @@ await page.click('button:has-text("Import & check invoices")');
 await page.setInputFiles('#csvfile', { name: 'zoho.csv', mimeType: 'text/csv', buffer: Buffer.from('Invoice Number,Invoice Date,Due Date,Customer Name,Tax Registration Number,Item Name,Quantity,Item Price,Item Tax %\nZB-1,15/03/2026,14/04/2026,Tabuk Foods,344444444400003,Rice,10,90,15\nZB-1,15/03/2026,14/04/2026,Tabuk Foods,344444444400003,Oil,4,25.5,15\nZB-2,16/03/2026,,Bad VAT Ltd,999,Service,1,100,15\n') });
 await page.waitForSelector('text=3 rows found'); await page.click('.modal button[type=submit]'); await page.waitForSelector('text=Imported 2 invoice drafts'); await shot('import-result');
 if (!(await page.textContent('.modal')).includes('2 with errors')) errors.push('import should flag the bad VAT number and the missing customer address'); await page.keyboard.press('Escape');
+// ===== Roles & permissions UI: custom role -> user -> restricted session =====
+await page.click('a[data-nav=team]'); await page.click('button[data-t=roles]'); await page.waitForSelector('text=Roles & permissions'); await page.click('text=+ New role');
+await page.fill('.modal input[name=name]', 'E2E Seller'); await page.selectOption('.modal select[name=p__contacts__view]', 'own'); await page.selectOption('.modal select[name=p__contacts__edit]', 'own');
+await page.check('.modal input[name=p__contacts__create]'); await page.selectOption('.modal select[name=p__deals__view]', 'all'); await page.click('.modal button[type=submit]'); await page.waitForSelector('td:has-text("E2E Seller")'); await shot('roles');
+await page.click('button[data-t=users]'); await page.click('text=+ Invite user'); await page.fill('.modal input[name=name]', 'E2E Seller User'); await page.fill('.modal input[name=email]', 'e2eseller@example.com'); await page.fill('.modal input[name=password]', 'Seller@12345');
+await page.selectOption('.modal select[name=role_id]', { label: 'E2E Seller (custom)' }); await page.click('.modal button[type=submit]'); await page.waitForSelector('td:has-text("e2eseller@example.com")');
+const ctx2 = await browser.newContext({ viewport: { width: 1360, height: 900 } }); const p2 = await ctx2.newPage();
+await p2.goto(base); await p2.fill('input[name=email]', 'e2eseller@example.com'); await p2.fill('input[name=password]', 'Seller@12345'); await p2.click('button.primary'); await p2.waitForSelector('.kpi');
+const nav = await p2.evaluate(() => Array.from(document.querySelectorAll('.nav a')).map((x) => x.textContent.trim()));
+for (const hidden of ['Team & roles', 'Billing settings', 'Receivables', 'E-invoicing readiness', 'Notifications', 'Email senders']) if (nav.includes(hidden)) errors.push(`restricted user still sees "${hidden}" in the menu`);
+if (!nav.includes('Contacts')) errors.push('restricted user lost the Contacts menu');
+if ((await p2.textContent('.me')).indexOf('E2E Seller') < 0) errors.push('role name not shown in the sidebar');
+await p2.click('a[data-nav=contacts]'); await p2.waitForSelector('table'); if ((await p2.locator('text=Delete all').count()) > 0) errors.push('non-admin sees Delete all');
+await p2.goto(`${base}/#/team`); await p2.waitForSelector('.empty', { timeout: 5000 }).catch(() => errors.push('direct URL to Team did not show an access error')); await ctx2.close();
+await page.click('a[data-nav=settings]'); await page.waitForSelector('text=Backups'); await page.click('button:has-text("Create backup now")'); await page.waitForSelector('.toast:has-text("Backup")', { timeout: 5000 }).catch(() => errors.push('backup toast missing'));
 // segment builder + deal drag/drop
 await page.click('a[data-nav=segments]'); await page.click('text=+ New segment'); await page.fill('.modal input[name=name]', 'E2E seg');
 await page.waitForSelector('#segprev b'); await page.click('.modal button[type=submit]'); await page.waitForSelector('td:has-text("E2E seg")');

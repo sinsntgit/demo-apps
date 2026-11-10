@@ -8,6 +8,14 @@ import {
 import { submitToProvider } from './providers.js';
 import { receivablesSummary, readinessReport, sendReminder, runReminders, portalUrl } from './receivables.js';
 import { renderInvoiceHtml } from './invoice-view.js';
+import { scopeOf, canOnRecord } from './permissions.js';
+
+/** Own-scope roles may only see/act on invoices they own. Hides existence (404) rather than revealing it. */
+function assertVisible(user, id) {
+  const row = get('SELECT owner_id FROM invoices WHERE id=?', id); if (!row) throw notFound('Invoice not found');
+  if (scopeOf(user, 'invoices.view') === 'own' && row.owner_id !== user.id) throw notFound('Invoice not found');
+  return row;
+}
 
 const MGR = ['admin', 'manager'];
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -15,9 +23,9 @@ const addDays = (d, n) => new Date(new Date(d).getTime() + n * 86400000).toISOSt
 const asDate = (v, label) => { if (v === undefined || v === null || v === '') return null; const s = String(v).slice(0, 10); if (!DATE.test(s) || Number.isNaN(Date.parse(s))) throw bad(`${label} must be a valid date (YYYY-MM-DD)`); return s; };
 
 // ---------------- Billing settings ----------------
-GET('/api/billing/settings', () => ({ settings: getBilling(), issues: validateSeller(getBilling()) }), { roles: MGR });
-PUT('/api/billing/settings', ({ body, user }) => { const s = saveBilling(body); audit(user, 'update', 'billing_settings', null); return { settings: s, issues: validateSeller(s) }; }, { roles: ['admin'] });
-GET('/api/billing/chain', () => verifyChain(), { roles: MGR });
+GET('/api/billing/settings', () => ({ settings: getBilling(), issues: validateSeller(getBilling()) }));
+PUT('/api/billing/settings', ({ body, user }) => { const s = saveBilling(body); audit(user, 'update', 'billing_settings', null); return { settings: s, issues: validateSeller(s) }; });
+GET('/api/billing/chain', () => verifyChain());
 
 // ---------------- Draft building ----------------
 const BUYER_KEYS = ['buyer_name', 'buyer_name_ar', 'buyer_vat', 'buyer_street', 'buyer_building', 'buyer_district', 'buyer_city', 'buyer_postal', 'buyer_country', 'buyer_email', 'buyer_phone'];
@@ -87,11 +95,12 @@ function saveDraft(f, calc, user, id = null) {
 }
 
 // ---------------- Invoice list / detail ----------------
-const LIST = `SELECT i.id,i.number,i.doc_type,i.status,i.jurisdiction,i.currency,i.buyer_name,i.account_id,i.issue_date,i.due_date,i.total,i.amount_paid,i.amount_credited,i.compliance_status,i.external_number,i.source,i.ref_number,i.created_at,
+const LIST = `SELECT i.id,i.owner_id,i.number,i.doc_type,i.status,i.jurisdiction,i.currency,i.buyer_name,i.account_id,i.issue_date,i.due_date,i.total,i.amount_paid,i.amount_credited,i.compliance_status,i.external_number,i.source,i.ref_number,i.created_at,
   CASE WHEN i.status='draft' OR i.doc_type='credit_note' THEN 0 ELSE MAX(0, ROUND(i.total-i.amount_paid-i.amount_credited,2)) END AS balance,
   CASE WHEN i.status IN ('issued','partially_paid') AND i.doc_type<>'credit_note' AND i.due_date < date('now') THEN CAST(julianday(date('now'))-julianday(i.due_date) AS INTEGER) ELSE 0 END AS days_overdue FROM invoices i`;
-GET('/api/invoices', ({ query }) => {
+GET('/api/invoices', ({ query, user }) => {
   const w = []; const p = [];
+  if (scopeOf(user, 'invoices.view') === 'own') { w.push('owner_id = ?'); p.push(user.id); }
   if (query.q) { w.push("(number LIKE ? ESCAPE '\\' OR buyer_name LIKE ? ESCAPE '\\' OR external_number LIKE ? ESCAPE '\\')"); const l = `%${String(query.q).replace(/[\\%_]/g, (m) => '\\' + m)}%`; p.push(l, l, l); }
   if (query.status === 'overdue') w.push('days_overdue > 0'); else if (query.status === 'open') w.push("status IN ('issued','partially_paid') AND balance > 0"); else if (query.status) { w.push('status = ?'); p.push(query.status); }
   if (query.type) { w.push('doc_type = ?'); p.push(query.type); }
@@ -125,12 +134,14 @@ async function detail(id) {
     provider: { mode: getBilling().asp.mode },
   };
 }
-GET('/api/invoices/:id', ({ params }) => detail(params.id));
-GET('/api/invoices/:id/xml', ({ params, res }) => {
+GET('/api/invoices/:id', ({ params, user }) => { assertVisible(user, params.id); return detail(params.id); });
+GET('/api/invoices/:id/xml', ({ params, res, user }) => {
+  assertVisible(user, params.id);
   const inv = get('SELECT number, xml FROM invoices WHERE id=?', params.id); if (!inv?.xml) throw notFound('XML is generated when an invoice is issued.');
   res.writeHead(200, { 'Content-Type': 'application/xml; charset=utf-8', 'Content-Disposition': `attachment; filename="${inv.number}.xml"` }); res.end(inv.xml);
 });
-GET('/api/invoices/:id/print', async ({ params, query, res }) => {
+GET('/api/invoices/:id/print', async ({ params, query, res, user }) => {
+  assertVisible(user, params.id);
   const inv = loadInvoice(params.id); if (!inv) throw notFound('Invoice not found');
   const html = await renderInvoiceHtml(inv, { lang: query.lang, portal: false });
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(html);
@@ -143,7 +154,9 @@ POST('/api/invoices', ({ body, user }) => {
   return detail(id);
 });
 PUT('/api/invoices/:id', ({ params, body, user }) => {
+  assertVisible(user, params.id);
   const existing = loadInvoice(params.id); if (!existing) throw notFound('Invoice not found');
+  if (!canOnRecord(user, 'invoices.edit', existing.owner_id)) throw forbidden('Your role can only edit invoices you own.');
   if (existing.status !== 'draft') throw forbidden('Issued invoices cannot be edited. Issue a credit or debit note to correct them.');
   const { f, calc } = buildDraft(body, existing, user); f._isNew = false;
   saveDraft(f, calc, user, existing.id); return detail(existing.id);
@@ -151,45 +164,49 @@ PUT('/api/invoices/:id', ({ params, body, user }) => {
 DELETE('/api/invoices/:id', ({ params, user }) => {
   const inv = loadInvoice(params.id); if (!inv) throw notFound('Invoice not found');
   if (inv.status !== 'draft') throw forbidden('Issued invoices cannot be deleted — tax records must be kept. Issue a credit note instead.');
-  if (user.role === 'rep' && inv.created_by !== user.id) throw forbidden('Reps can only delete their own drafts.');
+  assertVisible(user, params.id);
+  if (!canOnRecord(user, 'invoices.delete', inv.owner_id)) throw forbidden('Your role can only delete invoices you own.');
   run('DELETE FROM invoices WHERE id=?', inv.id); audit(user, 'delete', 'invoices', inv.id, 'draft'); return { ok: true };
 });
 
 // ---------------- Issue, submit, payments ----------------
 POST('/api/invoices/:id/issue', async ({ params, user }) => {
+  assertVisible(user, params.id);
   const r = issueInvoice(Number(params.id), user); audit(user, 'issue', 'invoices', params.id, r.number);
   const inv = loadInvoice(params.id);
   const sub = await submitToProvider(inv, user);
   return { ...(await detail(params.id)), warnings: r.warnings, submission: sub };
-}, { roles: MGR });
+});
 POST('/api/invoices/:id/submit', async ({ params, user }) => {
+  assertVisible(user, params.id);
   const inv = loadInvoice(params.id); if (!inv || inv.status === 'draft') throw bad('Only issued invoices can be submitted.');
   if (['cleared', 'reported'].includes(inv.compliance_status)) throw bad(`Already ${inv.compliance_status}.`);
   const sub = await submitToProvider(inv, user); return { ...(await detail(params.id)), submission: sub };
-}, { roles: MGR });
+});
 
 POST('/api/invoices/:id/payments', async ({ params, body, user }) => {
+  assertVisible(user, params.id);
   const inv = loadInvoice(params.id); if (!inv) throw notFound('Invoice not found');
   recordPayment(inv, body, user); audit(user, 'payment', 'invoices', inv.id, String(body.amount)); return detail(inv.id);
-}, { roles: MGR });
+});
 PUT('/api/payments/:id/reconcile', ({ params, body, user }) => {
   const p = get('SELECT * FROM payments WHERE id=?', params.id); if (!p) throw notFound('Payment not found');
   run('UPDATE payments SET reconciled=? WHERE id=?', body.reconciled ? 1 : 0, p.id);
   logEvent(p.invoice_id, body.reconciled ? 'reconciled' : 'unreconciled', `payment of ${p.amount.toFixed(2)} on ${p.paid_on}`, user); return { ok: true };
-}, { roles: MGR });
+});
 
 // Customer-notified payments awaiting confirmation
-GET('/api/payment-claims', ({ query }) => all(`SELECT c.*, i.number, i.buyer_name, i.currency, ROUND(i.total-i.amount_paid-i.amount_credited,2) AS balance FROM payment_claims c JOIN invoices i ON i.id=c.invoice_id WHERE c.status=? ORDER BY c.id DESC LIMIT 200`, query.status || 'pending'), { roles: MGR });
+GET('/api/payment-claims', ({ query, user }) => all(`SELECT c.*, i.number, i.buyer_name, i.currency, ROUND(i.total-i.amount_paid-i.amount_credited,2) AS balance FROM payment_claims c JOIN invoices i ON i.id=c.invoice_id WHERE c.status=? AND (? OR i.owner_id=?) ORDER BY c.id DESC LIMIT 200`, query.status || 'pending', scopeOf(user, 'invoices.view') === 'own' ? 0 : 1, user.id));
 POST('/api/payment-claims/:id/confirm', ({ params, user }) => {
   const c = get("SELECT * FROM payment_claims WHERE id=? AND status='pending'", params.id); if (!c) throw notFound('Claim not found or already handled');
   const inv = loadInvoice(c.invoice_id);
   recordPayment(inv, { amount: Math.min(c.amount, inv.balance), paid_on: c.paid_on && c.paid_on <= today() ? c.paid_on : today(), method: 'bank_transfer', reference: c.reference, note: `Confirmed customer notice${c.payer_name ? ` from ${c.payer_name}` : ''}` }, user);
   run("UPDATE payment_claims SET status='confirmed', resolved_by_name=?, resolved_at=? WHERE id=?", user.name, nowIso(), c.id); return { ok: true };
-}, { roles: MGR });
+});
 POST('/api/payment-claims/:id/reject', ({ params, user }) => {
   const c = get("SELECT * FROM payment_claims WHERE id=? AND status='pending'", params.id); if (!c) throw notFound('Claim not found or already handled');
   run("UPDATE payment_claims SET status='rejected', resolved_by_name=?, resolved_at=? WHERE id=?", user.name, nowIso(), c.id); logEvent(c.invoice_id, 'claim_rejected', `claimed ${c.amount.toFixed(2)} — not found in bank`, user); return { ok: true };
-}, { roles: MGR });
+});
 
 // ---------------- Credit / debit notes (corrections) ----------------
 function noteDraft(kind, orig, body, user) {
@@ -202,21 +219,22 @@ function noteDraft(kind, orig, body, user) {
   for (const k of [...BUYER_KEYS]) f[k] = orig[k]; // keep the exact buyer details of the original
   f._isNew = true; return saveDraft(f, calc, user);
 }
-POST('/api/invoices/:id/credit-note', async ({ params, body, user }) => { const o = loadInvoice(params.id); if (!o) throw notFound('Invoice not found'); const id = noteDraft('credit_note', o, body, user); logEvent(o.id, 'credit_note_drafted', body.reason, user); return detail(id); }, { roles: MGR });
-POST('/api/invoices/:id/debit-note', async ({ params, body, user }) => { const o = loadInvoice(params.id); if (!o) throw notFound('Invoice not found'); const id = noteDraft('debit_note', o, body, user); logEvent(o.id, 'debit_note_drafted', body.reason, user); return detail(id); }, { roles: MGR });
+POST('/api/invoices/:id/credit-note', async ({ params, body, user }) => { assertVisible(user, params.id); const o = loadInvoice(params.id); if (!o) throw notFound('Invoice not found'); const id = noteDraft('credit_note', o, body, user); logEvent(o.id, 'credit_note_drafted', body.reason, user); return detail(id); });
+POST('/api/invoices/:id/debit-note', async ({ params, body, user }) => { assertVisible(user, params.id); const o = loadInvoice(params.id); if (!o) throw notFound('Invoice not found'); const id = noteDraft('debit_note', o, body, user); logEvent(o.id, 'debit_note_drafted', body.reason, user); return detail(id); });
 
 // ---------------- Reminders ----------------
 POST('/api/invoices/:id/remind', async ({ params, body, user }) => {
+  assertVisible(user, params.id);
   const inv = loadInvoice(params.id); if (!inv) throw notFound('Invoice not found');
   if (!['issued', 'partially_paid'].includes(inv.status) || inv.balance <= 0) throw bad('Reminders can only be sent for invoices with an outstanding balance.');
   if (!['email', 'whatsapp', 'sms'].includes(body.channel)) throw bad('Choose email, whatsapp or sms');
   return sendReminder(inv, body.channel, { kind: 'manual', user });
-}, { roles: MGR });
-POST('/api/reminders/run', async ({ user }) => { const r = await runReminders({ force: true }); audit(user, 'run_reminders', 'invoices', null, JSON.stringify(r)); return r; }, { roles: ['admin'] });
+});
+POST('/api/reminders/run', async ({ user }) => { const r = await runReminders({ force: true }); audit(user, 'run_reminders', 'invoices', null, JSON.stringify(r)); return r; });
 
 // ---------------- Analytics ----------------
-GET('/api/receivables', () => receivablesSummary(), { roles: MGR });
-GET('/api/readiness', () => readinessReport(), { roles: MGR });
+GET('/api/receivables', () => receivablesSummary());
+GET('/api/readiness', () => readinessReport());
 
 // ---------------- Import from other accounting systems (Zoho Books, QuickBooks, Xero, local) ----------------
 function parseAnyDate(v) {
@@ -254,7 +272,7 @@ POST('/api/invoices/import', ({ body, user }) => {
     } catch (e) { res.results.push({ number: g.number || `row ${g.first}`, failed: e.message, errors: 1, warnings: 0 }); res.with_errors++; }
   }
   audit(user, 'import', 'invoices', null, `${res.invoices} drafts`); return res;
-}, { roles: MGR });
+});
 
 // ================= Public customer payment portal =================
 const claimHits = new Map();

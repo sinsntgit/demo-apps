@@ -2,10 +2,22 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
+import { backupDatabase, pruneBackups } from './backup-core.js';
+import { runMigrations, currentVersion, LATEST_VERSION } from './migrations.js';
 
 if (config.dbPath !== ':memory:') fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
 export const db = new DatabaseSync(config.dbPath);
 db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
+
+// Safety net: before ANY schema change on an existing database, take a restore point (data/backups/*-premigration-*.db).
+export let preMigrationBackup = null;
+if (config.dbPath !== ':memory:' && db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='users'").get()) {
+  const from = currentVersion(db);
+  if (from < LATEST_VERSION) {
+    try { preMigrationBackup = backupDatabase(db, config.backupDir, `premigration-v${from}-to-v${LATEST_VERSION}`); pruneBackups(config.backupDir, 'premigration', 10); console.log(`Upgrading database v${from} → v${LATEST_VERSION}. Restore point: ${preMigrationBackup}`); }
+    catch (e) { throw new Error(`Could not create the pre-upgrade backup, so the upgrade was NOT started: ${e.message}`); }
+  }
+}
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
@@ -225,6 +237,7 @@ export function backfillDealHistory() {
     FROM deals d WHERE NOT EXISTS (SELECT 1 FROM deal_stage_history h WHERE h.deal_id=d.id)`);
 }
 backfillDealHistory();
+runMigrations(db);
 
 /** Run fn inside a transaction. */
 export function tx(fn) {

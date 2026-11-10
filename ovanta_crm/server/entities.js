@@ -1,6 +1,7 @@
 import { all, get, run, audit, nowIso } from './db.js';
 import { bad, notFound, forbidden } from './http.js';
 import { notify, dealEvents } from './notifications.js';
+import { scopeOf, canOnRecord } from './permissions.js';
 
 export const STAGES = [
   { key: 'prospecting', label: 'Prospecting', prob: 10 },
@@ -96,8 +97,9 @@ export function clean(ent, input, { partial = false } = {}) {
   return out;
 }
 
-function listQuery(ent, q) {
+function listQuery(ent, q, user) {
   const where = []; const params = [];
+  if (user && scopeOf(user, `${ent.table}.view`) === 'own') { where.push(`${ent.alias}.owner_id = ?`); params.push(user.id); }
   if (q.q) {
     where.push('(' + ent.search.map((s) => `${s} LIKE ? ESCAPE '\\'`).join(' OR ') + ')');
     const like = `%${String(q.q).replace(/[\\%_]/g, (m) => '\\' + m)}%`;
@@ -115,8 +117,8 @@ function listQuery(ent, q) {
   return { where: where.length ? ' WHERE ' + where.join(' AND ') : '', params };
 }
 
-export function list(ent, q) {
-  const { where, params } = listQuery(ent, q);
+export function list(ent, q, user) {
+  const { where, params } = listQuery(ent, q, user);
   const limit = Math.min(Math.max(parseInt(q.limit || '25', 10) || 25, 1), 1000);
   const page = Math.max(parseInt(q.page || '1', 10) || 1, 1);
   const dir = q.dir === 'desc' ? 'DESC' : 'ASC';
@@ -126,9 +128,10 @@ export function list(ent, q) {
   return { rows, total, page, limit };
 }
 
-export function getOne(ent, id) {
+export function getOne(ent, id, user) {
   const row = get(`${ent.select} WHERE ${ent.alias}.id = ?`, id);
   if (!row) throw notFound(`${ent.noun} not found`);
+  if (user && scopeOf(user, `${ent.table}.view`) === 'own' && row.owner_id !== user.id) throw notFound(`${ent.noun} not found`); // hide records outside the user's scope
   return row;
 }
 
@@ -159,7 +162,8 @@ export function create(ent, body, user) {
 }
 
 export function update(ent, id, body, user) {
-  const existing = getOne(ent, id);
+  const existing = getOne(ent, id, user);
+  if (!canOnRecord(user, `${ent.table}.edit`, existing.owner_id)) throw forbidden(`Your role can only edit ${ent.noun.toLowerCase()}s you own.`);
   const data = clean(ent, body, { partial: true });
   if (ent.table === 'deals') applyDealStage(data, existing);
   const cols = Object.keys(data);
@@ -178,8 +182,8 @@ export function update(ent, id, body, user) {
 }
 
 export function remove(ent, id, user) {
-  const existing = getOne(ent, id);
-  if (user.role === 'rep' && existing.owner_id !== user.id) throw forbidden('Reps can only delete records they own');
+  const existing = getOne(ent, id, user);
+  if (!canOnRecord(user, `${ent.table}.delete`, existing.owner_id)) throw forbidden(`Your role can only delete ${ent.noun.toLowerCase()}s you own.`);
   run(`DELETE FROM ${ent.table} WHERE id=?`, id);
   audit(user, 'delete', ent.table, id, existing.name || existing.title || existing.first_name);
   if (ent.table === 'deals') notify(['deal.deleted'], existing, {}, user);

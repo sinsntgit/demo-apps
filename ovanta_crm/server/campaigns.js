@@ -5,6 +5,7 @@ import { hmac } from './auth.js';
 import { resolveSegment } from './segments.js';
 import { bad } from './http.js';
 import { runReminders } from './receivables.js';
+import { maybeDailyBackup } from './backup.js';
 import { sendMail, getSender, defaultSender, sentLast24h } from './mailer.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -149,6 +150,7 @@ export function processCampaign(id) {
 export function startScheduler() {
   const tick = () => {
     runReminders().catch((e) => console.error('Reminder run failed', e));
+    try { maybeDailyBackup(); } catch (e) { console.error('Daily backup failed', e.message); }
     try {
       for (const c of all("SELECT id FROM campaigns WHERE status='scheduled' AND scheduled_at <= ?", nowIso())) {
         try { launchCampaign(c.id); } catch (e) { console.error('Scheduled launch failed', c.id, e.message); run("UPDATE campaigns SET status='draft', note=? WHERE id=?", `Scheduled send failed: ${e.message}`, c.id); }
