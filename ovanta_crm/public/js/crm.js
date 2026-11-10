@@ -2,6 +2,7 @@ import {
   api, qs, html, raw, setHtml, esc, on, store, toast, fail, modal, confirmBox, purgeModal, field, formValues, badge, money, pct, num, fmtDate, fmtDateTime, ago, initials, fullName, todayStr, $, $$, debounce, allow, allowAll,
 } from './core.js';
 import { mountList } from './list.js';
+import { mountAttachments, convertLead } from './records.js';
 import { openEntityForm, customDetailCard, customColumns, customFilters, customCardLines, displayValue, activeFields } from './forms.js';
 import { readTable, FIELDS, guessMapping, applyMapping, TEMPLATE_CSV } from './csv.js';
 
@@ -149,7 +150,7 @@ const miniTasks = (tasks) => html`<div class="card"><div class="hd"><h2>Tasks</h
 export async function contactDetail(root, id) {
   const draw = async () => {
     const d = await api('GET', `/contacts/${id}/360`); const c = d.contact;
-    setHtml(root, html`<div class="topbar"><a href="#/contacts">← Contacts</a><span class="grow"></span><button class="btn" data-act="task">+ Task</button><button class="btn" data-act="edit">Edit</button>${allow('contacts.delete') ? html`<button class="btn danger" data-act="del">Delete</button>` : ''}</div>
+    setHtml(root, html`<div class="topbar"><a href="#/contacts">← Contacts</a><span class="grow"></span>${c.converted_at ? html`<span class="badge sent" title="Converted ${fmtDate(c.converted_at)}">Converted ✓</span>${c.converted_deal_id ? html`<a class="btn" href="#/deals/${c.converted_deal_id}">View deal</a>` : ''}` : allow('contacts.edit') && ['lead', 'qualified'].includes(c.status) ? html`<button class="btn primary" data-act="convert">Convert lead</button>` : ''}<button class="btn" data-act="task">+ Task</button><button class="btn" data-act="edit">Edit</button>${allow('contacts.delete') ? html`<button class="btn danger" data-act="del">Delete</button>` : ''}</div>
       <div class="grid g21"><div style="display:grid;gap:16px;align-content:start">
         <div class="card"><div class="bd" style="display:flex;gap:16px;align-items:center"><span class="avatar" style="width:56px;height:56px;font-size:18px">${initials(fullName(c))}</span><div class="grow"><h1>${fullName(c)}</h1><div class="muted">${c.title || ''} ${c.account_id ? html`at <a href="#/accounts/${c.account_id}">${c.account_name}</a>` : ''}</div></div>${badge(c.status)}</div></div>
         ${timelineCard(d.activities, 'contact_id', id)}
@@ -163,8 +164,9 @@ export async function contactDetail(root, id) {
         ${customDetailCard('contacts', c)}
         <div class="card"><div class="hd"><h2>Deals</h2><span class="grow"></span><button class="btn sm" data-act="deal">+ Deal</button></div><div class="bd">${d.deals.length ? d.deals.map((x) => html`<div style="display:flex;justify-content:space-between;padding:5px 0"><a href="#/deals/${x.id}">${x.name}</a><span>${money(x.amount, true)} ${badge(x.stage)}</span></div>`) : html`<span class="muted">No deals.</span>`}</div></div>
         ${miniTasks(d.tasks)}</div></div>`);
-    wireTimeline(root, 'contact_id', id, draw);
+    wireTimeline(root, 'contact_id', id, draw); mountAttachments(root, 'contacts', id);
     on(root, {
+      convert: () => convertLead(id, draw),
       edit: async () => contactForm(c, await lookups(), draw),
       del: async () => { if (await confirmBox(`Delete ${fullName(c)}? This also removes their activity history.`, 'Delete')) { await api('DELETE', `/contacts/${id}`); toast('Contact deleted'); location.hash = '#/contacts'; } },
       task: () => taskForm({ contact_id: id }, draw), deal: async () => dealForm({ contact_id: id, account_id: c.account_id }, await lookups(), draw),
@@ -204,7 +206,7 @@ export async function accountDetail(root, id) {
           <div class="card"><div class="hd"><h2>Contacts (${d.contacts.length})</h2></div><div class="bd">${d.contacts.length ? d.contacts.map((c) => html`<div style="padding:5px 0"><a href="#/contacts/${c.id}">${fullName(c)}</a> ${badge(c.status)}<div class="small muted">${c.title || ''}</div></div>`) : html`<span class="muted">No contacts.</span>`}</div></div>
           <div class="card"><div class="hd"><h2>Deals (${d.deals.length})</h2></div><div class="bd">${d.deals.length ? d.deals.map((x) => html`<div style="display:flex;justify-content:space-between;padding:5px 0"><a href="#/deals/${x.id}">${x.name}</a><span>${money(x.amount, true)} ${badge(x.stage)}</span></div>`) : html`<span class="muted">No deals.</span>`}</div></div>
         </div></div>`);
-    wireTimeline(root, 'account_id', id, draw);
+    wireTimeline(root, 'account_id', id, draw); mountAttachments(root, 'accounts', id);
     on(root, {
       edit: () => accountForm(a, draw),
       del: async () => { if (await confirmBox(`Delete ${a.name}? Contacts and deals stay but lose their company link.`, 'Delete')) { await api('DELETE', `/accounts/${id}`); location.hash = '#/accounts'; } },
@@ -303,7 +305,7 @@ export async function dealDetail(root, id) {
           <div><span class="muted small">Account</span><br>${x.account_id ? html`<a href="#/accounts/${x.account_id}">${x.account_name}</a>` : '—'}</div>
           <div><span class="muted small">Contact</span><br>${x.contact_id ? html`<a href="#/contacts/${x.contact_id}">${x.contact_name}</a>` : '—'}</div>
           <div><span class="muted small">Expected close</span><br>${fmtDate(x.close_date)}</div><div><span class="muted small">Owner</span><br>${x.owner_name || '—'}</div></div></div>${customDetailCard('deals', x)}${miniTasks(d.tasks)}</div></div>`);
-    wireTimeline(root, 'deal_id', id, draw);
+    wireTimeline(root, 'deal_id', id, draw); mountAttachments(root, 'deals', id);
     on(root, {
       edit: async () => dealForm(x, await lookups(), draw), stage: () => stageModal(x, draw), task: () => taskForm({ deal_id: id }, draw),
       del: async () => { if (await confirmBox(`Delete deal "${x.name}"?`, 'Delete')) { await api('DELETE', `/deals/${id}`); location.hash = '#/deals'; } },

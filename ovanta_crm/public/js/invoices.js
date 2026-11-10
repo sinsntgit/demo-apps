@@ -1,3 +1,4 @@
+import { mountAttachments } from './records.js';
 import {
   api, html, raw, setHtml, esc, on, store, toast, fail, modal, confirmBox, field, formValues, money as usd, fmtDate, fmtDateTime, ago, todayStr, debounce, $, $$, allow,
 } from './core.js';
@@ -147,6 +148,7 @@ export async function invoiceDetail(root, id) {
     const noteModal = (kind) => modal({ title: kind === 'credit_note' ? `Credit note for ${i.number}` : `Debit note for ${i.number}`, submitLabel: 'Create draft',
       body: html`<p class="small muted">${kind === 'credit_note' ? 'A credit note corrects or cancels an issued invoice — issued invoices are never edited. It starts as a draft copy of all lines; you can reduce it to credit only part.' : 'A debit note adds charges to an issued invoice. You will add the lines next.'}</p>${field({ name: 'reason', label: 'Reason', required: true, placeholder: 'e.g. Services not delivered / price correction / wrong customer VAT number' })}`,
       onSubmit: async (f) => { const n = await api('POST', `/invoices/${i.id}/${kind === 'credit_note' ? 'credit-note' : 'debit-note'}`, { reason: f.reason.value }); location.hash = `#/invoices/${n.id}/edit`; } });
+    mountAttachments(root, 'invoices', id);
     on(root, {
       issue: async () => { try { const r = await api('POST', `/invoices/${id}/issue`); toast(`Issued ${r.number}${r.submission?.status && r.submission.status !== 'ready' ? ` · ${r.submission.status}` : ''}`, 'ok'); draw(); } catch (e) { modal({ title: 'Cannot issue yet', hideFooter: true, body: html`<p>${e.message}</p>${e.extra?.issues ? '' : ''}` }); draw(); } },
       delete: async () => { if (await confirmBox('Delete this draft?', 'Delete')) { await api('DELETE', `/invoices/${id}`); location.hash = '#/invoices'; } },

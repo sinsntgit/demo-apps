@@ -7,11 +7,13 @@ import * as inv from './invoices.js';
 import * as bill from './billing.js';
 import * as cust from './customize.js';
 import { loadCustomization } from './forms.js';
+import { forcedSetup } from './security.js';
+import * as rec from './records.js';
 
 const app = $('#app');
 
 const NAV = [
-  ['Workspace', [['dashboard', 'Dashboard', 'home'], ['contacts', 'Contacts', 'users'], ['accounts', 'Accounts', 'building'], ['deals', 'Deals', 'deal'], ['tasks', 'Tasks', 'task']]],
+  ['Workspace', [['dashboard', 'Dashboard', 'home'], ['contacts', 'Contacts', 'users'], ['accounts', 'Accounts', 'building'], ['deals', 'Deals', 'deal'], ['tasks', 'Tasks', 'task'], ['duplicates', 'Duplicates', 'users', 'contacts.merge']]],
   ['Billing', [['invoices', 'Invoices', 'invoice'], ['receivables', 'Receivables', 'wallet', 'receivables.view'], ['readiness', 'E-invoicing readiness', 'shield', 'readiness.view'], ['billing-settings', 'Billing settings', 'cog', 'billing_settings.view']]],
   ['Marketing', [['campaigns', 'Campaigns', 'mail'], ['segments', 'Segments', 'seg'], ['templates', 'Templates', 'tpl'], ['senders', 'Email senders', 'send', 'senders.view']]],
   ['Admin', [['customize', 'Customisation', 'tpl', 'customization.manage'], ['notifications', 'Notifications', 'bell', 'notifications.view'], ['team', 'Team & roles', 'team', 'users.view'], ['settings', 'Settings', 'cog']]],
@@ -26,7 +28,7 @@ const ROUTES = [
   [/^invoices$/, (r) => inv.invoiceList(r, () => bill.importInvoices(() => { location.hash = '#/readiness'; }))], [/^invoices\/new$/, (r) => inv.invoiceEditor(r, null)], [/^invoices\/(\d+)\/edit$/, (r, id) => inv.invoiceEditor(r, id)], [/^invoices\/(\d+)$/, (r, id) => inv.invoiceDetail(r, id)],
   [/^receivables$/, (r) => bill.receivables(r)], [/^readiness$/, (r) => bill.readiness(r, (done) => bill.importInvoices(done))], [/^billing-settings$/, (r) => bill.billingSettings(r)],
   [/^senders$/, (r) => mail.senders(r)], [/^notifications$/, (r) => mail.notifications(r)],
-  [/^customize$/, (r) => cust.customize(r)], [/^team$/, (r) => admin.team(r)], [/^settings$/, (r) => admin.settings(r)],
+  [/^duplicates$/, (r) => rec.duplicates(r)], [/^customize$/, (r) => cust.customize(r)], [/^team$/, (r) => admin.team(r)], [/^settings$/, (r) => admin.settings(r)],
 ];
 
 function loginView(msg = '') {
@@ -38,8 +40,25 @@ function loginView(msg = '') {
     <button class="btn primary" style="width:100%;justify-content:center">Sign in</button></form></div>`);
   $('#login').addEventListener('submit', async (e) => {
     e.preventDefault(); const f = e.currentTarget;
-    try { const r = await api('POST', '/auth/login', { email: f.email.value, password: f.password.value }); store.user = r.user; await boot(); }
+    try { const r = await api('POST', '/auth/login', { email: f.email.value, password: f.password.value }); if (r.needs_2fa) return twofaStep(r.challenge); store.user = r.user; await boot(); }
     catch (x) { const el = $('.err', f); el.textContent = x.message; el.hidden = false; }
+  });
+}
+
+/** Second sign-in step: authenticator code, or a recovery code. */
+function twofaStep(challenge, recovery = false) {
+  setHtml(app, html`<div class="login"><form class="box" id="tf"><div class="brand"><span class="logo"><i></i></span>Ovantaa CRM</div>
+    <h2 style="margin-bottom:4px">Two-factor check</h2><p class="muted" style="margin-top:0">${recovery ? 'Enter one of your saved recovery codes.' : 'Enter the 6-digit code from your authenticator app.'}</p>
+    <div class="err" hidden></div>
+    <label>${recovery ? 'Recovery code' : 'Code'}<input name="code" ${recovery ? '' : raw('inputmode="numeric" maxlength="7" pattern="[0-9 ]{6,7}"')} autocomplete="one-time-code" required autofocus></label>
+    <button class="btn primary" style="width:100%;justify-content:center">Verify</button>
+    <p class="small" style="text-align:center"><a href="#" id="tf-alt">${recovery ? 'Use my authenticator app' : 'Use a recovery code instead'}</a> · <a href="#" id="tf-back">Back</a></p></form></div>`);
+  $('#tf-alt').addEventListener('click', (e) => { e.preventDefault(); twofaStep(challenge, !recovery); });
+  $('#tf-back').addEventListener('click', (e) => { e.preventDefault(); loginView(); });
+  $('#tf').addEventListener('submit', async (e) => {
+    e.preventDefault(); const f = e.currentTarget;
+    try { const r = await api('POST', '/auth/2fa', { challenge, [recovery ? 'recovery_code' : 'code']: f.code.value }); store.user = r.user; await boot(); }
+    catch (x) { const el = $('.err', f); el.textContent = x.message; el.hidden = false; if (/expired/i.test(x.message)) setTimeout(() => loginView(x.message), 1200); }
   });
 }
 
@@ -75,6 +94,7 @@ async function route() {
 }
 
 async function boot() {
+  if (store.user?.limited) return forcedSetup(app, async () => { store.user = (await api('GET', '/auth/me')).user; boot(); }, async () => { await api('POST', '/auth/logout'); store.user = null; loginView(); });
   try { store.meta = await api('GET', '/meta'); await loadCustomization(); } catch { return loginView(); }
   shell();
   if (!location.hash || location.hash === '#/login') location.hash = '#/dashboard';

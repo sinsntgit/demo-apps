@@ -400,7 +400,7 @@ GET('/api/campaigns/:id/recipients', ({ params, query }) => {
 });
 
 // ---------- Users & roles ----------
-const USER_SELECT = `SELECT u.id, u.name, u.email, u.active, u.created_at, u.role_id, COALESCE(r.name, u.role) AS role, COALESCE(r.label, u.role) AS role_label
+const USER_SELECT = `SELECT u.id, u.name, u.email, u.active, u.totp_enabled AS twofa, u.created_at, u.role_id, COALESCE(r.name, u.role) AS role, COALESCE(r.label, u.role) AS role_label
   FROM users u LEFT JOIN roles r ON r.id = u.role_id`;
 GET('/api/users', () => all(`${USER_SELECT} ORDER BY u.name`));
 function resolveRole(body, fallback) {

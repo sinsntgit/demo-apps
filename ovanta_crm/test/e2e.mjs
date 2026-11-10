@@ -12,7 +12,7 @@ const { seedIfEmpty } = await import('../server/seed.js');
 seedIfEmpty(); await new Promise((r) => server.listen(0, r));
 const base = `http://localhost:${server.address().port}`;
 const browser = await chromium.launch(); const page = await browser.newPage({ viewport: { width: 1360, height: 900 } });
-const errors = []; page.on('pageerror', (e) => errors.push('pageerror: ' + e.message)); page.on('console', (m) => { if (m.type() === 'error' && !/401/.test(m.text()))  errors.push('console: ' + m.text()); });
+const errors = []; page.on('pageerror', (e) => errors.push('pageerror: ' + e.message)); page.on('console', (m) => { if (m.type() === 'error' && !/401|status of 400/.test(m.text()))  errors.push('console: ' + m.text()); });
 const shot = (n) => page.screenshot({ path: `${process.env.SHOTS || '/tmp'}/${n}.png` });
 await page.goto(base);
 await page.fill('input[name=email]', 'admin@ovantaa.com'); await page.fill('input[name=password]', 'Ovantaa@123'); await page.click('button.primary');
@@ -147,6 +147,43 @@ const ctx3 = await browser.newContext({ viewport: { width: 1360, height: 900 } }
 await p3.goto(base); await p3.fill('input[name=email]', 'liam@ovantaa.com'); await p3.fill('input[name=password]', 'Ovantaa@123'); await p3.click('button.primary'); await p3.waitForSelector('.kpi');
 if ((await p3.locator('a[data-nav=customize]').count()) > 0) errors.push('rep can see the Customisation menu');
 await p3.click('a[data-nav=deals]'); await p3.click('text=+ New deal'); await p3.waitForSelector('.modal select[name=c__cf_deal_type]'); await ctx3.close();
+// ===== Phase 1: lead conversion, attachments, duplicates, two-factor =====
+const { totpAt, base32Decode } = await import('../server/totp.js');
+const codeNow = (secret, off = 0) => totpAt(base32Decode(secret.replace(/\s/g, '')), Math.floor(Date.now() / 30000) + off);
+const lead = await page.evaluate(async () => (await (await fetch('/api/contacts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ first_name: 'Lia', last_name: 'Leadson', email: 'lia@leadson-corp.com', status: 'lead' }) })).json()));
+await page.goto(`${base}/#/contacts/${lead.id}`); await page.waitForSelector('button:has-text("Convert lead")'); await page.click('button:has-text("Convert lead")');
+await page.waitForSelector('.modal input[name=amode][value=new]'); await page.check('.modal input[name=amode][value=new]'); await page.fill('.modal input[name=aname]', 'Leadson Corp'); await page.fill('.modal input[name=dname]', 'Leadson rollout'); await page.fill('.modal input[name=damount]', '12000'); await page.selectOption('.modal select[name=c__cf_deal_type]', 'Direct'); await shot('convert-lead');
+await page.click('.modal button[type=submit]'); await page.waitForSelector('h1:has-text("Leadson rollout")', { timeout: 5000 }).catch(() => errors.push('conversion did not open the new deal'));
+// attachments on the deal
+await page.waitForSelector('#attach-box button:has-text("Attach file")'); await page.setInputFiles('#attach-box [data-file]', { name: 'term-sheet.txt', mimeType: 'text/plain', buffer: Buffer.from('terms') });
+await page.waitForSelector('#attach-box a:has-text("term-sheet.txt")', { timeout: 5000 }).catch(() => errors.push('attached file not listed')); await shot('attachments');
+await page.setInputFiles('#attach-box [data-file]', { name: 'bad.exe', mimeType: 'application/octet-stream', buffer: Buffer.from('MZ') }); await page.waitForSelector('.toast.bad:has-text("not allowed")', { timeout: 5000 }).catch(() => errors.push('blocked file type was not rejected'));
+await page.goto(`${base}/#/contacts/${lead.id}`); await page.waitForSelector('.badge:has-text("Converted")', { timeout: 5000 }).catch(() => errors.push('contact not marked converted'));
+// duplicates
+await page.evaluate(async () => { for (let i = 0; i < 2; i++) await fetch('/api/contacts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ first_name: 'Twin', last_name: 'Peaks', phone: i ? '+100' : null }) }); });
+await page.click('a[data-nav=duplicates]'); await page.waitForSelector('button[data-act=merge]'); await shot('duplicates'); await page.click('button[data-act=merge]'); await page.click('.modal button[type=submit]');
+await page.waitForSelector('.toast:has-text("Merged")', { timeout: 5000 }).catch(() => errors.push('merge failed'));
+// two-factor: self-service set-up, then sign-in with code
+const ctx4 = await browser.newContext({ viewport: { width: 1360, height: 900 } }); const p4 = await ctx4.newPage();
+p4.on('pageerror', (e) => errors.push('pageerror(2fa): ' + e.message));
+await p4.goto(base); await p4.fill('input[name=email]', 'maya@ovantaa.com'); await p4.fill('input[name=password]', 'Ovantaa@123'); await p4.click('button.primary'); await p4.waitForSelector('.kpi');
+await p4.click('a[data-nav=settings]'); await p4.waitForSelector('button:has-text("Set up")'); await p4.click('#seccard button[data-act=on]'); await p4.waitForSelector('#tf-enable');
+const secret = (await p4.textContent('.twofa .mono')).trim(); await p4.screenshot({ path: `${process.env.SHOTS || '/tmp'}/2fa-setup.png` });
+await p4.fill('#tf-enable input[name=code]', codeNow(secret)); await p4.click('#tf-enable button'); await p4.waitForSelector('.modal:has-text("recovery codes")');
+const rcodes = (await p4.$$eval('.modal .mono div', (d) => d.map((x) => x.textContent))); if (rcodes.length !== 10) errors.push('expected 10 recovery codes'); await p4.click('.modal button:has-text("I have saved them")');
+await p4.click('button[data-act=logout]'); await p4.waitForSelector('#login'); await p4.fill('input[name=email]', 'maya@ovantaa.com'); await p4.fill('input[name=password]', 'Ovantaa@123'); await p4.click('button.primary');
+await p4.waitForSelector('#tf'); await p4.fill('#tf input[name=code]', '000000'); await p4.click('#tf button.primary'); await p4.waitForSelector('#tf .err:not([hidden])', { timeout: 5000 }).catch(() => errors.push('wrong 2FA code did not show an error'));
+await p4.fill('#tf input[name=code]', codeNow(secret, 1)); await p4.click('#tf button.primary'); await p4.waitForSelector('.kpi', { timeout: 5000 }).catch(() => errors.push('2FA sign-in with a valid code failed'));
+await p4.click('button[data-act=logout]'); await p4.waitForSelector('#login'); await p4.fill('input[name=email]', 'maya@ovantaa.com'); await p4.fill('input[name=password]', 'Ovantaa@123'); await p4.click('button.primary'); await p4.waitForSelector('#tf'); await p4.click('#tf-alt');
+await p4.fill('#tf input[name=code]', rcodes[0]); await p4.click('#tf button.primary'); await p4.waitForSelector('.kpi', { timeout: 5000 }).catch(() => errors.push('recovery-code sign-in failed')); await ctx4.close();
+// company policy forces set-up at the next sign-in
+await page.evaluate(() => fetch('/api/settings/security', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ require_2fa: 'all' }) }));
+const ctx5 = await browser.newContext({ viewport: { width: 1360, height: 900 } }); const p5 = await ctx5.newPage();
+await p5.goto(base); await p5.fill('input[name=email]', 'liam@ovantaa.com'); await p5.fill('input[name=password]', 'Ovantaa@123'); await p5.click('button.primary');
+await p5.waitForSelector('h2:has-text("Set up two-factor sign-in")', { timeout: 5000 }).catch(() => errors.push('forced 2FA set-up page not shown'));
+const secret5 = (await p5.textContent('.twofa .mono')).trim(); await p5.fill('#tf-enable input[name=code]', codeNow(secret5)); await p5.click('#tf-enable button'); await p5.waitForSelector('.modal:has-text("recovery codes")'); await p5.click('.modal button:has-text("I have saved them")');
+await p5.waitForSelector('.kpi', { timeout: 5000 }).catch(() => errors.push('did not reach the app after forced set-up')); await ctx5.close();
+await page.evaluate(() => fetch('/api/settings/security', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ require_2fa: 'off' }) }));
 // segment builder + deal drag/drop
 await page.click('a[data-nav=segments]'); await page.click('text=+ New segment'); await page.fill('.modal input[name=name]', 'E2E seg');
 await page.waitForSelector('#segprev b'); await page.click('.modal button[type=submit]'); await page.waitForSelector('td:has-text("E2E seg")');

@@ -87,6 +87,14 @@ Menu **Billing**: *Invoices · Receivables · E-invoicing readiness · Billing s
 
 Custom values appear on the record's detail page (grouped by your sections), in list columns and filters, on deal cards, in **CSV export and import** (contacts; columns are matched by field name), and as **conditions in campaign segments** (contact and account fields). They are validated on the server — required fields, option lists, number ranges, dates, emails, links and record links — whichever way a record is saved. Limits: 100 custom fields per record type, 200 options per list. Tasks and invoices have no custom fields yet.
 
+## Lead conversion, duplicates, attachments & two-factor sign-in
+
+* **Convert a lead** — on a contact page, **Convert lead**: link or create the account (the dialog suggests accounts whose website matches the person's email domain), optionally open a deal in the same step (including any custom fields your admin made required), and mark the contact *Qualified* or *Customer*. All-or-nothing; the contact keeps a permanent link to the deal and shows **Converted ✓**.
+* **Duplicates & merge** (*Duplicates* in the menu; permission *Merge duplicates*) — groups of contacts with the same email or name, and accounts with the same name or VAT number. Pick the record to keep: the others' deals, tasks, notes, invoices, files and campaign history move across, empty fields are filled, tags are united and an unsubscribed contact stays unsubscribed. Custom "link to a record" fields are re-pointed. Permanent — it is recorded in the audit log.
+* **Attachments** — a **Files** card on every contact, account, deal and invoice (drag a file onto it or click *Attach file*). Up to 25 MB each (`MAX_UPLOAD_MB`), stored in `data/files/` (`FILES_DIR`), SHA-256 recorded. Programs and scripts (.exe, .js, .bat …) are refused; downloads are always served as attachments except PDFs/images/plain text, with `nosniff`. People only see files on records they can see; the *File attachments* permission controls view / upload / delete. **Back up `data/files/` together with the database backups** — database backups contain the file list, not the file contents.
+* **Two-factor sign-in (authenticator app, TOTP)** — *Settings → Security*: scan the QR code (Google/Microsoft Authenticator, Authy, 1Password…), confirm with a code, and save the **10 one-time recovery codes** (shown once). A code can never be used twice. Administrators can **require** it for administrators or for everyone (*Settings → Security → Company policy*): people who have not set it up are taken to a set-up page at their next sign-in and cannot use the app until done. A lost phone: an administrator uses **Reset 2FA** on *Team & roles* (the person is signed out everywhere and sets it up again).
+* **Sessions** — sign-in is now a server-side session: *Settings → Security → Signed-in devices* lists them and can sign out any or all others; signing out, changing your password, resetting 2FA or deactivating a user ends sessions immediately.
+
 ## Roles & permissions
 
 **Team & roles → Roles & permissions** (administrators). A role is a set of permissions per area (contacts, accounts, deals, tasks, invoices, campaigns, segments, templates, receivables, billing settings, senders, notifications, users, audit log, data management…). For the core records — contacts, accounts, deals, tasks, invoices and activity notes — each of view / edit / delete can be **None, Own or All**: with *Own*, a person only sees and changes records they own; records owned by others behave as if they do not exist (list, search, lookups, exports, bulk actions, dashboard totals and imports all follow).
@@ -108,7 +116,7 @@ Custom values appear on the record's detail page (grouped by your sections), in 
 
 ## Roadmap
 
-See [`docs/ROADMAP-CRITICAL-GAPS.md`](docs/ROADMAP-CRITICAL-GAPS.md): lead conversion, attachments, two-factor login, custom fields, quotes → invoices, automation rules, email/calendar sync.
+See [`docs/ROADMAP-CRITICAL-GAPS.md`](docs/ROADMAP-CRITICAL-GAPS.md). Done: foundation, roles, custom fields, lead conversion, duplicates, attachments, two-factor. Next: quotes → invoices, automation rules, email/calendar sync.
 
 ## Features
 * **Deal stage history** — every stage move is stored permanently: from → to, date/time, who moved it, the deal owner *at that moment*, the deal value, an optional comment, and the days spent in the previous stage. Shown on the deal page (*Stage history*), via **🕘 History** on every card/row of the Deals board and list, and recorded however the stage changes (drag-and-drop, *Change stage*, or the edit form). Moving a card on the board asks for an optional comment. Deals that existed before this feature get a single starting entry; earlier movements can't be reconstructed. Deleting a deal deletes its history.
@@ -121,11 +129,11 @@ See [`docs/ROADMAP-CRITICAL-GAPS.md`](docs/ROADMAP-CRITICAL-GAPS.md): lead conve
 * **Themes** — *Settings → Appearance*: company accent and sidebar colours (presets or custom, live preview, saved for everyone including the login page) plus light/dark/auto; each user can override light/dark for their own browser.
 
 ## Configuration (environment variables)
-`PORT` (3000) · `DB_PATH` · `BASE_URL` (**public address, needed for tracking links and unsubscribe**) · `SESSION_SECRET` · `SECURE_COOKIES=1` (behind HTTPS) · `COMPANY_ADDRESS` (email footer) · `SEND_BATCH_SIZE` · `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` · `SMTP_TLS_INSECURE=1` (only for internal relays with self-signed certificates) · `SEED_BILLING_DEMO=0` (skip demo invoices) · `SMTP_FORCE_IPV4=1` (connect to mail servers over IPv4 only) · `SMTP_TIMEOUT_MS` (default 60000) · `BACKUP_DIR`, `BACKUP_KEEP` (14), `BACKUP_DAILY=0`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `SEED_DEMO` · legacy `MAIL_TRANSPORT=webhook` + `MAIL_WEBHOOK_URL`/`MAIL_WEBHOOK_TOKEN` (used only when no sender exists).
+`PORT` (3000) · `DB_PATH` · `BASE_URL` (**public address, needed for tracking links and unsubscribe**) · `SESSION_SECRET` · `SECURE_COOKIES=1` (behind HTTPS) · `FILES_DIR`, `MAX_UPLOAD_MB` (attachments) · `COMPANY_ADDRESS` (email footer) · `SEND_BATCH_SIZE` · `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` · `SMTP_TLS_INSECURE=1` (only for internal relays with self-signed certificates) · `SEED_BILLING_DEMO=0` (skip demo invoices) · `SMTP_FORCE_IPV4=1` (connect to mail servers over IPv4 only) · `SMTP_TIMEOUT_MS` (default 60000) · `BACKUP_DIR`, `BACKUP_KEEP` (14), `BACKUP_DAILY=0`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `SEED_DEMO` · legacy `MAIL_TRANSPORT=webhook` + `MAIL_WEBHOOK_URL`/`MAIL_WEBHOOK_TOKEN` (used only when no sender exists).
 
 ## Tests
 ```bash
-npm test       # 62 tests (API, permissions, migrations, backups): auth, CRUD, injection, campaigns, SMTP sending against a local fake mail server,
+npm test       # 68 tests (API, permissions, migrations, backups): auth, CRUD, injection, campaigns, SMTP sending against a local fake mail server,
                # daily-limit pause/resume, notifications, AI (fake Claude API), themes, import options
 npm run e2e    # browser test (needs Playwright + Chromium): navigation, forms, xlsx import, theme, AI panel, drag-and-drop
 npm run seed   # reset to demo data

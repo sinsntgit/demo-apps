@@ -17,7 +17,7 @@ Decisions taken (2026-11-10)
 2. **Backup / restore**: `npm run backup`, daily automatic backups with retention, admin download, `npm run restore`.
 3. A real **permissions layer**: roles table, permission matrix, own/all scope, one `can()` function used by every route and by the UI. The three existing roles become system roles with *identical* behaviour; admins can then create custom roles.
 
-## Phase 1 — quick wins
+## Phase 1 — quick wins  (DONE)
 Lead conversion (+ duplicate merge) · file attachments · TOTP two-factor login with recovery codes and revocable sessions.
 
 ## Phase 2 — customisation  (custom fields + layouts: DONE; quotes → invoices: next)

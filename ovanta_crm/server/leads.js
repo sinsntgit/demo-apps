@@ -60,7 +60,7 @@ POST('/api/contacts/:id/convert', ({ params, body, user }) => {
       if (!hasPerm(user, 'deals.create')) throw forbidden('Your role cannot create deals.');
       const name = String(deal.name || '').trim(); if (!name) throw bad('Enter the deal name');
       if (deal.stage && !STAGES.some((s) => s.key === deal.stage)) throw bad('Unknown stage');
-      createdDeal = create(ENTITIES.deals, { name, amount: Number(deal.amount) || 0, stage: deal.stage || 'qualification', close_date: deal.close_date || null, account_id: accountId, contact_id: c.id, owner_id: c.owner_id || user.id, stage_comment: `Converted from lead ${fullName(c)}` }, user);
+      createdDeal = create(ENTITIES.deals, { name, amount: Number(deal.amount) || 0, stage: deal.stage || 'qualification', close_date: deal.close_date || null, account_id: accountId, contact_id: c.id, owner_id: c.owner_id || user.id, custom: deal.custom, stage_comment: `Converted from lead ${fullName(c)}` }, user);
     }
     run('UPDATE contacts SET account_id=?, status=?, converted_at=?, converted_by=?, converted_deal_id=?, converted_account_id=? WHERE id=?', accountId, status, nowIso(), user.id, createdDeal?.id ?? null, createdAccount?.id ?? accountId, c.id);
     run("INSERT INTO activities (type, body, contact_id, deal_id, account_id, user_id) VALUES ('note', ?, ?, ?, ?, ?)",

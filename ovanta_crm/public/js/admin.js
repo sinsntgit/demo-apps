@@ -1,6 +1,7 @@
 import {
   api, html, raw, setHtml, on, store, toast, fail, modal, confirmBox, field, formValues, badge, fmtDate, fmtDateTime, ago, applyTheme, purgeModal, allow, THEME_PRESETS, DEFAULT_THEME, $,
 } from './core.js';
+import { securityCard } from './security.js';
 
 const page = (title, actions = '') => html`<div class="topbar"><h1>${title}</h1><span class="grow"></span>${actions}</div>`;
 
@@ -45,8 +46,8 @@ export async function team(root) {
   const draw = async () => {
     const [users, roleData, log] = await Promise.all([api('GET', '/users'), api('GET', '/roles'), tab === 'audit' && canAudit ? api('GET', '/audit') : []]);
     const roles = roleData.roles; const cat = roleData.catalogue;
-    const usersView = html`<div class="card"><div class="tablewrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Joined</th><th></th></tr></thead><tbody>
-      ${users.map((u) => html`<tr><td><b>${u.name}</b></td><td>${u.email}</td><td><span class="badge">${u.role_label}</span></td><td>${u.active ? badge('active') : badge('disabled')}</td><td>${fmtDate(u.created_at)}</td><td>${canManage ? html`<button class="btn sm" data-act="edit" data-id="${u.id}">Edit</button>` : ''}</td></tr>`)}</tbody></table></div></div>`;
+    const usersView = html`<div class="card"><div class="tablewrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>2FA</th><th>Joined</th><th></th></tr></thead><tbody>
+      ${users.map((u) => html`<tr><td><b>${u.name}</b></td><td>${u.email}</td><td><span class="badge">${u.role_label}</span></td><td>${u.active ? badge('active') : badge('disabled')}</td><td>${u.twofa ? badge('on') : html`<span class="muted small">off</span>`}</td><td>${fmtDate(u.created_at)}</td><td>${canManage ? html`<button class="btn sm" data-act="edit" data-id="${u.id}">Edit</button>${u.twofa ? html` <button class="btn sm" data-act="reset2fa" data-id="${u.id}" title="Lost phone? Switch off their two-factor so they can set it up again">Reset 2FA</button>` : ''}` : ''}</td></tr>`)}</tbody></table></div></div>`;
     const rolesView = html`<p class="muted">A role decides what a person can see and do. Built-in roles are a starting point; create your own for assistants, accountants, read-only auditors and so on. Changes apply immediately, even to people who are logged in.</p>
       <div class="card"><div class="tablewrap"><table><thead><tr><th>Role</th><th>What it allows</th><th>People</th><th></th></tr></thead><tbody>
       ${roles.map((r) => html`<tr><td><b>${r.label}</b> ${r.is_system ? html`<span class="badge b-grey">built-in</span>` : ''}<div class="small muted">${r.description || ''}</div></td><td class="small">${permSummary(r.permissions)}</td><td>${r.user_count}</td>
@@ -68,6 +69,7 @@ export async function team(root) {
     on(root, {
       tab: (el) => { tab = el.dataset.t; sessionStorage.setItem('teamTab', tab); draw(); },
       new: () => open(null), edit: (el) => open(byId(el, users)),
+      reset2fa: async (el) => { const u = byId(el, users); if (await confirmBox(`Reset two-factor for ${u.name}? They will be signed out everywhere and can set it up again at their next sign-in.`, 'Reset')) { await api('POST', `/users/${u.id}/reset-2fa`); toast('Two-factor reset', 'ok'); draw(); } },
       rnew: () => roleModal(null, cat, roles, draw), redit: (el) => roleModal(byId(el, roles), cat, roles, draw),
       rdup: async (el) => { await api('POST', `/roles/${el.dataset.id}/duplicate`); toast('Role duplicated', 'ok'); draw(); },
       rdel: async (el) => { const r = byId(el, roles); if (await confirmBox(`Delete the role "${r.label}"?`, 'Delete')) { await api('DELETE', `/roles/${r.id}`); toast('Role deleted', 'ok'); draw(); } },
@@ -107,12 +109,14 @@ export async function settings(root) {
       <div class="card"><div class="hd"><h2>Email delivery</h2></div><div class="bd">
         <p>Sending is configured per sender mailbox under <a href="#/senders"><b>Email senders</b></a> (Google, Microsoft 365, Zoho or any SMTP server) — add one entry per address you send from. Notification emails are configured under <a href="#/notifications"><b>Notifications</b></a>.</p>
         <p class="muted small">Tracking links use <span class="mono">${m_baseUrl()}</span>. Set the <span class="mono">BASE_URL</span> environment variable to your public address so opens, clicks and unsubscribes reach this server.</p></div></div></div>
+    <div class="mt" id="seccard"></div>
     ${canBackup ? html`<div class="card mt"><div class="hd"><h2>Backups</h2><span class="muted small">an automatic backup is taken daily · before every upgrade a restore point is saved</span><span class="grow"></span><button class="btn sm" data-act="mkbackup">Create backup now</button><a class="btn sm primary" href="/api/admin/backup">Download backup</a></div>
       ${backups.length ? html`<div class="tablewrap" style="max-height:240px;overflow:auto"><table><tbody>${backups.slice(0, 20).map((b) => html`<tr><td class="mono small">${b.name}</td><td>${b.label.startsWith('premigration') ? 'before upgrade' : b.label}</td><td class="small right">${(b.size / 1024).toFixed(0)} KB</td><td class="small muted">${fmtDateTime(b.mtime)}</td></tr>`)}</tbody></table></div>` : html`<div class="empty">No backups yet.</div>`}
       <div class="bd small muted">Backups hold all your data including password hashes and encrypted credentials. Store downloads safely. To restore: stop the server and run <span class="mono">npm run restore -- data/backups/&lt;file&gt; --yes</span>. Keep <span class="mono">data/.secret</span> together with your backups — saved SMTP passwords and API keys cannot be decrypted without it.</div></div>` : ''}
     ${canPurge ? html`<div class="card mt"><div class="hd"><h2>Data management</h2><span class="muted small">deletions are permanent and recorded in the audit log</span></div><div class="tablewrap"><table><tbody>${Object.entries(dataCounts).map(([k, v]) => html`<tr><td><b>${v.count}</b> ${v.label}${v.effects ? html`<div class="small muted">${v.effects}</div>` : ''}</td><td class="right"><button class="btn sm danger" data-act="purge" data-e="${k}" ${v.count ? '' : raw('disabled')}>Delete all…</button></td></tr>`)}</tbody></table></div><div class="bd small muted">Email senders, users, roles and the audit log are never deleted from here. Take a backup first if you might want the records later.</div></div>` : ''}
     ${outbox.length ? html`<div class="card mt"><div class="hd"><h2>Recent simulated mail</h2><span class="muted small">emails handled by simulation senders since server start — nothing was delivered</span></div><div class="tablewrap" style="max-height:320px;overflow:auto"><table><tbody>${outbox.map((o) => html`<tr><td class="small muted nowrap">${ago(o.at)}</td><td>${o.to}</td><td>${o.subject}</td></tr>`)}</tbody></table></div></div>` : ''}`);
   function m_baseUrl() { return store.meta.baseUrl; }
+  securityCard($('#seccard', root), { admin }).catch(fail);
   $('#pw', root).addEventListener('submit', async (e) => {
     e.preventDefault(); const f = e.currentTarget;
     try { await api('POST', '/auth/password', { current: f.current.value, next: f.next.value }); toast('Password changed', 'ok'); f.reset(); } catch (x) { fail(x); }
