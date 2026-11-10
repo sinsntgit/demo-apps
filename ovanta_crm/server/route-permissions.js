@@ -27,7 +27,9 @@ export const ROUTE_PERMS = {
   'POST /api/invoices/:id/issue': 'invoices.issue', 'POST /api/invoices/:id/submit': 'invoices.submit', 'POST /api/invoices/:id/payments': 'invoices.payment', 'PUT /api/payments/:id/reconcile': 'invoices.payment',
   'GET /api/payment-claims': 'invoices.payment', 'POST /api/payment-claims/:id/confirm': 'invoices.payment', 'POST /api/payment-claims/:id/reject': 'invoices.payment',
   'POST /api/invoices/:id/credit-note': 'invoices.notes', 'POST /api/invoices/:id/debit-note': 'invoices.notes', 'POST /api/invoices/:id/remind': 'invoices.remind', 'POST /api/invoices/import': 'invoices.import',
+  'POST /api/customization/fields': 'customization.manage', 'PUT /api/customization/fields/:id': 'customization.manage', 'POST /api/customization/fields/:id/archive': 'customization.manage', 'POST /api/customization/fields/:id/restore': 'customization.manage', 'DELETE /api/customization/fields/:id': 'customization.manage',
+  'PUT /api/customization/layout/:entity': 'customization.manage', 'DELETE /api/customization/layout/:entity': 'customization.manage',
   'GET /api/receivables': 'receivables.view', 'GET /api/readiness': 'readiness.view',
 };
 /** Routes that only need a valid login (they expose no restricted data). */
-export const LOGIN_ONLY = new Set(['GET /api/auth/me', 'POST /api/auth/password', 'GET /api/meta', 'GET /api/lookup', 'GET /api/dashboard', 'GET /api/notifications/events', 'GET /api/ai/status']);
+export const LOGIN_ONLY = new Set(['GET /api/auth/me', 'POST /api/auth/password', 'GET /api/meta', 'GET /api/lookup', 'GET /api/dashboard', 'GET /api/notifications/events', 'GET /api/ai/status', 'GET /api/customization']);

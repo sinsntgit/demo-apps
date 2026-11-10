@@ -29,6 +29,7 @@ export const RESOURCES = {
   users: { label: 'Users & roles', actions: { view: B, manage: B } },
   audit: { label: 'Audit log', actions: { view: B } },
   data: { label: 'Data management', actions: { backup: B, purge: B } },
+  customization: { label: 'Customisation (custom fields & form layouts)', actions: { manage: B } },
 };
 export const ACTION_LABELS = { view: 'View', create: 'Create', edit: 'Edit', delete: 'Delete', export: 'Export', import: 'Import', send: 'Send', issue: 'Issue', payment: 'Payments', remind: 'Reminders', notes: 'Credit/debit notes', submit: 'Submit', manage: 'Manage', use: 'Use', backup: 'Backup', purge: 'Delete all' };
 
@@ -51,7 +52,7 @@ export function normalizePerms(raw) {
 
 const build = (fn) => { const o = {}; for (const [res, def] of Object.entries(RESOURCES)) { o[res] = {}; for (const [act, kind] of Object.entries(def.actions)) o[res][act] = fn(res, act, kind); } return o; };
 const FULL = build((_r, _a, k) => (k === S ? 'all' : true));
-const MANAGER_DENY = ['senders.manage', 'notifications.manage', 'billing_settings.edit', 'settings.manage', 'users.view', 'users.manage', 'audit.view', 'data.backup', 'data.purge'];
+const MANAGER_DENY = ['customization.manage', 'senders.manage', 'notifications.manage', 'billing_settings.edit', 'settings.manage', 'users.view', 'users.manage', 'audit.view', 'data.backup', 'data.purge'];
 const MANAGER = build((r, a, k) => (MANAGER_DENY.includes(`${r}.${a}`) ? (k === S ? 'none' : false) : k === S ? 'all' : true));
 const REP_GRANTS = {
   contacts: { view: 'all', create: true, edit: 'all', delete: 'own', export: true, import: true }, accounts: { view: 'all', create: true, edit: 'all', delete: 'own', export: true },

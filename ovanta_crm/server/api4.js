@@ -8,7 +8,7 @@ import { config } from './config.js';
 // ---------- Roles ----------
 const RANK = { none: 0, own: 1, all: 2 };
 const catalogue = () => Object.entries(RESOURCES).map(([key, r]) => ({ key, label: r.label, scoped: !!r.scoped, actions: Object.entries(r.actions).map(([a, kind]) => ({ key: a, kind, label: ACTION_LABELS[a] || a })) }));
-const roleRow = (r) => ({ id: r.id, name: r.name, label: r.label || r.name, description: r.description, is_system: !!r.is_system, permissions: normalizePerms(JSON.parse(r.permissions || '{}')), user_count: r.user_count ?? 0 });
+const roleRow = (r) => ({ id: r.id, name: r.name, label: r.label || r.name, description: r.description, is_system: !!r.is_system, permissions: r.is_system && r.name === 'admin' ? SYSTEM_ROLES[0].permissions : normalizePerms(JSON.parse(r.permissions || '{}')), user_count: r.user_count ?? 0 });
 const ROLE_SELECT = 'SELECT r.*, (SELECT COUNT(*) FROM users u WHERE u.role_id = r.id) AS user_count FROM roles r';
 
 /** Nobody can grant more than they hold themselves (stops a delegated "manage users" role from minting an admin). */

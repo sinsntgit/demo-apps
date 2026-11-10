@@ -2,6 +2,7 @@ import {
   api, qs, html, raw, setHtml, esc, on, store, toast, fail, modal, confirmBox, purgeModal, field, formValues, badge, money, pct, num, fmtDate, fmtDateTime, ago, initials, fullName, todayStr, $, $$, debounce, allow, allowAll,
 } from './core.js';
 import { mountList } from './list.js';
+import { openEntityForm, customDetailCard, customColumns, customFilters, customCardLines, displayValue, activeFields } from './forms.js';
 import { readTable, FIELDS, guessMapping, applyMapping, TEMPLATE_CSV } from './csv.js';
 
 const userOpts = () => store.meta.users.map((u) => [u.id, u.name]);
@@ -50,31 +51,16 @@ export async function dashboard(root) {
 }
 
 // =============== Contacts ===============
-function contactForm(c = {}, lk, onDone) {
-  const fields = [
-    { name: 'first_name', label: 'First name', required: true }, { name: 'last_name', label: 'Last name' },
-    { name: 'email', label: 'Email', type: 'email' }, { name: 'phone', label: 'Phone' },
-    { name: 'title', label: 'Job title' }, { name: 'account_id', label: 'Company', type: 'select', options: lk.accounts },
-    { name: 'status', label: 'Status', type: 'select', options: STATUS, blank: false, default: 'lead' }, { name: 'source', label: 'Source', placeholder: 'Website, Referral…' },
-    { name: 'owner_id', label: 'Owner', type: 'select', options: userOpts(), blank: false, default: store.user.id }, { name: 'tags', label: 'Tags (comma separated)' },
-  ];
-  const f = (n) => field(fields.find((x) => x.name === n), c);
-  modal({ title: c.id ? 'Edit contact' : 'New contact', wide: true,
-    body: html`<div class="row">${f('first_name')}${f('last_name')}</div><div class="row">${f('email')}${f('phone')}</div><div class="row">${f('title')}${f('account_id')}</div><div class="row">${f('status')}${f('source')}</div><div class="row">${f('owner_id')}${f('tags')}</div>${field({ name: 'subscribed', label: 'Subscribed to marketing email', type: 'checkbox' }, { subscribed: c.id ? c.subscribed : 1 })}`,
-    onSubmit: async (form) => {
-      const v = formValues(form, [...fields, { name: 'subscribed', type: 'checkbox' }]);
-      const saved = c.id ? await api('PUT', `/contacts/${c.id}`, v) : await api('POST', '/contacts', v);
-      toast(c.id ? 'Contact updated' : 'Contact created', 'ok'); onDone?.(saved);
-    } });
-}
+const contactForm = (c = {}, lk, onDone) => openEntityForm('contacts', c, { lk, onDone, titles: { new: 'New contact', edit: 'Edit contact', noun: 'Contact' } });
 
 function importModal(done) {
   let table = null; let map = {};
+  const extra = activeFields('contacts').filter((f) => f.type !== 'lookup').map((f) => [`custom:${f.key}`, `${f.label} (custom)`, [f.label.toLowerCase()]]);
   const drawMap = (form) => {
     const headers = table[0].map((h, i) => [i, h || `Column ${i + 1}`]);
-    const preview = applyMapping(table, map).slice(0, 3);
+    const preview = applyMapping(table, map, extra).slice(0, 3);
     setHtml($('#imp_map', form), html`<div class="banner info small"><b>${table.length - 1}</b> rows found. Check how your columns map to contact fields (at least a first name or an email is needed).</div>
-      <div class="mapgrid">${FIELDS.map(([k, label]) => html`<span>${label}</span><select data-map="${k}"><option value="-1">— ignore —</option>${headers.map(([i, h]) => html`<option value="${i}" ${map[k] === i ? raw('selected') : ''}>${h}</option>`)}</select>`)}</div>
+      <div class="mapgrid">${[...FIELDS, ...extra].map(([k, label]) => html`<span>${label}</span><select data-map="${k}"><option value="-1">— ignore —</option>${headers.map(([i, h]) => html`<option value="${i}" ${map[k] === i ? raw('selected') : ''}>${h}</option>`)}</select>`)}</div>
       <div class="small muted mt">Preview: ${preview.map((r) => [r.first_name, r.last_name, r.email].filter(Boolean).join(' ')).join(' · ') || '—'}</div>
       <div class="row mt">${field({ name: 'tag', label: 'Add this tag to every imported contact', placeholder: 'e.g. expo-2026' })}${field({ name: 'source', label: 'Default source (if blank in file)', placeholder: 'e.g. Trade show' })}</div>
       <div class="row">${field({ name: 'status', label: 'Default status (if blank in file)', type: 'select', options: STATUS, blank: '— keep "lead" —' })}<span></span></div>
@@ -88,7 +74,7 @@ function importModal(done) {
       const input = $('#csvfile', form), drop = $('#imp_drop', form);
       const load = async (file) => {
         if (!file) return;
-        try { table = await readTable(file); map = guessMapping(table[0]); setHtml($('#imp_file', form), html`📎 ${file.name}`); drawMap(form); }
+        try { table = await readTable(file); map = guessMapping(table[0], extra); setHtml($('#imp_file', form), html`📎 ${file.name}`); drawMap(form); }
         catch (x) { table = null; setHtml($('#imp_map', form), html`<div class="err">${x.message}</div>`); }
       };
       drop.addEventListener('click', () => input.click()); drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') input.click(); });
@@ -102,7 +88,7 @@ function importModal(done) {
     onSubmit: async (form) => {
       if (!table) throw new Error('Choose a file first');
       if (map.first_name < 0 && map.email < 0) throw new Error('Map at least a first name or an email column');
-      const rows = applyMapping(table, map); if (rows.length > 5000) throw new Error(`The file has ${rows.length} rows; the limit is 5,000 per import.`);
+      const rows = applyMapping(table, map, extra); if (rows.length > 5000) throw new Error(`The file has ${rows.length} rows; the limit is 5,000 per import.`);
       const r = await api('POST', '/contacts/import', { rows, options: { tag: form.tag.value, source: form.source.value, status: form.status.value, update_existing: form.update_existing.checked } });
       toast(`Imported: ${r.created} new, ${r.updated} updated, ${r.skipped} skipped`, 'ok');
       if (r.errors.length) modal({ title: `${r.skipped} rows skipped`, hideFooter: true, body: html`<ul class="small">${r.errors.map((e) => html`<li>${e}</li>`)}</ul>${r.skipped > r.errors.length ? html`<p class="muted small">…and ${r.skipped - r.errors.length} more.</p>` : ''}` });
@@ -117,13 +103,13 @@ export async function contacts(root) {
   let list;
   list = mountList(body, {
     key: 'contacts', endpoint: '/contacts', selectable: true, searchPlaceholder: 'Search name, email, company…', empty: 'No contacts match. Add one or import a CSV.',
-    filters: [{ name: 'status', label: 'Status', options: STATUS }, { name: 'source', label: 'Source', options: store.meta.sources }, { name: 'owner_id', label: 'Owner', options: userOpts() }],
+    filters: [{ name: 'status', label: 'Status', options: STATUS }, { name: 'source', label: 'Source', options: store.meta.sources }, { name: 'owner_id', label: 'Owner', options: userOpts() }, ...customFilters('contacts')],
     columns: [
       { label: 'Name', sort: 'name', render: (c) => html`<a href="#/contacts/${c.id}"><b>${fullName(c)}</b></a><div class="small muted">${c.title || ''}</div>` },
       { label: 'Company', sort: 'account', render: (c) => (c.account_id ? html`<a href="#/accounts/${c.account_id}">${c.account_name}</a>` : '—') },
       { label: 'Email', sort: 'email', render: (c) => html`${c.email || '—'}${c.subscribed ? '' : html` <span class="badge failed" title="Unsubscribed from marketing email">unsub</span>`}` },
       { label: 'Status', sort: 'status', render: (c) => badge(c.status) }, { label: 'Source', render: (c) => c.source || '—' },
-      { label: 'Owner', render: (c) => c.owner_name || '—' }, { label: 'Added', sort: 'created_at', render: (c) => fmtDate(c.created_at) },
+      { label: 'Owner', render: (c) => c.owner_name || '—' }, ...customColumns('contacts'), { label: 'Added', sort: 'created_at', render: (c) => fmtDate(c.created_at) },
     ],
     bulk: [{ key: 'status', label: 'Set status' }, { key: 'tag', label: 'Add tag' }, { key: 'owner', label: 'Assign owner' }, ...(allowAll('contacts.delete') ? [{ key: 'delete', label: 'Delete', danger: true }] : [])],
     onBulk: async (action, ids, done) => {
@@ -174,6 +160,7 @@ export async function contactDetail(root, id) {
           <div><span class="muted small">Phone</span><br>${c.phone || '—'}</div><div><span class="muted small">Source</span><br>${c.source || '—'}</div>
           <div><span class="muted small">Owner</span><br>${c.owner_name || '—'}</div><div><span class="muted small">Tags</span><br>${c.tags ? c.tags.split(',').map((t) => html`<span class="badge">${t.trim()}</span> `) : '—'}</div>
           <div><span class="muted small">Added</span><br>${fmtDate(c.created_at)}</div></div></div>
+        ${customDetailCard('contacts', c)}
         <div class="card"><div class="hd"><h2>Deals</h2><span class="grow"></span><button class="btn sm" data-act="deal">+ Deal</button></div><div class="bd">${d.deals.length ? d.deals.map((x) => html`<div style="display:flex;justify-content:space-between;padding:5px 0"><a href="#/deals/${x.id}">${x.name}</a><span>${money(x.amount, true)} ${badge(x.stage)}</span></div>`) : html`<span class="muted">No deals.</span>`}</div></div>
         ${miniTasks(d.tasks)}</div></div>`);
     wireTimeline(root, 'contact_id', id, draw);
@@ -188,25 +175,18 @@ export async function contactDetail(root, id) {
 }
 
 // =============== Accounts ===============
-function accountForm(a = {}, onDone) {
-  const fields = [{ name: 'name', label: 'Company name', required: true }, { name: 'industry', label: 'Industry' }, { name: 'website', label: 'Website', type: 'url', placeholder: 'https://' }, { name: 'size', label: 'Company size', type: 'select', options: ['1-50', '51-200', '201-1000', '1000+'] },
-    { name: 'city', label: 'City' }, { name: 'country', label: 'Country' }, { name: 'phone', label: 'Phone' }, { name: 'owner_id', label: 'Owner', type: 'select', options: userOpts(), blank: false, default: store.user.id }, { name: 'notes', label: 'Notes', type: 'textarea' },
-    { name: 'name_ar', label: 'Name (Arabic)' }, { name: 'vat_number', label: 'VAT / TRN number', placeholder: '15 digits' }, { name: 'street', label: 'Street' }, { name: 'building_no', label: 'Building no.' }, { name: 'district', label: 'District' }, { name: 'postal_code', label: 'Postal code' }, { name: 'country_code', label: 'Country code', placeholder: 'SA / AE' }, { name: 'billing_email', label: 'Billing email', type: 'email' }, { name: 'billing_phone', label: 'Billing phone / WhatsApp' }];
-  const f = (n) => field(fields.find((x) => x.name === n), a);
-  modal({ title: a.id ? 'Edit account' : 'New account', wide: true,
-    body: html`<div class="row">${f('name')}${f('industry')}</div><div class="row">${f('website')}${f('size')}</div><div class="row">${f('city')}${f('country')}</div><div class="row">${f('phone')}${f('owner_id')}</div>${f('notes')}<h3 style="margin:8px 0">Invoicing details</h3><div class="row">${f('name_ar')}${f('vat_number')}</div><div class="row">${f('street')}${f('building_no')}</div><div class="row">${f('district')}${f('postal_code')}</div><div class="row">${f('country_code')}${f('billing_email')}</div>${f('billing_phone')}`,
-    onSubmit: async (form) => { const v = formValues(form, fields); const s = a.id ? await api('PUT', `/accounts/${a.id}`, v) : await api('POST', '/accounts', v); toast('Account saved', 'ok'); onDone?.(s); } });
-}
+async function accountForm(a = {}, onDone) { openEntityForm('accounts', a, { lk: await lookups(), onDone, titles: { new: 'New account', edit: 'Edit account', noun: 'Account' } }); }
+
 export async function accounts(root) {
   root.innerHTML = ''; const head = document.createElement('div'), body = document.createElement('div'); root.append(head, body);
   setHtml(head, page('Accounts', html`<button class="btn primary" data-act="new">+ New account</button>${allow('data.purge') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`));
   const list = mountList(body, {
     key: 'accounts', endpoint: '/accounts', searchPlaceholder: 'Search accounts…', empty: 'No accounts yet.',
-    filters: [{ name: 'industry', label: 'Industry', options: store.meta.industries }, { name: 'owner_id', label: 'Owner', options: userOpts() }],
+    filters: [{ name: 'industry', label: 'Industry', options: store.meta.industries }, { name: 'owner_id', label: 'Owner', options: userOpts() }, ...customFilters('accounts')],
     columns: [
       { label: 'Account', sort: 'name', render: (a) => html`<a href="#/accounts/${a.id}"><b>${a.name}</b></a><div class="small muted">${[a.city, a.country].filter(Boolean).join(', ')}</div>` },
       { label: 'Industry', sort: 'industry', render: (a) => a.industry || '—' }, { label: 'Size', render: (a) => a.size || '—' },
-      { label: 'Contacts', sort: 'contact_count', render: (a) => a.contact_count }, { label: 'Won value', sort: 'won_value', render: (a) => money(a.won_value) }, { label: 'Owner', render: (a) => a.owner_name || '—' },
+      { label: 'Contacts', sort: 'contact_count', render: (a) => a.contact_count }, { label: 'Won value', sort: 'won_value', render: (a) => money(a.won_value) }, { label: 'Owner', render: (a) => a.owner_name || '—' }, ...customColumns('accounts'),
     ],
   });
   on(head, { new: () => accountForm({}, (a) => { location.hash = `#/accounts/${a.id}`; }), purge: () => purgeModal('accounts', () => list.reload()) });
@@ -220,6 +200,7 @@ export async function accountDetail(root, id) {
           ${a.website ? html`<div><a href="${/^https?:\/\//.test(a.website) ? a.website : '#'}" target="_blank" rel="noopener noreferrer">${a.website}</a></div>` : ''}${a.notes ? html`<p>${a.notes}</p>` : ''}</div></div>
         ${timelineCard(d.activities, 'account_id', id)}</div>
         <div style="display:grid;gap:16px;align-content:start">
+          ${customDetailCard('accounts', a)}
           <div class="card"><div class="hd"><h2>Contacts (${d.contacts.length})</h2></div><div class="bd">${d.contacts.length ? d.contacts.map((c) => html`<div style="padding:5px 0"><a href="#/contacts/${c.id}">${fullName(c)}</a> ${badge(c.status)}<div class="small muted">${c.title || ''}</div></div>`) : html`<span class="muted">No contacts.</span>`}</div></div>
           <div class="card"><div class="hd"><h2>Deals (${d.deals.length})</h2></div><div class="bd">${d.deals.length ? d.deals.map((x) => html`<div style="display:flex;justify-content:space-between;padding:5px 0"><a href="#/deals/${x.id}">${x.name}</a><span>${money(x.amount, true)} ${badge(x.stage)}</span></div>`) : html`<span class="muted">No deals.</span>`}</div></div>
         </div></div>`);
@@ -269,18 +250,9 @@ export function stageModal(deal, onDone, target) {
     } });
 }
 
-function dealForm(d = {}, lk, onDone) {
-  const stages = store.meta.stages.map((s) => [s.key, s.label]);
-  const fields = [{ name: 'name', label: 'Deal name', required: true }, { name: 'amount', label: 'Amount (USD)', type: 'number', min: 0, step: '0.01', default: 0 },
-    { name: 'stage', label: 'Stage', type: 'select', options: stages, blank: false, default: 'prospecting' }, { name: 'probability', label: 'Probability %', type: 'number', min: 0, max: 100 },
-    { name: 'close_date', label: 'Expected close', type: 'date' }, { name: 'owner_id', label: 'Owner', type: 'select', options: userOpts(), blank: false, default: store.user.id },
-    { name: 'account_id', label: 'Account', type: 'select', options: lk.accounts }, { name: 'contact_id', label: 'Contact', type: 'select', options: lk.contacts },
-    { name: 'stage_comment', label: d.id ? 'Comment on the stage change (optional — saved only if you change the stage)' : 'Note for the deal history (optional)', type: 'textarea', rows: 2 }];
-  const f = (n) => field(fields.find((x) => x.name === n), d);
-  modal({ title: d.id ? 'Edit deal' : 'New deal', wide: true,
-    body: html`${f('name')}<div class="row">${f('amount')}${f('stage')}</div><div class="row">${f('probability')}${f('close_date')}</div><div class="row">${f('account_id')}${f('contact_id')}</div>${f('owner_id')}${f('stage_comment')}<p class="small muted">Leave probability empty to use the stage default.</p>`,
-    onSubmit: async (form) => { const v = formValues(form, fields); const s = d.id ? await api('PUT', `/deals/${d.id}`, v) : await api('POST', '/deals', v); toast('Deal saved', 'ok'); onDone?.(s); } });
-}
+const dealForm = (d = {}, lk, onDone) => openEntityForm('deals', d, { lk, onDone, titles: { new: 'New deal', edit: 'Edit deal', noun: 'Deal' },
+  extra: (rec) => html`<label>${rec.id ? 'Comment on the stage change (optional — saved only if you change the stage)' : 'Note for the deal history (optional)'}<textarea name="stage_comment" data-extra rows="2"></textarea></label><p class="small muted">Leave probability empty to use the stage default.</p>` });
+
 export async function deals(root) {
   const view = sessionStorage.getItem('dealView') || 'board';
   root.innerHTML = ''; const head = document.createElement('div'), body = document.createElement('div'); root.append(head, body);
@@ -293,9 +265,9 @@ export async function deals(root) {
   });
   if (view === 'list') {
     const l = mountList(body, { key: 'deals', endpoint: '/deals', searchPlaceholder: 'Search deals…', empty: 'No deals yet.',
-      filters: [{ name: 'stage', label: 'Stage', options: store.meta.stages.map((s) => [s.key, s.label]) }, { name: 'owner_id', label: 'Owner', options: userOpts() }],
+      filters: [{ name: 'stage', label: 'Stage', options: store.meta.stages.map((s) => [s.key, s.label]) }, { name: 'owner_id', label: 'Owner', options: userOpts() }, ...customFilters('deals')],
       columns: [{ label: 'Deal', sort: 'name', render: (d) => html`<a href="#/deals/${d.id}"><b>${d.name}</b></a>` }, { label: 'Account', render: (d) => d.account_name || '—' }, { label: 'Amount', sort: 'amount', render: (d) => money(d.amount) },
-        { label: 'Stage', sort: 'stage', render: (d) => badge(d.stage) }, { label: 'Prob.', render: (d) => d.probability + '%' }, { label: 'Close', sort: 'close_date', render: (d) => fmtDate(d.close_date) }, { label: 'Owner', render: (d) => d.owner_name || '—' },
+        { label: 'Stage', sort: 'stage', render: (d) => badge(d.stage) }, { label: 'Prob.', render: (d) => d.probability + '%' }, { label: 'Close', sort: 'close_date', render: (d) => fmtDate(d.close_date) }, { label: 'Owner', render: (d) => d.owner_name || '—' }, ...customColumns('deals'),
         { label: 'History', render: (d) => html`<button class="btn sm" data-act="hist" data-id="${d.id}" data-name="${d.name}">🕘 History</button>` }] });
     on(body, { hist: (el) => historyModal(el.dataset.id, el.dataset.name) });
     reload = l.reload; return;
@@ -304,7 +276,7 @@ export async function deals(root) {
     const { rows } = await api('GET', '/deals?limit=1000&sort=amount&dir=desc');
     setHtml(body, html`<div class="kanban">${store.meta.stages.map((s) => {
       const items = rows.filter((d) => d.stage === s.key); const total = items.reduce((a, d) => a + d.amount, 0);
-      return html`<div class="col" data-stage="${s.key}"><div class="ch"><b>${s.label}</b><span class="small muted">${items.length} · ${money(total, true)}</span></div><div class="cards">${items.map((d) => html`<div class="dcard" draggable="true" data-id="${d.id}"><b><a href="#/deals/${d.id}" draggable="false">${d.name}</a></b><span class="small muted">${d.account_name || ''}</span><div style="display:flex;justify-content:space-between;margin-top:6px"><b>${money(d.amount, true)}</b><span class="small muted">${d.owner_name?.split(' ')[0] || ''}</span></div><div style="margin-top:6px"><button class="btn sm" data-act="hist" data-id="${d.id}" data-name="${d.name}" draggable="false">🕘 History</button></div>${d.close_date ? html`<div class="small muted">Close ${fmtDate(d.close_date)}</div>` : ''}</div>`)}</div></div>`;
+      return html`<div class="col" data-stage="${s.key}"><div class="ch"><b>${s.label}</b><span class="small muted">${items.length} · ${money(total, true)}</span></div><div class="cards">${items.map((d) => html`<div class="dcard" draggable="true" data-id="${d.id}"><b><a href="#/deals/${d.id}" draggable="false">${d.name}</a></b><span class="small muted">${d.account_name || ''}</span><div style="display:flex;justify-content:space-between;margin-top:6px"><b>${money(d.amount, true)}</b><span class="small muted">${d.owner_name?.split(' ')[0] || ''}</span></div>${customCardLines('deals', d).map((x) => html`<div class="small"><span class="muted">${x.d.label}:</span> ${x.v}</div>`)}<div style="margin-top:6px"><button class="btn sm" data-act="hist" data-id="${d.id}" data-name="${d.name}" draggable="false">🕘 History</button></div>${d.close_date ? html`<div class="small muted">Close ${fmtDate(d.close_date)}</div>` : ''}</div>`)}</div></div>`;
     })}</div><p class="small muted">Drag a card to another column (you can add a comment), or open 🕘 History to see how a deal has moved.</p>`);
     let dragId = null;
     $$('.dcard', body).forEach((c) => { c.addEventListener('dragstart', (e) => { dragId = c.dataset.id; c.classList.add('dragging'); e.dataTransfer.setData('text/plain', dragId); e.dataTransfer.effectAllowed = 'move'; }); c.addEventListener('dragend', () => c.classList.remove('dragging')); });
@@ -330,7 +302,7 @@ export async function dealDetail(root, id) {
         <div style="display:grid;gap:16px;align-content:start"><div class="card"><div class="hd"><h2>Details</h2></div><div class="bd" style="display:grid;gap:8px">
           <div><span class="muted small">Account</span><br>${x.account_id ? html`<a href="#/accounts/${x.account_id}">${x.account_name}</a>` : '—'}</div>
           <div><span class="muted small">Contact</span><br>${x.contact_id ? html`<a href="#/contacts/${x.contact_id}">${x.contact_name}</a>` : '—'}</div>
-          <div><span class="muted small">Expected close</span><br>${fmtDate(x.close_date)}</div><div><span class="muted small">Owner</span><br>${x.owner_name || '—'}</div></div></div>${miniTasks(d.tasks)}</div></div>`);
+          <div><span class="muted small">Expected close</span><br>${fmtDate(x.close_date)}</div><div><span class="muted small">Owner</span><br>${x.owner_name || '—'}</div></div></div>${customDetailCard('deals', x)}${miniTasks(d.tasks)}</div></div>`);
     wireTimeline(root, 'deal_id', id, draw);
     on(root, {
       edit: async () => dealForm(x, await lookups(), draw), stage: () => stageModal(x, draw), task: () => taskForm({ deal_id: id }, draw),

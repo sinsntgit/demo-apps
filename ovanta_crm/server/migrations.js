@@ -23,6 +23,20 @@ export const MIGRATIONS = [
         BEGIN UPDATE users SET role_id = (SELECT id FROM roles WHERE name = NEW.role) WHERE id = NEW.id; END`);
     },
   },
+  {
+    version: 3, name: 'custom_fields_and_layouts',
+    up(db) {
+      for (const t of ['contacts', 'accounts', 'deals']) if (!hasColumn(db, t, 'custom')) db.exec(`ALTER TABLE ${t} ADD COLUMN custom TEXT NOT NULL DEFAULT '{}'`);
+      db.exec(`CREATE TABLE IF NOT EXISTS field_defs (
+        id INTEGER PRIMARY KEY, entity TEXT NOT NULL CHECK (entity IN ('contacts','accounts','deals')), key TEXT NOT NULL, label TEXT NOT NULL,
+        type TEXT NOT NULL, options TEXT NOT NULL DEFAULT '[]', config TEXT NOT NULL DEFAULT '{}', required INTEGER NOT NULL DEFAULT 0, default_value TEXT, help_text TEXT,
+        placeholder TEXT, show_in_list INTEGER NOT NULL DEFAULT 0, filterable INTEGER NOT NULL DEFAULT 0, searchable INTEGER NOT NULL DEFAULT 0, visible_when TEXT,
+        archived INTEGER NOT NULL DEFAULT 0, position INTEGER NOT NULL DEFAULT 0, created_by INTEGER, created_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE (entity, key))`);
+      db.exec(`CREATE TABLE IF NOT EXISTS layouts (entity TEXT PRIMARY KEY CHECK (entity IN ('contacts','accounts','deals')), config TEXT NOT NULL, updated_by INTEGER, updated_at TEXT NOT NULL DEFAULT (datetime('now')))`);
+      // new permission area: refresh the stored Administrator permissions (always full) so the roles screen is accurate
+      db.prepare("UPDATE roles SET permissions=? WHERE name='admin' AND is_system=1").run(JSON.stringify(SYSTEM_ROLES[0].permissions));
+    },
+  },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 

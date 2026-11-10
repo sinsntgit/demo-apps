@@ -81,14 +81,19 @@ export const FIELDS = [
   ['subscribed', 'Subscribed (yes/no)', ['subscribed', 'opt in', 'opt-in', 'consent', 'marketing consent']],
 ];
 /** Guess a header→field mapping. Returns {field: columnIndex | -1}. */
-export function guessMapping(headers) {
+export function guessMapping(headers, extra = []) {
   const h = headers.map((x) => String(x).trim().toLowerCase()); const m = {};
-  for (const [key, , names] of FIELDS) m[key] = h.findIndex((x) => names.includes(x));
+  for (const [key, , names] of [...FIELDS, ...extra]) m[key] = h.findIndex((x) => names.includes(x));
   if (m.first_name < 0 && m.last_name < 0) { const i = h.findIndex((x) => ['name', 'full name', 'contact name', 'contact'].includes(x)); if (i >= 0) m.first_name = i; }
   return m;
 }
-export function applyMapping(rows, map) {
-  return rows.slice(1).map((r) => Object.fromEntries(FIELDS.map(([k]) => [k, map[k] >= 0 ? String(r[map[k]] ?? '').trim() : ''])));
+/** `extra` = custom-field targets [['custom:cf_key', label, [header names]]]; their values go into row.custom. */
+export function applyMapping(rows, map, extra = []) {
+  return rows.slice(1).map((r) => {
+    const o = Object.fromEntries(FIELDS.map(([k]) => [k, map[k] >= 0 ? String(r[map[k]] ?? '').trim() : '']));
+    const custom = {}; for (const [key] of extra) { const i = map[key]; if (i >= 0 && String(r[i] ?? '').trim() !== '') custom[key.slice(7)] = String(r[i]).trim(); }
+    if (Object.keys(custom).length) o.custom = custom; return o;
+  });
 }
 export const TEMPLATE_CSV = 'first_name,last_name,email,phone,title,company,status,source,tags,subscribed\nAsha,Rao,asha.rao@example.com,+91 98765 43210,Head of Operations,Example Pvt Ltd,lead,Website,"newsletter, expo-2026",yes\n';
 

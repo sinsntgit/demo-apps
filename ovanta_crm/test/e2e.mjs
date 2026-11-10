@@ -23,7 +23,7 @@ for (const r of ['contacts', 'accounts', 'deals', 'tasks', 'campaigns', 'segment
   await shot(r);
 }
 // create contact via UI
-await page.click('a[data-nav=contacts]'); await page.click('text=+ New contact'); await page.fill('input[name=first_name]', 'Zed'); await page.fill('input[name=last_name]', 'Tester'); await page.fill('input[name=email]', 'zed@example.com');
+await page.click('a[data-nav=contacts]'); await page.click('text=+ New contact'); await page.fill('input[name=f__first_name]', 'Zed'); await page.fill('input[name=f__last_name]', 'Tester'); await page.fill('input[name=f__email]', 'zed@example.com');
 await page.click('.modal button[type=submit]'); await page.waitForSelector('h1:has-text("Zed Tester")'); await shot('contact');
 // campaign flow
 await page.click('a[data-nav=campaigns]'); await page.click('text=+ New campaign'); await page.fill('.modal input[name=name]', 'E2E campaign'); await page.click('.modal button[type=submit]');
@@ -111,6 +111,42 @@ if ((await p2.textContent('.me')).indexOf('E2E Seller') < 0) errors.push('role n
 await p2.click('a[data-nav=contacts]'); await p2.waitForSelector('table'); if ((await p2.locator('text=Delete all').count()) > 0) errors.push('non-admin sees Delete all');
 await p2.goto(`${base}/#/team`); await p2.waitForSelector('.empty', { timeout: 5000 }).catch(() => errors.push('direct URL to Team did not show an access error')); await ctx2.close();
 await page.click('a[data-nav=settings]'); await page.waitForSelector('text=Backups'); await page.click('button:has-text("Create backup now")'); await page.waitForSelector('.toast:has-text("Backup")', { timeout: 5000 }).catch(() => errors.push('backup toast missing'));
+const dragTo = async (srcSel, dstSel) => { const src = page.locator(srcSel).first(); await src.scrollIntoViewIfNeeded(); const dst = page.locator(dstSel).first(); await dst.scrollIntoViewIfNeeded(); const a = await src.boundingBox(), b = await dst.boundingBox();
+  await page.mouse.move(a.x + 40, a.y + a.height / 2); await page.mouse.down(); await page.mouse.move(a.x + 60, a.y + a.height / 2 + 10, { steps: 5 }); await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 15 }); await page.mouse.up(); };
+// ===== Custom fields & layouts: the partner-deal scenario =====
+await page.click('a[data-nav=customize]'); await page.waitForSelector('text=Custom fields');
+const addField = async (label, type, fill) => { await page.click('text=+ Add field'); await page.fill('.modal input[name=label]', label); await page.selectOption('.modal select[name=type]', type); if (fill) await fill(); await page.click('.modal button[type=submit]'); await page.waitForSelector(`td:has-text("${label}")`); };
+await addField('Deal type', 'dropdown', async () => { const rows = page.locator('.modal [data-opt]'); await rows.nth(0).fill('Direct'); await rows.nth(1).fill('Partner'); await page.click('.modal button[data-act=oadd]'); await page.locator('.modal [data-opt]').nth(2).fill('Reseller'); await page.check('.modal input[name=required]'); await page.check('.modal input[name=show_in_list]'); await page.check('.modal input[name=filterable]'); });
+await addField('Partner', 'lookup', async () => { await page.selectOption('.modal select[name=cfg_target]', 'accounts'); await page.selectOption('.modal select[name=vw_field]', 'cf_deal_type'); await page.check('.modal input[name=vw_val][value=Partner]'); await page.check('.modal input[name=show_in_list]'); });
+await addField('Partner margin', 'percent', async () => { await page.selectOption('.modal select[name=vw_field]', 'cf_deal_type'); await page.check('.modal input[name=vw_val][value=Partner]'); await page.check('.modal input[name=required]'); });
+await addField('Deal details', 'textarea', async () => { await page.check('.modal input[name=searchable]'); });
+await shot('custom-fields');
+// arrange: new section "Partner details" and drag the partner fields into it, then save
+await page.click('text=+ Add section'); const secId = await page.locator('.lsec').last().getAttribute('data-sec'); await page.locator('.lsec').last().locator('input[data-sectitle]').fill('Partner details');
+for (const k of ['cf_deal_type', 'cf_partner', 'cf_partner_margin']) { await dragTo(`.lchip[data-key=${k}]`, `[data-zone="${secId}"]`); await page.waitForTimeout(150); }
+await page.waitForFunction((id) => document.querySelectorAll(`[data-zone="${id}"] .lchip`).length === 3, secId, { timeout: 5000 }).catch(() => errors.push('dragging fields into the new section failed'));
+await shot('layout-editor'); await page.click('button[data-act=lsave]'); await page.waitForSelector('.toast:has-text("Layout saved")');
+// create a deal using the saved layout
+await page.click('a[data-nav=deals]'); await page.click('text=+ New deal'); await page.waitForSelector('.modal .fsec h3:has-text("Partner details")');
+await page.fill('.modal input[name=f__name]', 'E2E partner deal'); await page.fill('.modal input[name=f__amount]', '25000');
+if (await page.locator('.modal .fld[data-key=cf_partner_margin]').isVisible()) errors.push('partner margin visible before Deal type is chosen');
+await page.selectOption('.modal select[name=c__cf_deal_type]', 'Direct'); if (await page.locator('.modal .fld[data-key=cf_partner]').isVisible()) errors.push('Partner shown for a Direct deal');
+await page.selectOption('.modal select[name=c__cf_deal_type]', 'Partner'); await page.waitForSelector('.modal .fld[data-key=cf_partner_margin]:not([hidden])');
+await page.selectOption('.modal select[name=c__cf_partner]', { index: 1 }); await page.fill('.modal input[name=c__cf_partner_margin]', '12.5'); await page.fill('.modal textarea[name=c__cf_deal_details]', 'Resold through the partner, 2-year term');
+await shot('deal-form'); await page.click('.modal button[type=submit]'); await page.waitForSelector('.toast:has-text("Deal saved")');
+const created = await page.evaluate(async () => (await (await fetch('/api/deals?q=E2E%20partner%20deal')).json()).rows[0]);
+if (!created || created.custom.cf_deal_type !== 'Partner' || created.custom.cf_partner_margin !== 12.5 || !created.custom.cf_partner) errors.push('custom values not saved ' + JSON.stringify(created?.custom));
+await page.goto(`${base}/#/deals/${created.id}`); await page.waitForSelector('text=Partner margin'); if (!(await page.textContent('body')).includes('12.5%')) errors.push('detail page missing the margin'); await shot('deal-detail-custom');
+await page.click('button:has-text("Edit")'); await page.waitForSelector('.modal input[name=c__cf_partner_margin]'); if ((await page.inputValue('.modal input[name=c__cf_partner_margin]')) !== '12.5') errors.push('edit form did not load the saved value'); await page.keyboard.press('Escape');
+// list view: custom column and filter
+await page.click('a[data-nav=deals]'); await page.click('button:has-text("List")'); await page.waitForSelector('th:has-text("Deal type")'); await page.selectOption('select[data-filter=cf_deal_type]', 'Partner');
+await page.waitForFunction(() => document.body.innerText.includes('E2E partner deal'), null, { timeout: 5000 }).catch(() => errors.push('filtering by the custom dropdown failed')); await shot('deals-list-custom');
+await page.click('button:has-text("Board")');
+// a normal user sees the fields but cannot customise
+const ctx3 = await browser.newContext({ viewport: { width: 1360, height: 900 } }); const p3 = await ctx3.newPage();
+await p3.goto(base); await p3.fill('input[name=email]', 'liam@ovantaa.com'); await p3.fill('input[name=password]', 'Ovantaa@123'); await p3.click('button.primary'); await p3.waitForSelector('.kpi');
+if ((await p3.locator('a[data-nav=customize]').count()) > 0) errors.push('rep can see the Customisation menu');
+await p3.click('a[data-nav=deals]'); await p3.click('text=+ New deal'); await p3.waitForSelector('.modal select[name=c__cf_deal_type]'); await ctx3.close();
 // segment builder + deal drag/drop
 await page.click('a[data-nav=segments]'); await page.click('text=+ New segment'); await page.fill('.modal input[name=name]', 'E2E seg');
 await page.waitForSelector('#segprev b'); await page.click('.modal button[type=submit]'); await page.waitForSelector('td:has-text("E2E seg")');

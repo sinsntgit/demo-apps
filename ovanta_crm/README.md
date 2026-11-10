@@ -76,6 +76,17 @@ Menu **Billing**: *Invoices · Receivables · E-invoicing readiness · Billing s
 * Rules are a strong subset of ZATCA/FTA requirements, not the full official schematron — treat a clean "ready" as a good pre-check, not as legal assurance. Have your accountant confirm VAT treatment.
 * Issued invoices can never be deleted (tax records must be kept); "Delete all" does not include them.
 
+## Custom fields & form layouts
+
+**Admin → Customisation** (permission: *Customisation*, administrators by default). Choose **Deals, Accounts or Contacts**, then:
+
+* **Add fields**: single-line text, comment (multi-line), number, percentage, amount (money), date, **dropdown** (you type the list of options), multi-select, checkbox, email, phone, web link, and **link to another record** (e.g. a *Partner* that points to an account). Each field can be **required**, have help text, a default, min/max/decimals, and can be shown as a **column in lists**, **filterable**, and **searchable**.
+* **Show only when…**: e.g. show *Partner* and *Partner margin* only when *Deal type = Partner*. Hidden fields are not required and keep any saved value.
+* **Arrange the form**: group fields into named **sections** (one or two columns), **drag** them (or use ↑ ↓), hide optional standard fields, **preview**, and **save** — the saved layout is what everyone sees when creating or editing records. New fields appear automatically at the end until you place them. *Reset to default* undoes it.
+* **Archive** a field to hide it everywhere while keeping its data (restore any time), or delete it **permanently** (removes the values from every record). The field *type* and internal key never change after creation, so saved values stay valid. Renaming a dropdown option renames it on every record that uses it.
+
+Custom values appear on the record's detail page (grouped by your sections), in list columns and filters, on deal cards, in **CSV export and import** (contacts; columns are matched by field name), and as **conditions in campaign segments** (contact and account fields). They are validated on the server — required fields, option lists, number ranges, dates, emails, links and record links — whichever way a record is saved. Limits: 100 custom fields per record type, 200 options per list. Tasks and invoices have no custom fields yet.
+
 ## Roles & permissions
 
 **Team & roles → Roles & permissions** (administrators). A role is a set of permissions per area (contacts, accounts, deals, tasks, invoices, campaigns, segments, templates, receivables, billing settings, senders, notifications, users, audit log, data management…). For the core records — contacts, accounts, deals, tasks, invoices and activity notes — each of view / edit / delete can be **None, Own or All**: with *Own*, a person only sees and changes records they own; records owned by others behave as if they do not exist (list, search, lookups, exports, bulk actions, dashboard totals and imports all follow).
@@ -114,7 +125,7 @@ See [`docs/ROADMAP-CRITICAL-GAPS.md`](docs/ROADMAP-CRITICAL-GAPS.md): lead conve
 
 ## Tests
 ```bash
-npm test       # 53 tests (API, permissions, migrations, backups): auth, CRUD, injection, campaigns, SMTP sending against a local fake mail server,
+npm test       # 62 tests (API, permissions, migrations, backups): auth, CRUD, injection, campaigns, SMTP sending against a local fake mail server,
                # daily-limit pause/resume, notifications, AI (fake Claude API), themes, import options
 npm run e2e    # browser test (needs Playwright + Chromium): navigation, forms, xlsx import, theme, AI panel, drag-and-drop
 npm run seed   # reset to demo data

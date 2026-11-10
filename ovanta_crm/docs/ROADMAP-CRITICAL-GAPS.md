@@ -20,7 +20,7 @@ Decisions taken (2026-11-10)
 ## Phase 1 — quick wins
 Lead conversion (+ duplicate merge) · file attachments · TOTP two-factor login with recovery codes and revocable sessions.
 
-## Phase 2 — customisation
+## Phase 2 — customisation  (custom fields + layouts: DONE; quotes → invoices: next)
 Custom fields and layouts (field definitions + validated JSON per record; forms, lists, filters, import/export, segments) · products, price books, quotes → invoice drafts.
 
 ## Phase 3 — automation

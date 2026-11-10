@@ -2,6 +2,7 @@ import { all, get, run, audit, nowIso } from './db.js';
 import { bad, notFound, forbidden } from './http.js';
 import { notify, dealEvents } from './notifications.js';
 import { scopeOf, canOnRecord } from './permissions.js';
+import { mergeCustom, shapeRows, customQuery, BUILTIN } from './customfields.js';
 
 export const STAGES = [
   { key: 'prospecting', label: 'Prospecting', prob: 10 },
@@ -17,7 +18,7 @@ const T = { text: 'text', int: 'int', real: 'real', bool: 'bool', date: 'date', 
 /** Declarative entity definitions driving the generic CRUD endpoints. */
 export const ENTITIES = {
   accounts: {
-    table: 'accounts', alias: 'a', noun: 'Account',
+    custom: true, table: 'accounts', alias: 'a', noun: 'Account',
     fields: { name: T.text, industry: T.text, website: T.text, size: T.text, city: T.text, country: T.text, phone: T.text, notes: T.text, owner_id: T.fk,
       name_ar: T.text, vat_number: T.text, street: T.text, building_no: T.text, district: T.text, postal_code: T.text, country_code: T.text, billing_email: T.text, billing_phone: T.text },
     required: ['name'],
@@ -31,7 +32,7 @@ export const ENTITIES = {
       FROM accounts a LEFT JOIN users u ON u.id=a.owner_id`,
   },
   contacts: {
-    table: 'contacts', alias: 'c', noun: 'Contact',
+    custom: true, table: 'contacts', alias: 'c', noun: 'Contact',
     fields: { first_name: T.text, last_name: T.text, email: T.text, phone: T.text, title: T.text, account_id: T.fk, status: T.text, source: T.text, tags: T.text, subscribed: T.bool, owner_id: T.fk },
     required: ['first_name'],
     enums: { status: ['lead', 'qualified', 'customer', 'churned'] },
@@ -43,7 +44,7 @@ export const ENTITIES = {
       FROM contacts c LEFT JOIN accounts ac ON ac.id=c.account_id LEFT JOIN users u ON u.id=c.owner_id`,
   },
   deals: {
-    table: 'deals', alias: 'd', noun: 'Deal',
+    custom: true, table: 'deals', alias: 'd', noun: 'Deal',
     fields: { name: T.text, amount: T.real, stage: T.text, probability: T.int, close_date: T.date, account_id: T.fk, contact_id: T.fk, owner_id: T.fk },
     required: ['name'],
     enums: { stage: STAGES.map((s) => s.key) },
@@ -100,11 +101,14 @@ export function clean(ent, input, { partial = false } = {}) {
 function listQuery(ent, q, user) {
   const where = []; const params = [];
   if (user && scopeOf(user, `${ent.table}.view`) === 'own') { where.push(`${ent.alias}.owner_id = ?`); params.push(user.id); }
+  const cq = ent.custom ? customQuery(ent.table, ent.alias, q) : null;
   if (q.q) {
-    where.push('(' + ent.search.map((s) => `${s} LIKE ? ESCAPE '\\'`).join(' OR ') + ')');
+    const cols = [...ent.search, ...(cq?.searchCols || [])];
+    where.push('(' + cols.map((s) => `${s} LIKE ? ESCAPE '\\'`).join(' OR ') + ')');
     const like = `%${String(q.q).replace(/[\\%_]/g, (m) => '\\' + m)}%`;
-    ent.search.forEach(() => params.push(like));
+    cols.forEach(() => params.push(like));
   }
+  if (cq) { where.push(...cq.where); params.push(...cq.params); }
   for (const [k, col] of Object.entries(ent.filters)) {
     if (q[k] !== undefined && q[k] !== '') {
       if (q[k] === 'null') where.push(`${col} IS NULL`); else { where.push(`${col} = ?`); params.push(q[k]); }
@@ -117,14 +121,19 @@ function listQuery(ent, q, user) {
   return { where: where.length ? ' WHERE ' + where.join(' AND ') : '', params };
 }
 
+const builtinDefaults = (entity) => Object.fromEntries(BUILTIN[entity].filter((f) => f.default !== undefined && f.default !== '@me').map((f) => [f.key, f.default]));
+
 export function list(ent, q, user) {
   const { where, params } = listQuery(ent, q, user);
   const limit = Math.min(Math.max(parseInt(q.limit || '25', 10) || 25, 1), 1000);
   const page = Math.max(parseInt(q.page || '1', 10) || 1, 1);
   const dir = q.dir === 'desc' ? 'DESC' : 'ASC';
-  const order = ent.sorts[q.sort] ? `${ent.sorts[q.sort]} ${dir}` : ent.defaultSort;
+  const cq = ent.custom && /^cf_[a-z0-9_]+$/.test(q.sort || '') ? customQuery(ent.table, ent.alias, {}) : null;
+  const customSort = cq && cq.sortable.has(q.sort) ? `(${cq.path(q.sort)} IS NULL), ${cq.path(q.sort)} ${dir}` : null;
+  const order = customSort || (ent.sorts[q.sort] ? `${ent.sorts[q.sort]} ${dir}` : ent.defaultSort);
   const total = get(`SELECT COUNT(*) AS n FROM (${ent.select}${where})`, ...params).n;
-  const rows = all(`${ent.select}${where} ORDER BY ${order}, ${ent.alias}.id DESC LIMIT ? OFFSET ?`, ...params, limit, (page - 1) * limit);
+  let rows = all(`${ent.select}${where} ORDER BY ${order}, ${ent.alias}.id DESC LIMIT ? OFFSET ?`, ...params, limit, (page - 1) * limit);
+  if (ent.custom) rows = shapeRows(ent.table, rows);
   return { rows, total, page, limit };
 }
 
@@ -132,7 +141,7 @@ export function getOne(ent, id, user) {
   const row = get(`${ent.select} WHERE ${ent.alias}.id = ?`, id);
   if (!row) throw notFound(`${ent.noun} not found`);
   if (user && scopeOf(user, `${ent.table}.view`) === 'own' && row.owner_id !== user.id) throw notFound(`${ent.noun} not found`); // hide records outside the user's scope
-  return row;
+  return ent.custom ? shapeRows(ent.table, [row])[0] : row;
 }
 
 /** Append one stage-movement row. `deal` is the row AFTER the change (joined, with owner_name). */
@@ -149,6 +158,7 @@ function insert(table, data) {
 
 export function create(ent, body, user) {
   const data = clean(ent, body);
+  if (ent.custom) data.custom = JSON.stringify(mergeCustom(ent.table, body.custom, { existing: {}, record: { ...builtinDefaults(ent.table), ...data }, isCreate: true }));
   if (ent.table === 'deals') applyDealStage(data, null);
   if (ent.table === 'contacts' && data.email === undefined) data.email = null;
   if (!('owner_id' in data) && ent.fields.owner_id) data.owner_id = user.id;
@@ -165,6 +175,7 @@ export function update(ent, id, body, user) {
   const existing = getOne(ent, id, user);
   if (!canOnRecord(user, `${ent.table}.edit`, existing.owner_id)) throw forbidden(`Your role can only edit ${ent.noun.toLowerCase()}s you own.`);
   const data = clean(ent, body, { partial: true });
+  if (ent.custom && body.custom !== undefined) data.custom = JSON.stringify(mergeCustom(ent.table, body.custom, { existing: existing.custom || {}, record: { ...existing, ...data }, isCreate: false }));
   if (ent.table === 'deals') applyDealStage(data, existing);
   const cols = Object.keys(data);
   if (cols.length) run(`UPDATE ${ent.table} SET ${cols.map((c) => `${c}=?`).join(',')} WHERE id=?`, ...Object.values(data), id);

@@ -5,6 +5,8 @@ import * as admin from './admin.js';
 import * as mail from './mail.js';
 import * as inv from './invoices.js';
 import * as bill from './billing.js';
+import * as cust from './customize.js';
+import { loadCustomization } from './forms.js';
 
 const app = $('#app');
 
@@ -12,7 +14,7 @@ const NAV = [
   ['Workspace', [['dashboard', 'Dashboard', 'home'], ['contacts', 'Contacts', 'users'], ['accounts', 'Accounts', 'building'], ['deals', 'Deals', 'deal'], ['tasks', 'Tasks', 'task']]],
   ['Billing', [['invoices', 'Invoices', 'invoice'], ['receivables', 'Receivables', 'wallet', 'receivables.view'], ['readiness', 'E-invoicing readiness', 'shield', 'readiness.view'], ['billing-settings', 'Billing settings', 'cog', 'billing_settings.view']]],
   ['Marketing', [['campaigns', 'Campaigns', 'mail'], ['segments', 'Segments', 'seg'], ['templates', 'Templates', 'tpl'], ['senders', 'Email senders', 'send', 'senders.view']]],
-  ['Admin', [['notifications', 'Notifications', 'bell', 'notifications.view'], ['team', 'Team & roles', 'team', 'users.view'], ['settings', 'Settings', 'cog']]],
+  ['Admin', [['customize', 'Customisation', 'tpl', 'customization.manage'], ['notifications', 'Notifications', 'bell', 'notifications.view'], ['team', 'Team & roles', 'team', 'users.view'], ['settings', 'Settings', 'cog']]],
 ];
 
 const ROUTES = [
@@ -24,7 +26,7 @@ const ROUTES = [
   [/^invoices$/, (r) => inv.invoiceList(r, () => bill.importInvoices(() => { location.hash = '#/readiness'; }))], [/^invoices\/new$/, (r) => inv.invoiceEditor(r, null)], [/^invoices\/(\d+)\/edit$/, (r, id) => inv.invoiceEditor(r, id)], [/^invoices\/(\d+)$/, (r, id) => inv.invoiceDetail(r, id)],
   [/^receivables$/, (r) => bill.receivables(r)], [/^readiness$/, (r) => bill.readiness(r, (done) => bill.importInvoices(done))], [/^billing-settings$/, (r) => bill.billingSettings(r)],
   [/^senders$/, (r) => mail.senders(r)], [/^notifications$/, (r) => mail.notifications(r)],
-  [/^team$/, (r) => admin.team(r)], [/^settings$/, (r) => admin.settings(r)],
+  [/^customize$/, (r) => cust.customize(r)], [/^team$/, (r) => admin.team(r)], [/^settings$/, (r) => admin.settings(r)],
 ];
 
 function loginView(msg = '') {
@@ -73,7 +75,7 @@ async function route() {
 }
 
 async function boot() {
-  try { store.meta = await api('GET', '/meta'); } catch { return loginView(); }
+  try { store.meta = await api('GET', '/meta'); await loadCustomization(); } catch { return loginView(); }
   shell();
   if (!location.hash || location.hash === '#/login') location.hash = '#/dashboard';
   route();

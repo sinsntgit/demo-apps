@@ -6,7 +6,9 @@ import {
 } from './auth.js';
 import { ENTITIES, STAGES, list, getOne, create, update, remove, clean } from './entities.js';
 import { scopeOf, canOnRecord, hasPerm } from './permissions.js';
-import { SEGMENT_FIELDS, SEGMENT_OPS, parseFilter, resolveSegment } from './segments.js';
+import { listFields, mergeCustom } from './customfields.js';
+const displayCustom = (d, r) => { const v = r.custom?.[d.key]; if (v == null) return ''; if (d.type === 'lookup') return r.custom_labels?.[d.key] ?? ''; if (d.type === 'checkbox') return v ? 'yes' : 'no'; return Array.isArray(v) ? v.join('; ') : v; };
+import { segmentFields, SEGMENT_OPS, parseFilter, resolveSegment } from './segments.js';
 import {
   MERGE_TAGS, renderMessage, sendTest, launchCampaign, validateForLaunch, campaignStats, outboxLog, resolveSender, isSimulated,
 } from './campaigns.js';
@@ -44,7 +46,7 @@ function checkPassword(p) {
 
 // ---------- Meta ----------
 GET('/api/meta', () => ({
-  stages: STAGES, mergeTags: MERGE_TAGS, segmentFields: Object.fromEntries(Object.entries(SEGMENT_FIELDS).map(([k, v]) => [k, { label: v.label, type: v.type, options: v.options }])),
+  stages: STAGES, mergeTags: MERGE_TAGS, segmentFields: Object.fromEntries(Object.entries(segmentFields()).map(([k, v]) => [k, { label: v.label, type: v.type, options: v.options }])),
   segmentOps: SEGMENT_OPS, users: all('SELECT id,name,role FROM users WHERE active=1 ORDER BY name'),
   industries: all("SELECT DISTINCT industry v FROM accounts WHERE industry IS NOT NULL ORDER BY 1").map((r) => r.v),
   sources: all("SELECT DISTINCT source v FROM contacts WHERE source IS NOT NULL ORDER BY 1").map((r) => r.v),
@@ -162,8 +164,12 @@ POST('/api/contacts/import', ({ body, user }) => {
         if (!data.first_name) data.first_name = data.email.split('@')[0];
         if (defSource && !data.source) data.source = defSource;
         if (defStatus && !row.status) data.status = defStatus;
-        const existing = data.email ? get('SELECT id, tags, owner_id FROM contacts WHERE email=?', data.email) : null;
+        const existing = data.email ? get('SELECT id, tags, owner_id, custom FROM contacts WHERE email=?', data.email) : null;
         if (existing && !canOnRecord(user, 'contacts.edit', existing.owner_id)) { res.skipped++; if (res.errors.length < 20) res.errors.push(`Row ${i + 2}: ${data.email} belongs to someone else`); return; }
+        if (row.custom && typeof row.custom === 'object' || listFields('contacts').some((d) => d.required)) {
+          const old = existing ? JSON.parse(existing.custom || '{}') : {};
+          data.custom = JSON.stringify(mergeCustom('contacts', row.custom && typeof row.custom === 'object' ? row.custom : existing ? undefined : {}, { existing: old, record: { ...(existing || {}), ...data }, isCreate: !existing }));
+        }
         if (defTag) { const t = new Set([...(existing?.tags || '').split(','), ...(data.tags || '').split(',')].map((x) => x.trim()).filter(Boolean)); t.add(defTag); data.tags = [...t].join(', '); }
         if (existing) {
           if (opts.update_existing === false) { res.skipped++; return; }
@@ -196,8 +202,9 @@ const csvCell = (v) => {
 GET('/api/contacts/export.csv', ({ res, query, user }) => {
   const rows = list({ ...ENTITIES.contacts }, { ...query, limit: 1000, page: 1 }, user).rows;
   audit(user, 'export', 'contacts', null, `${rows.length} rows`);
-  const head = ['first_name', 'last_name', 'email', 'phone', 'title', 'company', 'status', 'source', 'tags', 'subscribed', 'owner', 'created_at'];
-  const lines = [head.join(',')].concat(rows.map((r) => [r.first_name, r.last_name, r.email, r.phone, r.title, r.account_name, r.status, r.source, r.tags, r.subscribed ? 'yes' : 'no', r.owner_name, r.created_at].map(csvCell).join(',')));
+  const cdefs = listFields('contacts');
+  const head = ['first_name', 'last_name', 'email', 'phone', 'title', 'company', 'status', 'source', 'tags', 'subscribed', 'owner', 'created_at', ...cdefs.map((d) => d.label)];
+  const lines = [head.join(',')].concat(rows.map((r) => [r.first_name, r.last_name, r.email, r.phone, r.title, r.account_name, r.status, r.source, r.tags, r.subscribed ? 'yes' : 'no', r.owner_name, r.created_at, ...cdefs.map((d) => displayCustom(d, r))].map(csvCell).join(',')));
   res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="ovantaa-contacts.csv"' });
   res.end(lines.join('\r\n'));
 });

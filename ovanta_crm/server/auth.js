@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { config } from './config.js';
 import { get } from './db.js';
-import { normalizePerms } from './permissions.js';
+import { normalizePerms, SYSTEM_ROLES } from './permissions.js';
 
 function loadSecret() {
   if (process.env.SESSION_SECRET) return process.env.SESSION_SECRET;
@@ -65,12 +65,13 @@ export function readSession(token) {
 }
 /** Load an active user with their role name and resolved permissions. */
 export function loadUser(uid) {
-  const u = get(`SELECT u.id, u.name, u.email, u.role_id, COALESCE(r.name, u.role) AS role, COALESCE(r.label, u.role) AS role_label, r.permissions AS perms_json
+  const u = get(`SELECT u.id, u.name, u.email, u.role_id, COALESCE(r.name, u.role) AS role, COALESCE(r.label, u.role) AS role_label, r.permissions AS perms_json, r.is_system AS role_is_system
     FROM users u LEFT JOIN roles r ON r.id = u.role_id WHERE u.id = ? AND u.active = 1`, uid);
   if (!u) return null;
   let raw = {}; try { raw = JSON.parse(u.perms_json || '{}'); } catch {}
-  const { perms_json, ...rest } = u;
-  return { ...rest, perms: normalizePerms(raw) };
+  const { perms_json, role_is_system, ...rest } = u;
+  const perms = role_is_system && u.role === 'admin' ? SYSTEM_ROLES[0].permissions : normalizePerms(raw); // the Administrator role is always full access, including permissions added in later versions
+  return { ...rest, perms };
 }
 export function parseCookies(header = '') {
   const out = {};
