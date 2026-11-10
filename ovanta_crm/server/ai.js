@@ -37,15 +37,16 @@ function userPrompt(b) {
   return parts.join('\n');
 }
 
-export async function generateEmail(b) {
+/** One Messages API call. Returns the parsed response body; throws friendly HttpErrors. */
+export async function callClaude(payload, { timeoutMs = 60000 } = {}) {
   const key = aiKey();
   if (!key) throw bad('AI is not configured. An admin can add an Anthropic API key in Settings → AI assistant.');
   let res;
   try {
     res = await fetch(`${config.anthropicBaseUrl}/v1/messages`, {
-      method: 'POST', signal: AbortSignal.timeout(60000),
+      method: 'POST', signal: AbortSignal.timeout(timeoutMs),
       headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model: aiModel(), max_tokens: 2500, system: SYSTEM, messages: [{ role: 'user', content: userPrompt(b) }] }),
+      body: JSON.stringify({ model: aiModel(), ...payload }),
     });
   } catch (e) { throw new HttpError(502, `Could not reach the Claude API (${e.name === 'TimeoutError' ? 'timed out' : e.message}).`); }
   const data = await res.json().catch(() => ({}));
@@ -55,6 +56,13 @@ export async function generateEmail(b) {
     if (res.status === 429) throw new HttpError(429, 'Claude is rate-limited right now. Try again in a minute.');
     throw new HttpError(502, `Claude API error: ${m}`);
   }
+  if (data.stop_reason === 'refusal') throw new HttpError(422, 'Claude declined this request. Try rephrasing it.');
+  return data;
+}
+export const responseText = (data) => (data.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('');
+
+export async function generateEmail(b) {
+  const data = await callClaude({ max_tokens: 2500, system: SYSTEM, messages: [{ role: 'user', content: userPrompt(b) }] });
   const text = (data.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('');
   const start = text.indexOf('{'), end = text.lastIndexOf('}');
   let j; try { j = JSON.parse(text.slice(start, end + 1)); } catch { throw new HttpError(502, 'Claude returned a response that could not be read. Please try again.'); }

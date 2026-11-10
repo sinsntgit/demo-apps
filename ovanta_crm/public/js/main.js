@@ -9,11 +9,12 @@ import * as cust from './customize.js';
 import { loadCustomization } from './forms.js';
 import { forcedSetup } from './security.js';
 import * as rec from './records.js';
+import { aiSearch } from './search.js';
 
 const app = $('#app');
 
 const NAV = [
-  ['Workspace', [['dashboard', 'Dashboard', 'home'], ['contacts', 'Contacts', 'users'], ['accounts', 'Accounts', 'building'], ['deals', 'Deals', 'deal'], ['tasks', 'Tasks', 'task'], ['duplicates', 'Duplicates', 'users', 'contacts.merge']]],
+  ['Workspace', [['search', 'AI search', 'search'], ['dashboard', 'Dashboard', 'home'], ['contacts', 'Contacts', 'users'], ['accounts', 'Accounts', 'building'], ['deals', 'Deals', 'deal'], ['tasks', 'Tasks', 'task'], ['duplicates', 'Duplicates', 'users', 'contacts.merge']]],
   ['Billing', [['invoices', 'Invoices', 'invoice'], ['receivables', 'Receivables', 'wallet', 'receivables.view'], ['readiness', 'E-invoicing readiness', 'shield', 'readiness.view'], ['billing-settings', 'Billing settings', 'cog', 'billing_settings.view']]],
   ['Marketing', [['campaigns', 'Campaigns', 'mail'], ['segments', 'Segments', 'seg'], ['templates', 'Templates', 'tpl'], ['senders', 'Email senders', 'send', 'senders.view']]],
   ['Admin', [['customize', 'Customisation', 'tpl', 'customization.manage'], ['notifications', 'Notifications', 'bell', 'notifications.view'], ['team', 'Team & roles', 'team', 'users.view'], ['settings', 'Settings', 'cog']]],
@@ -28,7 +29,7 @@ const ROUTES = [
   [/^invoices$/, (r) => inv.invoiceList(r, () => bill.importInvoices(() => { location.hash = '#/readiness'; }))], [/^invoices\/new$/, (r) => inv.invoiceEditor(r, null)], [/^invoices\/(\d+)\/edit$/, (r, id) => inv.invoiceEditor(r, id)], [/^invoices\/(\d+)$/, (r, id) => inv.invoiceDetail(r, id)],
   [/^receivables$/, (r) => bill.receivables(r)], [/^readiness$/, (r) => bill.readiness(r, (done) => bill.importInvoices(done))], [/^billing-settings$/, (r) => bill.billingSettings(r)],
   [/^senders$/, (r) => mail.senders(r)], [/^notifications$/, (r) => mail.notifications(r)],
-  [/^duplicates$/, (r) => rec.duplicates(r)], [/^customize$/, (r) => cust.customize(r)], [/^team$/, (r) => admin.team(r)], [/^settings$/, (r) => admin.settings(r)],
+  [/^duplicates$/, (r) => rec.duplicates(r)], [/^search$/, (r) => aiSearch(r)], [/^customize$/, (r) => cust.customize(r)], [/^team$/, (r) => admin.team(r)], [/^settings$/, (r) => admin.settings(r)],
 ];
 
 function loginView(msg = '') {
@@ -102,6 +103,7 @@ async function boot() {
 }
 
 window.addEventListener('hashchange', route);
+window.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k' && store.user && !store.user.limited) { e.preventDefault(); location.hash = '#/search'; } });
 window.addEventListener('ovantaa:logout', () => loginView('Your session expired. Please sign in again.'));
 (async () => {
   try { applyTheme(await api('GET', '/theme')); } catch {}

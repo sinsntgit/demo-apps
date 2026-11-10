@@ -124,3 +124,4 @@ input[type=color]{padding:2px;height:38px;width:60px}
 .lchip .x{border:0;background:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 3px}.lchip .x:hover{color:var(--bad)}.lpalette{border:2px dashed var(--line);border-radius:12px;padding:10px;min-height:60px;display:flex;flex-wrap:wrap;gap:8px}
 .optrow{display:flex;gap:6px;margin-bottom:6px}.optrow input{flex:1}
 @media(max-width:700px){.fgrid,.lfields{grid-template-columns:1fr}}
+.badge.plain{text-transform:none}

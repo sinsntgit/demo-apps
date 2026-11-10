@@ -63,6 +63,13 @@ export const MIGRATIONS = [
       fillMissingPerms(db);
     },
   },
+  {
+    version: 5, name: 'file_stage_folders',
+    up(db) {
+      if (!hasColumn(db, 'files', 'stage')) db.exec('ALTER TABLE files ADD COLUMN stage TEXT');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_files_stage ON files(entity, record_id, stage)');
+    },
+  },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 

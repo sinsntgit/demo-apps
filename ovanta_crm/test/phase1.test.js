@@ -129,11 +129,11 @@ const upload = (ck, entity, id, fd) => fetch(`${base}/api/files?entity=${entity}
 test('attachments: upload, list, download safely, size/type limits, scope, cleanup on delete', async () => {
   const admin = await login('admin@ovantaa.com'), rep = await ownScopeUser(admin);
   const mine = (await call(rep, 'POST', '/api/deals', { name: 'Rep deal' })).body; const others = (await call(admin, 'POST', '/api/deals', { name: 'Admin deal', owner_id: 1 })).body;
-  const up = await upload(rep, 'deals', mine.id, form('f', 'hello contract', 'Contract v1.txt', 'text/plain', { note: 'signed copy' })); assert.equal(up.status, 200); const f = await up.json();
+  const up = await upload(rep, 'deals', mine.id, form('f', 'hello contract', 'Contract v1.txt', 'text/plain', { note: 'signed copy' })); assert.equal(up.status, 200); const f = (await up.json()).files[0];
   assert.equal(f.name, 'Contract v1.txt'); assert.equal(f.size, 14); assert.equal(f.sha256.length, 64);
   assert.equal((await call(rep, 'GET', `/api/files?entity=deals&id=${mine.id}`)).body.length, 1);
   const dl = await fetch(`${base}/api/files/${f.id}/download`, { headers: { cookie: rep } }); assert.equal(await dl.text(), 'hello contract'); assert.equal(dl.headers.get('x-content-type-options'), 'nosniff');
-  const html = await (await upload(admin, 'deals', mine.id, form('f', '<script>alert(1)</script>', 'x.html', 'text/html'))).json();
+  const html = (await (await upload(admin, 'deals', mine.id, form('f', '<script>alert(1)</script>', 'x.html', 'text/html'))).json()).files[0];
   const hd = await fetch(`${base}/api/files/${html.id}/download`, { headers: { cookie: admin } }); assert.match(hd.headers.get('content-disposition'), /^attachment/); assert.equal(hd.headers.get('content-type'), 'application/octet-stream');
   assert.equal((await upload(admin, 'deals', mine.id, form('f', 'MZ', 'setup.exe', 'application/octet-stream'))).status, 400);
   assert.equal((await upload(admin, 'deals', mine.id, form('f', Buffer.alloc(1.5 * 1024 * 1024, 1), 'big.bin', 'application/octet-stream'))).status, 413);

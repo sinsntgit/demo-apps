@@ -1,3 +1,4 @@
+import { viewFile, fileIcon, sizeText, openFileFromUrl } from './viewer.js';
 import { renderFields, applyVisibility, readValues, activeFields } from './forms.js';
 import { api, html, raw, setHtml, store, toast, fail, on, $, $$, modal, confirmBox, fmtDateTime, fmtDate, field, allow, badge, fullName, esc } from './core.js';
 
@@ -61,30 +62,64 @@ export async function duplicates(root) {
 }
 
 // ---------------------------------------------------------------- attachments
-const sizeText = (n) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`);
-/** File attachments card. Render it into `root` for a record of type entity (contacts|accounts|deals|invoices). */
-export async function attachments(root, entity, id) {
+/** Upload several files in one request. Returns the saved files; per-file problems are shown as toasts. */
+export async function uploadFiles(entity, id, files, stage) {
+  const list = [...files]; if (!list.length) return [];
+  const fd = new FormData(); for (const file of list) fd.append('file', file, file.name);
+  const r = await fetch(`/api/files?entity=${entity}&id=${id}${stage ? `&stage=${encodeURIComponent(stage)}` : ''}`, { method: 'POST', body: fd }); const j = await r.json().catch(() => ({}));
+  for (const e of j.errors || []) fail(new Error(`${e.name ? e.name + ': ' : ''}${e.error}`));
+  if (!r.ok) { if (!j.errors?.length) fail(new Error(j.error || 'Upload failed')); return []; }
+  toast(`${j.files.length} file${j.files.length > 1 ? 's' : ''} attached${stage ? ` to ${stageName(stage)}` : ''}`, 'ok');
+  return j.files;
+}
+const stageName = (k) => (store.meta.stages.find((s) => s.key === k) || {}).label || 'General';
+const fileRow = (f, { canDel, canMove, stages }) => html`<div class="frow" style="display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)">
+  <span style="font-size:20px" aria-hidden="true">${fileIcon(f)}</span>
+  <div class="grow" style="min-width:0"><a href="#" data-act="view" data-id="${f.id}" style="word-break:break-all"><b>${f.name}</b></a><div class="small muted">${sizeText(f.size)} · ${f.uploaded_by_name || ''} · ${fmtDateTime(f.created_at)}${f.note ? ' · ' + f.note : ''}</div></div>
+  ${canMove && stages ? html`<select class="small" data-move="${f.id}" aria-label="Move to folder" title="Move to another stage folder" style="width:auto;padding:2px 6px"><option value="">General</option>${stages.map((s) => html`<option value="${s.key}" ${s.key === f.stage ? raw('selected') : ''}>${s.label}</option>`)}</select>` : ''}
+  <a class="btn sm" href="/api/files/${f.id}/download" title="Download" aria-label="Download ${f.name}">⬇</a>
+  ${canDel ? html`<button class="btn sm danger" data-act="rm" data-id="${f.id}" aria-label="Remove ${f.name}">✕</button>` : ''}</div>`;
+
+/** File attachments card. Deals get one folder per stage (plus General); other records a flat list. */
+export async function attachments(root, entity, id, opts = {}) {
   if (!allow('attachments.view')) return;
   const files = await api('GET', `/files?entity=${entity}&id=${id}`); const canUp = allow('attachments.upload'), canDel = allow('attachments.delete');
-  setHtml(root, html`<div class="card"><div class="hd"><h2>Files</h2><span class="muted small">${files.length || ''}</span><span class="grow"></span>${canUp ? html`<button class="btn sm" data-act="pick">+ Attach file</button><input type="file" hidden multiple data-file>` : ''}</div>
-    <div class="bd" data-drop>${files.length ? files.map((f) => html`<div style="display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)"><span style="font-size:20px">📎</span><div class="grow" style="min-width:0"><a href="/api/files/${f.id}/download" target="_blank" rel="noopener"><b>${f.name}</b></a><div class="small muted">${sizeText(f.size)} · ${f.uploaded_by_name || ''} · ${fmtDateTime(f.created_at)}${f.note ? ' · ' + f.note : ''}</div></div>${canDel ? html`<button class="btn sm danger" data-act="rm" data-id="${f.id}">Remove</button>` : ''}</div>`)
-      : html`<p class="muted small" style="margin:0">${canUp ? 'No files yet. Drop a file here or click “Attach file”.' : 'No files.'}</p>`}</div></div>`);
-  const upload = async (list) => {
-    for (const file of list) {
-      const fd = new FormData(); fd.append('file', file, file.name);
-      const r = await fetch(`/api/files?entity=${entity}&id=${id}`, { method: 'POST', body: fd }); const j = await r.json().catch(() => ({}));
-      if (!r.ok) { fail(new Error(`${file.name}: ${j.error || 'upload failed'}`)); continue; }
-      toast(`Attached ${file.name}`, 'ok');
-    }
-    attachments(root, entity, id);
-  };
-  const input = $('[data-file]', root); input?.addEventListener('change', () => upload([...input.files]));
+  const isDeal = entity === 'deals'; const stages = isDeal ? store.meta.stages : null;
+  const target = root.__target ?? (isDeal ? opts.stage || '' : '');
+  const groups = isDeal ? [...stages.map((s) => ({ key: s.key, label: s.label })), { key: '', label: 'General' }].map((g) => ({ ...g, files: files.filter((f) => (f.stage || '') === g.key) })) : [{ key: '', label: '', files }];
+  const open = root.__open || new Set([target, ...groups.filter((g) => g.files.length).map((g) => g.key)]); root.__open = open;
+  setHtml(root, html`<div class="card"><div class="hd"><h2>Files</h2><span class="muted small">${files.length || ''}</span><span class="grow"></span>
+      ${canUp ? html`${isDeal ? html`<label class="small" style="display:flex;gap:6px;align-items:center;margin:0">to<select data-target style="width:auto;padding:3px 6px">${groups.map((g) => html`<option value="${g.key}" ${g.key === target ? raw('selected') : ''}>${g.label}${g.key === opts.stage ? ' (current)' : ''}</option>`)}</select></label>` : ''}
+      <button class="btn sm" data-act="pick">+ Add files</button><input type="file" hidden multiple data-file>` : ''}</div>
+    <div class="bd" data-drop>
+      ${canUp ? html`<p class="small muted" style="margin-top:0">Drop files here (up to 20 at a time${isDeal ? ', into the folder chosen above' : ''}) or click “Add files”. Click a file to view it.</p>` : ''}
+      ${isDeal ? groups.map((g) => html`<details data-folder="${g.key}" ${open.has(g.key) ? raw('open') : ''} style="border:1px solid var(--line);border-radius:10px;padding:6px 10px;margin-bottom:6px">
+          <summary style="cursor:pointer"><span aria-hidden="true">📁</span> <b>${g.label}</b> <span class="muted small">${g.files.length ? `${g.files.length} file${g.files.length > 1 ? 's' : ''}` : 'empty'}</span>${g.key === opts.stage ? html` <span class="badge">current stage</span>` : ''}</summary>
+          ${g.files.length ? g.files.map((f) => fileRow(f, { canDel, canMove: canUp, stages })) : html`<p class="small muted" style="margin:6px 0">No files in this folder.</p>`}</details>`)
+        : files.length ? files.map((f) => fileRow(f, { canDel })) : html`<p class="muted small" style="margin:0">No files yet.</p>`}
+    </div></div>`);
+  const redraw = () => (opts.onChange ? opts.onChange() : attachments(root, entity, id, opts));
+  const send = async (list) => { if (await uploadFiles(entity, id, list, root.__target ?? target)) { open.add(root.__target ?? target); redraw(); } };
+  const input = $('[data-file]', root); input?.addEventListener('change', () => send(input.files));
+  $('[data-target]', root)?.addEventListener('change', (e) => { root.__target = e.target.value; });
+  root.querySelectorAll('details[data-folder]').forEach((d) => d.addEventListener('toggle', () => { if (d.open) open.add(d.dataset.folder); else open.delete(d.dataset.folder); }));
+  root.querySelectorAll('[data-move]').forEach((sel) => sel.addEventListener('change', async () => { try { await api('PUT', `/files/${sel.dataset.move}`, { stage: sel.value || null }); toast(`Moved to ${stageName(sel.value)}`, 'ok'); open.add(sel.value); redraw(); } catch (x) { fail(x); } }));
   const drop = $('[data-drop]', root);
-  if (canUp) { for (const t of ['dragenter', 'dragover']) drop.addEventListener(t, (e) => { if (e.dataTransfer?.types?.includes('Files')) { e.preventDefault(); drop.style.outline = '2px dashed var(--primary)'; } }); drop.addEventListener('dragleave', () => (drop.style.outline = '')); drop.addEventListener('drop', (e) => { if (!e.dataTransfer?.files?.length) return; e.preventDefault(); drop.style.outline = ''; upload([...e.dataTransfer.files]); }); }
-  on(root, { pick: () => input.click(), rm: async (el) => { if (await confirmBox('Remove this file permanently?', 'Remove')) { await api('DELETE', `/files/${el.dataset.id}`); attachments(root, entity, id); } } });
+  if (canUp) {
+    for (const t of ['dragenter', 'dragover']) drop.addEventListener(t, (e) => { if (e.dataTransfer?.types?.includes('Files')) { e.preventDefault(); drop.style.outline = '2px dashed var(--brand)'; } });
+    drop.addEventListener('dragleave', () => (drop.style.outline = ''));
+    drop.addEventListener('drop', (e) => { if (!e.dataTransfer?.files?.length) return; e.preventDefault(); drop.style.outline = ''; const folder = e.target.closest?.('details[data-folder]')?.dataset.folder; if (folder !== undefined && isDeal) root.__target = folder; send(e.dataTransfer.files); });
+  }
+  on(root, {
+    pick: () => input.click(),
+    view: (el) => viewFile(files.find((f) => String(f.id) === el.dataset.id), files),
+    rm: async (el) => { if (await confirmBox('Remove this file permanently?', 'Remove')) { await api('DELETE', `/files/${el.dataset.id}`); redraw(); } },
+  });
+  if (!root.__urlChecked) { root.__urlChecked = true; openFileFromUrl(files); }
+  return files;
 }
 /** Convenience: append an attachments card under a detail page and fill it. */
-export function mountAttachments(root, entity, id) {
+export function mountAttachments(root, entity, id, opts) {
   let box = $('#attach-box', root); if (!box) { box = document.createElement('div'); box.id = 'attach-box'; box.className = 'mt'; root.append(box); }
-  attachments(box, entity, id).catch(() => {});
+  attachments(box, entity, id, opts).catch(() => {});
 }

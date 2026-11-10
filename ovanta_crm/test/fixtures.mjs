@@ -5,7 +5,10 @@ export function makeXlsx(rows) {
   const col = (n) => String.fromCharCode(65 + n);
   const sheet = `<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${rows.map((r, ri) => `<row r="${ri + 1}">${r.map((v, ci) => typeof v === 'number' ? `<c r="${col(ci)}${ri + 1}"><v>${v}</v></c>` : `<c r="${col(ci)}${ri + 1}" t="s"><v>${idx(String(v))}</v></c>`).join('')}</row>`).join('')}</sheetData></worksheet>`;
   const sst = `<?xml version="1.0" encoding="UTF-8"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${strings.map((s) => `<si><t>${s.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</t></si>`).join('')}</sst>`;
-  const entries = [['[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>', 0], ['xl/workbook.xml', '<workbook/>', 0], ['xl/sharedStrings.xml', sst, 0], ['xl/worksheets/sheet1.xml', sheet, 8]];
+  return makeZip([['[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>', 0], ['xl/workbook.xml', '<workbook/>', 0], ['xl/sharedStrings.xml', sst, 0], ['xl/worksheets/sheet1.xml', sheet, 8]]);
+}
+/** A zip of [name, text, method(0 stored | 8 deflated)] entries. */
+export function makeZip(entries) {
   const parts = []; const central = []; let off = 0;
   for (const [name, text, method] of entries) {
     const raw = Buffer.from(text); const data = method === 8 ? zlib.deflateRawSync(raw) : raw; const nm = Buffer.from(name); const crc = zlib.crc32(raw);
@@ -16,4 +19,10 @@ export function makeXlsx(rows) {
   }
   const cd = Buffer.concat(central); const end = Buffer.alloc(22); end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(entries.length, 8); end.writeUInt16LE(entries.length, 10); end.writeUInt32LE(cd.length, 12); end.writeUInt32LE(off, 16);
   return Buffer.concat([...parts, cd, end]);
+}
+/** Minimal .docx with a heading and paragraphs. */
+export function makeDocx(title, paras) {
+  const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+  const p = (t, style) => `<w:p>${style ? `<w:pPr><w:pStyle w:val="${style}"/></w:pPr>` : ''}<w:r><w:t>${t}</w:t></w:r></w:p>`;
+  return makeZip([['[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>', 0], ['word/document.xml', `<?xml version="1.0"?><w:document xmlns:w="${W}"><w:body>${p(title, 'Heading1')}${paras.map((x) => p(x)).join('')}</w:body></w:document>`, 8]]);
 }

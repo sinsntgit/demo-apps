@@ -2,10 +2,11 @@
 import { createRequire } from 'node:module';
 const { chromium } = createRequire(import.meta.url)('playwright'); // not a project dependency; preinstalled globally
 import http from 'node:http';
-import { makeXlsx } from './fixtures.mjs';
+import { makeXlsx, makeDocx } from './fixtures.mjs';
 process.env.SEED_BILLING_DEMO = '0'; import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 const e2eDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ovantaa-e2e-')); process.env.DB_PATH = path.join(e2eDir, 'e2e.db'); process.env.DATA_DIR = e2eDir; process.env.SESSION_SECRET = 'e2e'; process.env.SEND_DELAY_MS = '1';
-const ai = http.createServer((q, r) => { let b = ''; q.on('data', (c) => (b += c)); q.on('end', () => { r.writeHead(200, { 'content-type': 'application/json' }); r.end(JSON.stringify({ model: 'claude-sonnet-5-5', content: [{ type: 'text', text: JSON.stringify({ subject: 'AI subject line', subject_alternatives: ['Alt one', 'Alt two'], preheader: 'p', body_html: '<p>Hi {{first_name|there}}, AI wrote this.</p>' }) }] })); }); });
+const PLAN = { explanation: 'PDF files in Proposal stage folders', queries: [{ entity: 'files', text: '', filters: [{ field: 'stage', op: 'eq', value: 'proposal', value2: '', values: [] }, { field: 'kind', op: 'eq', value: 'pdf', value2: '', values: [] }], sort_field: '', sort_dir: 'desc', limit: 25 }] };
+const ai = http.createServer((q, r) => { let b = ''; q.on('data', (c) => (b += c)); q.on('end', () => { r.writeHead(200, { 'content-type': 'application/json' }); if (JSON.parse(b).output_config) return r.end(JSON.stringify({ model: 'claude-sonnet-5-5', stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify(PLAN) }] })); r.end(JSON.stringify({ model: 'claude-sonnet-5-5', content: [{ type: 'text', text: JSON.stringify({ subject: 'AI subject line', subject_alternatives: ['Alt one', 'Alt two'], preheader: 'p', body_html: '<p>Hi {{first_name|there}}, AI wrote this.</p>' }) }] })); }); });
 await new Promise((r) => ai.listen(0, '127.0.0.1', r)); process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${ai.address().port}`;
 const { server } = await import('../server/index.js');
 const { seedIfEmpty } = await import('../server/seed.js');
@@ -155,7 +156,7 @@ await page.goto(`${base}/#/contacts/${lead.id}`); await page.waitForSelector('bu
 await page.waitForSelector('.modal input[name=amode][value=new]'); await page.check('.modal input[name=amode][value=new]'); await page.fill('.modal input[name=aname]', 'Leadson Corp'); await page.fill('.modal input[name=dname]', 'Leadson rollout'); await page.fill('.modal input[name=damount]', '12000'); await page.selectOption('.modal select[name=c__cf_deal_type]', 'Direct'); await shot('convert-lead');
 await page.click('.modal button[type=submit]'); await page.waitForSelector('h1:has-text("Leadson rollout")', { timeout: 5000 }).catch(() => errors.push('conversion did not open the new deal'));
 // attachments on the deal
-await page.waitForSelector('#attach-box button:has-text("Attach file")'); await page.setInputFiles('#attach-box [data-file]', { name: 'term-sheet.txt', mimeType: 'text/plain', buffer: Buffer.from('terms') });
+await page.waitForSelector('#attach-box button:has-text("Add files")'); await page.setInputFiles('#attach-box [data-file]', { name: 'term-sheet.txt', mimeType: 'text/plain', buffer: Buffer.from('terms') });
 await page.waitForSelector('#attach-box a:has-text("term-sheet.txt")', { timeout: 5000 }).catch(() => errors.push('attached file not listed')); await shot('attachments');
 await page.setInputFiles('#attach-box [data-file]', { name: 'bad.exe', mimeType: 'application/octet-stream', buffer: Buffer.from('MZ') }); await page.waitForSelector('.toast.bad:has-text("not allowed")', { timeout: 5000 }).catch(() => errors.push('blocked file type was not rejected'));
 await page.goto(`${base}/#/contacts/${lead.id}`); await page.waitForSelector('.badge:has-text("Converted")', { timeout: 5000 }).catch(() => errors.push('contact not marked converted'));
@@ -184,6 +185,40 @@ await p5.waitForSelector('h2:has-text("Set up two-factor sign-in")', { timeout: 
 const secret5 = (await p5.textContent('.twofa .mono')).trim(); await p5.fill('#tf-enable input[name=code]', codeNow(secret5)); await p5.click('#tf-enable button'); await p5.waitForSelector('.modal:has-text("recovery codes")'); await p5.click('.modal button:has-text("I have saved them")');
 await p5.waitForSelector('.kpi', { timeout: 5000 }).catch(() => errors.push('did not reach the app after forced set-up')); await ctx5.close();
 await page.evaluate(() => fetch('/api/settings/security', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ require_2fa: 'off' }) }));
+// ===== Stage folders, file viewer, AI search =====
+const sdeal = await page.evaluate(async () => (await (await fetch('/api/deals', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Folder demo deal', amount: 64000, stage: 'proposal', custom: { cf_deal_type: 'Direct' } }) })).json()));
+await page.goto(`${base}/#/deals/${sdeal.id}`); await page.waitForSelector('#attach-box details[data-folder=proposal][open]');
+await page.setInputFiles('#attach-box [data-file]', [{ name: 'Proposal v2.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n%fake\n') }, { name: 'Price list.csv', mimeType: 'text/csv', buffer: Buffer.from('Item,Price\nLicence,1200\nSupport,300\n') },
+  { name: 'Sizing.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: makeXlsx([['Users', 'Seats'], ['Sales', 40]]) }, { name: 'SOW.docx', mimeType: 'application/octet-stream', buffer: makeDocx('Statement of work', ['Phase one covers onboarding.']) }]);
+await page.waitForFunction(() => document.querySelectorAll('#attach-box details[data-folder=proposal] .frow').length === 4, null, { timeout: 5000 }).catch(() => errors.push('4 files not shown in the Proposal folder'));
+await shot('stage-folders');
+await page.click('#attach-box a:has-text("Price list.csv")'); await page.waitForSelector('.modal td:has-text("Licence")', { timeout: 5000 }).catch(() => errors.push('CSV viewer did not show the table')); await shot('viewer-csv');
+await page.keyboard.press('Escape'); await page.click('#attach-box a:has-text("Sizing.xlsx")'); await page.waitForSelector('.modal td:has-text("Sales")', { timeout: 5000 }).catch(() => errors.push('xlsx viewer did not show the sheet'));
+await page.click('.modal button[data-act=prev]'); await page.waitForSelector('.modal h3:has-text("Statement of work")', { timeout: 5000 }).catch(() => errors.push('docx viewer (via the arrow) did not show the text')); await shot('viewer-docx');
+await page.keyboard.press('Escape'); await page.click('#attach-box a:has-text("Proposal v2.pdf")'); await page.waitForSelector('.modal iframe[src*="/view"]', { timeout: 5000 }).catch(() => errors.push('PDF viewer iframe missing'));
+await page.keyboard.press('Escape');
+// move to the next stage with files attached in the stage dialog -> they appear in that folder and in the stage history
+await page.click('button[data-act=stage]'); await page.selectOption('.modal select[name=stage]', 'negotiation'); await page.fill('.modal textarea[name=comment]', 'Customer reviewing PO');
+await page.setInputFiles('.modal input[name=stagefiles]', [{ name: 'PO draft.txt', mimeType: 'text/plain', buffer: Buffer.from('PO 4471') }, { name: 'Redlines.txt', mimeType: 'text/plain', buffer: Buffer.from('clause 7') }]);
+await page.click('.modal button[type=submit]');
+await page.waitForSelector('.timeline a[data-act=viewfile]:has-text("PO draft.txt")', { timeout: 5000 }).catch(() => errors.push('stage-history file link missing'));
+if ((await page.locator('.timeline a[data-act=viewfile]:has-text("Proposal v2.pdf")').count()) !== 1) errors.push('proposal files not linked under the Proposal stage entry');
+await shot('stage-history-files');
+await page.click('.timeline a[data-act=viewfile]:has-text("PO draft.txt")'); await page.waitForSelector('.modal pre:has-text("PO 4471")', { timeout: 5000 }).catch(() => errors.push('text viewer failed from history link'));
+await page.keyboard.press('Escape');
+// move a file between folders
+const poId = await page.$eval('#attach-box a:has-text("Redlines.txt")', (a) => a.dataset.id);
+await page.selectOption(`#attach-box select[data-move="${poId}"]`, 'proposal'); await page.waitForSelector('#attach-box details[data-folder=proposal] a:has-text("Redlines.txt")', { timeout: 5000 }).catch(() => errors.push('moving a file between folders failed'));
+// deep link to a file opens the viewer
+await page.goto(`${base}/#/dashboard`); await page.goto(`${base}/#/deals/${sdeal.id}?file=${poId}`); await page.waitForSelector('.modal pre:has-text("clause 7")', { timeout: 5000 }).catch(() => errors.push('file deep link did not open the viewer')); await page.keyboard.press('Escape');
+// AI search (fake Claude returns a plan for proposal-folder PDFs)
+await page.keyboard.press('Control+k'); await page.waitForSelector('#sq input[name=q]', { timeout: 5000 }).catch(() => errors.push('Ctrl+K did not open search'));
+await page.fill('#sq input[name=q]', 'proposal pdfs'); await page.click('#sq button.primary');
+await page.waitForSelector('#sres a[data-act=file]:has-text("Proposal v2.pdf")', { timeout: 8000 }).catch(() => errors.push('AI search did not find the PDF')); await shot('ai-search');
+await page.click('#sres a[data-act=file]:has-text("Proposal v2.pdf")'); await page.waitForSelector('.modal iframe', { timeout: 5000 }).catch(() => errors.push('viewer did not open from search')); await page.keyboard.press('Escape');
+await page.selectOption('#sq select[name=mode]', 'keyword'); await page.fill('#sq input[name=q]', 'Folder demo'); await page.click('#sq button.primary');
+await page.waitForSelector('#sres a:has-text("Folder demo deal")', { timeout: 5000 }).catch(() => errors.push('keyword search did not find the deal'));
+await page.selectOption('#sq select[name=mode]', 'ai');
 // segment builder + deal drag/drop
 await page.click('a[data-nav=segments]'); await page.click('text=+ New segment'); await page.fill('.modal input[name=name]', 'E2E seg');
 await page.waitForSelector('#segprev b'); await page.click('.modal button[type=submit]'); await page.waitForSelector('td:has-text("E2E seg")');

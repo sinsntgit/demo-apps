@@ -2,7 +2,8 @@ import {
   api, qs, html, raw, setHtml, esc, on, store, toast, fail, modal, confirmBox, purgeModal, field, formValues, badge, money, pct, num, fmtDate, fmtDateTime, ago, initials, fullName, todayStr, $, $$, debounce, allow, allowAll,
 } from './core.js';
 import { mountList } from './list.js';
-import { mountAttachments, convertLead } from './records.js';
+import { mountAttachments, convertLead, uploadFiles } from './records.js';
+import { viewFile, fileIcon } from './viewer.js';
 import { openEntityForm, customDetailCard, customColumns, customFilters, customCardLines, displayValue, activeFields } from './forms.js';
 import { readTable, FIELDS, guessMapping, applyMapping, TEMPLATE_CSV } from './csv.js';
 
@@ -221,8 +222,10 @@ const stageBadge = (k) => html`<span class="badge ${k}">${stageLabel(k)}</span>`
 const dayWord = (n) => (n < 1 ? 'under a day' : `${n} day${n === 1 ? '' : 's'}`);
 
 /** The full journey of a deal, oldest first: stage → stage, when, who moved it, owner at the time, comment. */
-export function historyView(history, deal) {
+export function historyView(history, deal, files = []) {
   if (!history.length) return html`<div class="empty">No stage movements recorded yet.</div>`;
+  const lastIdx = {}; history.forEach((h, i) => { lastIdx[h.to_stage] = i; }); // a stage's files are listed under its latest entry
+  const filesFor = (h, i) => (lastIdx[h.to_stage] === i ? files.filter((f) => f.stage === h.to_stage) : []);
   const first = history[0], last = history[history.length - 1];
   const ms = (t) => new Date(String(t).replace(' ', 'T') + 'Z').getTime();
   const closed = ['won', 'lost'].includes(last.to_stage);
@@ -233,11 +236,12 @@ export function historyView(history, deal) {
     <ul class="timeline">${history.map((h, i) => html`<li>
       <div>${h.from_stage ? html`${stageBadge(h.from_stage)} <span class="muted">→</span> ` : html`<span class="muted small">Started at</span> `}${stageBadge(h.to_stage)} ${i === history.length - 1 ? html`<span class="badge">current</span>` : ''}</div>
       <div class="small" style="margin-top:3px"><b>${fmtDateTime(h.changed_at)}</b> · moved by <b>${h.changed_by_name || 'unknown'}</b> · owner then: <b>${h.owner_name || '—'}</b> · value ${money(h.amount)}${h.days_in_previous != null ? html` · after <b>${dayWord(h.days_in_previous)}</b> in ${stageLabel(h.from_stage)}` : ''}</div>
-      ${h.comment ? html`<div style="margin-top:4px;padding:6px 10px;background:var(--brand-l);border-radius:8px">💬 ${h.comment}</div>` : ''}</li>`)}</ul>`;
+      ${h.comment ? html`<div style="margin-top:4px;padding:6px 10px;background:var(--brand-l);border-radius:8px">💬 ${h.comment}</div>` : ''}
+      ${filesFor(h, i).length ? html`<div class="small" style="margin-top:4px;display:flex;flex-wrap:wrap;gap:6px;align-items:center"><span class="muted">📁 ${stageLabel(h.to_stage)} files:</span>${filesFor(h, i).map((f) => html`<a href="#" class="badge plain" data-act="viewfile" data-id="${f.id}" title="View ${f.name}">${fileIcon(f)} ${f.name}</a>`)}</div>` : ''}</li>`)}</ul>`;
 }
 export async function historyModal(dealId, name) {
-  const [h, d] = await Promise.all([api('GET', `/deals/${dealId}/history`), api('GET', `/deals/${dealId}`)]);
-  modal({ title: `Stage history · ${name || d.name}`, wide: true, hideFooter: true, body: html`${historyView(h, d)}<p class="mt"><a href="#/deals/${dealId}" data-close>Open the full deal page →</a></p>` });
+  const [h, d, files] = await Promise.all([api('GET', `/deals/${dealId}/history`), api('GET', `/deals/${dealId}`), allow('attachments.view') ? api('GET', `/files?entity=deals&id=${dealId}`) : []]);
+  modal({ title: `Stage history · ${name || d.name}`, wide: true, hideFooter: true, onOpen: (form) => on(form, { viewfile: (el) => viewFile(files.find((f) => String(f.id) === el.dataset.id), files) }), body: html`${historyView(h, d, files)}<p class="mt"><a href="#/deals/${dealId}" data-close>Open the full deal page →</a></p>` });
 }
 /** Move a deal to another stage, with an optional comment that is stored in its history. */
 export function stageModal(deal, onDone, target) {
@@ -245,10 +249,13 @@ export function stageModal(deal, onDone, target) {
   modal({ title: `Move deal · ${deal.name}`, submitLabel: 'Move deal',
     body: html`<p class="small muted">Currently <b>${stageLabel(deal.stage)}</b>. The move, your name, the deal owner and your comment are saved to the deal's history.</p>
       ${field({ name: 'stage', label: 'Move to stage', type: 'select', options: stages, blank: false }, { stage: target || deal.stage })}
-      ${field({ name: 'comment', label: 'Comment (optional)', type: 'textarea', rows: 3, placeholder: 'Why is it moving? e.g. proposal accepted, waiting on legal, lost on price…' })}`,
+      ${field({ name: 'comment', label: 'Comment (optional)', type: 'textarea', rows: 3, placeholder: 'Why is it moving? e.g. proposal accepted, waiting on legal, lost on price…' })}
+      ${allow('attachments.upload') ? html`<label>Attach files to the new stage's folder (optional)<input type="file" name="stagefiles" multiple></label><p class="small muted" style="margin-top:-6px">e.g. the signed proposal or PO — up to 20 files.</p>` : ''}`,
     onSubmit: async (f) => {
       if (f.stage.value === deal.stage) throw new Error('Choose a different stage to move this deal.');
-      await api('POST', `/deals/${deal.id}/stage`, { stage: f.stage.value, comment: f.comment.value }); toast(`Moved to ${stageLabel(f.stage.value)}`, 'ok'); onDone?.();
+      await api('POST', `/deals/${deal.id}/stage`, { stage: f.stage.value, comment: f.comment.value }); toast(`Moved to ${stageLabel(f.stage.value)}`, 'ok');
+      if (f.stagefiles?.files?.length) await uploadFiles('deals', deal.id, f.stagefiles.files, f.stage.value);
+      onDone?.();
     } });
 }
 
@@ -295,19 +302,20 @@ export async function deals(root) {
 }
 export async function dealDetail(root, id) {
   const draw = async () => {
-    const d = await api('GET', `/deals/${id}/360`); const x = d.deal;
+    const [d, files] = await Promise.all([api('GET', `/deals/${id}/360`), allow('attachments.view') ? api('GET', `/files?entity=deals&id=${id}`) : []]); const x = d.deal;
     setHtml(root, html`<div class="topbar"><a href="#/deals">← Deals</a><span class="grow"></span><button class="btn primary" data-act="stage">Change stage</button><button class="btn" data-act="task">+ Task</button><button class="btn" data-act="edit">Edit</button>${allow('deals.delete') ? html`<button class="btn danger" data-act="del">Delete</button>` : ''}</div>
       <div class="grid g21"><div style="display:grid;gap:16px;align-content:start"><div class="card"><div class="bd"><h1>${x.name}</h1><div style="display:flex;gap:12px;align-items:center;margin-top:8px"><span class="stat-big">${money(x.amount)}</span>${badge(x.stage)}<span class="muted">${x.probability}% likely · weighted ${money(x.amount * x.probability / 100)}</span></div>
         <div class="funnel mt" aria-hidden="true">${store.meta.stages.slice(0, 5).map((s, i) => html`<i style="flex:1;background:${i <= store.meta.stages.findIndex((q) => q.key === x.stage) ? 'var(--brand)' : 'transparent'}"></i>`)}</div></div></div>
-        <div class="card"><div class="hd"><h2>Stage history</h2></div><div class="bd">${historyView(d.history, x)}</div></div>
+        <div class="card"><div class="hd"><h2>Stage history</h2></div><div class="bd">${historyView(d.history, x, files)}</div></div>
         ${timelineCard(d.activities, 'deal_id', id)}</div>
         <div style="display:grid;gap:16px;align-content:start"><div class="card"><div class="hd"><h2>Details</h2></div><div class="bd" style="display:grid;gap:8px">
           <div><span class="muted small">Account</span><br>${x.account_id ? html`<a href="#/accounts/${x.account_id}">${x.account_name}</a>` : '—'}</div>
           <div><span class="muted small">Contact</span><br>${x.contact_id ? html`<a href="#/contacts/${x.contact_id}">${x.contact_name}</a>` : '—'}</div>
           <div><span class="muted small">Expected close</span><br>${fmtDate(x.close_date)}</div><div><span class="muted small">Owner</span><br>${x.owner_name || '—'}</div></div></div>${customDetailCard('deals', x)}${miniTasks(d.tasks)}</div></div>`);
-    wireTimeline(root, 'deal_id', id, draw); mountAttachments(root, 'deals', id);
+    wireTimeline(root, 'deal_id', id, draw); mountAttachments(root, 'deals', id, { stage: x.stage, onChange: draw });
     on(root, {
       edit: async () => dealForm(x, await lookups(), draw), stage: () => stageModal(x, draw), task: () => taskForm({ deal_id: id }, draw),
+      viewfile: (el) => viewFile(files.find((f) => String(f.id) === el.dataset.id), files),
       del: async () => { if (await confirmBox(`Delete deal "${x.name}"?`, 'Delete')) { await api('DELETE', `/deals/${id}`); location.hash = '#/deals'; } },
       toggletask: async (el) => { await api('POST', `/tasks/${el.dataset.id}/toggle`); draw(); },
     });
