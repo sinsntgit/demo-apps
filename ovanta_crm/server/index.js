@@ -112,6 +112,11 @@ export const server = http.createServer(async (req, res) => {
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
   seedIfEmpty();
   startScheduler(); purgeOldSessions(); setInterval(purgeOldSessions, 6 * 3600 * 1000).unref();
+  server.on('error', (e) => {
+    if (e.code === 'EADDRINUSE') console.error(`\nPort ${config.port} is already in use — Ovantaa (or another program) is probably still running.\n  • Close the other window where "npm start" is running (or press Ctrl+C there), then try again, or\n  • start on another port:  PowerShell: $env:PORT=3001; npm start    macOS/Linux: PORT=3001 npm start\n`);
+    else console.error('Could not start the server:', e.message);
+    db.close(); process.exit(1);
+  });
   server.listen(config.port, () => console.log(`Ovantaa CRM running at ${config.baseUrl}  (mail transport: ${config.mailTransport})`));
   process.on('SIGTERM', () => { server.close(); db.close(); process.exit(0); });
 }
