@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { config } from './config.js';
 import { all, get, run, audit, nowIso } from './db.js';
 import { bad, notFound, forbidden } from './http.js';
 import { notify, dealEvents } from './notifications.js';
@@ -192,10 +195,16 @@ export function update(ent, id, body, user) {
   return updated;
 }
 
+/** Remove attachments (rows and stored bytes) of a record that no longer exists. */
+export function dropFiles(entity, id) {
+  for (const f of all('SELECT id, path FROM files WHERE entity=? AND record_id=?', entity, id)) { try { fs.unlinkSync(path.join(config.filesDir, f.path)); } catch {} }
+  run('DELETE FROM files WHERE entity=? AND record_id=?', entity, id);
+}
 export function remove(ent, id, user) {
   const existing = getOne(ent, id, user);
   if (!canOnRecord(user, `${ent.table}.delete`, existing.owner_id)) throw forbidden(`Your role can only delete ${ent.noun.toLowerCase()}s you own.`);
   run(`DELETE FROM ${ent.table} WHERE id=?`, id);
+  dropFiles(ent.table, id);
   audit(user, 'delete', ent.table, id, existing.name || existing.title || existing.first_name);
   if (ent.table === 'deals') notify(['deal.deleted'], existing, {}, user);
   if (ent.table === 'contacts') notify(['contact.deleted'], existing, {}, user);

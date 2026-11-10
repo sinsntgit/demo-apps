@@ -33,6 +33,8 @@ config.smtpTlsInsecure = process.env.SMTP_TLS_INSECURE === '1';
 config.seedBillingDemo = process.env.SEED_BILLING_DEMO !== '0';
 config.backupDir = process.env.BACKUP_DIR || path.join(config.dataDir, 'backups');
 config.backupKeep = Math.max(1, Number(process.env.BACKUP_KEEP || 14));
+config.filesDir = process.env.FILES_DIR || path.join(config.dataDir, 'files');
+config.maxUploadMb = Math.max(1, Number(process.env.MAX_UPLOAD_MB || 25));
 config.backupDaily = process.env.BACKUP_DAILY !== '0';
 config.smtpForceIpv4 = process.env.SMTP_FORCE_IPV4 === '1';
 // Some providers (e.g. Titan) delay the SMTP greeting by 20s+ for clients that recently failed to log in.

@@ -6,7 +6,7 @@ import { EVENTS, parseEmails, testRule } from './notifications.js';
 import { aiConfigured, aiModel, generateEmail } from './ai.js';
 import { getTheme, saveTheme, setSecretSetting, setSetting, getSetting } from './settings.js';
 import { config } from './config.js';
-import { STAGES } from './entities.js';
+import { STAGES, dropFiles } from './entities.js';
 
 const ADMIN = ['admin'], MGR = ['admin', 'manager'];
 const EMAIL_RE = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
@@ -184,6 +184,7 @@ POST('/api/admin/purge', ({ body, user }) => {
   def.guard?.();
   const before = get(`SELECT COUNT(*) n FROM ${def.table}`).n;
   tx(() => { run(`DELETE FROM ${def.table}`); });
+  if (['contacts', 'accounts', 'deals'].includes(def.table)) for (const f of all('SELECT DISTINCT record_id FROM files WHERE entity=?', def.table)) dropFiles(def.table, f.record_id);
   audit(user, 'delete_all', def.table, null, `${before} records`);
   return { ok: true, deleted: before, entity: body.entity };
 });

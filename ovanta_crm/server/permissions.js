@@ -9,12 +9,13 @@
 const S = 'scope', B = 'bool';
 const rec = (extra = {}) => ({ view: S, create: B, edit: S, delete: S, ...extra });
 export const RESOURCES = {
-  contacts: { label: 'Contacts', scoped: true, actions: rec({ export: B, import: B }) },
-  accounts: { label: 'Accounts', scoped: true, actions: rec({ export: B }) },
+  contacts: { label: 'Contacts', scoped: true, actions: rec({ export: B, import: B, merge: B }) },
+  accounts: { label: 'Accounts', scoped: true, actions: rec({ export: B, merge: B }) },
   deals: { label: 'Deals', scoped: true, actions: rec({ export: B }) },
   tasks: { label: 'Tasks', scoped: true, actions: rec() },
   activities: { label: 'Activity notes (calls, notes, meetings)', scoped: true, actions: { create: B, delete: S } },
   invoices: { label: 'Invoices', scoped: true, actions: rec({ issue: B, payment: B, remind: B, notes: B, import: B, submit: B }) },
+  attachments: { label: 'File attachments (on records you can see)', actions: { view: B, upload: B, delete: B } },
   campaigns: { label: 'Campaigns', actions: { view: B, create: B, edit: B, delete: B, send: B } },
   segments: { label: 'Segments', actions: { view: B, create: B, edit: B, delete: B } },
   templates: { label: 'Email templates', actions: { view: B, create: B, edit: B, delete: B } },
@@ -31,7 +32,7 @@ export const RESOURCES = {
   data: { label: 'Data management', actions: { backup: B, purge: B } },
   customization: { label: 'Customisation (custom fields & form layouts)', actions: { manage: B } },
 };
-export const ACTION_LABELS = { view: 'View', create: 'Create', edit: 'Edit', delete: 'Delete', export: 'Export', import: 'Import', send: 'Send', issue: 'Issue', payment: 'Payments', remind: 'Reminders', notes: 'Credit/debit notes', submit: 'Submit', manage: 'Manage', use: 'Use', backup: 'Backup', purge: 'Delete all' };
+export const ACTION_LABELS = { view: 'View', create: 'Create', edit: 'Edit', delete: 'Delete', export: 'Export', import: 'Import', send: 'Send', issue: 'Issue', payment: 'Payments', remind: 'Reminders', notes: 'Credit/debit notes', submit: 'Submit', manage: 'Manage', use: 'Use', merge: 'Merge duplicates', upload: 'Upload', backup: 'Backup', purge: 'Delete all' };
 
 const RANK = { none: 0, own: 1, all: 2 };
 const scopeVal = (v) => (v === true || v === 'all' ? 'all' : v === 'own' ? 'own' : 'none');
@@ -57,7 +58,7 @@ const MANAGER = build((r, a, k) => (MANAGER_DENY.includes(`${r}.${a}`) ? (k === 
 const REP_GRANTS = {
   contacts: { view: 'all', create: true, edit: 'all', delete: 'own', export: true, import: true }, accounts: { view: 'all', create: true, edit: 'all', delete: 'own', export: true },
   deals: { view: 'all', create: true, edit: 'all', delete: 'own', export: true }, tasks: { view: 'all', create: true, edit: 'all', delete: 'own' }, activities: { create: true, delete: 'own' },
-  invoices: { view: 'all', create: true, edit: 'all', delete: 'own' }, campaigns: { view: true, create: true, edit: true }, segments: { view: true, create: true, edit: true }, templates: { view: true, create: true, edit: true }, ai: { use: true },
+  invoices: { view: 'all', create: true, edit: 'all', delete: 'own' }, attachments: { view: true, upload: true }, campaigns: { view: true, create: true, edit: true }, segments: { view: true, create: true, edit: true }, templates: { view: true, create: true, edit: true }, ai: { use: true },
 };
 const REP = normalizePerms(REP_GRANTS);
 

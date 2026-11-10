@@ -1,5 +1,15 @@
 import { SYSTEM_ROLES } from './permissions.js';
 
+/** Give built-in roles any permission keys they do not have yet (new features), without touching choices an admin already made. */
+function fillMissingPerms(db) {
+  for (const r of db.prepare('SELECT id, name, permissions FROM roles WHERE is_system=1').all()) {
+    const def = SYSTEM_ROLES.find((s) => s.name === r.name)?.permissions; if (!def) continue;
+    let cur = {}; try { cur = JSON.parse(r.permissions); } catch {}
+    for (const [res, acts] of Object.entries(def)) for (const [a, v] of Object.entries(acts)) if (cur[res]?.[a] === undefined) cur[res] = { ...(cur[res] || {}), [a]: r.name === 'admin' ? v : v };
+    db.prepare('UPDATE roles SET permissions=? WHERE id=?').run(JSON.stringify(cur), r.id);
+  }
+}
+
 /**
  * Versioned migrations. Version 1 is the baseline: the schema that db.js creates idempotently (everything up to the invoicing release).
  * From version 2 on, every schema change is a numbered migration here — never an ad-hoc ALTER elsewhere.
@@ -35,6 +45,22 @@ export const MIGRATIONS = [
       db.exec(`CREATE TABLE IF NOT EXISTS layouts (entity TEXT PRIMARY KEY CHECK (entity IN ('contacts','accounts','deals')), config TEXT NOT NULL, updated_by INTEGER, updated_at TEXT NOT NULL DEFAULT (datetime('now')))`);
       // new permission area: refresh the stored Administrator permissions (always full) so the roles screen is accurate
       db.prepare("UPDATE roles SET permissions=? WHERE name='admin' AND is_system=1").run(JSON.stringify(SYSTEM_ROLES[0].permissions));
+    },
+  },
+  {
+    version: 4, name: 'lead_conversion_attachments_2fa_sessions',
+    up(db) {
+      for (const [c, ddl] of [['converted_at', 'TEXT'], ['converted_by', 'INTEGER'], ['converted_deal_id', 'INTEGER'], ['converted_account_id', 'INTEGER']]) if (!hasColumn(db, 'contacts', c)) db.exec(`ALTER TABLE contacts ADD COLUMN ${c} ${ddl}`);
+      for (const [c, ddl] of [['totp_secret_enc', 'TEXT'], ['totp_enabled', 'INTEGER NOT NULL DEFAULT 0'], ['totp_last_step', 'INTEGER NOT NULL DEFAULT 0'], ['twofa_enabled_at', 'TEXT']]) if (!hasColumn(db, 'users', c)) db.exec(`ALTER TABLE users ADD COLUMN ${c} ${ddl}`);
+      db.exec(`CREATE TABLE IF NOT EXISTS recovery_codes (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, code_hash TEXT NOT NULL, used_at TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_recovery_user ON recovery_codes(user_id)`);
+      db.exec(`CREATE TABLE IF NOT EXISTS sessions (id INTEGER PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')), last_seen_at TEXT NOT NULL DEFAULT (datetime('now')), expires_at TEXT NOT NULL, ip TEXT, user_agent TEXT, limited INTEGER NOT NULL DEFAULT 0, revoked_at TEXT)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)`);
+      db.exec(`CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY, entity TEXT NOT NULL CHECK (entity IN ('contacts','accounts','deals','invoices')), record_id INTEGER NOT NULL,
+        name TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL, sha256 TEXT NOT NULL, path TEXT NOT NULL UNIQUE, note TEXT, uploaded_by INTEGER, uploaded_by_name TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`);
+      db.exec('CREATE INDEX IF NOT EXISTS idx_files_record ON files(entity, record_id)');
+      fillMissingPerms(db);
     },
   },
 ];

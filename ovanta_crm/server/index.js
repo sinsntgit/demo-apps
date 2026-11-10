@@ -10,9 +10,13 @@ import './api2.js';
 import './api3.js';
 import './api4.js';
 import './api5.js';
+import './api6.js';
+import './leads.js';
+import './files.js';
 import { portalGet, portalClaim } from './api3.js';
 import { recordEvent, signUrl, startScheduler } from './campaigns.js';
 import { seedIfEmpty } from './seed.js';
+import { purgeOldSessions } from './auth.js';
 
 const PUB = path.join(config.root, 'public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json' };
@@ -102,7 +106,7 @@ export const server = http.createServer(async (req, res) => {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
   seedIfEmpty();
-  startScheduler();
+  startScheduler(); purgeOldSessions(); setInterval(purgeOldSessions, 6 * 3600 * 1000).unref();
   server.listen(config.port, () => console.log(`Ovantaa CRM running at ${config.baseUrl}  (mail transport: ${config.mailTransport})`));
   process.on('SIGTERM', () => { server.close(); db.close(); process.exit(0); });
 }

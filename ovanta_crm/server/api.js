@@ -2,7 +2,7 @@ import { GET, POST, PUT, DELETE, HttpError, bad, notFound, forbidden } from './h
 import { all, get, run, tx, audit } from './db.js';
 import { config } from './config.js';
 import {
-  hashPassword, verifyPassword, makeSession, sessionCookie, throttled, recordFail, clearFails, loadUser,
+  hashPassword, verifyPassword, makeSession, makeChallenge, readSession, revokeSession, revokeUserSessions, parseCookies, sessionCookie, throttled, recordFail, clearFails, loadUser,
 } from './auth.js';
 import { ENTITIES, STAGES, list, getOne, create, update, remove, clean } from './entities.js';
 import { scopeOf, canOnRecord, hasPerm } from './permissions.js';
@@ -14,22 +14,33 @@ import {
 } from './campaigns.js';
 import { notify, EVENTS } from './notifications.js';
 import { aiConfigured, aiModel } from './ai.js';
-import { getTheme } from './settings.js';
+import { getTheme, getSetting } from './settings.js';
 
 const MGR = ['admin', 'manager'];
 
 // ---------- Auth ----------
+const clientInfo = (req) => ({ ip: req.socket.remoteAddress, ua: req.headers['user-agent'] });
+/** Whether the company 2FA policy obliges this user to have a second factor. */
+export function twofaRequired(u) { const p = getSetting('security.require_2fa', 'off'); return p === 'all' || (p === 'admins' && u.role === 'admin'); }
+export function startSession(u, req, send) {
+  const limited = !u.twofa_enabled && twofaRequired(u);
+  audit(u, 'login', 'users', u.id);
+  send(200, { user: { ...loadUser(u.id), limited }, limited }, { 'Set-Cookie': sessionCookie(makeSession(u.id, { ...clientInfo(req), limited })) });
+}
 POST('/api/auth/login', ({ body, req, send }) => {
   const email = String(body.email || '').trim().toLowerCase();
   const key = `${req.socket.remoteAddress}|${email}`;
   if (throttled(key)) throw new HttpError(429, 'Too many attempts. Try again in a few minutes.');
   const u = get('SELECT * FROM users WHERE email=? AND active=1', email);
   if (!u || !verifyPassword(String(body.password || ''), u.password_hash)) { recordFail(key); throw Object.assign(bad('Invalid email or password'), { status: 401 }); }
+  if (u.totp_enabled) return send(200, { needs_2fa: true, challenge: makeChallenge(u.id) }); // password is right; the second factor decides (throttled separately)
   clearFails(key);
-  audit(u, 'login', 'users', u.id);
-  send(200, { user: loadUser(u.id) }, { 'Set-Cookie': sessionCookie(makeSession(u.id)) });
+  startSession(loadUser(u.id), req, send);
 }, { public: true });
-POST('/api/auth/logout', ({ send }) => send(200, { ok: true }, { 'Set-Cookie': sessionCookie('', 0) }), { public: true });
+POST('/api/auth/logout', ({ req, send }) => {
+  const s = readSession(parseCookies(req.headers.cookie).ovantaa_session); if (s) revokeSession(s.session_id);
+  send(200, { ok: true }, { 'Set-Cookie': sessionCookie('', 0) });
+}, { public: true });
 GET('/api/auth/me', ({ user }) => ({ user }), { public: false });
 POST('/api/auth/password', ({ user, body }) => {
   const u = get('SELECT * FROM users WHERE id=?', user.id);
@@ -37,6 +48,7 @@ POST('/api/auth/password', ({ user, body }) => {
   checkPassword(body.next);
   run('UPDATE users SET password_hash=? WHERE id=?', hashPassword(body.next), user.id);
   audit(user, 'password_change', 'users', user.id);
+  revokeUserSessions(user.id, user.session_id);
   return { ok: true };
 });
 function checkPassword(p) {

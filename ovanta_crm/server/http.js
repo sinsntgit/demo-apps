@@ -10,6 +10,8 @@ export const notFound = (m = 'Not found') => new HttpError(404, m);
 export const forbidden = (m = 'You do not have permission to do that') => new HttpError(403, m);
 
 const routes = [];
+/** Routes a half-signed-in (two-factor set-up pending) session may still call. */
+const LIMITED_OK = new Set(['GET /api/auth/me', 'POST /api/auth/logout', 'GET /api/2fa/status', 'POST /api/2fa/setup', 'POST /api/2fa/enable']);
 export function route(method, pattern, handler, opts = {}) {
   const keys = [];
   const re = new RegExp('^' + pattern.replace(/:(\w+)/g, (_, k) => { keys.push(k); return '([^/]+)'; }) + '/?$');
@@ -41,10 +43,11 @@ export async function handleApi(req, res, url) {
       const params = {};
       r.keys.forEach((k, i) => (params[k] = decodeURIComponent(m[i + 1])));
       if (!r.opts.public && !user) throw new HttpError(401, 'Authentication required');
+      if (user?.limited && !LIMITED_OK.has(`${r.method} ${r.pattern}`)) throw new HttpError(403, 'Two-factor set-up is required before you can continue', { need_2fa_setup: true });
       const need = ROUTE_PERMS[`${r.method} ${r.pattern}`];
       if (need && !hasPerm(user, need)) throw forbidden(`Your role does not allow this (${need}).`);
       let body = {};
-      if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
+      if (!r.opts.raw && ['POST', 'PUT', 'PATCH'].includes(req.method)) {
         const raw = await readBody(req);
         if (raw && !(req.headers['content-type'] || '').includes('application/json')) throw new HttpError(415, 'Content-Type must be application/json');
         if (!raw && !req.headers['content-type']?.includes('application/json') && req.headers['content-length'] !== '0' && req.headers['content-length'] !== undefined) throw new HttpError(415, 'Content-Type must be application/json');
