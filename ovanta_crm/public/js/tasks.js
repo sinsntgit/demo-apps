@@ -10,6 +10,7 @@ const EVENT = { assigned: '📌 Assigned', reassigned: '🔁 Reassigned', issue:
 /** Tell the user truthfully who was emailed, or why nobody was. */
 export function mailToast(n, done = 'Saved') {
   if (!n) return toast(done, 'ok');
+  if (!n.to.length) return toast(`${done} — no email sent: ${(n.skipped || []).join('; ') || 'nobody else is involved'}. Emails go to the other person on the task; tick “Email me a copy of my own changes” on the Tasks page to get one yourself.`, '');
   if (n.simulated) return toast(`${done} — but NOT emailed: there is no real email sender (only the simulation one). Add or activate a real sender in Email senders.`, 'bad');
   toast(`${done} — emailing ${n.to.map((x) => x.replace(/ <.*/, '')).join(', ')} via ${n.via}`, 'ok');
 }
@@ -82,7 +83,8 @@ export async function tasks(root) {
   const drawTabs = async () => {
     const s = await api('GET', '/tasks-summary').catch(() => ({}));
     setHtml(tabs, html`${s.email && !s.email.real ? html`<div class="banner warn" style="margin-bottom:12px;padding:10px 14px;border-radius:10px;background:#fef3c7;color:#78350f">⚠️ <b>Task emails are not being delivered.</b> The only email sender is a simulation${s.email.via ? ` (${s.email.via})` : ''}. ${allow('senders.view') ? html`Add your Gmail / GoDaddy / Titan mailbox in <a href="#/senders">Email senders</a> and click Verify — task emails will then use it automatically.` : 'Ask an administrator to add a real email sender.'} <a href="#" data-act="testmail">Send me a test task email</a></div>` : ''}
-    ${s.email?.real ? html`<div class="small muted" style="margin-bottom:10px">✉️ Task emails are sent from <b>${s.email.via}</b> · <a href="#" data-act="testmail">Send me a test task email</a></div>` : ''}
+    ${s.email?.real ? html`<div class="small muted" style="margin-bottom:10px">✉️ Task emails go to the <b>other</b> person on a task (assignee ↔ assigner), sent from <b>${s.email.via}</b> · <a href="#" data-act="testmail">Send me a test task email</a>
+      · <label class="check" style="display:inline-flex;gap:4px;margin:0"><input type="checkbox" data-copyme ${s.copy_me ? raw('checked') : ''}> Email me a copy of my own changes</label></div>` : ''}
     <div class="tabs" role="tablist" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
       ${[['to_me', `Assigned to me`, s.to_me_open, s.to_me_overdue ? `${s.to_me_overdue} overdue` : ''], ['by_me', 'Assigned by me', s.by_me_open, s.by_me_issues ? `${s.by_me_issues} issue${s.by_me_issues > 1 ? 's' : ''}` : ''], ...(seeAll ? [['all', 'All tasks']] : [])].map(([k, l, n, warn]) =>
         html`<button class="btn ${k === tab ? 'primary' : ''}" role="tab" aria-selected="${k === tab}" data-act="tab" data-t="${k}">${l}${n ? html` <span class="badge plain" style="margin-left:4px">${n}</span>` : ''}${warn ? html` <span class="badge lost plain">${warn}</span>` : ''}</button>`)}</div>`);
@@ -103,6 +105,7 @@ export async function tasks(root) {
     ] });
   const reload = () => { list.reload(); drawTabs(); };
   on(head, { new: () => taskForm({}, reload), purge: () => purgeModal('tasks', reload) });
+  tabs.addEventListener('change', async (e) => { if (e.target.matches('[data-copyme]')) { try { await api('POST', '/tasks/prefs', { copy_me: e.target.checked }); toast(e.target.checked ? 'You will also get an email for changes you make' : 'Copies turned off', 'ok'); } catch (x) { fail(x); } } });
   on(tabs, {
     tab: (el) => { tab = el.dataset.t; sessionStorage.setItem('taskTab', tab); reload(); },
     testmail: async (el) => {

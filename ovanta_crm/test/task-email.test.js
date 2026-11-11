@@ -73,3 +73,20 @@ test('"Send me a test task email" reports the real outcome', async () => {
   const bad = (await call(admin, 'POST', '/api/tasks/test-email')).body; assert.equal(bad.status, 'failed'); assert.match(bad.error, /Authentication failed/i);
   assert.match((await call(admin, 'GET', '/api/meta')).body.version, /^\d+\.\d+\.\d+$/);
 });
+
+test('tasks only you are on: the app says why nobody was emailed, and "copy me" sends you the email', async () => {
+  const s = (await call(admin, 'GET', '/api/senders')).body.find((x) => x.mode === 'smtp');
+  await call(admin, 'PUT', `/api/senders/${s.id}`, { ...sender(), is_default: true });
+  const mine = (await call(admin, 'POST', '/api/tasks', { title: 'Solo task', due_date: '2026-12-02' })).body;
+  assert.deepEqual(mine.email_notice.to, []); assert.match(mine.email_notice.skipped[0], /only person on this task/);
+  assert.equal((await call(admin, 'GET', '/api/tasks-summary')).body.copy_me, false);
+  assert.equal((await call(admin, 'POST', '/api/tasks/prefs', { copy_me: true })).status, 200); assert.equal((await call(admin, 'GET', '/api/tasks-summary')).body.copy_me, true);
+  const n0 = inbox.length;
+  const solo2 = (await call(admin, 'POST', '/api/tasks', { title: 'Solo with copy', due_date: '2026-12-03' })).body; assert.deepEqual(solo2.email_notice.to, ['Admin User <admin@ovantaa.com>']);
+  const ed = (await call(admin, 'PUT', `/api/tasks/${solo2.id}`, { due_date: '2026-12-09' })).body; assert.equal(ed.email_notice.to.length, 1);
+  const got = await waitFor(() => inbox.slice(n0).filter((x) => x.to.includes('admin@ovantaa.com')).length >= 2 && inbox.slice(n0));
+  assert.ok(got, 'copies delivered'); assert.ok(got.some((x) => /New task for you: Solo with copy/.test(x.raw)) && got.some((x) => /Task updated: Solo with copy/.test(x.raw)));
+  // a teammate without an email address is named in the explanation
+  await call(admin, 'POST', '/api/tasks/prefs', { copy_me: false });
+  const t = (await call(admin, 'POST', '/api/tasks', { title: 'To Maya', owner_id: ids.maya })).body; assert.match(t.email_notice.to[0], /maya@ovantaa.com/);
+});
