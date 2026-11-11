@@ -32,7 +32,7 @@ export const RESOURCES = {
   data: { label: 'Data management', actions: { backup: B, purge: B } },
   customization: { label: 'Customisation (custom fields & form layouts)', actions: { manage: B } },
 };
-export const ACTION_LABELS = { view: 'View', create: 'Create', edit: 'Edit', delete: 'Delete', export: 'Export', import: 'Import', send: 'Send', issue: 'Issue', payment: 'Payments', remind: 'Reminders', notes: 'Credit/debit notes', submit: 'Submit', manage: 'Manage', use: 'Use', merge: 'Merge duplicates', upload: 'Upload', backup: 'Backup', purge: 'Delete all' };
+export const ACTION_LABELS = { view: 'View', create: 'Create', edit: 'Edit', delete: 'Delete', export: 'Export', import: 'Import', send: 'Send', issue: 'Issue', payment: 'Payments', remind: 'Email & remind', notes: 'Credit/debit notes', submit: 'Submit', manage: 'Manage', use: 'Use', merge: 'Merge duplicates', upload: 'Upload', backup: 'Backup', purge: 'Delete all' };
 
 const RANK = { none: 0, own: 1, all: 2 };
 const scopeVal = (v) => (v === true || v === 'all' ? 'all' : v === 'own' ? 'own' : 'none');

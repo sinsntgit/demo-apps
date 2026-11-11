@@ -19,7 +19,7 @@ export const BUILTIN = {
   ],
   accounts: [
     { key: 'name', label: 'Company name', type: 'text', required: true }, { key: 'industry', label: 'Industry', type: 'text' }, { key: 'website', label: 'Website', type: 'url', placeholder: 'https://' },
-    { key: 'size', label: 'Company size', type: 'select', options: ['1-50', '51-200', '201-1000', '1000+'] }, { key: 'city', label: 'City', type: 'text' }, { key: 'country', label: 'Country', type: 'text' },
+    { key: 'size', label: 'Company size', type: 'select', options: ['1-50', '51-200', '201-1000', '1000+'] }, { key: 'city', label: 'City', type: 'text' }, { key: 'state', label: 'State / province', type: 'text' }, { key: 'country', label: 'Country', type: 'text' },
     { key: 'phone', label: 'Phone', type: 'tel' }, { key: 'owner_id', label: 'Owner', type: 'select', source: 'users', noBlank: true, default: '@me' }, { key: 'notes', label: 'Notes', type: 'textarea' },
     { key: 'name_ar', label: 'Name (Arabic)', type: 'text', dir: 'rtl' }, { key: 'vat_number', label: 'VAT / TRN number', type: 'text', placeholder: '15 digits' }, { key: 'street', label: 'Street', type: 'text' },
     { key: 'building_no', label: 'Building no.', type: 'text' }, { key: 'district', label: 'District', type: 'text' }, { key: 'postal_code', label: 'Postal code', type: 'text' },
@@ -35,7 +35,7 @@ export const BUILTIN = {
 const sec = (title, fields, columns = 2) => ({ id: title.toLowerCase().replace(/[^a-z0-9]+/g, '_'), title, columns, fields });
 export const DEFAULT_LAYOUTS = {
   contacts: { sections: [sec('Contact', ['first_name', 'last_name', 'email', 'phone', 'title', 'account_id', 'status', 'source', 'owner_id', 'tags', 'subscribed'])] },
-  accounts: { sections: [sec('Company', ['name', 'industry', 'website', 'size', 'city', 'country', 'phone', 'owner_id', 'notes']), sec('Invoicing details', ['name_ar', 'vat_number', 'street', 'building_no', 'district', 'postal_code', 'country_code', 'billing_email', 'billing_phone'])] },
+  accounts: { sections: [sec('Company', ['name', 'industry', 'website', 'size', 'city', 'state', 'country', 'phone', 'owner_id', 'notes']), sec('Invoicing details', ['name_ar', 'vat_number', 'street', 'building_no', 'district', 'postal_code', 'country_code', 'billing_email', 'billing_phone'])] },
   deals: { sections: [sec('Deal', ['name', 'amount', 'stage', 'probability', 'close_date', 'owner_id', 'account_id', 'contact_id'])] },
 };
 const builtinKeys = (entity) => BUILTIN[entity].map((f) => f.key);

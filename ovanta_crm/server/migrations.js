@@ -125,6 +125,25 @@ export const MIGRATIONS = [
           AND r.year = (SELECT MAX(r2.year) FROM fx_rates r2 WHERE r2.c1 = r.c1 AND r2.c2 = r.c2 AND r2.year <= CAST(substr(x.rate_date, 1, 4) AS INTEGER))`);
     },
   },
+  {
+    version: 9, name: 'general_invoicing_email_reminders',
+    up(db) {
+      for (const [t, c, ddl] of [['invoices', 'buyer_state', 'TEXT'], ['invoices', 'place_of_supply', 'TEXT'], ['invoices', 'emailed_at', 'TEXT'], ['invoices', 'email_count', 'INTEGER NOT NULL DEFAULT 0'],
+        ['invoices', 'reminders_paused', 'INTEGER NOT NULL DEFAULT 0'], ['invoice_lines', 'hsn_code', 'TEXT'], ['accounts', 'state', 'TEXT']]) if (!hasColumn(db, t, c)) db.exec(`ALTER TABLE ${t} ADD COLUMN ${c} ${ddl}`);
+      // re-create the issued-invoice lock so it also protects buyer_state / place_of_supply
+      db.exec('DROP TRIGGER IF EXISTS trg_invoice_immutable');
+      db.exec(`CREATE TRIGGER IF NOT EXISTS trg_invoice_immutable BEFORE UPDATE ON invoices
+WHEN OLD.status <> 'draft' AND (
+  NEW.number IS NOT OLD.number OR NEW.seq IS NOT OLD.seq OR NEW.icv IS NOT OLD.icv OR NEW.uuid IS NOT OLD.uuid OR NEW.previous_hash IS NOT OLD.previous_hash
+  OR NEW.invoice_hash IS NOT OLD.invoice_hash OR NEW.xml IS NOT OLD.xml OR NEW.seller_json IS NOT OLD.seller_json OR NEW.total IS NOT OLD.total OR NEW.subtotal IS NOT OLD.subtotal
+  OR NEW.vat_total IS NOT OLD.vat_total OR NEW.discount_total IS NOT OLD.discount_total OR NEW.doc_type IS NOT OLD.doc_type OR NEW.currency IS NOT OLD.currency
+  OR NEW.jurisdiction IS NOT OLD.jurisdiction OR NEW.issue_date IS NOT OLD.issue_date OR NEW.supply_date IS NOT OLD.supply_date OR NEW.ref_invoice_id IS NOT OLD.ref_invoice_id
+  OR NEW.buyer_name IS NOT OLD.buyer_name OR NEW.buyer_vat IS NOT OLD.buyer_vat OR NEW.buyer_street IS NOT OLD.buyer_street OR NEW.buyer_city IS NOT OLD.buyer_city
+  OR NEW.buyer_postal IS NOT OLD.buyer_postal OR NEW.buyer_building IS NOT OLD.buyer_building OR NEW.buyer_district IS NOT OLD.buyer_district OR NEW.buyer_country IS NOT OLD.buyer_country
+  OR NEW.buyer_state IS NOT OLD.buyer_state OR NEW.place_of_supply IS NOT OLD.place_of_supply)
+BEGIN SELECT RAISE(ABORT, 'Issued invoices cannot be changed. Issue a credit or debit note instead.'); END`);
+    },
+  },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 

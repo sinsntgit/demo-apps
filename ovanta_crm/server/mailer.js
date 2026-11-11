@@ -62,7 +62,7 @@ export function sentLast24h(senderId) {
  */
 export async function sendMail(sender, msg) {
   const from = sender ? fromHeader(sender) : `"${config.defaultFromName}" <${config.defaultFromEmail}>`;
-  const base = { from, to: msg.to, subject: clean(msg.subject), html: msg.html, text: msg.text, headers: msg.headers || {} };
+  const base = { from, to: msg.to, subject: clean(msg.subject), html: msg.html, text: msg.text, headers: msg.headers || {}, ...(msg.cc ? { cc: msg.cc } : {}), ...(msg.attachments?.length ? { attachments: msg.attachments } : {}) };
   if (sender?.reply_to) base.replyTo = clean(sender.reply_to);
 
   if (sender?.mode === 'smtp') {
@@ -115,9 +115,9 @@ export async function verifySender(sender) {
 }
 
 /** Send a one-off system email (notifications, tests) and record it in the email log. */
-export async function sendLogged({ sender, to, subject, html, text, kind, rule_id = null, event = null, headers }) {
+export async function sendLogged({ sender, to, cc, subject, html, text, kind, rule_id = null, event = null, headers, attachments }) {
   let status, error = null, messageId = null, response = null;
-  try { const r = await sendMail(sender, { to, subject, html, text, headers }); status = r.status; messageId = r.messageId; response = r.response; }
+  try { const r = await sendMail(sender, { to, cc, subject, html, text, headers, attachments }); status = r.status; messageId = r.messageId; response = r.response; }
   catch (e) { status = 'failed'; error = e.message; }
   run('INSERT INTO email_log (kind,to_email,subject,sender_id,status,error,message_id,response,rule_id,event) VALUES (?,?,?,?,?,?,?,?,?,?)',
     kind, to, String(subject).slice(0, 250), sender?.id ?? null, status, error, messageId, response, rule_id, event);

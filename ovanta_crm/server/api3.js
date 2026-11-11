@@ -7,7 +7,10 @@ import {
 } from './invoicing.js';
 import { submitToProvider } from './providers.js';
 import { receivablesSummary, readinessReport, sendReminder, runReminders, portalUrl } from './receivables.js';
+import { taxBreakdown } from './invoicing.js';
 import { renderInvoiceHtml } from './invoice-view.js';
+import { REGIMES, COUNTRY_PRESETS, INDIAN_STATES, isRegime, isGulf, stateCode, gstSupplyType } from './regimes.js';
+import { sendInvoiceEmail, sendPaymentReceipt } from './receivables.js';
 import { scopeOf, canOnRecord } from './permissions.js';
 
 /** Own-scope roles may only see/act on invoices they own. Hides existence (404) rather than revealing it. */
@@ -23,24 +26,26 @@ const addDays = (d, n) => new Date(new Date(d).getTime() + n * 86400000).toISOSt
 const asDate = (v, label) => { if (v === undefined || v === null || v === '') return null; const s = String(v).slice(0, 10); if (!DATE.test(s) || Number.isNaN(Date.parse(s))) throw bad(`${label} must be a valid date (YYYY-MM-DD)`); return s; };
 
 // ---------------- Billing settings ----------------
-GET('/api/billing/settings', () => ({ settings: getBilling(), issues: validateSeller(getBilling()) }));
+GET('/api/billing/settings', () => ({ settings: getBilling(), issues: validateSeller(getBilling()), regimes: REGIMES, presets: COUNTRY_PRESETS, states: INDIAN_STATES }));
 PUT('/api/billing/settings', ({ body, user }) => { const s = saveBilling(body); audit(user, 'update', 'billing_settings', null); return { settings: s, issues: validateSeller(s) }; });
 GET('/api/billing/chain', () => verifyChain());
 
 // ---------------- Draft building ----------------
-const BUYER_KEYS = ['buyer_name', 'buyer_name_ar', 'buyer_vat', 'buyer_street', 'buyer_building', 'buyer_district', 'buyer_city', 'buyer_postal', 'buyer_country', 'buyer_email', 'buyer_phone'];
+const BUYER_KEYS = ['buyer_name', 'buyer_name_ar', 'buyer_vat', 'buyer_street', 'buyer_building', 'buyer_district', 'buyer_city', 'buyer_state', 'buyer_postal', 'buyer_country', 'buyer_email', 'buyer_phone'];
 function fromAccount(a, c) {
   return { buyer_name: a.name, buyer_name_ar: a.name_ar, buyer_vat: a.vat_number, buyer_street: a.street, buyer_building: a.building_no, buyer_district: a.district, buyer_city: a.city, buyer_postal: a.postal_code,
-    buyer_country: a.country_code || 'SA', buyer_email: a.billing_email || c?.email || null, buyer_phone: a.billing_phone || c?.phone || a.phone || null };
+    buyer_state: a.state || null, buyer_country: a.country_code || null, buyer_email: a.billing_email || c?.email || null, buyer_phone: a.billing_phone || c?.phone || a.phone || null };
 }
 /** Merge request body over an existing draft (or defaults) into a normalised, unsaved invoice + computed lines. */
 export function buildDraft(body, existing, user) {
   const co = getBilling();
-  const jur = ['KSA', 'UAE'].includes(body.jurisdiction) ? body.jurisdiction : existing?.jurisdiction || co.jurisdiction;
-  const doc_type = ['standard', 'simplified', 'credit_note', 'debit_note'].includes(body.doc_type) ? body.doc_type : existing?.doc_type || 'standard';
+  const jur = isRegime(body.jurisdiction) ? body.jurisdiction : existing?.jurisdiction || co.jurisdiction;
+  let doc_type = ['standard', 'simplified', 'credit_note', 'debit_note'].includes(body.doc_type) ? body.doc_type : existing?.doc_type || 'standard';
+  if (doc_type === 'simplified' && !isGulf(jur)) doc_type = 'standard'; // simplified (B2C) invoices are a ZATCA/FTA concept
   const f = { ...(existing || {}), doc_type, jurisdiction: jur };
-  f.currency = cleanStr(body.currency ?? existing?.currency ?? (jur === 'UAE' ? 'AED' : co.currency), 3).toUpperCase() || co.currency;
-  f.lang = ['en', 'ar', 'both'].includes(body.lang) ? body.lang : existing?.lang || co.default_lang;
+  const regimeCurrency = jur === co.jurisdiction ? co.currency : REGIMES[jur].currency;
+  f.currency = cleanStr(body.currency ?? existing?.currency ?? regimeCurrency, 3).toUpperCase() || regimeCurrency;
+  f.lang = isGulf(jur) ? (['en', 'ar', 'both'].includes(body.lang) ? body.lang : existing?.lang || co.default_lang) : 'en';
   const accId = body.account_id === undefined ? existing?.account_id : body.account_id ? Number(body.account_id) : null;
   const conId = body.contact_id === undefined ? existing?.contact_id : body.contact_id ? Number(body.contact_id) : null;
   if (accId && !get('SELECT 1 FROM accounts WHERE id=?', accId)) throw bad('Customer (account) not found');
@@ -52,7 +57,13 @@ export function buildDraft(body, existing, user) {
   }
   for (const k of BUYER_KEYS) if (body[k] !== undefined) f[k] = cleanStr(body[k], 200) || null;
   if (f.buyer_vat) f.buyer_vat = String(f.buyer_vat).replace(/\s/g, '');
-  f.buyer_country = String(f.buyer_country || (jur === 'UAE' ? 'AE' : 'SA')).toUpperCase().slice(0, 2);
+  const homeCountry = (jur === 'GEN' ? (COUNTRY_PRESETS[co.country] && co.country !== 'OTHER' ? co.country : co.address?.country_code) : REGIMES[jur].country) || '';
+  f.buyer_country = String(f.buyer_country || homeCountry).toUpperCase().slice(0, 2) || null;
+  if (jur === 'IN') { // place of supply = the customer's state for Indian customers; 96 (other country) for exports
+    const pos = body.place_of_supply !== undefined ? body.place_of_supply : f.place_of_supply || f.buyer_state;
+    f.place_of_supply = (f.buyer_country || 'IN') === 'IN' ? stateCode(pos) : '96';
+    if (f.place_of_supply && f.place_of_supply !== '96' && !f.buyer_state) f.buyer_state = INDIAN_STATES[f.place_of_supply];
+  } else f.place_of_supply = null;
   f.issue_date = asDate(body.issue_date ?? existing?.issue_date ?? today(), 'Issue date');
   f.supply_date = body.supply_date !== undefined ? asDate(body.supply_date, 'Supply date') : existing?.supply_date ?? f.issue_date;
   f.due_date = body.due_date !== undefined ? asDate(body.due_date, 'Due date') : existing ? existing.due_date : (doc_type === 'credit_note' || doc_type === 'simplified' ? null : addDays(f.issue_date, co.payment_terms_days));
@@ -77,7 +88,7 @@ const issuesFor = (f, calc) => {
   const dup = f.external_number && f.source === 'import' ? !!get("SELECT 1 FROM invoices WHERE id IS NOT ? AND external_number=? AND status<>'draft'", f.id ?? null, f.external_number) : false;
   return [...validateInvoice({ ...f, total_stored: undefined }, calc, { company: getBilling(), original, duplicateNumber: dup })];
 };
-const COLS = ['doc_type', 'jurisdiction', 'currency', 'lang', 'account_id', 'contact_id', 'deal_id', ...BUYER_KEYS, 'issue_date', 'supply_date', 'due_date', 'payment_terms', 'notes', 'reason', 'external_number', 'ref_invoice_id', 'ref_number', 'subtotal', 'discount_total', 'vat_total', 'total', 'owner_id'];
+const COLS = ['doc_type', 'jurisdiction', 'currency', 'lang', 'account_id', 'contact_id', 'deal_id', ...BUYER_KEYS, 'place_of_supply', 'issue_date', 'supply_date', 'due_date', 'payment_terms', 'notes', 'reason', 'external_number', 'ref_invoice_id', 'ref_number', 'subtotal', 'discount_total', 'vat_total', 'total', 'owner_id'];
 function saveDraft(f, calc, user, id = null) {
   return tx(() => {
     if (id) {
@@ -87,8 +98,8 @@ function saveDraft(f, calc, user, id = null) {
       const cols = [...COLS, 'created_by', 'source'];
       id = Number(run(`INSERT INTO invoices (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`, ...COLS.map((c) => f[c] ?? null), user?.id ?? null, f.source || null).lastInsertRowid);
     }
-    calc.lines.forEach((l, i) => run('INSERT INTO invoice_lines (invoice_id,position,description,description_ar,qty,unit_price,discount,vat_category,vat_rate,exemption_reason,net,vat,total) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
-      id, i, l.description, l.description_ar, l.qty, l.unit_price, l.discount, l.vat_category, l.vat_rate, l.exemption_reason, l.net, l.vat, l.total));
+    calc.lines.forEach((l, i) => run('INSERT INTO invoice_lines (invoice_id,position,description,description_ar,hsn_code,qty,unit_price,discount,vat_category,vat_rate,exemption_reason,net,vat,total) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      id, i, l.description, l.description_ar, l.hsn_code, l.qty, l.unit_price, l.discount, l.vat_category, l.vat_rate, l.exemption_reason, l.net, l.vat, l.total));
     logEvent(id, id && f._isNew === false ? 'draft_updated' : 'draft_saved', `${calc.lines.length} line(s), total ${calc.total.toFixed(2)} ${f.currency}`, user);
     return id;
   });
@@ -131,7 +142,8 @@ async function detail(id) {
     related: all('SELECT id, number, doc_type, total, issue_date, reason FROM invoices WHERE ref_invoice_id=? ORDER BY id', id),
     issues: inv.status === 'draft' ? [...validateSeller(getBilling()).map((i) => ({ ...i, seller: true })), ...issuesFor(inv, calc)] : [],
     portal_url: inv.portal_token ? portalUrl(inv) : null, qr_svg: inv.qr ? await qrSvg(inv.qr) : null,
-    provider: { mode: getBilling().asp.mode },
+    provider: { mode: getBilling().asp.mode }, regime: { code: inv.jurisdiction, ...(REGIMES[inv.jurisdiction] || REGIMES.KSA), tax_label: seller_json ? JSON.parse(seller_json).tax_label || REGIMES[inv.jurisdiction]?.tax : getBilling().tax_label },
+    tax_breakdown: taxBreakdown(inv, inv.lines, seller_json ? JSON.parse(seller_json) : getBilling()), supply_type: inv.jurisdiction === 'IN' ? gstSupplyType((seller_json ? JSON.parse(seller_json) : getBilling()).address?.state, inv) : null,
   };
 }
 GET('/api/invoices/:id', ({ params, user }) => { assertVisible(user, params.id); return detail(params.id); });
@@ -174,12 +186,13 @@ POST('/api/invoices/:id/issue', async ({ params, user }) => {
   assertVisible(user, params.id);
   const r = issueInvoice(Number(params.id), user); audit(user, 'issue', 'invoices', params.id, r.number);
   const inv = loadInvoice(params.id);
-  const sub = await submitToProvider(inv, user);
+  const sub = isGulf(inv.jurisdiction) ? await submitToProvider(inv, user) : null;
   return { ...(await detail(params.id)), warnings: r.warnings, submission: sub };
 });
 POST('/api/invoices/:id/submit', async ({ params, user }) => {
   assertVisible(user, params.id);
   const inv = loadInvoice(params.id); if (!inv || inv.status === 'draft') throw bad('Only issued invoices can be submitted.');
+  if (!isGulf(inv.jurisdiction)) throw bad('Only KSA / UAE invoices are submitted to a tax authority.');
   if (['cleared', 'reported'].includes(inv.compliance_status)) throw bad(`Already ${inv.compliance_status}.`);
   const sub = await submitToProvider(inv, user); return { ...(await detail(params.id)), submission: sub };
 });
@@ -187,7 +200,22 @@ POST('/api/invoices/:id/submit', async ({ params, user }) => {
 POST('/api/invoices/:id/payments', async ({ params, body, user }) => {
   assertVisible(user, params.id);
   const inv = loadInvoice(params.id); if (!inv) throw notFound('Invoice not found');
-  recordPayment(inv, body, user); audit(user, 'payment', 'invoices', inv.id, String(body.amount)); return detail(inv.id);
+  recordPayment(inv, body, user); audit(user, 'payment', 'invoices', inv.id, String(body.amount));
+  const receipt = body.send_receipt ? await sendPaymentReceipt(loadInvoice(inv.id), Number(body.amount), user) : null;
+  return { ...(await detail(inv.id)), receipt };
+});
+/** Undo a payment recorded by mistake. The invoice balance and status are recalculated and the audit trail keeps both entries. */
+DELETE('/api/payments/:id', ({ params, body, user }) => {
+  const p = get('SELECT * FROM payments WHERE id=?', params.id); if (!p) throw notFound('Payment not found');
+  assertVisible(user, p.invoice_id);
+  const inv = loadInvoice(p.invoice_id); const reason = cleanStr(body?.reason, 200);
+  tx(() => {
+    run('DELETE FROM payments WHERE id=?', p.id);
+    const paid = round2(inv.amount_paid - p.amount); const status = paid <= 0.005 && inv.amount_credited <= 0.005 ? 'issued' : statusFor({ ...inv, amount_paid: paid });
+    run('UPDATE invoices SET amount_paid=?, status=?, updated_at=? WHERE id=?', Math.max(0, paid), status, nowIso(), inv.id);
+    logEvent(inv.id, 'payment_reversed', `${p.amount.toFixed(2)} ${inv.currency} of ${p.paid_on} removed${reason ? ` — ${reason}` : ''}`, user);
+  });
+  audit(user, 'reverse_payment', 'invoices', inv.id, String(p.amount)); return detail(inv.id);
 });
 PUT('/api/payments/:id/reconcile', ({ params, body, user }) => {
   const p = get('SELECT * FROM payments WHERE id=?', params.id); if (!p) throw notFound('Payment not found');
@@ -213,7 +241,7 @@ function noteDraft(kind, orig, body, user) {
   if (orig.status === 'draft') throw bad('Issue the invoice before creating a note against it.');
   if (['credit_note'].includes(orig.doc_type)) throw bad('Create notes against the original invoice, not against a credit note.');
   const reason = cleanStr(body.reason, 300); if (!reason) throw bad('A reason is required (it is printed on the note and sent to the tax authority).');
-  let lines = Array.isArray(body.lines) && body.lines.length ? body.lines : (kind === 'credit_note' ? orig.lines.map((l) => ({ description: l.description, description_ar: l.description_ar, qty: l.qty, unit_price: l.unit_price, discount: l.discount, vat_category: l.vat_category, vat_rate: l.vat_rate, exemption_reason: l.exemption_reason })) : [{ description: '', qty: 1, unit_price: 0, vat_category: 'S' }]);
+  let lines = Array.isArray(body.lines) && body.lines.length ? body.lines : (kind === 'credit_note' ? orig.lines.map((l) => ({ description: l.description, description_ar: l.description_ar, hsn_code: l.hsn_code, qty: l.qty, unit_price: l.unit_price, discount: l.discount, vat_category: l.vat_category, vat_rate: l.vat_rate, exemption_reason: l.exemption_reason })) : [{ description: '', qty: 1, unit_price: 0, vat_category: 'S' }]);
   const payload = { doc_type: kind, ref_invoice_id: orig.id, reason, account_id: orig.account_id, contact_id: orig.contact_id, lines, currency: orig.currency, jurisdiction: orig.jurisdiction, lang: orig.lang, due_date: null, issue_date: today() };
   const { f, calc } = buildDraft(payload, null, user);
   for (const k of [...BUYER_KEYS]) f[k] = orig[k]; // keep the exact buyer details of the original
@@ -229,6 +257,20 @@ POST('/api/invoices/:id/remind', async ({ params, body, user }) => {
   if (!['issued', 'partially_paid'].includes(inv.status) || inv.balance <= 0) throw bad('Reminders can only be sent for invoices with an outstanding balance.');
   if (!['email', 'whatsapp', 'sms'].includes(body.channel)) throw bad('Choose email, whatsapp or sms');
   return sendReminder(inv, body.channel, { kind: 'manual', user });
+});
+/** Email the invoice to the customer: message, summary, "view & pay" link, and the invoice attached as a printable file. */
+POST('/api/invoices/:id/email', async ({ params, body, user }) => {
+  assertVisible(user, params.id);
+  const inv = loadInvoice(params.id); if (!inv) throw notFound('Invoice not found');
+  if (inv.status === 'draft') throw bad('Issue the invoice before emailing it.');
+  const r = await sendInvoiceEmail(inv, { to: body.to, cc: body.cc, subject: body.subject, message: body.message, attach: body.attach !== false, user });
+  if (r.status === 'failed') throw bad(`Email not sent: ${r.error}`);
+  return { ...r, invoice: await detail(inv.id) };
+});
+PUT('/api/invoices/:id/reminders', ({ params, body, user }) => {
+  assertVisible(user, params.id);
+  run('UPDATE invoices SET reminders_paused=? WHERE id=?', body.paused ? 1 : 0, params.id);
+  logEvent(Number(params.id), body.paused ? 'reminders_paused' : 'reminders_resumed', null, user); return { paused: !!body.paused };
 });
 POST('/api/reminders/run', async ({ user }) => { const r = await runReminders({ force: true }); audit(user, 'run_reminders', 'invoices', null, JSON.stringify(r)); return r; });
 
@@ -249,7 +291,7 @@ function parseAnyDate(v) {
 POST('/api/invoices/import', ({ body, user }) => {
   const rows = Array.isArray(body.rows) ? body.rows : null; if (!rows) throw bad('rows array required');
   if (rows.length > 5000) throw bad('Import is limited to 5,000 rows at a time');
-  const co = getBilling(); const jur = ['KSA', 'UAE'].includes(body.jurisdiction) ? body.jurisdiction : co.jurisdiction;
+  const co = getBilling(); const jur = isRegime(body.jurisdiction) ? body.jurisdiction : co.jurisdiction;
   const groups = new Map();
   rows.forEach((r, i) => { const key = cleanStr(r.invoice_number, 60) || `${cleanStr(r.customer, 100)}|${cleanStr(r.issue_date, 20)}|auto`; if (!groups.has(key)) groups.set(key, { number: cleanStr(r.invoice_number, 60) || null, rows: [], first: i + 2 }); groups.get(key).rows.push(r); });
   const res = { invoices: 0, skipped_duplicates: 0, accounts_created: 0, with_errors: 0, with_warnings: 0, clean: 0, results: [] };

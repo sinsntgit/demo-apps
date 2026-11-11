@@ -101,6 +101,7 @@ async function route() {
 async function boot() {
   if (store.user?.limited) return forcedSetup(app, async () => { store.user = (await api('GET', '/auth/me')).user; boot(); }, async () => { await api('POST', '/auth/logout'); store.user = null; loginView(); });
   try { store.meta = await api('GET', '/meta'); await loadCustomization(); } catch { return loginView(); }
+  store.billingJur = store.meta.billing?.jurisdiction; store.billingRemindersOn = store.meta.billing?.reminders_enabled;
   shell(); startLive();
   if (!location.hash || location.hash === '#/login') location.hash = '#/dashboard';
   route();

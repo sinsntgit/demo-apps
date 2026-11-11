@@ -2,13 +2,15 @@ import crypto from 'node:crypto';
 import { all, get, run, tx, nowIso } from './db.js';
 import { getSetting, setSetting, getSecretSetting, setSecretSetting } from './settings.js';
 import { bad } from './http.js';
+import { REGIMES, COUNTRY_PRESETS, isRegime, isGulf, taxIdValid, stateCode, gstinValid, gstSupplyType } from './regimes.js';
 
 // ======================= Billing profile (seller, numbering, bank, reminders, providers) =======================
 export const BILLING_DEFAULTS = {
   jurisdiction: 'KSA', currency: 'SAR', default_lang: 'both', seller_name: '', seller_name_ar: '', vat_number: '', cr_number: '',
-  address: { street: '', building_no: '', district: '', city: '', postal_code: '', country_code: 'SA' },
+  country: 'SA', tax_label: 'VAT', tax_id_label: 'VAT number', tax_registered: true, invoice_title: '', pan: '',
+  address: { street: '', building_no: '', district: '', city: '', state: '', postal_code: '', country_code: 'SA' },
   invoice_prefix: 'INV-', credit_prefix: 'CN-', debit_prefix: 'DN-', payment_terms_days: 30, vat_rate: 15,
-  bank: { bank_name: '', account_name: '', iban: '', swift: '' }, portal_note: '',
+  bank: { bank_name: '', account_name: '', iban: '', swift: '', account_number: '', bank_code: '', bank_code_label: '', upi: '' }, portal_note: '',
   reminders: { enabled: false, sender_id: null, create_whatsapp_tasks: true, create_collection_tasks: true, repeat_days: 14,
     schedule: [{ offset: -3, channels: ['email'] }, { offset: 0, channels: ['email'] }, { offset: 3, channels: ['email'] }, { offset: 7, channels: ['email', 'whatsapp'] }, { offset: 14, channels: ['email', 'whatsapp'] }, { offset: 30, channels: ['email', 'whatsapp'] }] },
   messaging: { mode: 'none', url: '' }, asp: { mode: 'none', url: '' },
@@ -24,14 +26,26 @@ export function getBilling({ withSecrets = false } = {}) {
 const str = (v, max = 200) => String(v ?? '').replace(/[\r\n]+/g, ' ').trim().slice(0, max);
 export function saveBilling(input) {
   const cur = getBilling(); const i = input || {}; const a = i.address || {}; const bk = i.bank || {};
-  if (i.jurisdiction !== undefined && !['KSA', 'UAE'].includes(i.jurisdiction)) throw bad('Jurisdiction must be KSA or UAE');
+  if (i.jurisdiction !== undefined && !isRegime(i.jurisdiction)) throw bad('Choose an invoicing mode: KSA, UAE, IN (India GST) or GEN (any other country)');
+  const jur = i.jurisdiction ?? cur.jurisdiction; const R = REGIMES[jur];
+  // a new mode, or another country preset within "any other country", brings that preset's currency / tax / labels
+  const switched = jur !== cur.jurisdiction || (jur === 'GEN' && i.country !== undefined && String(i.country).toUpperCase() !== cur.country);
+  const country = jur === 'GEN' ? (str(i.country ?? (switched ? '' : cur.country), 5).toUpperCase() || 'OTHER') : R.country;
+  const P = jur === 'GEN' ? COUNTRY_PRESETS[country] || COUNTRY_PRESETS.OTHER : null;
+  const pick = (k, d) => (i[k] !== undefined ? i[k] : switched ? d : cur[k]);
   const next = {
-    jurisdiction: i.jurisdiction ?? cur.jurisdiction, currency: str(i.currency ?? cur.currency, 3).toUpperCase() || cur.currency, default_lang: ['en', 'ar', 'both'].includes(i.default_lang) ? i.default_lang : cur.default_lang,
+    jurisdiction: jur, country, currency: str(pick('currency', P?.currency || R.currency), 3).toUpperCase() || R.currency,
+    default_lang: isGulf(jur) ? (['en', 'ar', 'both'].includes(i.default_lang) ? i.default_lang : switched ? 'both' : cur.default_lang) : 'en',
+    tax_label: str(pick('tax_label', P?.tax || R.tax), 30) || R.tax, tax_id_label: str(pick('tax_id_label', P?.taxId || R.taxId), 40) || R.taxId,
+    tax_registered: i.tax_registered !== undefined ? !!i.tax_registered : switched ? true : cur.tax_registered !== false,
+    invoice_title: str(pick('invoice_title', P?.title || ''), 40), pan: str(i.pan ?? cur.pan, 12).toUpperCase(),
     seller_name: str(i.seller_name ?? cur.seller_name), seller_name_ar: str(i.seller_name_ar ?? cur.seller_name_ar), vat_number: str(i.vat_number ?? cur.vat_number, 20).replace(/\s/g, ''), cr_number: str(i.cr_number ?? cur.cr_number, 30),
-    address: { street: str(a.street ?? cur.address.street), building_no: str(a.building_no ?? cur.address.building_no, 10), district: str(a.district ?? cur.address.district), city: str(a.city ?? cur.address.city), postal_code: str(a.postal_code ?? cur.address.postal_code, 10), country_code: str(a.country_code ?? cur.address.country_code, 2).toUpperCase() || 'SA' },
+    address: { street: str(a.street ?? cur.address.street), building_no: str(a.building_no ?? cur.address.building_no, 10), district: str(a.district ?? cur.address.district), city: str(a.city ?? cur.address.city), state: str(a.state ?? cur.address.state, 60), postal_code: str(a.postal_code ?? cur.address.postal_code, 10), country_code: str(a.country_code ?? (switched && R.country ? R.country : cur.address.country_code), 2).toUpperCase() || R.country || 'SA' },
     invoice_prefix: str(i.invoice_prefix ?? cur.invoice_prefix, 12) || 'INV-', credit_prefix: str(i.credit_prefix ?? cur.credit_prefix, 12) || 'CN-', debit_prefix: str(i.debit_prefix ?? cur.debit_prefix, 12) || 'DN-',
-    payment_terms_days: Math.min(365, Math.max(0, parseInt(i.payment_terms_days ?? cur.payment_terms_days, 10) || 0)), vat_rate: Number(i.vat_rate ?? cur.vat_rate) || (i.jurisdiction === 'UAE' ? 5 : 15),
-    bank: { bank_name: str(bk.bank_name ?? cur.bank.bank_name), account_name: str(bk.account_name ?? cur.bank.account_name), iban: str(bk.iban ?? cur.bank.iban, 40).replace(/\s/g, '').toUpperCase(), swift: str(bk.swift ?? cur.bank.swift, 15).toUpperCase() },
+    payment_terms_days: Math.min(365, Math.max(0, parseInt(i.payment_terms_days ?? cur.payment_terms_days, 10) || 0)),
+    vat_rate: (() => { const v = i.vat_rate !== undefined && i.vat_rate !== '' ? Number(i.vat_rate) : switched ? (P ? P.rate : R.rate) : Number(cur.vat_rate); if (!Number.isFinite(v) || v < 0 || v > 100) throw bad('Default tax rate must be between 0 and 100'); return v; })(),
+    bank: { bank_name: str(bk.bank_name ?? cur.bank.bank_name), account_name: str(bk.account_name ?? cur.bank.account_name), iban: str(bk.iban ?? cur.bank.iban, 40).replace(/\s/g, '').toUpperCase(), swift: str(bk.swift ?? cur.bank.swift, 15).toUpperCase(),
+      account_number: str(bk.account_number ?? cur.bank.account_number, 40).replace(/\s/g, ''), bank_code: str(bk.bank_code ?? cur.bank.bank_code, 30).toUpperCase(), bank_code_label: str(bk.bank_code_label ?? (switched ? (jur === 'IN' ? 'IFSC' : P?.bank || '') : cur.bank.bank_code_label), 30), upi: str(bk.upi ?? cur.bank.upi, 60) },
     portal_note: String(i.portal_note ?? cur.portal_note).slice(0, 500),
     reminders: i.reminders ? { enabled: !!i.reminders.enabled, sender_id: i.reminders.sender_id ? Number(i.reminders.sender_id) : null, create_whatsapp_tasks: i.reminders.create_whatsapp_tasks !== false, create_collection_tasks: i.reminders.create_collection_tasks !== false, repeat_days: Math.min(90, Math.max(0, parseInt(i.reminders.repeat_days ?? cur.reminders.repeat_days, 10) || 0)),
       schedule: (Array.isArray(i.reminders.schedule) ? i.reminders.schedule : cur.reminders.schedule).map((s) => ({ offset: Math.max(-30, Math.min(365, parseInt(s.offset, 10) || 0)), channels: (s.channels || []).filter((c) => ['email', 'whatsapp', 'sms'].includes(c)) })).filter((s) => s.channels.length).slice(0, 12) } : cur.reminders,
@@ -39,6 +53,8 @@ export function saveBilling(input) {
     asp: { mode: i.asp?.mode === 'webhook' ? 'webhook' : i.asp ? 'none' : cur.asp.mode, url: str(i.asp?.url ?? cur.asp.url, 500) },
   };
   for (const u of [next.messaging.url, next.asp.url]) if (u && !/^https?:\/\//i.test(u)) throw bad('Provider URLs must start with http:// or https://');
+  if (jur === 'IN' && next.address.state && !stateCode(next.address.state)) throw bad('Choose your state from the list (it decides CGST+SGST vs IGST)');
+  if (jur === 'IN' && next.address.state) next.address.state = stateCode(next.address.state);
   setSetting('billing', JSON.stringify(next));
   if (i.asp?.token) setSecretSetting('billing_asp_token', String(i.asp.token).trim()); if (i.asp?.clear_token) setSecretSetting('billing_asp_token', null);
   if (i.messaging?.token) setSecretSetting('billing_msg_token', String(i.messaging.token).trim()); if (i.messaging?.clear_token) setSecretSetting('billing_msg_token', null);
@@ -48,7 +64,8 @@ export function saveBilling(input) {
 // ======================= Money & totals =======================
 export const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 export const today = () => new Date().toISOString().slice(0, 10);
-export const defaultVatRate = (jur) => (jur === 'UAE' ? 5 : 15);
+/** Default tax rate for a mode: the company's own default when it is that mode, otherwise the mode's usual rate. */
+export const defaultVatRate = (jur) => { const co = getBilling(); return jur === co.jurisdiction ? Number(co.vat_rate) : (REGIMES[jur] || REGIMES.KSA).rate; };
 export const VAT_CATEGORIES = { S: 'Standard rate', Z: 'Zero rated', E: 'Exempt', O: 'Out of scope' };
 
 export function calcLines(rawLines, jurisdiction = 'KSA') {
@@ -59,31 +76,60 @@ export function calcLines(rawLines, jurisdiction = 'KSA') {
     const rate = cat === 'S' ? (l.vat_rate === undefined || l.vat_rate === '' || l.vat_rate === null ? defaultVatRate(jurisdiction) : Number(l.vat_rate)) : 0;
     if (!Number.isFinite(rate) || rate < 0 || rate > 100) throw bad(`Line ${i + 1}: VAT rate must be between 0 and 100`);
     const gross = round2(qty * price), net = round2(gross - disc), vat = round2((net * rate) / 100);
-    return { position: i, description: str(l.description, 500), description_ar: str(l.description_ar, 500) || null, qty, unit_price: price, discount: round2(disc), vat_category: cat, vat_rate: rate,
+    return { position: i, description: str(l.description, 500), description_ar: str(l.description_ar, 500) || null, hsn_code: str(l.hsn_code, 12).replace(/\s/g, '') || null, qty, unit_price: price, discount: round2(disc), vat_category: cat, vat_rate: rate,
       exemption_reason: cat === 'S' ? null : str(l.exemption_reason, 200) || null, gross, net, vat, total: round2(net + vat) };
   });
   const sum = (k) => round2(lines.reduce((a, l) => a + l[k], 0));
   return { lines, subtotal: sum('gross'), discount_total: round2(lines.reduce((a, l) => a + (l.gross - l.net), 0)), taxable: sum('net'), vat_total: sum('vat'), total: round2(sum('net') + sum('vat')) };
 }
 
+/**
+ * Tax lines for the invoice footer: India → CGST+SGST (same state) or IGST (other state / export), one per rate;
+ * elsewhere one line per rate named after the company's tax ("VAT 20%", "Sales tax 8.25%", "GST 9%").
+ */
+export function taxBreakdown(inv, lines, seller) {
+  const jur = inv.jurisdiction; const label = isGulf(jur) ? 'VAT' : seller?.tax_label || REGIMES[jur]?.tax || 'Tax';
+  const groups = new Map();
+  for (const l of lines || []) {
+    const rate = l.vat_category === 'S' ? Number(l.vat_rate) || 0 : 0;
+    const net = l.net ?? round2(Number(l.qty) * Number(l.unit_price) - Number(l.discount || 0)); const tax = l.vat ?? round2((net * rate) / 100);
+    const g = groups.get(rate) || { rate, taxable: 0, tax: 0 }; g.taxable = round2(g.taxable + net); g.tax = round2(g.tax + tax); groups.set(rate, g);
+  }
+  const out = []; const type = jur === 'IN' ? gstSupplyType(seller?.address?.state, inv) : null;
+  for (const g of [...groups.values()].sort((a, b) => a.rate - b.rate)) {
+    if (!g.rate && !g.tax) continue;
+    if (type === 'intra') { const half = round2(g.tax / 2); out.push({ label: `CGST ${g.rate / 2}%`, rate: g.rate / 2, taxable: g.taxable, amount: half }, { label: `SGST ${g.rate / 2}%`, rate: g.rate / 2, taxable: g.taxable, amount: round2(g.tax - half) }); }
+    else if (type) out.push({ label: `IGST ${g.rate}%`, rate: g.rate, taxable: g.taxable, amount: g.tax });
+    else out.push({ label: `${label} ${g.rate}%`, rate: g.rate, taxable: g.taxable, amount: g.tax });
+  }
+  return out;
+}
+
 // ======================= Validation (the "readiness" rules) =======================
-const KSA_VAT = /^3\d{13}3$/;           // ZATCA: 15 digits, starts and ends with 3
-const UAE_TRN = /^\d{15}$/;             // UAE TRN: 15 digits (normally starting 100)
-export const isValidTaxId = (v, jur) => (jur === 'UAE' ? UAE_TRN : KSA_VAT).test(String(v || '').trim());
+export const isValidTaxId = (v, jur) => taxIdValid(v, jur);
+const taxIdMsg = (jur, who = 'Customer') => ({ KSA: `${who} VAT number must be 15 digits, starting and ending with 3.`, UAE: `${who} TRN must be 15 digits.`, IN: `${who} GSTIN is not valid (15 characters: state code, PAN, entity number, Z, check digit).` }[jur] || `${who} tax ID looks wrong.`);
 const issue = (severity, code, field, message, fix) => ({ severity, code, field, message, fix });
 
 export function validateSeller(co) {
-  const out = []; const jur = co.jurisdiction; const a = co.address || {};
-  if (!co.seller_name) out.push(issue('error', 'SELLER_NAME', 'seller_name', 'Your registered business name is missing.', 'Billing settings → Business profile'));
-  if (!co.vat_number) out.push(issue('error', 'SELLER_VAT', 'vat_number', `Your ${jur === 'UAE' ? 'TRN' : 'VAT registration number'} is missing.`, 'Billing settings → Business profile'));
-  else if (!isValidTaxId(co.vat_number, jur)) out.push(issue('error', 'SELLER_VAT_FORMAT', 'vat_number', jur === 'UAE' ? 'TRN must be 15 digits.' : 'KSA VAT number must be 15 digits, starting and ending with 3.', 'Billing settings → Business profile'));
-  for (const [k, label] of [['street', 'street'], ['city', 'city']]) if (!a[k]) out.push(issue('error', `SELLER_ADDR_${k.toUpperCase()}`, `address.${k}`, `Seller address: ${label} is missing.`, 'Billing settings → Business profile'));
-  if (jur === 'KSA') {
-    if (!/^\d{5}$/.test(a.postal_code || '')) out.push(issue('error', 'SELLER_POSTAL', 'address.postal_code', 'Seller postal code must be 5 digits.', 'Billing settings → Business profile'));
-    if (!/^\d{4}$/.test(a.building_no || '')) out.push(issue('warning', 'SELLER_BUILDING', 'address.building_no', 'Seller building number should be 4 digits.', 'Billing settings → Business profile'));
-    if (!a.district) out.push(issue('warning', 'SELLER_DISTRICT', 'address.district', 'Seller district is missing.', 'Billing settings → Business profile'));
+  const out = []; const jur = co.jurisdiction; const a = co.address || {}; const where = 'Billing settings → Business profile';
+  const idLabel = co.tax_id_label || REGIMES[jur]?.taxId || 'Tax ID';
+  if (!co.seller_name) out.push(issue('error', 'SELLER_NAME', 'seller_name', 'Your registered business name is missing.', where));
+  if (isGulf(jur) || jur === 'IN' || co.tax_registered !== false) {
+    if (!co.vat_number) out.push(issue(isGulf(jur) || jur === 'IN' ? 'error' : 'warning', 'SELLER_VAT', 'vat_number', `Your ${idLabel} is missing.`, where));
+    else if (!isValidTaxId(co.vat_number, jur)) out.push(issue(isGulf(jur) || jur === 'IN' ? 'error' : 'warning', 'SELLER_VAT_FORMAT', 'vat_number', taxIdMsg(jur, 'Your'), where));
   }
-  if (!co.seller_name_ar) out.push(issue('warning', 'SELLER_NAME_AR', 'seller_name_ar', 'Arabic business name is missing (needed on bilingual invoices).', 'Billing settings → Business profile'));
+  for (const [k, label] of [['street', 'street'], ['city', 'city']]) if (!a[k]) out.push(issue(isGulf(jur) ? 'error' : 'warning', `SELLER_ADDR_${k.toUpperCase()}`, `address.${k}`, `Seller address: ${label} is missing.`, where));
+  if (jur === 'KSA') {
+    if (!/^\d{5}$/.test(a.postal_code || '')) out.push(issue('error', 'SELLER_POSTAL', 'address.postal_code', 'Seller postal code must be 5 digits.', where));
+    if (!/^\d{4}$/.test(a.building_no || '')) out.push(issue('warning', 'SELLER_BUILDING', 'address.building_no', 'Seller building number should be 4 digits.', where));
+    if (!a.district) out.push(issue('warning', 'SELLER_DISTRICT', 'address.district', 'Seller district is missing.', where));
+  }
+  if (jur === 'IN') {
+    if (!stateCode(a.state)) out.push(issue('error', 'SELLER_STATE', 'address.state', 'Your state is missing — it decides whether CGST+SGST or IGST applies.', where));
+    else if (co.vat_number && gstinValid(co.vat_number) && co.vat_number.slice(0, 2) !== stateCode(a.state)) out.push(issue('warning', 'SELLER_STATE_GSTIN', 'address.state', `Your GSTIN belongs to state ${co.vat_number.slice(0, 2)}, but your address state is ${stateCode(a.state)}.`, where));
+    if (a.postal_code && !/^\d{6}$/.test(a.postal_code)) out.push(issue('warning', 'SELLER_PIN', 'address.postal_code', 'PIN code should be 6 digits.', where));
+  }
+  if (isGulf(jur) && !co.seller_name_ar) out.push(issue('warning', 'SELLER_NAME_AR', 'seller_name_ar', 'Arabic business name is missing (needed on bilingual invoices).', where));
   return out;
 }
 
@@ -100,31 +146,38 @@ export function validateInvoice(inv, calc, ctx = {}) {
     if (l.discount > l.gross + 0.001 || l.discount < 0) out.push(issue('error', 'LINE_DISCOUNT', `lines.${i}`, `Line ${n}: discount must be between 0 and the line amount.`));
     if (l.vat_category === 'S' && jur === 'KSA' && l.vat_rate !== 15) out.push(issue('warning', 'KSA_RATE', `lines.${i}`, `Line ${n}: standard-rated VAT in KSA is 15% (found ${l.vat_rate}%).`));
     if (l.vat_category === 'S' && jur === 'UAE' && l.vat_rate !== 5) out.push(issue('warning', 'UAE_RATE', `lines.${i}`, `Line ${n}: standard-rated VAT in the UAE is 5% (found ${l.vat_rate}%).`));
-    if (l.vat_category !== 'S' && !l.exemption_reason) out.push(issue('error', 'VAT_REASON', `lines.${i}`, `Line ${n}: zero-rated, exempt and out-of-scope lines need an exemption reason.`, 'Enter the reason (e.g. VATEX code or text)'));
-    if (/\b(advance|deposit|down ?payment|prepayment)\b|دفعة مقدمة|عربون/i.test(l.description)) out.push(issue('warning', 'ADVANCE', `lines.${i}`, `Line ${n} looks like an advance payment: issue a separate advance invoice and deduct it on the final invoice.`));
-    if (inv.lang !== 'en' && !l.description_ar) out.push(issue('warning', 'LINE_AR', `lines.${i}`, `Line ${n}: Arabic description is missing for a bilingual invoice.`));
+    if (l.vat_category !== 'S' && !l.exemption_reason && isGulf(jur)) out.push(issue('error', 'VAT_REASON', `lines.${i}`, `Line ${n}: zero-rated, exempt and out-of-scope lines need an exemption reason.`, 'Enter the reason (e.g. VATEX code or text)'));
+    if (jur === 'IN' && !l.hsn_code) out.push(issue('warning', 'LINE_HSN', `lines.${i}`, `Line ${n}: HSN (goods) or SAC (services) code is missing.`));
+    if (isGulf(jur) && /\b(advance|deposit|down ?payment|prepayment)\b|دفعة مقدمة|عربون/i.test(l.description)) out.push(issue('warning', 'ADVANCE', `lines.${i}`, `Line ${n} looks like an advance payment: issue a separate advance invoice and deduct it on the final invoice.`));
+    if (isGulf(jur) && inv.lang !== 'en' && !l.description_ar) out.push(issue('warning', 'LINE_AR', `lines.${i}`, `Line ${n}: Arabic description is missing for a bilingual invoice.`));
   });
   if (!inv.issue_date) out.push(issue('error', 'ISSUE_DATE', 'issue_date', 'Issue date is required.'));
   else if (inv.issue_date > today()) out.push(issue('error', 'ISSUE_DATE_FUTURE', 'issue_date', 'Issue date cannot be in the future.'));
-  if (standard && !inv.supply_date) out.push(issue('warning', 'SUPPLY_DATE', 'supply_date', 'Supply (delivery) date is missing; it is expected on standard tax invoices.'));
+  if (isGulf(jur) && standard && !inv.supply_date) out.push(issue('warning', 'SUPPLY_DATE', 'supply_date', 'Supply (delivery) date is missing; it is expected on standard tax invoices.'));
   if (inv.due_date && inv.issue_date && inv.due_date < inv.issue_date) out.push(issue('warning', 'DUE_BEFORE_ISSUE', 'due_date', 'Due date is earlier than the issue date.'));
   if (!inv.due_date && !note && inv.doc_type !== 'simplified') out.push(issue('warning', 'NO_DUE', 'due_date', 'No due date — reminders and ageing need one.'));
   const expectCur = jur === 'UAE' ? 'AED' : 'SAR';
-  if (inv.currency !== expectCur) out.push(issue('warning', 'CURRENCY', 'currency', `${jur} invoices are normally in ${expectCur}; VAT must also be reported in ${expectCur}.`));
+  if (!/^[A-Z]{3}$/.test(inv.currency || '')) out.push(issue('error', 'CURRENCY_CODE', 'currency', 'Currency must be a 3-letter code such as INR, USD, GBP or THB.'));
+  if (isGulf(jur) && inv.currency !== expectCur) out.push(issue('warning', 'CURRENCY', 'currency', `${jur} invoices are normally in ${expectCur}; VAT must also be reported in ${expectCur}.`));
   if (inv.total_stored !== undefined && Math.abs(inv.total_stored - calc.total) > 0.011) out.push(issue('error', 'TOTALS', 'total', `Stored total (${inv.total_stored}) does not match the lines (${calc.total}).`));
   if (standard || note) {
     if (!inv.buyer_name) out.push(issue('error', 'BUYER_NAME', 'buyer_name', 'Customer name is missing.', 'Fix the customer record'));
-    if (standard || inv.buyer_vat) {
+    if (isGulf(jur) && (standard || inv.buyer_vat)) {
       if (!inv.buyer_vat) out.push(issue('error', 'BUYER_VAT', 'buyer_vat', `Customer ${jur === 'UAE' ? 'TRN' : 'VAT number'} is required on B2B tax invoices.`, 'Fix the customer record'));
-      else if (!isValidTaxId(inv.buyer_vat, jur)) out.push(issue('error', 'BUYER_VAT_FORMAT', 'buyer_vat', jur === 'UAE' ? 'Customer TRN must be 15 digits.' : 'Customer VAT number must be 15 digits, starting and ending with 3.', 'Fix the customer record'));
+      else if (!isValidTaxId(inv.buyer_vat, jur)) out.push(issue('error', 'BUYER_VAT_FORMAT', 'buyer_vat', taxIdMsg(jur), 'Fix the customer record'));
     }
-    for (const [k, label] of [['buyer_street', 'street'], ['buyer_city', 'city'], ['buyer_country', 'country']]) if (standard && !inv[k]) out.push(issue('error', `BUYER_${k.slice(6).toUpperCase()}`, k, `Customer address: ${label} is missing.`, 'Fix the customer record'));
+    const domesticIN = jur === 'IN' && (inv.buyer_country || 'IN').toUpperCase() === 'IN';
+    if (domesticIN && inv.buyer_vat && !gstinValid(inv.buyer_vat)) out.push(issue('error', 'BUYER_GSTIN', 'buyer_vat', taxIdMsg('IN'), 'Fix the customer record'));
+    if (domesticIN && !stateCode(inv.place_of_supply || inv.buyer_state)) out.push(issue('error', 'PLACE_OF_SUPPLY', 'place_of_supply', 'Place of supply (customer state) is required on GST invoices.', 'Choose the customer state'));
+    if (domesticIN && inv.buyer_vat && gstinValid(inv.buyer_vat) && stateCode(inv.place_of_supply || inv.buyer_state) && inv.buyer_vat.slice(0, 2) !== stateCode(inv.place_of_supply || inv.buyer_state)) out.push(issue('warning', 'POS_GSTIN', 'place_of_supply', `Customer GSTIN is registered in state ${inv.buyer_vat.slice(0, 2)}, but the place of supply is ${stateCode(inv.place_of_supply || inv.buyer_state)}.`));
+    if (!isGulf(jur) && !inv.buyer_email) out.push(issue('warning', 'BUYER_EMAIL', 'buyer_email', 'No customer email — the invoice cannot be emailed and reminders cannot be sent.'));
+    for (const [k, label] of [['buyer_street', 'street'], ['buyer_city', 'city'], ['buyer_country', 'country']]) if (standard && !inv[k]) out.push(issue(isGulf(jur) ? 'error' : 'warning', `BUYER_${k.slice(6).toUpperCase()}`, k, `Customer address: ${label} is missing.`, 'Fix the customer record'));
     if (standard && jur === 'KSA') {
       if (!/^\d{5}$/.test(inv.buyer_postal || '')) out.push(issue('error', 'BUYER_POSTAL', 'buyer_postal', 'Customer postal code must be 5 digits.', 'Fix the customer record'));
       if (!/^\d{4}$/.test(inv.buyer_building || '')) out.push(issue('warning', 'BUYER_BUILDING', 'buyer_building', 'Customer building number should be 4 digits.', 'Fix the customer record'));
       if (!inv.buyer_district) out.push(issue('warning', 'BUYER_DISTRICT', 'buyer_district', 'Customer district is missing.', 'Fix the customer record'));
     }
-    if (inv.lang !== 'en' && !inv.buyer_name_ar && standard) out.push(issue('warning', 'BUYER_NAME_AR', 'buyer_name_ar', 'Customer Arabic name is missing.', 'Fix the customer record'));
+    if (isGulf(jur) && inv.lang !== 'en' && !inv.buyer_name_ar && standard) out.push(issue('warning', 'BUYER_NAME_AR', 'buyer_name_ar', 'Customer Arabic name is missing.', 'Fix the customer record'));
   }
   if (note) {
     const o = ctx.original;
@@ -137,19 +190,25 @@ export function validateInvoice(inv, calc, ctx = {}) {
     }
     if (!inv.reason) out.push(issue('error', 'NOTE_REASON', 'reason', 'A reason is required for credit and debit notes.'));
   }
+  if (jur === 'IN') { const co = ctx.company || getBilling(); const pref = inv.doc_type === 'credit_note' ? co.credit_prefix : inv.doc_type === 'debit_note' ? co.debit_prefix : co.invoice_prefix; if ((pref || '').length + 6 > 16) out.push(issue('warning', 'GST_NUMBER_LENGTH', 'number', `GST invoice numbers may be at most 16 characters; your prefix "${pref}" makes them ${(pref || '').length + 6}.`, 'Shorten the prefix in Billing settings')); }
   if (ctx.duplicateNumber) out.push(issue('error', 'DUP_NUMBER', 'external_number', `Invoice number ${inv.external_number} already exists in the system.`));
   return out;
 }
 
 export function validateCustomerRecord(a, jur = 'KSA') {
-  const out = [];
+  const out = []; const label = REGIMES[jur]?.taxId || 'tax ID';
   if (!a.name) out.push(issue('error', 'CUST_NAME', 'name', 'Customer name is missing.'));
-  if (!a.vat_number) out.push(issue('warning', 'CUST_VAT_MISSING', 'vat_number', `No ${jur === 'UAE' ? 'TRN' : 'VAT number'} — required for B2B tax invoices.`));
-  else if (!isValidTaxId(a.vat_number, jur)) out.push(issue('error', 'CUST_VAT_FORMAT', 'vat_number', jur === 'UAE' ? 'TRN must be 15 digits.' : 'VAT number must be 15 digits, starting and ending with 3.'));
-  if (!a.street || !a.city) out.push(issue('warning', 'CUST_ADDR', 'street', 'Address incomplete (street and city are required on B2B invoices).'));
+  if (isGulf(jur)) {
+    if (!a.vat_number) out.push(issue('warning', 'CUST_VAT_MISSING', 'vat_number', `No ${label} — required for B2B tax invoices.`));
+    else if (!isValidTaxId(a.vat_number, jur)) out.push(issue('error', 'CUST_VAT_FORMAT', 'vat_number', taxIdMsg(jur)));
+    if (!a.street || !a.city) out.push(issue('warning', 'CUST_ADDR', 'street', 'Address incomplete (street and city are required on B2B invoices).'));
+  } else if (jur === 'IN') {
+    if (a.vat_number && !gstinValid(a.vat_number)) out.push(issue('error', 'CUST_GSTIN', 'vat_number', taxIdMsg('IN')));
+    if ((a.country_code || 'IN').toUpperCase() === 'IN' && !stateCode(a.state)) out.push(issue('warning', 'CUST_STATE', 'state', 'State missing — needed as the place of supply on GST invoices.'));
+  }
   if (jur === 'KSA' && a.postal_code && !/^\d{5}$/.test(a.postal_code)) out.push(issue('error', 'CUST_POSTAL', 'postal_code', 'Postal code must be 5 digits.'));
   if (jur === 'KSA' && a.vat_number && a.postal_code === undefined) out.push(issue('warning', 'CUST_POSTAL_MISSING', 'postal_code', 'Postal code missing.'));
-  if (!a.billing_email && !a.billing_phone) out.push(issue('warning', 'CUST_CONTACT', 'billing_email', 'No billing email or phone — payment reminders cannot be sent.'));
+  if (!a.billing_email && !a.billing_phone) out.push(issue('warning', 'CUST_CONTACT', 'billing_email', 'No billing email or phone — invoices cannot be emailed and reminders cannot be sent.'));
   return out;
 }
 
@@ -246,16 +305,18 @@ export function issueInvoice(id, user) {
     const number = `${prefix}${String(seq).padStart(6, '0')}`;
     const prev = get("SELECT invoice_hash FROM invoices WHERE icv IS NOT NULL ORDER BY icv DESC LIMIT 1");
     const issuedAt = nowIso();
-    const seller = { seller_name: company.seller_name, seller_name_ar: company.seller_name_ar, vat_number: company.vat_number, cr_number: company.cr_number, address: company.address, jurisdiction: company.jurisdiction };
+    const seller = { seller_name: company.seller_name, seller_name_ar: company.seller_name_ar, vat_number: company.vat_number, cr_number: company.cr_number, address: company.address, jurisdiction: inv.jurisdiction,
+      country: company.country, tax_label: company.tax_label, tax_id_label: company.tax_id_label, tax_registered: company.tax_registered !== false, invoice_title: company.invoice_title, pan: company.pan };
+    const gulf = isGulf(inv.jurisdiction);
     const doc = { ...inv, ...calc, number, icv, uuid: crypto.randomUUID(), previous_hash: prev?.invoice_hash || INITIAL_PIH, issued_at: issuedAt, total: calc.total, vat_total: calc.vat_total, discount_total: calc.discount_total };
     const hash = sha256b64(buildUbl(doc, calc.lines, seller));
-    const qr = qrPayload({ seller: seller.seller_name, vat: seller.vat_number, timestamp: `${doc.issue_date}T${issuedAt.slice(11, 19)}Z`, total: calc.total, vatTotal: calc.vat_total, hash });
+    const qr = gulf ? qrPayload({ seller: seller.seller_name, vat: seller.vat_number, timestamp: `${doc.issue_date}T${issuedAt.slice(11, 19)}Z`, total: calc.total, vatTotal: calc.vat_total, hash }) : null;
     const xml = buildUbl(doc, calc.lines, seller, { qr });
     inv.lines.forEach((l, i) => run('UPDATE invoice_lines SET net=?, vat=?, total=?, vat_rate=?, exemption_reason=? WHERE id=?', calc.lines[i].net, calc.lines[i].vat, calc.lines[i].total, calc.lines[i].vat_rate, calc.lines[i].exemption_reason, l.id)); // still a draft: freeze exact computed amounts
     run(`UPDATE invoices SET status='issued', number=?, seq=?, icv=?, uuid=?, previous_hash=?, invoice_hash=?, qr=?, xml=?, seller_json=?, issued_at=?, issued_by=?, issued_by_name=?,
-         subtotal=?, discount_total=?, vat_total=?, total=?, compliance_status='ready', portal_token=?, updated_at=? WHERE id=?`,
+         subtotal=?, discount_total=?, vat_total=?, total=?, compliance_status=?, portal_token=?, updated_at=? WHERE id=?`,
       number, seq, icv, doc.uuid, doc.previous_hash, hash, qr, xml, JSON.stringify(seller), issuedAt, user?.id ?? null, user?.name ?? null,
-      calc.subtotal, calc.discount_total, calc.vat_total, calc.total, crypto.randomBytes(18).toString('base64url'), issuedAt, id);
+      calc.subtotal, calc.discount_total, calc.vat_total, calc.total, gulf ? 'ready' : 'not_applicable', crypto.randomBytes(18).toString('base64url'), issuedAt, id);
     if (inv.doc_type === 'credit_note' && original) {
       const credited = round2(original.amount_credited + calc.total);
       const upd = { ...original, amount_credited: credited };
@@ -263,7 +324,7 @@ export function issueInvoice(id, user) {
       logEvent(original.id, 'credit_note_issued', `${number} for ${calc.total.toFixed(2)} ${inv.currency} — ${inv.reason}`, user);
       closeCollectionTasksIfSettled(original.id);
     }
-    logEvent(id, 'issued', `${number} · ICV ${icv} · total ${calc.total.toFixed(2)} ${inv.currency}${issues.length ? ` · ${issues.length} warning(s)` : ''}`, user);
+    logEvent(id, 'issued', `${number}${gulf ? ` · ICV ${icv}` : ''} · total ${calc.total.toFixed(2)} ${inv.currency}${issues.length ? ` · ${issues.length} warning(s)` : ''}`, user);
     result = { id, number, warnings: issues.filter((i) => i.severity === 'warning') };
   });
   return result;

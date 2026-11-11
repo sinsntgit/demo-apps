@@ -66,7 +66,7 @@ export function importInvoices(done) {
     setHtml($('#imp_map', form), html`<div class="banner info small"><b>${table.length - 1}</b> rows found. Check the column matching — rows with the same invoice number become one invoice with several lines.</div>
       <div class="mapgrid">${INVOICE_FIELDS.map(([k, label]) => html`<span>${label}</span><select data-map="${k}"><option value="-1">— none —</option>${headers.map(([i, h]) => html`<option value="${i}" ${map[k] === i ? raw('selected') : ''}>${h}</option>`)}</select>`)}</div>
       <div class="small muted mt">Preview: ${preview.map((r) => `${r.invoice_number || '(no number)'} · ${r.customer} · ${r.description} · ${r.qty}×${r.unit_price}`).join('  |  ') || '—'}</div>
-      <div class="row mt">${field({ name: 'jurisdiction', label: 'Check against', type: 'select', options: [['KSA', 'Saudi Arabia (ZATCA)'], ['UAE', 'UAE (Peppol / FTA)']], blank: false }, { jurisdiction: store.billingJur || 'KSA' })}<span></span></div>
+      <div class="row mt">${field({ name: 'jurisdiction', label: 'Check against', type: 'select', options: [['KSA', 'Saudi Arabia (ZATCA)'], ['UAE', 'UAE (Peppol / FTA)'], ['IN', 'India (GST)'], ['GEN', 'Any other country']], blank: false }, { jurisdiction: store.billingJur || 'KSA' })}<span></span></div>
       <p class="small muted">Invoices are imported as <b>drafts</b> — nothing is issued or submitted. Customers are matched by VAT/TRN or name and created if missing. Previously imported numbers are skipped.</p>`);
   };
   modal({ title: 'Import invoices from your accounting system', wide: true, submitLabel: 'Import & check',
@@ -94,24 +94,40 @@ export function importInvoices(done) {
 
 // ================= Billing settings =================
 export async function billingSettings(root) {
-  const { settings: s, issues } = await api('GET', '/billing/settings'); const admin = allow('billing_settings.edit');
+  const ro = allow('billing_settings.edit') ? '' : raw('disabled');
+  const { settings: s, issues, regimes, presets, states } = await api('GET', '/billing/settings'); const admin = allow('billing_settings.edit');
+  const jur = s.jurisdiction; const gulf = jur === 'KSA' || jur === 'UAE'; const IN = jur === 'IN'; const GEN = jur === 'GEN';
+  const sel = (name, opts, cur, attrs = '') => html`<select name="${name}" ${ro} ${raw(attrs)}>${opts.map(([v, l]) => html`<option value="${v}" ${String(v) === String(cur) ? raw('selected') : ''}>${l}</option>`)}</select>`;
   const senders = store.meta.senders.filter((x) => x.active);
-  const ro = admin ? '' : raw('disabled');
   const F = (n, label, v, o = {}) => html`<label>${label}<input name="${n}" value="${v ?? ''}" ${o.type ? raw(`type="${o.type}"`) : ''} ${o.ph ? raw(`placeholder="${esc(o.ph)}"`) : ''} ${o.dir ? raw(`dir="${o.dir}"`) : ''} ${ro}></label>`;
   const sch = s.reminders.schedule;
   setHtml(root, html`${page('Billing settings', admin ? html`<button class="btn primary" data-act="save">Save settings</button>` : '')}
     ${!admin ? html`<div class="banner info small">Only an administrator can change billing settings.</div>` : ''}
     ${issues.filter((i) => i.severity === 'error').length ? html`<div class="banner bad"><b>Your business profile is incomplete — invoices cannot be issued yet.</b>${issues.filter((i) => i.severity === 'error').map((i) => html`<div class="small">• ${i.message}</div>`)}</div>` : ''}
     <form id="bs" class="grid g2" style="align-items:start"><div style="display:grid;gap:16px">
+      <div class="card"><div class="hd"><h2>Invoicing mode</h2></div><div class="bd">
+        <label>Country rules<select name="jurisdiction" data-switch ${ro}>${Object.entries(regimes).map(([k, r]) => html`<option value="${k}" ${jur === k ? raw('selected') : ''}>${r.label}</option>`)}</select></label>
+        ${GEN ? html`<label>Country<select name="country" data-switch ${ro}>${Object.entries(presets).map(([k, p]) => html`<option value="${k}" ${s.country === k ? raw('selected') : ''}>${p.name}${k !== 'OTHER' ? ` — ${p.tax}${p.rate ? ' ' + p.rate + '%' : ''}, ${p.currency}` : ''}</option>`)}</select></label>` : ''}
+        <p class="small muted" style="margin-bottom:0">${gulf ? 'Bilingual tax invoices, strict VAT-number and address checks, QR code, hash chain and (optionally) submission to the tax authority through your provider.' : IN ? 'GST tax invoices: GSTIN checks, place of supply, CGST + SGST within your state or IGST across states, HSN/SAC codes and amount in words.' : 'Plain invoices in English with your own tax name, rate and tax-ID label. Choosing a country fills in typical defaults — check them against your own registration.'}
+          Changing this applies to new invoices; invoices already created keep the rules they were made under.</p></div></div>
       <div class="card"><div class="hd"><h2>Business profile</h2></div><div class="bd">
-        <label>Country / e-invoicing regime<select name="jurisdiction" ${ro}><option value="KSA" ${s.jurisdiction === 'KSA' ? raw('selected') : ''}>Saudi Arabia — ZATCA Fatoora</option><option value="UAE" ${s.jurisdiction === 'UAE' ? raw('selected') : ''}>United Arab Emirates — Peppol / FTA</option></select></label>
-        <div class="row">${F('seller_name', 'Registered business name', s.seller_name)}${F('seller_name_ar', 'Business name (Arabic)', s.seller_name_ar, { dir: 'rtl' })}</div>
-        <div class="row">${F('vat_number', s.jurisdiction === 'UAE' ? 'TRN' : 'VAT registration number', s.vat_number, { ph: s.jurisdiction === 'UAE' ? '15 digits' : '15 digits, starts and ends with 3' })}${F('cr_number', 'Commercial registration (CR)', s.cr_number)}</div>
-        <div class="row">${F('a_street', 'Street', s.address.street)}${F('a_building_no', 'Building no.', s.address.building_no)}</div><div class="row">${F('a_district', 'District', s.address.district)}${F('a_city', 'City', s.address.city)}</div><div class="row">${F('a_postal_code', 'Postal code', s.address.postal_code)}${F('a_country_code', 'Country code', s.address.country_code)}</div></div></div>
-      <div class="card"><div class="hd"><h2>Numbering & defaults</h2></div><div class="bd"><p class="small muted">Numbers are sequential with no gaps and are never reused. Each document type has its own series.</p>
-        <div class="row">${F('invoice_prefix', 'Invoice prefix', s.invoice_prefix)}${F('credit_prefix', 'Credit note prefix', s.credit_prefix)}</div><div class="row">${F('debit_prefix', 'Debit note prefix', s.debit_prefix)}${F('currency', 'Currency', s.currency)}</div>
-        <div class="row">${F('payment_terms_days', 'Default payment terms (days)', s.payment_terms_days, { type: 'number' })}<label>Default language<select name="default_lang" ${ro}>${[['both', 'Arabic + English'], ['en', 'English'], ['ar', 'Arabic']].map(([v, t]) => html`<option value="${v}" ${s.default_lang === v ? raw('selected') : ''}>${t}</option>`)}</select></label></div></div></div>
-      <div class="card"><div class="hd"><h2>Bank-transfer details (shown to customers)</h2></div><div class="bd"><div class="row">${F('b_bank_name', 'Bank', s.bank.bank_name)}${F('b_account_name', 'Account name', s.bank.account_name)}</div><div class="row">${F('b_iban', 'IBAN', s.bank.iban, { ph: 'SA… / AE…' })}${F('b_swift', 'SWIFT / BIC', s.bank.swift)}</div>
+        <div class="row">${F('seller_name', 'Registered business name', s.seller_name)}${gulf ? F('seller_name_ar', 'Business name (Arabic)', s.seller_name_ar, { dir: 'rtl' }) : html`<span></span>`}</div>
+        ${GEN || IN ? html`<label class="check"><input type="checkbox" name="tax_registered" ${s.tax_registered !== false ? raw('checked') : ''} ${ro}> Registered for ${s.tax_label || 'tax'} (charge tax and show my tax ID)</label>` : ''}
+        <div class="row">${F('vat_number', s.tax_id_label || (jur === 'UAE' ? 'TRN' : 'VAT registration number'), s.vat_number, { ph: jur === 'KSA' ? '15 digits, starts and ends with 3' : jur === 'UAE' ? '15 digits' : IN ? 'e.g. 27ABCDE1234F1Z5' : '' })}${jur === 'KSA' ? F('cr_number', 'Commercial registration (CR)', s.cr_number) : IN ? F('pan', 'PAN (optional)', s.pan, { ph: 'ABCDE1234F' }) : html`<span></span>`}</div>
+        ${GEN ? html`<div class="row">${F('tax_label', 'Tax name on invoices', s.tax_label, { ph: 'VAT, GST, Sales tax…' })}${F('tax_id_label', 'Tax ID label', s.tax_id_label, { ph: 'VAT no., EIN, ABN…' })}</div>${F('invoice_title', 'Invoice title', s.invoice_title, { ph: 'Invoice / Tax Invoice / VAT Invoice' })}` : ''}
+        <div class="row">${F('a_street', 'Street', s.address.street)}${jur === 'KSA' ? F('a_building_no', 'Building no.', s.address.building_no) : html`<span></span>`}</div>
+        <div class="row">${gulf ? F('a_district', 'District', s.address.district) : html`<span></span>`}${F('a_city', 'City', s.address.city)}</div>
+        <div class="row">${IN ? html`<label>State (for GST)${sel('a_state', [['', 'Choose…'], ...Object.entries(states).map(([c, n]) => [c, `${n} (${c})`])], s.address.state)}</label>` : F('a_state', 'State / province / region', s.address.state)}${F('a_postal_code', IN ? 'PIN code' : 'Postal code', s.address.postal_code)}</div>
+        ${F('a_country_code', 'Country code (2 letters)', s.address.country_code, { ph: 'IN, GB, US, TH…' })}</div></div>
+      <div class="card"><div class="hd"><h2>Numbering & defaults</h2></div><div class="bd"><p class="small muted">Numbers are sequential with no gaps and are never reused. Each document type has its own series.${IN ? ' GST allows at most 16 characters per invoice number.' : ''}</p>
+        <div class="row">${F('invoice_prefix', 'Invoice prefix', s.invoice_prefix)}${F('credit_prefix', 'Credit note prefix', s.credit_prefix)}</div><div class="row">${F('debit_prefix', 'Debit note prefix', s.debit_prefix)}${F('currency', 'Default currency', s.currency, { ph: 'INR, USD, GBP…' })}</div>
+        <div class="row">${F('payment_terms_days', 'Default payment terms (days)', s.payment_terms_days, { type: 'number' })}${F('vat_rate', `Default ${s.tax_label || 'tax'} rate %`, s.vat_rate, { type: 'number' })}</div>
+        ${gulf ? html`<label>Default language${sel('default_lang', [['both', 'Arabic + English'], ['en', 'English'], ['ar', 'Arabic']], s.default_lang)}</label>` : ''}</div></div>
+      <div class="card"><div class="hd"><h2>Payment details (shown on invoices and the payment page)</h2></div><div class="bd">
+        <div class="row">${F('b_bank_name', 'Bank', s.bank.bank_name)}${F('b_account_name', 'Account name', s.bank.account_name)}</div>
+        <div class="row">${F('b_account_number', 'Account number', s.bank.account_number)}${F('b_iban', 'IBAN (if you have one)', s.bank.iban, { ph: gulf ? 'SA… / AE…' : 'GB…, DE…' })}</div>
+        <div class="row">${F('b_bank_code_label', 'Bank code name', s.bank.bank_code_label, { ph: IN ? 'IFSC' : 'Sort code, Routing no., BSB…' })}${F('b_bank_code', IN ? 'IFSC' : 'Bank code', s.bank.bank_code)}</div>
+        <div class="row">${F('b_swift', 'SWIFT / BIC (international payments)', s.bank.swift)}${IN ? F('b_upi', 'UPI ID', s.bank.upi, { ph: 'business@bank' }) : html`<span></span>`}</div>
         <label>Note on the payment page<textarea name="portal_note" rows="2" ${ro}>${s.portal_note}</textarea></label></div></div></div>
     <div style="display:grid;gap:16px">
       <div class="card"><div class="hd"><h2>Automatic payment reminders</h2></div><div class="bd">
@@ -122,23 +138,33 @@ export async function billingSettings(root) {
         <div class="row">${F('r_repeat', 'Then repeat every (days, 0 = never)', s.reminders.repeat_days, { type: 'number' })}<span></span></div>
         <label class="check"><input type="checkbox" name="r_tasks" ${s.reminders.create_collection_tasks ? raw('checked') : ''} ${ro}> Create a collection task when an invoice is overdue</label>
         <label class="check"><input type="checkbox" name="r_watasks" ${s.reminders.create_whatsapp_tasks ? raw('checked') : ''} ${ro}> No WhatsApp gateway? Create a task with a ready-to-send WhatsApp link</label>
-        <p class="small muted">Messages are bilingual and include the payment link and bank details. Customers with a pending "I have paid" notice are not chased.</p></div></div>
+        <p class="small muted">Messages are ${gulf ? 'bilingual' : 'in English'} and include the payment link and payment details. Customers with a pending "I have paid" notice are not chased.</p></div></div>
       <div class="card"><div class="hd"><h2>WhatsApp / SMS gateway</h2></div><div class="bd"><p class="small muted">Optional. Without a gateway, WhatsApp reminders become one-click links your team sends, and SMS is unavailable. Connect your own gateway (Twilio, Unifonic, WhatsApp Cloud API relay…) that accepts <span class="mono">{channel, to, message, invoice_number}</span> as JSON.</p>
         <label>Mode<select name="m_mode" ${ro}><option value="none" ${s.messaging.mode === 'none' ? raw('selected') : ''}>No gateway</option><option value="webhook" ${s.messaging.mode === 'webhook' ? raw('selected') : ''}>Webhook</option></select></label>${F('m_url', 'Gateway URL', s.messaging.url, { ph: 'https://…' })}
         <label>Bearer token <span class="muted">${s.messaging.has_token ? '(saved — enter a new one to replace)' : ''}</span><input name="m_token" type="password" autocomplete="off" ${ro}></label></div></div>
-      <div class="card"><div class="hd"><h2>E-invoicing provider (clearance / reporting)</h2></div><div class="bd">
+      <div class="card" ${gulf ? '' : raw('hidden')}><div class="hd"><h2>E-invoicing provider (clearance / reporting)</h2></div><div class="bd">
         <div class="banner info small"><b>How compliance works here.</b> The app validates every invoice, numbers it without gaps, chains it with hashes and builds the UBL 2.1 XML and QR code. <b>ZATCA clearance/reporting needs your onboarding (CSID) and a cryptographically signed invoice</b> — that is done by a certified provider/solution you connect below. Until then invoices stay "Ready · not submitted". The UAE (Peppol) workflow supports validation now; PINT-AE export is planned.</div>
         <label>Mode<select name="p_mode" ${ro}><option value="none" ${s.asp.mode === 'none' ? raw('selected') : ''}>Not connected (validate and prepare only)</option><option value="webhook" ${s.asp.mode === 'webhook' ? raw('selected') : ''}>Submit to my provider (webhook)</option></select></label>${F('p_url', 'Provider URL', s.asp.url, { ph: 'https://…' })}
         <label>Bearer token <span class="muted">${s.asp.has_token ? '(saved — enter a new one to replace)' : ''}</span><input name="p_token" type="password" autocomplete="off" ${ro}></label>
         <p class="small muted">The provider receives JSON with the invoice number, UUID, hash, ICV, QR and base64 XML, and replies <span class="mono">{status: cleared | reported | rejected, message}</span>.</p></div></div></div></form>`);
   const form = $('#bs', root);
+  form.addEventListener('change', async (e) => {
+    if (!e.target.matches('[data-switch]')) return;
+    const toJur = form.elements.jurisdiction.value, toCountry = form.elements.country?.value;
+    const label = toJur === 'GEN' && e.target.name === 'country' ? presets[toCountry]?.name : regimes[toJur].label;
+    if (!(await confirmBox(`Switch invoicing to “${label}”? Currency, tax rate and labels are set to that country's usual defaults (you can change them). Existing invoices keep their own rules.`, 'Switch', false))) { billingSettings(root); return; }
+    try { await api('PUT', '/billing/settings', { jurisdiction: toJur, ...(toJur === 'GEN' ? { country: e.target.name === 'country' ? toCountry : (s.jurisdiction === 'GEN' ? s.country : 'OTHER') } : {}) }); store.billingJur = toJur; toast('Invoicing mode switched', 'ok'); } catch (x) { fail(x); }
+    billingSettings(root);
+  });
   on(root, { save: async () => {
     const g = (n) => form.elements[n]; const sched = [];
     for (let i = 0; i < 12; i++) { const o = g(`s_offset_${i}`); if (!o) break; const ch = ['email', 'whatsapp', 'sms'].filter((c) => g(`s_${c}_${i}`)?.checked); if (o.value !== '' && ch.length) sched.push({ offset: Number(o.value), channels: ch }); }
-    const body = { jurisdiction: g('jurisdiction').value, seller_name: g('seller_name').value, seller_name_ar: g('seller_name_ar').value, vat_number: g('vat_number').value, cr_number: g('cr_number').value,
-      address: { street: g('a_street').value, building_no: g('a_building_no').value, district: g('a_district').value, city: g('a_city').value, postal_code: g('a_postal_code').value, country_code: g('a_country_code').value },
-      invoice_prefix: g('invoice_prefix').value, credit_prefix: g('credit_prefix').value, debit_prefix: g('debit_prefix').value, currency: g('currency').value, payment_terms_days: g('payment_terms_days').value, default_lang: g('default_lang').value,
-      bank: { bank_name: g('b_bank_name').value, account_name: g('b_account_name').value, iban: g('b_iban').value, swift: g('b_swift').value }, portal_note: g('portal_note').value,
+    const v = (n) => (g(n) ? g(n).value : undefined);
+    const body = { jurisdiction: v('jurisdiction'), country: v('country'), seller_name: v('seller_name'), seller_name_ar: v('seller_name_ar'), vat_number: v('vat_number'), cr_number: v('cr_number'), pan: v('pan'),
+      tax_label: v('tax_label'), tax_id_label: v('tax_id_label'), invoice_title: v('invoice_title'), vat_rate: v('vat_rate'), ...(g('tax_registered') ? { tax_registered: g('tax_registered').checked } : {}),
+      address: { street: v('a_street'), building_no: v('a_building_no'), district: v('a_district'), city: v('a_city'), state: v('a_state'), postal_code: v('a_postal_code'), country_code: v('a_country_code') },
+      invoice_prefix: v('invoice_prefix'), credit_prefix: v('credit_prefix'), debit_prefix: v('debit_prefix'), currency: v('currency'), payment_terms_days: v('payment_terms_days'), default_lang: v('default_lang'),
+      bank: { bank_name: v('b_bank_name'), account_name: v('b_account_name'), iban: v('b_iban'), swift: v('b_swift'), account_number: v('b_account_number'), bank_code: v('b_bank_code'), bank_code_label: v('b_bank_code_label'), upi: v('b_upi') }, portal_note: v('portal_note'),
       reminders: { enabled: g('r_enabled').checked, sender_id: g('r_sender').value || null, schedule: sched, repeat_days: g('r_repeat').value, create_collection_tasks: g('r_tasks').checked, create_whatsapp_tasks: g('r_watasks').checked },
       messaging: { mode: g('m_mode').value, url: g('m_url').value, ...(g('m_token').value ? { token: g('m_token').value } : {}) }, asp: { mode: g('p_mode').value, url: g('p_url').value, ...(g('p_token').value ? { token: g('p_token').value } : {}) } };
     const r = await api('PUT', '/billing/settings', body); store.billingJur = r.settings.jurisdiction; toast('Billing settings saved', 'ok'); billingSettings(root);

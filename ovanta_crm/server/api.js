@@ -17,6 +17,7 @@ import { aiConfigured, aiModel } from './ai.js';
 import { getTheme, getSetting } from './settings.js';
 import { setStatus } from './tasks.js';
 import { currencyMeta } from './currency.js';
+import { getBilling } from './invoicing.js';
 
 const MGR = ['admin', 'manager'];
 
@@ -60,7 +61,7 @@ function checkPassword(p) {
 
 // ---------- Meta ----------
 GET('/api/meta', () => ({
-  version: config.version, currency: currencyMeta(),
+  version: config.version, currency: currencyMeta(), billing: (() => { const b = getBilling(); return { jurisdiction: b.jurisdiction, country: b.country, reminders_enabled: !!b.reminders.enabled, tax_label: b.tax_label }; })(),
   stages: STAGES, mergeTags: MERGE_TAGS, segmentFields: Object.fromEntries(Object.entries(segmentFields()).map(([k, v]) => [k, { label: v.label, type: v.type, options: v.options }])),
   segmentOps: SEGMENT_OPS, users: all('SELECT id,name,role FROM users WHERE active=1 ORDER BY name'),
   industries: all("SELECT DISTINCT industry v FROM accounts WHERE industry IS NOT NULL ORDER BY 1").map((r) => r.v),

@@ -109,6 +109,24 @@ Custom values appear on the record's detail page (grouped by your sections), in 
 * Task and notification emails use your **default sender if it is a real mailbox**, otherwise the first active real (SMTP) sender — never the built-in *Demo sender (simulation)* when a real one exists. Adding your first real sender also makes it the default. After each action the app tells you who is being emailed and from which address; if only the simulation sender exists, the Tasks page shows a warning and nothing is claimed as sent. A delivery failure (wrong password, server down…) appears on the task's timeline with the server's message, and every task email is in *Notifications → Email log*.
 * People with own-scope roles also see tasks they assigned to others.
 
+## Invoicing for any country (India GST, UK, USA, MEA, Thailand…)
+
+**Billing settings → Invoicing mode** switches the rules (existing invoices keep the rules they were created under):
+
+| Mode | What you get |
+|---|---|
+| **Saudi Arabia — ZATCA** | As before: bilingual tax invoices, 15-digit VAT checks, QR, hash chain, provider submission. |
+| **UAE — VAT (FTA)** | TRN checks, 5 % VAT, AED, bilingual. |
+| **India — GST** | GSTIN check (incl. checksum), your state + the customer's state (**place of supply**) decide **CGST + SGST** (same state) or **IGST** (other state); exports outside India; **HSN/SAC** per line; PAN; **amount in words** (lakh/crore); Indian number grouping; bank account + **IFSC** + **UPI**. Warns if invoice numbers would exceed GST's 16 characters. |
+| **Any other country** | Pick a country preset (UK VAT 20 %, US sales tax, Thailand VAT 7 %, Singapore GST 9 %, Australia GST 10 %, Bahrain, Oman, Qatar, Kuwait, Egypt, Jordan, Germany, France, Netherlands, Ireland, Canada, South Africa, Kenya, Nigeria, Japan… or *Other*). It fills the currency, tax name, default rate, tax-ID label, invoice title and bank-code label (Sort code, Routing no., BSB…) — all editable. Not tax-registered? Untick it and no tax ID is required. English invoices, no Gulf-specific checks. |
+
+Customers (accounts) have a **State / province** field (used as the GST place of supply). Any invoice can be in any currency.
+
+* **Email invoice** — on an issued invoice, **✉️ Email invoice**: To / Cc / subject / message (pre-filled), the invoice **attached** (opens in any browser → Print → Save as PDF), a **View invoice & pay** link to the customer payment page and your payment details. Offered automatically right after *Save & issue*. Every email is logged on the invoice (✉️ emailed ×N) and in *Notifications → Email log*. Needs the *Email & remind* permission.
+* **Payments** — **Record payment** (part or full; status becomes *Partially paid* / *Paid* automatically), optionally **email a receipt** ("Payment received — thank you", with the remaining balance). **Reverse** a payment recorded by mistake or bounced (reason required; balance and status are restored; the audit trail keeps both). Customers can also report a payment from the payment page; you confirm or reject it.
+* **Reminders** — **Send reminder** (email, or WhatsApp with the right country code) any time; **automatic reminders** on a schedule you set in Billing settings (before/after the due date, then every N days), in English for non-Gulf invoices, with a pay button. Pause or resume automatic reminders **per invoice**. Overdue invoices can also create collection tasks.
+* Emails use your *Email senders* (the reminder sender chosen in Billing settings, otherwise your real default sender).
+
 ## Two currencies on deals
 
 * **Settings → Deal currencies** (administrators): choose **Currency 1** (what deal amounts are entered in, e.g. USD) and **Currency 2** (e.g. SAR), then add **one rate per year** — *2026: 1 USD = 3.76 SAR*. Every change is kept in the *Change history* (who, when, old → new); switching to another currency pair keeps the old pair's rates and brings them back if you switch again.
@@ -168,7 +186,7 @@ See [`docs/ROADMAP-CRITICAL-GAPS.md`](docs/ROADMAP-CRITICAL-GAPS.md). Done: foun
 
 ## Tests
 ```bash
-npm test       # 93 tests (API, permissions, migrations, backups): auth, CRUD, injection, campaigns, SMTP sending against a local fake mail server,
+npm test       # 99 tests (API, permissions, migrations, backups): auth, CRUD, injection, campaigns, SMTP sending against a local fake mail server,
                # daily-limit pause/resume, notifications, AI (fake Claude API), themes, import options
 npm run e2e    # browser test (needs Playwright + Chromium): navigation, forms, xlsx import, theme, AI panel, drag-and-drop
 npm run seed   # reset to demo data

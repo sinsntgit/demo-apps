@@ -79,7 +79,7 @@ await page.selectOption('select[name=account_id]', String(acct)); await page.fil
 await page.fill('#lines tr:first-child [data-k=qty]', '2'); await page.fill('#lines tr:first-child [data-k=unit_price]', '500');
 await page.waitForSelector('#issues:has-text("Ready to issue")', { timeout: 6000 }).catch(() => errors.push('live compliance check never reported ready')); await shot('invoice-editor');
 if (!(await page.textContent('#totals')).includes('1,150.00')) errors.push('live totals wrong: ' + (await page.textContent('#totals')));
-await page.click('text=Save & issue'); await page.waitForSelector('h1:has-text("INV-")', { timeout: 8000 }); await shot('invoice-detail');
+await page.click('text=Save & issue'); await page.waitForSelector('h1:has-text("INV-")', { timeout: 8000 }); await page.waitForSelector('.modal input[name=to]', { timeout: 5000 }).then(() => page.keyboard.press('Escape')).catch(() => errors.push('email dialog not offered after issuing')); await shot('invoice-detail');
 const invId = Number(page.url().split('/invoices/')[1]);
 if (!(await page.textContent('body')).includes('INV-000001')) errors.push('first invoice should be INV-000001');
 await page.click('button:has-text("Record payment")'); await page.fill('.modal input[name=amount]', '400'); await page.click('.modal button[type=submit]'); await page.waitForSelector('text=Partially paid');
@@ -286,6 +286,36 @@ if (!(await page.textContent('body')).includes(`Rate ${YR}: 1 USD = 3.76 SAR`)) 
 await page.click('a[data-nav=deals]'); await page.click('button:has-text("List")'); await page.waitForSelector('th:has-text("Amount (SAR)")', { timeout: 5000 }).catch(() => errors.push('SAR column missing in the deals list'));
 await page.click('button:has-text("Board")'); await page.waitForSelector('.col .ch :text("SAR")', { timeout: 5000 }).catch(() => errors.push('SAR totals missing on the board')); await shot('board-two-currencies');
 await page.click('a[data-nav=dashboard]'); await page.waitForSelector('.kpi .s b:has-text("SAR")', { timeout: 5000 }).catch(() => errors.push('SAR totals missing on the dashboard'));
+// ===== General invoicing: India GST mode, email, payment + receipt, reversal =====
+const { gstinValid } = await import('../server/regimes.js');
+const mkGstin = (st, pan) => { for (const c of '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ') if (gstinValid(`${st}${pan}1Z${c}`)) return `${st}${pan}1Z${c}`; };
+await page.goto(`${base}/#/billing-settings`); await page.waitForSelector('select[name=jurisdiction][data-switch]');
+await page.selectOption('select[name=jurisdiction][data-switch]', 'IN'); await page.click('.modal button[type=submit]');
+await page.waitForSelector('select[name=a_state]', { timeout: 5000 }).catch(() => errors.push('India fields not shown after switching mode'));
+await page.fill('input[name=seller_name]', 'Ovantaa India Pvt Ltd'); await page.fill('input[name=vat_number]', mkGstin('27', 'AAPFU0939F')); await page.fill('input[name=a_street]', 'FC Road'); await page.fill('input[name=a_city]', 'Pune');
+await page.selectOption('select[name=a_state]', '27'); await page.fill('input[name=a_postal_code]', '411004'); await page.fill('input[name=b_account_number]', '50100123456789'); await page.fill('input[name=b_bank_code]', 'HDFC0001234'); await page.fill('input[name=b_upi]', 'ovantaa@hdfcbank');
+await page.click('button[data-act=save]'); await page.waitForSelector('.toast:has-text("Billing settings saved")'); await shot('billing-india');
+if ((await page.locator('.banner.bad').count()) > 0) errors.push('India profile still incomplete: ' + (await page.textContent('.banner.bad')));
+const inAcc = await page.evaluate(async (g) => (await (await fetch('/api/accounts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Bengaluru Books Pvt Ltd', vat_number: g, state: 'Karnataka', country_code: 'IN', street: '12 MG Road', city: 'Bengaluru', billing_email: 'accounts@blrbooks.in' }) })).json()), mkGstin('29', 'AABCT1332L'));
+await page.goto(`${base}/#/invoices/new`); await page.waitForSelector('select[name=account_id]'); await page.reload(); await page.waitForSelector('select[name=account_id]');
+await page.selectOption('select[name=account_id]', String(inAcc.id)); await page.waitForFunction(() => document.querySelector('select[name=buyer_state]')?.value === 'Karnataka', null, { timeout: 5000 }).catch(() => errors.push('customer state not filled from the account'));
+await page.fill('#lines input[data-k=description]', 'CRM implementation'); await page.fill('#lines input[data-k=hsn_code]', '998314'); await page.fill('#lines input[data-k=qty]', '1'); await page.fill('#lines input[data-k=unit_price]', '100000');
+await page.waitForSelector('#totals :text("IGST")', { timeout: 5000 }).catch(() => errors.push('IGST not shown in the editor totals'));
+await page.waitForSelector('#issues :text("Ready to issue")', { timeout: 6000 }).catch(async () => errors.push('India invoice not ready: ' + (await page.textContent('#issues'))));
+await shot('invoice-india-editor'); await page.click('button[data-act=saveissue]');
+await page.waitForSelector('.modal input[name=to]', { timeout: 8000 }).catch(() => errors.push('email dialog did not open after issuing'));
+if ((await page.inputValue('.modal input[name=to]')) !== 'accounts@blrbooks.in') errors.push('email To not prefilled'); await shot('invoice-email');
+await page.click('.modal button[type=submit]'); await page.waitForSelector('.toast:has-text("Emailed to"), .toast:has-text("Not really sent")', { timeout: 8000 }).catch(() => errors.push('email send gave no result'));
+await page.waitForSelector('.badge:has-text("emailed")', { timeout: 5000 }).catch(() => errors.push('emailed badge missing'));
+const inInvId = Number(page.url().match(/invoices\/(\d+)/)[1]);
+const printed = await page.evaluate((id) => fetch(`/api/invoices/${id}/print`).then((r) => r.text()), inInvId);
+for (const x of ['IGST 18%', 'GSTIN', 'Karnataka (29)', 'One Lakh Eighteen Thousand', 'ovantaa@hdfcbank']) if (!printed.includes(x)) errors.push('printed India invoice missing ' + x);
+await page.click('button[data-act=pay]'); await page.waitForSelector('.modal input[name=send_receipt]'); await page.click('.modal button[type=submit]');
+await page.waitForSelector('.toast:has-text("invoice fully paid")', { timeout: 6000 }).catch(() => errors.push('payment not recorded as full'));
+await page.waitForSelector('button[data-act=unpay]'); await shot('invoice-paid'); await page.click('button[data-act=unpay]'); await page.fill('.modal input[name=reason]', 'Entered against the wrong invoice'); await page.click('.modal button[type=submit]');
+await page.waitForSelector('.toast:has-text("Payment reversed")', { timeout: 5000 }).catch(() => errors.push('payment reversal failed'));
+await page.waitForSelector('input[data-pause]'); await page.uncheck('input[data-pause]'); await page.waitForSelector('.toast:has-text("paused")', { timeout: 5000 }).catch(() => errors.push('pausing reminders failed'));
+await page.evaluate(() => fetch('/api/billing/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jurisdiction: 'KSA' }) }));
 // segment builder + deal drag/drop
 await page.click('a[data-nav=segments]'); await page.click('text=+ New segment'); await page.fill('.modal input[name=name]', 'E2E seg');
 await page.waitForSelector('#segprev b'); await page.click('.modal button[type=submit]'); await page.waitForSelector('td:has-text("E2E seg")');

@@ -208,7 +208,8 @@ WHEN OLD.status <> 'draft' AND (
   OR NEW.vat_total IS NOT OLD.vat_total OR NEW.discount_total IS NOT OLD.discount_total OR NEW.doc_type IS NOT OLD.doc_type OR NEW.currency IS NOT OLD.currency
   OR NEW.jurisdiction IS NOT OLD.jurisdiction OR NEW.issue_date IS NOT OLD.issue_date OR NEW.supply_date IS NOT OLD.supply_date OR NEW.ref_invoice_id IS NOT OLD.ref_invoice_id
   OR NEW.buyer_name IS NOT OLD.buyer_name OR NEW.buyer_vat IS NOT OLD.buyer_vat OR NEW.buyer_street IS NOT OLD.buyer_street OR NEW.buyer_city IS NOT OLD.buyer_city
-  OR NEW.buyer_postal IS NOT OLD.buyer_postal OR NEW.buyer_building IS NOT OLD.buyer_building OR NEW.buyer_district IS NOT OLD.buyer_district OR NEW.buyer_country IS NOT OLD.buyer_country)
+  OR NEW.buyer_postal IS NOT OLD.buyer_postal OR NEW.buyer_building IS NOT OLD.buyer_building OR NEW.buyer_district IS NOT OLD.buyer_district OR NEW.buyer_country IS NOT OLD.buyer_country
+  OR NEW.buyer_state IS NOT OLD.buyer_state OR NEW.place_of_supply IS NOT OLD.place_of_supply)
 BEGIN SELECT RAISE(ABORT, 'Issued invoices cannot be changed. Issue a credit or debit note instead.'); END;
 CREATE TRIGGER IF NOT EXISTS trg_invoice_no_delete BEFORE DELETE ON invoices WHEN OLD.status <> 'draft'
 BEGIN SELECT RAISE(ABORT, 'Issued invoices cannot be deleted (tax records must be retained).'); END;
@@ -221,7 +222,9 @@ BEGIN SELECT RAISE(ABORT, 'Lines cannot be added to an issued invoice.'); END;
 CREATE TRIGGER IF NOT EXISTS trg_events_no_update BEFORE UPDATE ON invoice_events
 BEGIN SELECT RAISE(ABORT, 'The audit trail is append-only.'); END;
 `;
+export const reinstallImmutability = () => { db.exec('DROP TRIGGER IF EXISTS trg_invoice_immutable'); db.exec(IMMUTABILITY_SQL); };
 const TRIGGER_NAMES = ['trg_invoice_immutable', 'trg_invoice_no_delete', 'trg_lines_no_update', 'trg_lines_no_delete', 'trg_lines_no_insert', 'trg_events_no_update'];
+ensureColumn('invoices', 'buyer_state', 'TEXT'); ensureColumn('invoices', 'place_of_supply', 'TEXT');
 db.exec(IMMUTABILITY_SQL);
 /** ONLY for the seed/reset CLI: temporarily lift the immutability triggers, then restore them. */
 export function withoutImmutability(fn) {

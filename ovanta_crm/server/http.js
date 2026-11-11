@@ -47,7 +47,7 @@ export async function handleApi(req, res, url) {
       const need = ROUTE_PERMS[`${r.method} ${r.pattern}`];
       if (need && !hasPerm(user, need)) throw forbidden(`Your role does not allow this (${need}).`);
       let body = {};
-      if (!r.opts.raw && ['POST', 'PUT', 'PATCH'].includes(req.method)) {
+      if (!r.opts.raw && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
         const raw = await readBody(req);
         if (raw && !(req.headers['content-type'] || '').includes('application/json')) throw new HttpError(415, 'Content-Type must be application/json');
         if (!raw && !req.headers['content-type']?.includes('application/json') && req.headers['content-length'] !== '0' && req.headers['content-length'] !== undefined) throw new HttpError(415, 'Content-Type must be application/json');
