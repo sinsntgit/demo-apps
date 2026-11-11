@@ -15,6 +15,7 @@ import {
 import { notify, EVENTS } from './notifications.js';
 import { aiConfigured, aiModel } from './ai.js';
 import { getTheme, getSetting } from './settings.js';
+import { setStatus } from './tasks.js';
 
 const MGR = ['admin', 'manager'];
 
@@ -115,9 +116,7 @@ GET('/api/deals/:id/360', ({ params, user }) => ({
 
 POST('/api/tasks/:id/toggle', ({ params, user }) => {
   const t = getOne(ENTITIES.tasks, params.id, user);
-  if (!canOnRecord(user, 'tasks.edit', t.owner_id)) throw forbidden('Your role can only edit tasks you own.');
-  run('UPDATE tasks SET done = 1 - done WHERE id=?', params.id);
-  audit(user, 'toggle', 'tasks', params.id);
+  setStatus(t, t.status === 'done' ? 'open' : 'done', '', user);
   return getOne(ENTITIES.tasks, params.id);
 });
 POST('/api/deals/:id/stage', ({ params, body, user }) => {

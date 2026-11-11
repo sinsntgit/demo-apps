@@ -70,6 +70,27 @@ export const MIGRATIONS = [
       db.exec('CREATE INDEX IF NOT EXISTS idx_files_stage ON files(entity, record_id, stage)');
     },
   },
+  {
+    version: 6, name: 'task_assignment_workflow',
+    up(db) {
+      for (const [c, ddl] of [['status', "TEXT NOT NULL DEFAULT 'open'"], ['assigned_by', 'INTEGER REFERENCES users(id) ON DELETE SET NULL'],
+        ['assigned_at', 'TEXT'], ['completed_at', 'TEXT']]) if (!hasColumn(db, 'tasks', c)) db.exec(`ALTER TABLE tasks ADD COLUMN ${c} ${ddl}`);
+      db.exec("UPDATE tasks SET status='done' WHERE done=1 AND status='open'");
+      db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_assigned_by ON tasks(assigned_by)');
+      db.exec(`CREATE TABLE IF NOT EXISTS task_events (id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL, body TEXT, actor_type TEXT NOT NULL DEFAULT 'user', actor_id INTEGER, actor_name TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`);
+      db.exec('CREATE INDEX IF NOT EXISTS idx_task_events_task ON task_events(task_id, id)');
+      // files may now belong to tasks too: SQLite cannot change a CHECK constraint, so rebuild the table with the same rows
+      const sql = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='files'").get()?.sql || '';
+      if (!sql.includes("'tasks'")) {
+        db.exec(`CREATE TABLE files_v6 (id INTEGER PRIMARY KEY, entity TEXT NOT NULL CHECK (entity IN ('contacts','accounts','deals','invoices','tasks')), record_id INTEGER NOT NULL,
+          name TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL, sha256 TEXT NOT NULL, path TEXT NOT NULL UNIQUE, note TEXT, uploaded_by INTEGER, uploaded_by_name TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), stage TEXT)`);
+        db.exec('INSERT INTO files_v6 (id,entity,record_id,name,mime,size,sha256,path,note,uploaded_by,uploaded_by_name,created_at,stage) SELECT id,entity,record_id,name,mime,size,sha256,path,note,uploaded_by,uploaded_by_name,created_at,stage FROM files');
+        db.exec('DROP TABLE files'); db.exec('ALTER TABLE files_v6 RENAME TO files');
+        db.exec('CREATE INDEX IF NOT EXISTS idx_files_record ON files(entity, record_id)'); db.exec('CREATE INDEX IF NOT EXISTS idx_files_stage ON files(entity, record_id, stage)');
+      }
+    },
+  },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 

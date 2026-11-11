@@ -125,3 +125,4 @@ input[type=color]{padding:2px;height:38px;width:60px}
 .optrow{display:flex;gap:6px;margin-bottom:6px}.optrow input{flex:1}
 @media(max-width:700px){.fgrid,.lfields{grid-template-columns:1fr}}
 .badge.plain{text-transform:none}
+.row-issue td{background:rgba(254,226,226,.45)}

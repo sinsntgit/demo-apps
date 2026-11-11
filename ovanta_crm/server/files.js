@@ -9,7 +9,7 @@ import { ENTITIES, STAGES, getOne } from './entities.js';
 import { hasPerm, canOnRecord } from './permissions.js';
 import { hmac } from './auth.js';
 
-const KINDS = ['contacts', 'accounts', 'deals', 'invoices'];
+const KINDS = ['contacts', 'accounts', 'deals', 'invoices', 'tasks'];
 const MAX_FILES = 20;
 const BLOCKED = /\.(exe|dll|bat|cmd|com|scr|msi|ps1|vbs|js|jse|jar|sh|app|apk|dmg|lnk|hta|cpl|reg)$/i;
 // what the browser may show inline; everything else is a download
@@ -27,9 +27,10 @@ function guardRecord(kind, id, user, needEdit = false) {
   id = Number(id); if (!id) throw bad('Missing record');
   if (kind === 'invoices') { if (!get('SELECT 1 FROM invoices WHERE id=?', id)) throw notFound('Record not found'); if (!hasPerm(user, 'invoices.view')) throw forbidden(); return null; }
   const r = getOne(ENTITIES[kind], id, user);
-  if (needEdit && !canOnRecord(user, `${kind}.edit`, r.owner_id)) throw forbidden(`Your role can only add files to ${kind} you own.`);
+  if (needEdit && !canOnRecord(user, `${kind}.edit`, r.owner_id) && !(kind === 'tasks' && r.assigned_by === user.id)) throw forbidden(`Your role can only add files to ${kind} you own.`);
   return r;
 }
+export { out as fileOut, absPath as fileAbsPath, sendFile };
 export const canSeeRecord = (kind, id, user) => { try { guardRecord(kind, id, user); return true; } catch { return false; } };
 const safeName = (n) => String(n || 'file').replace(/[\\/\0]/g, '_').replace(/[\r\n"]/g, '').trim().slice(0, 200) || 'file';
 /** A name that is valid on Windows, macOS and Linux disks. */
@@ -53,47 +54,59 @@ GET('/api/files', ({ query, user }) => {
  * Upload one or more files (multipart, field name "file", up to 20 per request) to a record.
  * On deals, `?stage=` puts them in that stage's folder. Stored on disk as files/<entity>/<id>/<stage|general>/<hash>-<name>.
  */
-POST('/api/files', ({ req, query, user }) => new Promise((resolve, reject) => {
+/**
+ * Read a multipart request (field "file", up to 20 files) and store the files on a record. Text fields are returned in `fields`.
+ * `uploader` is {id, name} (id null for a contact using the task page). Resolves {saved, errors, fields}; never throws for per-file problems.
+ */
+export function receiveFiles(req, { entity, recordId, stage = null, uploader }) {
+  return new Promise((resolve, reject) => {
+    const ct = req.headers['content-type'] || ''; if (!ct.startsWith('multipart/form-data')) { req.resume(); return reject(new HttpError(415, 'Send the files as multipart/form-data')); }
+    const maxBytes = config.maxUploadMb * 1024 * 1024; fs.mkdirSync(config.filesDir, { recursive: true });
+    let bb; try { bb = busboy({ headers: req.headers, limits: { files: MAX_FILES, fileSize: maxBytes, fields: 10, fieldSize: 20000 } }); } catch { req.resume(); return reject(bad('Invalid upload')); }
+    const items = []; const fields = {}; let tooMany = false;
+    bb.on('field', (n, v) => { fields[n] = String(v).slice(0, 5000); });
+    bb.on('filesLimit', () => { tooMany = true; });
+    bb.on('file', (_n, stream, info) => {
+      if (!info.filename) return stream.resume(); // an empty file input in a plain HTML form
+      const it = { name: safeName(info.filename), size: 0, hash: crypto.createHash('sha256'), error: null, tmp: path.join(config.filesDir, `.tmp-${crypto.randomBytes(8).toString('hex')}`) };
+      it.mime = mimeFor(it.name, info.mimeType); items.push(it);
+      if (BLOCKED.test(it.name)) { it.error = 'This file type is not allowed (programs and scripts cannot be attached).'; return stream.resume(); }
+      const ws = fs.createWriteStream(it.tmp, { mode: 0o600 }); it.done = new Promise((r) => ws.on('close', r));
+      stream.on('data', (c) => { it.size += c.length; it.hash.update(c); });
+      stream.on('limit', () => { it.error = `File is larger than ${config.maxUploadMb} MB`; it.status = 413; });
+      stream.on('error', (e) => { it.error = e.message; }); ws.on('error', (e) => { it.error = e.message; }); stream.pipe(ws);
+    });
+    bb.on('error', (e) => reject(bad('Upload failed: ' + e.message)));
+    bb.on('close', async () => {
+      const saved = [], errors = [];
+      for (const it of items) {
+        if (it.done) await it.done;
+        const drop = () => { try { fs.unlinkSync(it.tmp); } catch {} };
+        if (!it.error && !it.size) it.error = 'Empty files are not accepted';
+        if (it.error) { drop(); errors.push({ name: it.name, error: it.error, status: it.status || 400 }); continue; }
+        const sha = it.hash.digest('hex');
+        const rel = `${entity}/${Number(recordId)}/${stage || 'general'}/${sha.slice(0, 8)}-${crypto.randomBytes(3).toString('hex')}-${diskName(it.name)}`;
+        try {
+          const dest = absPath(rel); fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.renameSync(it.tmp, dest);
+          const id = Number(run('INSERT INTO files (entity,record_id,stage,name,mime,size,sha256,path,note,uploaded_by,uploaded_by_name) VALUES (?,?,?,?,?,?,?,?,?,?,?)', entity, Number(recordId), stage, it.name, it.mime, it.size, sha, rel, (fields.note || '').slice(0, 300) || null, uploader.id ?? null, uploader.name || null).lastInsertRowid);
+          saved.push(out(get('SELECT * FROM files WHERE id=?', id)));
+        } catch (e) { drop(); errors.push({ name: it.name, error: 'Could not store the file: ' + e.message, status: 500 }); }
+      }
+      if (tooMany) errors.push({ name: '', error: `Only ${MAX_FILES} files can be uploaded at once; the rest were skipped`, status: 400 });
+      resolve({ saved, errors, fields });
+    });
+    req.pipe(bb);
+  });
+}
+
+POST('/api/files', async ({ req, query, user }) => {
   let stage;
-  try { guardRecord(query.entity, query.id, user, true); stage = checkStage(query.entity, query.stage); } catch (e) { req.resume(); return reject(e); }
-  const ct = req.headers['content-type'] || ''; if (!ct.startsWith('multipart/form-data')) { req.resume(); return reject(new HttpError(415, 'Send the files as multipart/form-data')); }
-  const maxBytes = config.maxUploadMb * 1024 * 1024; fs.mkdirSync(config.filesDir, { recursive: true });
-  let bb; try { bb = busboy({ headers: req.headers, limits: { files: MAX_FILES, fileSize: maxBytes, fields: 5 } }); } catch { req.resume(); return reject(bad('Invalid upload')); }
-  const items = []; let note = ''; let tooMany = false;
-  bb.on('field', (n, v) => { if (n === 'note') note = String(v).slice(0, 300); });
-  bb.on('filesLimit', () => { tooMany = true; });
-  bb.on('file', (_n, stream, info) => {
-    const it = { name: safeName(info.filename), size: 0, hash: crypto.createHash('sha256'), error: null, tmp: path.join(config.filesDir, `.tmp-${crypto.randomBytes(8).toString('hex')}`) };
-    it.mime = mimeFor(it.name, info.mimeType); items.push(it);
-    if (BLOCKED.test(it.name)) { it.error = 'This file type is not allowed (programs and scripts cannot be attached).'; return stream.resume(); }
-    const ws = fs.createWriteStream(it.tmp, { mode: 0o600 }); it.done = new Promise((r) => ws.on('close', r));
-    stream.on('data', (c) => { it.size += c.length; it.hash.update(c); });
-    stream.on('limit', () => { it.error = `File is larger than ${config.maxUploadMb} MB`; it.status = 413; });
-    stream.on('error', (e) => { it.error = e.message; }); ws.on('error', (e) => { it.error = e.message; }); stream.pipe(ws);
-  });
-  bb.on('error', (e) => reject(bad('Upload failed: ' + e.message)));
-  bb.on('close', async () => {
-    const saved = [], errors = [];
-    for (const it of items) {
-      if (it.done) await it.done;
-      const drop = () => { try { fs.unlinkSync(it.tmp); } catch {} };
-      if (!it.error && !it.size) it.error = 'Empty files are not accepted';
-      if (it.error) { drop(); errors.push({ name: it.name, error: it.error, status: it.status || 400 }); continue; }
-      const sha = it.hash.digest('hex');
-      const rel = `${query.entity}/${Number(query.id)}/${stage || 'general'}/${sha.slice(0, 8)}-${crypto.randomBytes(3).toString('hex')}-${diskName(it.name)}`;
-      try {
-        const dest = absPath(rel); fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.renameSync(it.tmp, dest);
-        const id = Number(run('INSERT INTO files (entity,record_id,stage,name,mime,size,sha256,path,note,uploaded_by,uploaded_by_name) VALUES (?,?,?,?,?,?,?,?,?,?,?)', query.entity, Number(query.id), stage, it.name, it.mime, it.size, sha, rel, note || null, user.id, user.name).lastInsertRowid);
-        saved.push(out(get('SELECT * FROM files WHERE id=?', id)));
-      } catch (e) { drop(); errors.push({ name: it.name, error: 'Could not store the file: ' + e.message, status: 500 }); }
-    }
-    if (tooMany) errors.push({ name: '', error: `Only ${MAX_FILES} files can be uploaded at once; the rest were skipped`, status: 400 });
-    if (saved.length) audit(user, 'upload', query.entity, Number(query.id), `${saved.length} file(s)${stage ? ` to ${stage}` : ''}: ${saved.map((f) => f.name).join(', ').slice(0, 300)}`);
-    if (!saved.length) return reject(new HttpError(errors[0]?.status || 400, errors[0]?.error || 'Choose at least one file to upload', { errors }));
-    resolve({ files: saved, errors });
-  });
-  req.pipe(bb);
-}), { raw: true });
+  try { guardRecord(query.entity, query.id, user, true); stage = checkStage(query.entity, query.stage); } catch (e) { req.resume(); throw e; }
+  const { saved, errors } = await receiveFiles(req, { entity: query.entity, recordId: query.id, stage, uploader: user });
+  if (saved.length) audit(user, 'upload', query.entity, Number(query.id), `${saved.length} file(s)${stage ? ` to ${stage}` : ''}: ${saved.map((f) => f.name).join(', ').slice(0, 300)}`);
+  if (!saved.length) throw new HttpError(errors[0]?.status || 400, errors[0]?.error || 'Choose at least one file to upload', { errors });
+  return { files: saved, errors };
+}, { raw: true });
 
 /** Move a file to another stage folder and/or change its note. */
 PUT('/api/files/:id', ({ params, body, user }) => {

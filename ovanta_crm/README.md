@@ -98,6 +98,15 @@ Custom values appear on the record's detail page (grouped by your sections), in 
 * **Two-factor sign-in (authenticator app, TOTP)** — *Settings → Security*: scan the QR code (Google/Microsoft Authenticator, Authy, 1Password…), confirm with a code, and save the **10 one-time recovery codes** (shown once). A code can never be used twice. Administrators can **require** it for administrators or for everyone (*Settings → Security → Company policy*): people who have not set it up are taken to a set-up page at their next sign-in and cannot use the app until done. A lost phone: an administrator uses **Reset 2FA** on *Team & roles* (the person is signed out everywhere and sets it up again).
 * **Sessions** — sign-in is now a server-side session: *Settings → Security → Signed-in devices* lists them and can sign out any or all others; signing out, changing your password, resetting 2FA or deactivating a user ends sessions immediately.
 
+## Tasks: assigning work to your team
+
+* **Assign** — *+ New task* (or *+ Task* on a contact/deal) → **Assign to** a team member, with a due date, priority, details and an optional message. The assignee is **emailed** the task, its due date and a link that opens it. Tasks are only assigned to internal users; contacts and accounts are just “related to”.
+* **Assigned to me / Assigned by me / All tasks** tabs on the Tasks page, with counts (open, overdue, issues). The *Tasks* menu item shows how many open tasks you have plus issues waiting on you.
+* **The assignee** opens a task and can **Mark complete** (with an optional note) or **Raise an issue** (a description is required) — both can attach **several files**. The person who assigned it is emailed either way.
+* **The assigner** sees issues highlighted, can **Reply** (emails the assignee), **Reopen**, or **Resolve & send back / Reassign** — to the same person or someone else, with a new due date, a note and files. The new assignee is emailed (and the previous one is told it moved).
+* Every step is on the task's **timeline** (who, when, what), and all files are in the task's *Files* card with the viewer.
+* Emails go out from your **default email sender** (*Email senders*); with none configured they are only simulated and appear in the email log. People with own-scope roles also see tasks they assigned to others.
+
 ## AI search
 
 **AI search** (top of the menu, or **Ctrl + K** anywhere) answers questions in plain language across **deals, contacts, accounts, files, campaigns and segments**, including your custom fields — e.g. *“open partner deals over 100k closing this quarter”*, *“proposal PDFs uploaded in the last 30 days”*, *“accounts with more than 3 open deals”*, *“everything about Acme”*. The results show how the question was understood (the filters used), and file results open in the viewer.
@@ -142,7 +151,7 @@ See [`docs/ROADMAP-CRITICAL-GAPS.md`](docs/ROADMAP-CRITICAL-GAPS.md). Done: foun
 
 ## Tests
 ```bash
-npm test       # 74 tests (API, permissions, migrations, backups): auth, CRUD, injection, campaigns, SMTP sending against a local fake mail server,
+npm test       # 78 tests (API, permissions, migrations, backups): auth, CRUD, injection, campaigns, SMTP sending against a local fake mail server,
                # daily-limit pause/resume, notifications, AI (fake Claude API), themes, import options
 npm run e2e    # browser test (needs Playwright + Chromium): navigation, forms, xlsx import, theme, AI panel, drag-and-drop
 npm run seed   # reset to demo data

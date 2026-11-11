@@ -3,6 +3,8 @@ import {
 } from './core.js';
 import { mountList } from './list.js';
 import { mountAttachments, convertLead, uploadFiles } from './records.js';
+import { taskForm, tasks, openTask } from './tasks.js';
+export { tasks };
 import { viewFile, fileIcon } from './viewer.js';
 import { openEntityForm, customDetailCard, customColumns, customFilters, customCardLines, displayValue, activeFields } from './forms.js';
 import { readTable, FIELDS, guessMapping, applyMapping, TEMPLATE_CSV } from './csv.js';
@@ -146,7 +148,7 @@ function wireTimeline(root, linkKey, linkId, reload) {
     try { await api('POST', '/activities', { type: f.type.value, body: f.body.value, [linkKey]: linkId }); reload(); } catch (x) { fail(x); }
   });
 }
-const miniTasks = (tasks) => html`<div class="card"><div class="hd"><h2>Tasks</h2></div><div class="bd">${tasks.length ? tasks.map((t) => html`<div style="display:flex;gap:8px;padding:5px 0"><input type="checkbox" data-act="toggletask" data-id="${t.id}" ${t.done ? raw('checked') : ''} aria-label="Done"><span style="${t.done ? 'text-decoration:line-through;opacity:.6' : ''}">${t.title}<div class="small muted">${t.due_date ? fmtDate(t.due_date) : ''}</div></span></div>`) : html`<span class="muted">No tasks.</span>`}</div></div>`;
+const miniTasks = (tasks) => html`<div class="card"><div class="hd"><h2>Tasks</h2></div><div class="bd">${tasks.length ? tasks.map((t) => html`<div style="display:flex;gap:8px;padding:5px 0"><input type="checkbox" data-act="toggletask" data-id="${t.id}" ${t.done ? raw('checked') : ''} aria-label="Done"><span style="${t.done ? 'text-decoration:line-through;opacity:.6' : ''}"><a href="#" data-act="opentask" data-id="${t.id}">${t.title}</a>${t.status === 'issue' ? html` <span class="badge lost plain">issue</span>` : ''}<div class="small muted">${t.due_date ? fmtDate(t.due_date) : ''}${t.owner_id ? ` · ${(store.meta.users.find((u) => u.id === t.owner_id) || {}).name || ''}` : ''}</div></span></div>`) : html`<span class="muted">No tasks.</span>`}</div></div>`;
 
 export async function contactDetail(root, id) {
   const draw = async () => {
@@ -171,7 +173,7 @@ export async function contactDetail(root, id) {
       edit: async () => contactForm(c, await lookups(), draw),
       del: async () => { if (await confirmBox(`Delete ${fullName(c)}? This also removes their activity history.`, 'Delete')) { await api('DELETE', `/contacts/${id}`); toast('Contact deleted'); location.hash = '#/contacts'; } },
       task: () => taskForm({ contact_id: id }, draw), deal: async () => dealForm({ contact_id: id, account_id: c.account_id }, await lookups(), draw),
-      toggletask: async (el) => { await api('POST', `/tasks/${el.dataset.id}/toggle`); draw(); },
+      toggletask: async (el) => { await api('POST', `/tasks/${el.dataset.id}/toggle`); draw(); }, opentask: (el) => openTask(el.dataset.id, draw),
     });
   };
   await draw();
@@ -317,39 +319,10 @@ export async function dealDetail(root, id) {
       edit: async () => dealForm(x, await lookups(), draw), stage: () => stageModal(x, draw), task: () => taskForm({ deal_id: id }, draw),
       viewfile: (el) => viewFile(files.find((f) => String(f.id) === el.dataset.id), files),
       del: async () => { if (await confirmBox(`Delete deal "${x.name}"?`, 'Delete')) { await api('DELETE', `/deals/${id}`); location.hash = '#/deals'; } },
-      toggletask: async (el) => { await api('POST', `/tasks/${el.dataset.id}/toggle`); draw(); },
+      toggletask: async (el) => { await api('POST', `/tasks/${el.dataset.id}/toggle`); draw(); }, opentask: (el) => openTask(el.dataset.id, draw),
     });
   };
   await draw();
 }
 
 // =============== Tasks ===============
-async function taskForm(t = {}, onDone) {
-  const lk = await lookups();
-  const fields = [{ name: 'title', label: 'Task', required: true }, { name: 'due_date', label: 'Due date', type: 'date', default: todayStr() }, { name: 'priority', label: 'Priority', type: 'select', options: ['low', 'medium', 'high'], blank: false, default: 'medium' },
-    { name: 'owner_id', label: 'Assignee', type: 'select', options: userOpts(), blank: false, default: store.user.id }, { name: 'contact_id', label: 'Contact', type: 'select', options: lk.contacts }, { name: 'deal_id', label: 'Deal', type: 'select', options: lk.deals }, { name: 'notes', label: 'Notes', type: 'textarea' }];
-  const f = (n) => field(fields.find((x) => x.name === n), t);
-  modal({ title: t.id ? 'Edit task' : 'New task', body: html`${f('title')}<div class="row">${f('due_date')}${f('priority')}</div>${f('owner_id')}<div class="row">${f('contact_id')}${f('deal_id')}</div>${f('notes')}`,
-    onSubmit: async (form) => { const v = formValues(form, fields); t.id ? await api('PUT', `/tasks/${t.id}`, v) : await api('POST', '/tasks', v); toast('Task saved', 'ok'); onDone?.(); } });
-}
-export async function tasks(root) {
-  root.innerHTML = ''; const head = document.createElement('div'), body = document.createElement('div'); root.append(head, body);
-  setHtml(head, page('Tasks', html`<button class="btn primary" data-act="new">+ New task</button>${allow('data.purge') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`));
-  const list = mountList(body, { key: 'tasks', endpoint: '/tasks', searchPlaceholder: 'Search tasks…', empty: 'No tasks. Enjoy the quiet!',
-    filters: [{ name: 'done', label: 'State', options: [['0', 'Open'], ['1', 'Done']] }, { name: 'due', label: 'Due', options: [['overdue', 'Overdue'], ['today', 'Today'], ['week', 'Next 7 days']] }, { name: 'owner_id', label: 'Assignee', options: userOpts() }, { name: 'priority', label: 'Priority', options: ['low', 'medium', 'high'] }],
-    columns: [
-      { label: '', render: (t) => html`<input type="checkbox" data-act="toggle" data-id="${t.id}" ${t.done ? raw('checked') : ''} aria-label="Mark done">`, cls: 'nowrap' },
-      { label: 'Task', sort: 'title', render: (t) => html`<span style="${t.done ? 'text-decoration:line-through;opacity:.6' : ''}">${t.title}</span>` },
-      { label: 'Due', sort: 'due_date', render: (t) => html`<span style="${!t.done && t.due_date && t.due_date < todayStr() ? 'color:var(--bad);font-weight:600' : ''}">${fmtDate(t.due_date)}</span>` },
-      { label: 'Priority', sort: 'priority', render: (t) => badge(t.priority) },
-      { label: 'Related', render: (t) => t.contact_id ? html`<a href="#/contacts/${t.contact_id}">${t.contact_name}</a>` : t.deal_id ? html`<a href="#/deals/${t.deal_id}">${t.deal_name}</a>` : '—' },
-      { label: 'Assignee', render: (t) => t.owner_name || '—' },
-      { label: '', render: (t) => html`<button class="btn sm" data-act="edit" data-id="${t.id}">Edit</button> <button class="btn sm danger" data-act="del" data-id="${t.id}" aria-label="Delete">✕</button>` },
-    ] });
-  on(head, { new: () => taskForm({}, list.reload), purge: () => purgeModal('tasks', () => list.reload()) });
-  body.addEventListener('change', async (e) => { if (e.target.dataset.act === 'toggle') { try { await api('POST', `/tasks/${e.target.dataset.id}/toggle`); list.reload(); } catch (x) { fail(x); } } });
-  on(body, {
-    edit: async (el) => taskForm(await api('GET', `/tasks/${el.dataset.id}`), list.reload),
-    del: async (el) => { if (await confirmBox('Delete this task?', 'Delete')) { await api('DELETE', `/tasks/${el.dataset.id}`); list.reload(); } },
-  });
-}

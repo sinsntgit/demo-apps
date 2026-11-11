@@ -68,6 +68,7 @@ function shell() {
     <nav class="nav" aria-label="Main">${NAV.map(([group, items]) => html`<h4>${group}</h4>${items.filter((i) => !i[3] || allow(i[3])).map(([k, l, ic]) => html`<a href="#/${k}" data-nav="${k}">${icon(ic)}${l}</a>`)}`)}</nav>
     <div class="me"><span class="avatar">${initials(store.user.name)}</span><div class="who"><b>${store.user.name}</b><span>${store.user.role_label || store.user.role}</span></div><button class="btn sm" data-act="logout" title="Sign out">Sign out</button></div></aside>
     <main class="main"><button class="btn menu-btn" data-act="menu" style="margin-bottom:12px" aria-label="Open menu">☰ Menu</button><div id="view"></div></main></div>`);
+  api('GET', '/tasks-summary').then((s) => { const n = (s.to_me_open || 0) + (s.by_me_issues || 0); const a = $('a[data-nav=tasks]'); if (a && n) a.insertAdjacentHTML('beforeend', `<span class="badge plain" style="margin-left:auto" title="Open tasks assigned to you, plus issues on tasks you assigned">${n}</span>`); }).catch(() => {});
   on($('.shell'), { menu: () => $('#side').classList.toggle('open'), logout: async () => { await api('POST', '/auth/logout'); store.user = null; location.hash = '#/login'; loginView(); } });
 }
 
@@ -80,6 +81,7 @@ async function route() {
   const id = ++renderId;
   $$('[data-nav]').forEach((a) => a.classList.toggle('active', path === a.dataset.nav || path.startsWith(a.dataset.nav + '/')));
   $('#side')?.classList.remove('open');
+  document.querySelectorAll('.overlay').forEach((o) => o.remove()); // a dialog belongs to the page it was opened on
   for (const [re, fn] of ROUTES) {
     const m = re.exec(path);
     if (m) {

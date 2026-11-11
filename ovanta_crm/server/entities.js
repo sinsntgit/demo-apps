@@ -64,11 +64,14 @@ export const ENTITIES = {
     required: ['title'],
     enums: { priority: ['low', 'medium', 'high'] },
     search: ['t.title', 'c.first_name', 'c.last_name', 'd.name'],
-    filters: { done: 't.done', owner_id: 't.owner_id', priority: 't.priority', contact_id: 't.contact_id', deal_id: 't.deal_id' },
-    sorts: { title: 't.title', due_date: 't.due_date', priority: 't.priority', created_at: 't.created_at' },
+    filters: { done: 't.done', owner_id: 't.owner_id', priority: 't.priority', contact_id: 't.contact_id', deal_id: 't.deal_id', status: 't.status', assigned_by: 't.assigned_by' },
+    sorts: { title: 't.title', due_date: 't.due_date', priority: 't.priority', created_at: 't.created_at', status: 't.status' },
     defaultSort: 't.done ASC, t.due_date IS NULL, t.due_date ASC',
-    select: `SELECT t.*, TRIM(COALESCE(c.first_name,'') || ' ' || COALESCE(c.last_name,'')) AS contact_name, d.name AS deal_name, u.name AS owner_name
-      FROM tasks t LEFT JOIN contacts c ON c.id=t.contact_id LEFT JOIN deals d ON d.id=t.deal_id LEFT JOIN users u ON u.id=t.owner_id`,
+    select: `SELECT t.*, TRIM(COALESCE(c.first_name,'') || ' ' || COALESCE(c.last_name,'')) AS contact_name, d.name AS deal_name, u.name AS owner_name,
+      ab.name AS assigned_by_name,
+      (SELECT COUNT(*) FROM files fx WHERE fx.entity='tasks' AND fx.record_id=t.id) AS file_count
+      FROM tasks t LEFT JOIN contacts c ON c.id=t.contact_id LEFT JOIN deals d ON d.id=t.deal_id LEFT JOIN users u ON u.id=t.owner_id
+      LEFT JOIN users ab ON ab.id=t.assigned_by`,
   },
 };
 
@@ -103,7 +106,10 @@ export function clean(ent, input, { partial = false } = {}) {
 
 function listQuery(ent, q, user) {
   const where = []; const params = [];
-  if (user && scopeOf(user, `${ent.table}.view`) === 'own') { where.push(`${ent.alias}.owner_id = ?`); params.push(user.id); }
+  if (user && scopeOf(user, `${ent.table}.view`) === 'own') {
+    if (ent.table === 'tasks') { where.push('(t.owner_id = ? OR t.assigned_by = ?)'); params.push(user.id, user.id); } // a task you assigned stays visible to you
+    else { where.push(`${ent.alias}.owner_id = ?`); params.push(user.id); }
+  }
   const cq = ent.custom ? customQuery(ent.table, ent.alias, q) : null;
   if (q.q) {
     const cols = [...ent.search, ...(cq?.searchCols || [])];
@@ -118,6 +124,8 @@ function listQuery(ent, q, user) {
     }
   }
   if (ent.table === 'contacts' && q.tag) { where.push(`(',' || REPLACE(COALESCE(c.tags,''),' ','') || ',') LIKE ?`); params.push(`%,${String(q.tag).replace(/\s/g, '')},%`); }
+  if (ent.table === 'tasks' && user && q.mine === 'to_me') { where.push('t.owner_id = ?'); params.push(user.id); }
+  if (ent.table === 'tasks' && user && q.mine === 'by_me') { where.push('t.assigned_by = ?'); params.push(user.id); }
   if (ent.table === 'tasks' && q.due === 'overdue') where.push(`t.done=0 AND t.due_date < date('now')`);
   if (ent.table === 'tasks' && q.due === 'today') where.push(`t.done=0 AND t.due_date = date('now')`);
   if (ent.table === 'tasks' && q.due === 'week') where.push(`t.done=0 AND t.due_date BETWEEN date('now') AND date('now','+7 day')`);
@@ -143,7 +151,7 @@ export function list(ent, q, user) {
 export function getOne(ent, id, user) {
   const row = get(`${ent.select} WHERE ${ent.alias}.id = ?`, id);
   if (!row) throw notFound(`${ent.noun} not found`);
-  if (user && scopeOf(user, `${ent.table}.view`) === 'own' && row.owner_id !== user.id) throw notFound(`${ent.noun} not found`); // hide records outside the user's scope
+  if (user && scopeOf(user, `${ent.table}.view`) === 'own' && row.owner_id !== user.id && !(ent.table === 'tasks' && row.assigned_by === user.id)) throw notFound(`${ent.noun} not found`); // hide records outside the user's scope
   return ent.custom ? shapeRows(ent.table, [row])[0] : row;
 }
 
@@ -159,11 +167,15 @@ function insert(table, data) {
   return Number(r.lastInsertRowid);
 }
 
+/** Per-table extension points (e.g. task assignment): before(data, body, existing, user) may adjust the row; after(row, existing, body, user) runs side effects. */
+export const hooks = { before: {}, after: {} };
+const canEdit = (user, ent, rec) => canOnRecord(user, `${ent.table}.edit`, rec.owner_id) || (ent.table === 'tasks' && rec.assigned_by === user?.id);
 export function create(ent, body, user) {
   const data = clean(ent, body);
   if (ent.custom) data.custom = JSON.stringify(mergeCustom(ent.table, body.custom, { existing: {}, record: { ...builtinDefaults(ent.table), ...data }, isCreate: true }));
   if (ent.table === 'deals') applyDealStage(data, null);
   if (ent.table === 'contacts' && data.email === undefined) data.email = null;
+  hooks.before[ent.table]?.(data, body, null, user);
   if (!('owner_id' in data) && ent.fields.owner_id) data.owner_id = user.id;
   const id = insert(ent.table, data);
   audit(user, 'create', ent.table, id, data.name || data.title || data.first_name);
@@ -171,19 +183,22 @@ export function create(ent, body, user) {
   const ev = { contacts: 'contact.created', deals: 'deal.created', accounts: 'account.created' }[ent.table];
   if (ent.table === 'deals') recordStageChange(created, null, body.stage_comment || 'Deal created', user);
   if (ev) notify([ev], created, {}, user);
+  hooks.after[ent.table]?.(created, null, body, user);
   return created;
 }
 
 export function update(ent, id, body, user) {
   const existing = getOne(ent, id, user);
-  if (!canOnRecord(user, `${ent.table}.edit`, existing.owner_id)) throw forbidden(`Your role can only edit ${ent.noun.toLowerCase()}s you own.`);
+  if (!canEdit(user, ent, existing)) throw forbidden(`Your role can only edit ${ent.noun.toLowerCase()}s you own.`);
   const data = clean(ent, body, { partial: true });
+  hooks.before[ent.table]?.(data, body, existing, user);
   if (ent.custom && body.custom !== undefined) data.custom = JSON.stringify(mergeCustom(ent.table, body.custom, { existing: existing.custom || {}, record: { ...existing, ...data }, isCreate: false }));
   if (ent.table === 'deals') applyDealStage(data, existing);
   const cols = Object.keys(data);
   if (cols.length) run(`UPDATE ${ent.table} SET ${cols.map((c) => `${c}=?`).join(',')} WHERE id=?`, ...Object.values(data), id);
   audit(user, 'update', ent.table, id, existing.name || existing.title || existing.first_name);
   const updated = getOne(ent, id);
+  hooks.after[ent.table]?.(updated, existing, body, user);
   if (ent.table === 'deals') {
     if (existing.stage !== updated.stage) recordStageChange(updated, existing.stage, body.stage_comment, user);
     const d = dealEvents(existing, updated); if (d.events.length) notify(d.events, updated, { changes: d.changes, comment: existing.stage !== updated.stage ? String(body.stage_comment || '').trim().slice(0, 1000) : '' }, user);

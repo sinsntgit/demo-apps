@@ -219,6 +219,34 @@ await page.click('#sres a[data-act=file]:has-text("Proposal v2.pdf")'); await pa
 await page.selectOption('#sq select[name=mode]', 'keyword'); await page.fill('#sq input[name=q]', 'Folder demo'); await page.click('#sq button.primary');
 await page.waitForSelector('#sres a:has-text("Folder demo deal")', { timeout: 5000 }).catch(() => errors.push('keyword search did not find the deal'));
 await page.selectOption('#sq select[name=mode]', 'ai');
+// ===== Task assignment between team members =====
+const { all: dbAll } = await import('../server/db.js');
+const taskMails = (to) => dbAll("SELECT subject FROM email_log WHERE kind='task' AND to_email=? ORDER BY id", to).map((r) => r.subject);
+const liamId = await page.evaluate(async () => (await (await fetch('/api/users', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Tina Field', email: 'tina@ovantaa.com', password: 'Ovantaa@123', role: 'rep' }) })).json()).id);
+await page.goto(`${base}/#/tasks`); await page.reload(); await page.waitForSelector('text=+ New task'); await page.click('text=+ New task'); await page.fill('.modal input[name=title]', 'E2E: collect signed PO');
+await page.fill('.modal input[name=due_date]', '2026-12-15');
+await page.selectOption('.modal select[name=owner_id]', String(liamId)); await page.waitForSelector('.modal textarea[name=assign_note]:visible'); await page.fill('.modal textarea[name=assign_note]', 'Customer promised it this week');
+await shot('task-assign'); await page.click('.modal button[type=submit]'); await page.waitForSelector('.toast:has-text("they have been emailed")', { timeout: 5000 }).catch(() => errors.push('assign toast missing'));
+await new Promise((r) => setTimeout(r, 200)); if (!taskMails('tina@ovantaa.com').some((s) => /New task for you: E2E: collect signed PO \(due Tue, 15 Dec 2026\)/.test(s))) errors.push('assignee email not sent ' + JSON.stringify(taskMails('tina@ovantaa.com')));
+const ctx6 = await browser.newContext({ viewport: { width: 1360, height: 900 } }); const p6 = await ctx6.newPage(); p6.on('pageerror', (e) => errors.push('pageerror(tasks): ' + e.message));
+await p6.goto(base); await p6.fill('input[name=email]', 'tina@ovantaa.com'); await p6.fill('input[name=password]', 'Ovantaa@123'); await p6.click('button.primary');
+await p6.waitForSelector('.kpi'); await p6.waitForSelector('a[data-nav=tasks] .badge', { timeout: 5000 }).catch(() => errors.push('no task count badge in the menu for the assignee'));
+await p6.click('a[data-nav=tasks]'); await p6.click('button[data-act=tab][data-t=to_me]'); await p6.click('a[data-act=open]:has-text("E2E: collect signed PO")');
+await p6.waitForSelector('.modal button[data-act=issue]'); await p6.click('.modal button[data-act=issue]'); await p6.fill('#tp-form textarea[name=note]', 'Customer says the PO needs a revised quote first');
+await p6.setInputFiles('#tp-form input[name=tfiles]', [{ name: 'customer-email.txt', mimeType: 'text/plain', buffer: Buffer.from('Please revise') }, { name: 'old-quote.csv', mimeType: 'text/csv', buffer: Buffer.from('a,b\n1,2') }]);
+await p6.click('#tp-form button[data-act=go]'); await p6.waitForSelector('.modal .timeline :text("Customer says the PO needs a revised quote first")', { timeout: 5000 }).catch(() => errors.push('issue not on the timeline'));
+await p6.waitForSelector('.modal #tp-files a:has-text("customer-email.txt")', { timeout: 5000 }).catch(() => errors.push('issue files not attached')); await p6.screenshot({ path: `${process.env.SHOTS || '/tmp'}/task-issue.png` });
+await new Promise((r) => setTimeout(r, 200)); if (!taskMails('admin@ovantaa.com').some((s) => /Issue raised on task: E2E: collect signed PO/.test(s))) errors.push('assigner not emailed about the issue');
+await page.goto(`${base}/#/dashboard`); await page.click('a[data-nav=tasks]'); await page.click('button[data-act=tab][data-t=by_me]'); await page.waitForSelector('tr.row-issue a[data-act=open]:has-text("E2E: collect signed PO")', { timeout: 5000 }).catch(() => errors.push('issue row not highlighted for the assigner'));
+await shot('tasks-by-me'); await page.click('tr.row-issue a[data-act=open]'); await page.click('.modal button[data-act=reassign]'); await page.fill('#tp-form input[name=due]', '2026-12-18'); await page.fill('#tp-form textarea[name=note]', 'Revised quote attached');
+await page.setInputFiles('#tp-form input[name=tfiles]', { name: 'quote-v3.txt', mimeType: 'text/plain', buffer: Buffer.from('v3') }); await page.click('#tp-form button[data-act=go]');
+await page.waitForSelector('.modal .timeline :text("Sent back to Tina")', { timeout: 5000 }).catch(() => errors.push('send back not recorded'));
+await new Promise((r) => setTimeout(r, 200)); if (!taskMails('tina@ovantaa.com').some((s) => /sent back to you: E2E: collect signed PO \(due Fri, 18 Dec 2026\)/.test(s))) errors.push('assignee not emailed on send back');
+await page.keyboard.press('Escape');
+await p6.goto(`${base}/#/dashboard`); await p6.goto(`${base}/#/tasks?task=${await page.evaluate(() => fetch('/api/tasks?q=E2E%3A%20collect').then((r) => r.json()).then((j) => j.rows[0].id))}`);
+await p6.waitForSelector('.modal button[data-act=done]', { timeout: 5000 }).catch(() => errors.push('email link did not open the task')); await p6.click('.modal button[data-act=done]'); await p6.fill('#tp-form textarea[name=note]', 'PO received');
+await p6.click('#tp-form button[data-act=go]'); await p6.waitForSelector('.modal button[data-act=reopen]', { timeout: 5000 }).catch(() => errors.push('task not completed')); await ctx6.close();
+await new Promise((r) => setTimeout(r, 200)); if (!taskMails('admin@ovantaa.com').some((s) => /Task completed: E2E: collect signed PO/.test(s))) errors.push('assigner not emailed on completion');
 // segment builder + deal drag/drop
 await page.click('a[data-nav=segments]'); await page.click('text=+ New segment'); await page.fill('.modal input[name=name]', 'E2E seg');
 await page.waitForSelector('#segprev b'); await page.click('.modal button[type=submit]'); await page.waitForSelector('td:has-text("E2E seg")');
