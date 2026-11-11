@@ -221,6 +221,7 @@ export function remove(ent, id, user) {
   run(`DELETE FROM ${ent.table} WHERE id=?`, id);
   dropFiles(ent.table, id);
   audit(user, 'delete', ent.table, id, existing.name || existing.title || existing.first_name);
+  hooks.removed?.[ent.table]?.(existing, user);
   if (ent.table === 'deals') notify(['deal.deleted'], existing, {}, user);
   if (ent.table === 'contacts') notify(['contact.deleted'], existing, {}, user);
   return { ok: true };

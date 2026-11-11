@@ -105,7 +105,9 @@ Custom values appear on the record's detail page (grouped by your sections), in 
 * **The assignee** opens a task and can **Mark complete** (with an optional note) or **Raise an issue** (a description is required) — both can attach **several files**. The person who assigned it is emailed either way.
 * **The assigner** sees issues highlighted, can **Reply** (emails the assignee), **Reopen**, or **Resolve & send back / Reassign** — to the same person or someone else, with a new due date, a note and files. The new assignee is emailed (and the previous one is told it moved).
 * Every step is on the task's **timeline** (who, when, what), and all files are in the task's *Files* card with the viewer.
-* Emails go out from your **default email sender** (*Email senders*); with none configured they are only simulated and appear in the email log. People with own-scope roles also see tasks they assigned to others.
+* **Emails on every change** — assigned, reassigned / moved away, sent back, edited (due date, title, priority, details, related records — the email lists what changed), reply, issue raised, completed, reopened and deleted. The person who made the change is not emailed about it.
+* Task and notification emails use your **default sender if it is a real mailbox**, otherwise the first active real (SMTP) sender — never the built-in *Demo sender (simulation)* when a real one exists. Adding your first real sender also makes it the default. After each action the app tells you who is being emailed and from which address; if only the simulation sender exists, the Tasks page shows a warning and nothing is claimed as sent. A delivery failure (wrong password, server down…) appears on the task's timeline with the server's message, and every task email is in *Notifications → Email log*.
+* People with own-scope roles also see tasks they assigned to others.
 
 ## AI search
 
@@ -151,7 +153,7 @@ See [`docs/ROADMAP-CRITICAL-GAPS.md`](docs/ROADMAP-CRITICAL-GAPS.md). Done: foun
 
 ## Tests
 ```bash
-npm test       # 78 tests (API, permissions, migrations, backups): auth, CRUD, injection, campaigns, SMTP sending against a local fake mail server,
+npm test       # 82 tests (API, permissions, migrations, backups): auth, CRUD, injection, campaigns, SMTP sending against a local fake mail server,
                # daily-limit pause/resume, notifications, AI (fake Claude API), themes, import options
 npm run e2e    # browser test (needs Playwright + Chromium): navigation, forms, xlsx import, theme, AI panel, drag-and-drop
 npm run seed   # reset to demo data

@@ -226,7 +226,7 @@ const liamId = await page.evaluate(async () => (await (await fetch('/api/users',
 await page.goto(`${base}/#/tasks`); await page.reload(); await page.waitForSelector('text=+ New task'); await page.click('text=+ New task'); await page.fill('.modal input[name=title]', 'E2E: collect signed PO');
 await page.fill('.modal input[name=due_date]', '2026-12-15');
 await page.selectOption('.modal select[name=owner_id]', String(liamId)); await page.waitForSelector('.modal textarea[name=assign_note]:visible'); await page.fill('.modal textarea[name=assign_note]', 'Customer promised it this week');
-await shot('task-assign'); await page.click('.modal button[type=submit]'); await page.waitForSelector('.toast:has-text("they have been emailed")', { timeout: 5000 }).catch(() => errors.push('assign toast missing'));
+await shot('task-assign'); await page.click('.modal button[type=submit]'); await page.waitForSelector('.toast:has-text("Task assigned to Tina Field")', { timeout: 5000 }).catch(() => errors.push('assign toast missing'));
 await new Promise((r) => setTimeout(r, 200)); if (!taskMails('tina@ovantaa.com').some((s) => /New task for you: E2E: collect signed PO \(due Tue, 15 Dec 2026\)/.test(s))) errors.push('assignee email not sent ' + JSON.stringify(taskMails('tina@ovantaa.com')));
 const ctx6 = await browser.newContext({ viewport: { width: 1360, height: 900 } }); const p6 = await ctx6.newPage(); p6.on('pageerror', (e) => errors.push('pageerror(tasks): ' + e.message));
 await p6.goto(base); await p6.fill('input[name=email]', 'tina@ovantaa.com'); await p6.fill('input[name=password]', 'Ovantaa@123'); await p6.click('button.primary');

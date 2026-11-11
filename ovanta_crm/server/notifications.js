@@ -1,6 +1,6 @@
 import { all, get } from './db.js';
 import { config } from './config.js';
-import { getSender, defaultSender, sendLogged } from './mailer.js';
+import { getSender, defaultSender, systemSender, sendLogged } from './mailer.js';
 
 export const EVENTS = {
   'contact.created': 'Contact added',
@@ -112,8 +112,8 @@ export function notify(events, rec, ctx = {}, actor = null) {
     }
     for (const [email, { rule, event }] of plan) {
       const msg = render(event, rec, ctx, rule, actor);
-      const sender = (rule.sender_id && getSender(rule.sender_id)) || defaultSender() || null;
-      enqueue(() => sendLogged({ sender: sender?.active === 0 ? defaultSender() : sender, to: email, ...msg, kind: 'notification', rule_id: rule.id, event }));
+      const sender = (rule.sender_id && getSender(rule.sender_id)) || systemSender() || null;
+      enqueue(() => sendLogged({ sender: sender?.active === 0 ? systemSender() : sender, to: email, ...msg, kind: 'notification', rule_id: rule.id, event }));
     }
   } catch (e) { console.error('notify failed', e); }
 }
@@ -139,6 +139,6 @@ export async function testRule(rule, user) {
   const sample = { id: 0, name: 'Sample deal — Acme renewal', amount: 42000, stage: 'negotiation', probability: 75, account_name: 'Acme Corp', close_date: '2026-12-15', owner_name: user.name,
     first_name: 'Sample', last_name: 'Contact', email: 'sample@example.com', title: 'VP Sales', status: 'lead', source: 'Website', industry: 'Software' };
   const msg = render(rule.event, sample, { count: 25, created: 20, updated: 5, changes: [{ field: 'Stage', from: 'proposal', to: 'negotiation' }] }, rule, user);
-  const sender = (rule.sender_id && getSender(rule.sender_id)) || defaultSender() || null;
+  const sender = (rule.sender_id && getSender(rule.sender_id)) || systemSender() || null;
   return sendLogged({ sender, to: user.email, ...msg, subject: `[TEST] ${msg.subject}`, kind: 'test', rule_id: rule.id, event: rule.event });
 }

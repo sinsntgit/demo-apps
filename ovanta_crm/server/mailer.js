@@ -43,6 +43,11 @@ export const forgetTransport = (id) => { transports.get(id)?.transporter.close?.
 
 export const getSender = (id) => get('SELECT * FROM senders WHERE id=?', id);
 export const defaultSender = () => get('SELECT * FROM senders WHERE active=1 AND is_default=1') || get('SELECT * FROM senders WHERE active=1 ORDER BY id LIMIT 1');
+/**
+ * Sender for system emails (task and notification emails): the default sender if it really sends, otherwise the first active
+ * real (SMTP) sender — so a leftover "Demo sender (simulation)" marked as default does not silently swallow them.
+ */
+export const systemSender = () => { const d = defaultSender(); if (d?.mode === 'smtp') return d; return get("SELECT * FROM senders WHERE active=1 AND mode='smtp' ORDER BY is_default DESC, id LIMIT 1") || d || null; };
 
 /** Messages this sender delivered in the last 24h (campaigns + notifications). */
 export function sentLast24h(senderId) {

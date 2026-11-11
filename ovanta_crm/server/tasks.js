@@ -3,7 +3,7 @@ import { all, get, run, audit, nowIso } from './db.js';
 import { config } from './config.js';
 import { ENTITIES, getOne, update, hooks } from './entities.js';
 import { hasPerm, scopeOf } from './permissions.js';
-import { defaultSender, sendLogged } from './mailer.js';
+import { systemSender, sendLogged } from './mailer.js';
 import { fileOut } from './files.js';
 
 /*
@@ -41,11 +41,17 @@ function mailFor(t, { heading, intro, note, actor }) {
 /** Email people (user ids) other than the actor. Sending happens in the background; failures are logged in the email log. */
 function mailUsers(ids, t, subject, content, actor) {
   const to = [...new Set(ids.filter((id) => id && id !== actor?.id))].map(userRow).filter((u) => u?.active && u.email);
-  if (!to.length) return [];
-  const sender = defaultSender() || null; const msg = mailFor(t, { ...content, actor });
-  for (const u of to) sendLogged({ sender, to: u.email, subject, ...msg, kind: 'task', event: content.event }).catch(() => {});
-  return to.map((u) => u.email);
+  if (!to.length) return null;
+  const sender = systemSender(); const msg = mailFor(t, { ...content, actor });
+  for (const u of to) {
+    sendLogged({ sender, to: u.email, subject, ...msg, kind: 'task', event: content.event })
+      .then((r) => { if (r.status === 'failed') addEvent(t.id, 'email_failed', `Email to ${u.name} <${u.email}> failed: ${r.error}`, null); })
+      .catch((e) => addEvent(t.id, 'email_failed', `Email to ${u.name} <${u.email}> failed: ${e.message}`, null));
+  }
+  return { to: to.map((u) => `${u.name} <${u.email}>`), via: sender ? `${sender.label} (${sender.from_email})` : 'no sender', simulated: !sender || sender.mode !== 'smtp' };
 }
+/** Merge several mailUsers() results into one notice for the UI. */
+const notice = (...xs) => { const ok = xs.filter(Boolean); return ok.length ? { to: ok.flatMap((x) => x.to), via: ok[0].via, simulated: ok.some((x) => x.simulated) } : null; };
 const others = (t, actor) => [t.owner_id, t.assigned_by].filter((id) => id && id !== actor.id);
 
 // ---------------------------------------------------------------- assignment (hooked into the normal task create/update)
@@ -59,13 +65,26 @@ hooks.before.tasks = (data, body, existing, user) => {
   if (existing) Object.assign(data, { status: 'open', done: 0, completed_at: null }); // a reassigned task starts again
   body.__assigned = { from: existing?.owner_id ?? null };
 };
+const EDITABLE = { title: 'Title', due_date: 'Due date', priority: 'Priority', notes: 'Details', contact_id: 'Related contact', deal_id: 'Related deal' };
+const show = (k, v, row) => (v == null || v === '' ? '—' : k === 'due_date' ? nice(v) : k === 'contact_id' ? (row?.contact_name || `#${v}`) : k === 'deal_id' ? (row?.deal_name || `#${v}`) : String(v).slice(0, 120));
 hooks.after.tasks = (t, existing, body, user) => {
-  if (!body.__assigned) return;
-  const from = body.__assigned.from; const note = String(body.assign_note || '').trim();
-  addEvent(t.id, existing ? 'reassigned' : 'assigned', `${existing ? `Reassigned from ${userRow(from)?.name || 'nobody'} to` : 'Assigned to'} ${t.owner_name}${note ? ` — ${note}` : ''}`, user);
-  if (t.owner_id !== user.id) mailUsers([t.owner_id], t, `${existing ? 'Task reassigned to you' : 'New task for you'}: ${t.title} (due ${nice(t.due_date)})`, { heading: existing ? 'A task was reassigned to you' : 'You have a new task', intro: `${user.name} assigned you a task due ${nice(t.due_date)}.`, note, event: 'task.assigned' }, user);
-  if (existing && from && from !== t.owner_id) mailUsers([from], t, `Task moved to ${t.owner_name}: ${t.title}`, { heading: 'A task was reassigned', intro: `${user.name} reassigned this task from you to ${t.owner_name}.`, note, event: 'task.reassigned' }, user);
+  if (body.__assigned) {
+    const from = body.__assigned.from; const note = String(body.assign_note || '').trim();
+    addEvent(t.id, existing ? 'reassigned' : 'assigned', `${existing ? `Reassigned from ${userRow(from)?.name || 'nobody'} to` : 'Assigned to'} ${t.owner_name}${note ? ` — ${note}` : ''}`, user);
+    t.email_notice = notice(
+      t.owner_id !== user.id && mailUsers([t.owner_id], t, `${existing ? 'Task reassigned to you' : 'New task for you'}: ${t.title} (due ${nice(t.due_date)})`, { heading: existing ? 'A task was reassigned to you' : 'You have a new task', intro: `${user.name} assigned you a task due ${nice(t.due_date)}.`, note, event: 'task.assigned' }, user),
+      existing && from && from !== t.owner_id && mailUsers([from], t, `Task moved to ${t.owner_name}: ${t.title}`, { heading: 'A task was reassigned', intro: `${user.name} reassigned this task from you to ${t.owner_name}.`, note, event: 'task.reassigned' }, user));
+    return;
+  }
+  if (!existing) return;
+  const changes = Object.keys(EDITABLE).filter((k) => (existing[k] ?? null) !== (t[k] ?? null)).map((k) => `${EDITABLE[k]}: ${show(k, existing[k], existing)} → ${show(k, t[k], t)}`);
+  if (!changes.length) return;
+  addEvent(t.id, 'updated', changes.join('\n'), user);
+  t.email_notice = notice(mailUsers(others(t, user), t, `Task updated: ${t.title}${changes.some((c) => c.startsWith('Due date')) ? ` (now due ${nice(t.due_date)})` : ''}`, { heading: 'A task was updated', intro: `${user.name} changed this task.`, note: changes.join('\n'), event: 'task.updated' }, user));
 };
+/** Deleting a task tells the other person involved. */
+hooks.removed = hooks.removed || {};
+hooks.removed.tasks = (t, user) => { mailUsers(others(t, user), { ...t, status: t.status }, `Task deleted: ${t.title}`, { heading: 'A task was deleted', intro: `${user.name} deleted this task.`, event: 'task.deleted' }, user); };
 
 // ---------------------------------------------------------------- who may act
 function loadTask(id, user) { return getOne(TASKS, id, user); } // respects own/all scope (own includes tasks you assigned)
@@ -83,8 +102,8 @@ export function setStatus(t, status, note, user) {
   const fresh = getOne(TASKS, t.id);
   const subject = { done: `Task completed: ${t.title}`, issue: `Issue raised on task: ${t.title}`, open: `Task reopened: ${t.title}` }[status];
   const intro = { done: `${user.name} marked this task as completed.`, issue: `${user.name} raised an issue on this task. Reply on the task, reopen it, or reassign it.`, open: `${user.name} reopened this task (due ${nice(fresh.due_date)}).` }[status];
-  mailUsers(others(fresh, user), fresh, subject, { heading: subject.split(':')[0], intro, note, event: `task.${kind}` }, user);
-  return activity(t.id, user);
+  const mail = mailUsers(others(fresh, user), fresh, subject, { heading: subject.split(':')[0], intro, note, event: `task.${kind}` }, user);
+  return { ...activity(t.id, user), mail };
 }
 
 export function activity(id, user) {
@@ -100,8 +119,8 @@ POST('/api/tasks/:id/comment', ({ params, body, user }) => {
   const t = loadTask(params.id, user); if (!canWork(t, user)) throw forbidden('Only the assignee or the person who assigned it can reply on this task.');
   const text = String(body.body || '').trim(); if (!text) throw bad('Write a reply first');
   addEvent(t.id, 'comment', text, user);
-  mailUsers(others(t, user), t, `New reply on task: ${t.title}`, { heading: 'New reply on a task', intro: `${user.name} replied on this task.`, note: text, event: 'task.comment' }, user);
-  return activity(t.id, user);
+  const mail = mailUsers(others(t, user), t, `New reply on task: ${t.title}`, { heading: 'New reply on a task', intro: `${user.name} replied on this task.`, note: text, event: 'task.comment' }, user);
+  return { ...activity(t.id, user), mail };
 });
 /** Reassign (to the same or another person), optionally with a new due date and a note. */
 POST('/api/tasks/:id/assign', ({ params, body, user }) => {
@@ -109,18 +128,19 @@ POST('/api/tasks/:id/assign', ({ params, body, user }) => {
   const to = Number(body.owner_id); if (!to) throw bad('Choose who should do the task');
   const patch = { owner_id: to, assign_note: body.note }; if (body.due_date !== undefined) patch.due_date = body.due_date || null;
   if (to === t.owner_id) { // same person again: reopen and remind them
-    update(TASKS, t.id, { due_date: patch.due_date ?? t.due_date, status: 'open' }, user);
+    run('UPDATE tasks SET due_date=? WHERE id=?', patch.due_date ?? t.due_date, t.id);
     run("UPDATE tasks SET status='open', done=0, completed_at=NULL, assigned_by=?, assigned_at=? WHERE id=?", user.id, nowIso(), t.id);
     const fresh = getOne(TASKS, t.id); const note = String(body.note || '').trim();
-    addEvent(t.id, 'reassigned', `Sent back to ${fresh.owner_name}${note ? ` — ${note}` : ''}`, user);
-    mailUsers([fresh.owner_id], fresh, `Task sent back to you: ${fresh.title} (due ${nice(fresh.due_date)})`, { heading: 'A task was sent back to you', intro: `${user.name} has addressed the issue and sent the task back to you. It is due ${nice(fresh.due_date)}.`, note, event: 'task.assigned' }, user);
-    return activity(t.id, user);
+    addEvent(t.id, 'reassigned', `Sent back to ${fresh.owner_name} (due ${nice(fresh.due_date)})${note ? ` — ${note}` : ''}`, user);
+    const mail = mailUsers([fresh.owner_id], fresh, `Task sent back to you: ${fresh.title} (due ${nice(fresh.due_date)})`, { heading: 'A task was sent back to you', intro: `${user.name} has addressed the issue and sent the task back to you. It is due ${nice(fresh.due_date)}.`, note, event: 'task.assigned' }, user);
+    return { ...activity(t.id, user), mail };
   }
-  update(TASKS, t.id, patch, user);
-  return activity(t.id, user);
+  const saved = update(TASKS, t.id, patch, user);
+  return { ...activity(t.id, user), mail: saved.email_notice || null };
 });
 /** Counts for the Tasks page tabs and the menu badge. */
 GET('/api/tasks-summary', ({ user }) => ({
+  email: (() => { const s = systemSender(); return { real: !!s && s.mode === 'smtp', via: s ? `${s.label} (${s.from_email})` : null }; })(),
   to_me_open: get("SELECT COUNT(*) n FROM tasks WHERE owner_id=? AND status<>'done'", user.id).n,
   to_me_overdue: get("SELECT COUNT(*) n FROM tasks WHERE owner_id=? AND status<>'done' AND due_date < date('now')", user.id).n,
   by_me_issues: get("SELECT COUNT(*) n FROM tasks WHERE assigned_by=? AND owner_id<>? AND status='issue'", user.id, user.id).n,

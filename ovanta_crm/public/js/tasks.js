@@ -6,7 +6,13 @@ const userOpts = () => store.meta.users.map((u) => [u.id, u.name]);
 const page = (title, actions = '') => html`<div class="topbar"><h1>${title}</h1><span class="grow"></span>${actions}</div>`;
 export const STATUS = { open: ['Open', 'qualification'], issue: ['Issue raised', 'lost'], done: ['Completed', 'won'] };
 export const statusBadge = (s) => { const [l, c] = STATUS[s] || [s, '']; return html`<span class="badge ${c}" style="text-transform:none">${l}</span>`; };
-const EVENT = { assigned: '📌 Assigned', reassigned: '🔁 Reassigned', issue: '⚠️ Issue raised', completed: '✅ Completed', reopened: '↩️ Reopened', comment: '💬 Reply' };
+const EVENT = { assigned: '📌 Assigned', reassigned: '🔁 Reassigned', issue: '⚠️ Issue raised', completed: '✅ Completed', reopened: '↩️ Reopened', comment: '💬 Reply', updated: '✏️ Updated', email_failed: '✉️ Email failed' };
+/** Tell the user truthfully who was emailed, or why nobody was. */
+export function mailToast(n, done = 'Saved') {
+  if (!n) return toast(done, 'ok');
+  if (n.simulated) return toast(`${done} — but NOT emailed: there is no real email sender (only the simulation one). Add or activate a real sender in Email senders.`, 'bad');
+  toast(`${done} — emailing ${n.to.map((x) => x.replace(/ <.*/, '')).join(', ')} via ${n.via}`, 'ok');
+}
 const overdue = (t) => t.status !== 'done' && t.due_date && t.due_date < todayStr();
 
 /** Create / edit a task. Assigning it to someone else emails them the task and its due date. */
@@ -25,7 +31,7 @@ export async function taskForm(t = {}, onDone) {
     onSubmit: async (form) => {
       const v = formValues(form, fields); v.assign_note = form.assign_note.value;
       const saved = t.id ? await api('PUT', `/tasks/${t.id}`, v) : await api('POST', '/tasks', v);
-      toast(saved.owner_id !== store.user.id && (!t.id || t.owner_id !== saved.owner_id) ? `Task assigned to ${saved.owner_name} — they have been emailed` : 'Task saved', 'ok'); onDone?.(saved);
+      mailToast(saved.email_notice, saved.owner_id !== store.user.id && (!t.id || t.owner_id !== saved.owner_id) ? `Task assigned to ${saved.owner_name}` : 'Task saved'); onDone?.(saved);
     } });
 }
 
@@ -45,7 +51,7 @@ export async function openTask(id, onChange) {
       <button type="button" class="btn" data-act="reply">💬 Reply</button>
       <button type="button" class="btn" data-act="reassign">🔁 ${t.status === 'issue' && a.is_assigner ? 'Resolve & send back / reassign' : 'Reassign'}</button></div>` : ''}
     <div id="tp-form"></div>
-    <div class="grid g2"><div><h3 style="margin-top:0">Timeline</h3><ul class="timeline">${a.events.map((e) => html`<li><div><b>${EVENT[e.kind] || e.kind}</b> <span class="small muted">· ${e.actor_name || 'system'} · ${fmtDateTime(e.created_at)}</span></div>${e.body ? html`<div style="margin-top:4px;white-space:pre-wrap;${e.kind === 'issue' ? 'padding:6px 10px;background:#fee2e2;color:#7f1d1d;border-radius:8px' : ''}">${e.body}</div>` : ''}</li>`)}</ul>${a.events.length ? '' : html`<p class="muted small">No activity yet.</p>`}</div>
+    <div class="grid g2"><div><h3 style="margin-top:0">Timeline</h3><ul class="timeline">${a.events.map((e) => html`<li><div><b>${EVENT[e.kind] || e.kind}</b> <span class="small muted">· ${e.actor_name || 'system'} · ${fmtDateTime(e.created_at)}</span></div>${e.body ? html`<div style="margin-top:4px;white-space:pre-wrap;${['issue', 'email_failed'].includes(e.kind) ? 'padding:6px 10px;background:#fee2e2;color:#7f1d1d;border-radius:8px' : ''}">${e.body}</div>` : ''}</li>`)}</ul>${a.events.length ? '' : html`<p class="muted small">No activity yet.</p>`}</div>
       <div id="tp-files"></div></div>`,
   onOpen: (form, close) => {
     const box = $('#tp-form', form); const refresh = () => { close(); onChange?.(); openTask(id, onChange); };
@@ -58,13 +64,13 @@ export async function openTask(id, onChange) {
     const filesInput = html`<label>Attach files (optional)<input type="file" name="tfiles" multiple></label>`;
     const sendFiles = async () => { const inp = box.querySelector('[name=tfiles]'); if (inp?.files?.length) await uploadFiles('tasks', id, inp.files); };
     on(form, {
-      done: () => sub(html`<label>Completion note (optional)<textarea name="note" rows="2" placeholder="What was done"></textarea></label>${filesInput}`, 'Mark complete', async () => { await api('POST', `/tasks/${id}/status`, { status: 'done', note: box.querySelector('[name=note]').value }); await sendFiles(); toast(`Completed${t.assigned_by && t.assigned_by !== store.user.id ? ` — ${t.assigned_by_name} has been emailed` : ''}`, 'ok'); }),
-      issue: () => sub(html`<label>What is the problem?<span class="req">*</span><textarea name="note" rows="3" placeholder="e.g. Waiting for the customer's PO; the price list is out of date…"></textarea></label>${filesInput}`, 'Raise issue', async () => { await api('POST', `/tasks/${id}/status`, { status: 'issue', note: box.querySelector('[name=note]').value }); await sendFiles(); toast(`Issue raised — ${t.assigned_by_name || 'the assigner'} has been emailed`, 'ok'); }),
-      reopen: () => sub(html`<label>Why reopen? (optional)<textarea name="note" rows="2"></textarea></label>`, 'Reopen', async () => { await api('POST', `/tasks/${id}/status`, { status: 'open', note: box.querySelector('[name=note]').value }); toast('Reopened', 'ok'); }),
-      reply: () => sub(html`<label>Reply<textarea name="note" rows="3"></textarea></label>${filesInput}`, 'Send reply', async () => { await api('POST', `/tasks/${id}/comment`, { body: box.querySelector('[name=note]').value }); await sendFiles(); toast('Reply sent', 'ok'); }),
+      done: () => sub(html`<label>Completion note (optional)<textarea name="note" rows="2" placeholder="What was done"></textarea></label>${filesInput}`, 'Mark complete', async () => { const r = await api('POST', `/tasks/${id}/status`, { status: 'done', note: box.querySelector('[name=note]').value }); await sendFiles(); mailToast(r.mail, 'Completed'); }),
+      issue: () => sub(html`<label>What is the problem?<span class="req">*</span><textarea name="note" rows="3" placeholder="e.g. Waiting for the customer's PO; the price list is out of date…"></textarea></label>${filesInput}`, 'Raise issue', async () => { const r = await api('POST', `/tasks/${id}/status`, { status: 'issue', note: box.querySelector('[name=note]').value }); await sendFiles(); mailToast(r.mail, 'Issue raised'); }),
+      reopen: () => sub(html`<label>Why reopen? (optional)<textarea name="note" rows="2"></textarea></label>`, 'Reopen', async () => { const r = await api('POST', `/tasks/${id}/status`, { status: 'open', note: box.querySelector('[name=note]').value }); mailToast(r.mail, 'Reopened'); }),
+      reply: () => sub(html`<label>Reply<textarea name="note" rows="3"></textarea></label>${filesInput}`, 'Send reply', async () => { const r = await api('POST', `/tasks/${id}/comment`, { body: box.querySelector('[name=note]').value }); await sendFiles(); mailToast(r.mail, 'Reply added'); }),
       reassign: () => sub(html`<div class="row"><label>Assign to<select name="owner">${others.map(([v, l]) => html`<option value="${v}" ${v === t.owner_id ? raw('selected') : ''}>${l}${v === t.owner_id ? ' (current)' : ''}</option>`)}</select></label><label>Due date<input type="date" name="due" value="${t.due_date || ''}"></label></div>
           <label>Note for them<textarea name="note" rows="2" placeholder="${t.status === 'issue' ? 'How the issue was resolved' : 'Why it is being reassigned'}"></textarea></label>${filesInput}<p class="small muted" style="margin-top:-4px">The task is reopened and they are emailed with the due date.</p>`,
-        'Assign', async () => { const to = Number(box.querySelector('[name=owner]').value); await sendFiles(); await api('POST', `/tasks/${id}/assign`, { owner_id: to, due_date: box.querySelector('[name=due]').value, note: box.querySelector('[name=note]').value }); toast(`Assigned to ${others.find(([v]) => v === to)?.[1]}`, 'ok'); }),
+        'Assign', async () => { const to = Number(box.querySelector('[name=owner]').value); await sendFiles(); const r = await api('POST', `/tasks/${id}/assign`, { owner_id: to, due_date: box.querySelector('[name=due]').value, note: box.querySelector('[name=note]').value }); mailToast(r.mail, `Assigned to ${others.find(([v]) => v === to)?.[1]}`); }),
     });
   } });
 }
@@ -75,7 +81,8 @@ export async function tasks(root) {
   setHtml(head, page('Tasks', html`<button class="btn primary" data-act="new">+ New task</button>${allow('data.purge') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`));
   const drawTabs = async () => {
     const s = await api('GET', '/tasks-summary').catch(() => ({}));
-    setHtml(tabs, html`<div class="tabs" role="tablist" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+    setHtml(tabs, html`${s.email && !s.email.real ? html`<div class="banner warn" style="margin-bottom:12px;padding:10px 14px;border-radius:10px;background:#fef3c7;color:#78350f">⚠️ <b>Task emails are not being delivered.</b> The only email sender is a simulation${s.email.via ? ` (${s.email.via})` : ''}. ${allow('senders.view') ? html`Add your Gmail / GoDaddy / Titan mailbox in <a href="#/senders">Email senders</a> and click Verify — task emails will then use it automatically.` : 'Ask an administrator to add a real email sender.'}</div>` : ''}
+    <div class="tabs" role="tablist" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
       ${[['to_me', `Assigned to me`, s.to_me_open, s.to_me_overdue ? `${s.to_me_overdue} overdue` : ''], ['by_me', 'Assigned by me', s.by_me_open, s.by_me_issues ? `${s.by_me_issues} issue${s.by_me_issues > 1 ? 's' : ''}` : ''], ...(seeAll ? [['all', 'All tasks']] : [])].map(([k, l, n, warn]) =>
         html`<button class="btn ${k === tab ? 'primary' : ''}" role="tab" aria-selected="${k === tab}" data-act="tab" data-t="${k}">${l}${n ? html` <span class="badge plain" style="margin-left:4px">${n}</span>` : ''}${warn ? html` <span class="badge lost plain">${warn}</span>` : ''}</button>`)}</div>`);
   };

@@ -50,7 +50,9 @@ GET('/api/senders', () => all('SELECT * FROM senders ORDER BY is_default DESC, l
 POST('/api/senders', ({ body, user }) => {
   const d = senderInput(body); const cols = Object.keys(d);
   const id = Number(run(`INSERT INTO senders (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`, ...Object.values(d)).lastInsertRowid);
-  if (body.is_default || get('SELECT COUNT(*) n FROM senders').n === 1) setDefault(id);
+  const curDefault = get('SELECT mode FROM senders WHERE is_default=1 AND active=1 AND id<>?', id);
+  // the first real mailbox replaces a simulation default, so notifications and task emails start going out without extra steps
+  if (body.is_default || get('SELECT COUNT(*) n FROM senders').n === 1 || (d.mode === 'smtp' && (!curDefault || curDefault.mode !== 'smtp'))) setDefault(id);
   audit(user, 'create', 'senders', id, d.from_email);
   return pub(senderById(id));
 });
