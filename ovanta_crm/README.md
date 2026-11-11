@@ -109,6 +109,13 @@ Custom values appear on the record's detail page (grouped by your sections), in 
 * Task and notification emails use your **default sender if it is a real mailbox**, otherwise the first active real (SMTP) sender — never the built-in *Demo sender (simulation)* when a real one exists. Adding your first real sender also makes it the default. After each action the app tells you who is being emailed and from which address; if only the simulation sender exists, the Tasks page shows a warning and nothing is claimed as sent. A delivery failure (wrong password, server down…) appears on the task's timeline with the server's message, and every task email is in *Notifications → Email log*.
 * People with own-scope roles also see tasks they assigned to others.
 
+## Two currencies on deals
+
+* **Settings → Deal currencies** (administrators): choose **Currency 1** (what deal amounts are entered in, e.g. USD) and **Currency 2** (e.g. SAR), then add **one rate per year** — *2026: 1 USD = 3.76 SAR*. Every change is kept in the *Change history* (who, when, old → new); switching to another currency pair keeps the old pair's rates and brings them back if you switch again.
+* **Which year's rate a deal uses:** while a deal is open, the year of its **expected close date** (or of its **created date** if no close date is set); once it is **won or lost**, the year it was **closed**. If that year has no rate yet, the latest earlier year's rate is used and the deal page says so; with no rate at all the deal is not converted.
+* Amounts are converted live, so correcting a year's rate updates every deal of that year.
+* Shown on the **deal page** (*≈ SAR 37,600* with the rate and the date it was based on), as an extra **Amount (SAR)** column in the deals list (sortable), on **board cards and column totals**, and on the **dashboard** (open pipeline, forecast, closed won, top deals, leaderboard, monthly revenue on hover). **AI search** understands amounts in either currency.
+
 ## Several people working on the same record
 
 * **Edits merge.** An edit form sends only the fields you changed. If Liam changes a deal's amount while Maya changes its close date, both changes are kept.
@@ -161,7 +168,7 @@ See [`docs/ROADMAP-CRITICAL-GAPS.md`](docs/ROADMAP-CRITICAL-GAPS.md). Done: foun
 
 ## Tests
 ```bash
-npm test       # 89 tests (API, permissions, migrations, backups): auth, CRUD, injection, campaigns, SMTP sending against a local fake mail server,
+npm test       # 93 tests (API, permissions, migrations, backups): auth, CRUD, injection, campaigns, SMTP sending against a local fake mail server,
                # daily-limit pause/resume, notifications, AI (fake Claude API), themes, import options
 npm run e2e    # browser test (needs Playwright + Chromium): navigation, forms, xlsx import, theme, AI panel, drag-and-drop
 npm run seed   # reset to demo data

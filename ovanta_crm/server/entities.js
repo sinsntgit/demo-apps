@@ -55,10 +55,11 @@ export const ENTITIES = {
     enums: { stage: STAGES.map((s) => s.key) },
     search: ['d.name', 'ac.name'],
     filters: { stage: 'd.stage', owner_id: 'd.owner_id', account_id: 'd.account_id', contact_id: 'd.contact_id' },
-    sorts: { name: 'd.name', amount: 'd.amount', stage: 'd.stage', close_date: 'd.close_date', created_at: 'd.created_at' },
+    sorts: { name: 'd.name', amount: 'd.amount', amount2: 'fx.amount2', stage: 'd.stage', close_date: 'd.close_date', created_at: 'd.created_at' },
     defaultSort: 'd.created_at DESC',
-    select: `SELECT d.*, ac.name AS account_name, TRIM(c.first_name || ' ' || COALESCE(c.last_name,'')) AS contact_name, u.name AS owner_name
-      FROM deals d LEFT JOIN accounts ac ON ac.id=d.account_id LEFT JOIN contacts c ON c.id=d.contact_id LEFT JOIN users u ON u.id=d.owner_id`,
+    select: `SELECT d.*, ac.name AS account_name, TRIM(c.first_name || ' ' || COALESCE(c.last_name,'')) AS contact_name, u.name AS owner_name,
+      fx.amount2, fx.fx_rate, fx.fx_year, fx.fx_exact, fx.rate_date
+      FROM deals d LEFT JOIN accounts ac ON ac.id=d.account_id LEFT JOIN contacts c ON c.id=d.contact_id LEFT JOIN users u ON u.id=d.owner_id LEFT JOIN deal_fx fx ON fx.deal_id=d.id`,
   },
   tasks: {
     table: 'tasks', alias: 't', noun: 'Task',

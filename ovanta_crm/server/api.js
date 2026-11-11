@@ -16,6 +16,7 @@ import { notify, EVENTS } from './notifications.js';
 import { aiConfigured, aiModel } from './ai.js';
 import { getTheme, getSetting } from './settings.js';
 import { setStatus } from './tasks.js';
+import { currencyMeta } from './currency.js';
 
 const MGR = ['admin', 'manager'];
 
@@ -59,7 +60,7 @@ function checkPassword(p) {
 
 // ---------- Meta ----------
 GET('/api/meta', () => ({
-  version: config.version,
+  version: config.version, currency: currencyMeta(),
   stages: STAGES, mergeTags: MERGE_TAGS, segmentFields: Object.fromEntries(Object.entries(segmentFields()).map(([k, v]) => [k, { label: v.label, type: v.type, options: v.options }])),
   segmentOps: SEGMENT_OPS, users: all('SELECT id,name,role FROM users WHERE active=1 ORDER BY name'),
   industries: all("SELECT DISTINCT industry v FROM accounts WHERE industry IS NOT NULL ORDER BY 1").map((r) => r.v),
@@ -439,31 +440,33 @@ GET('/api/dashboard', ({ user, query }) => {
   const mine = query.scope === 'mine' || scopeOf(user, 'deals.view') === 'own' || scopeOf(user, 'contacts.view') === 'own';
   const o = mine ? ` AND owner_id=${Number(user.id)}` : '';
   const month = (col) => `strftime('%Y-%m', ${col})`;
-  const pipeline = STAGES.map((s) => ({ ...s, ...get(`SELECT COUNT(*) AS count, COALESCE(SUM(amount),0) AS amount FROM deals WHERE stage=?${o}`, s.key) }));
+  const FX = ' LEFT JOIN deal_fx fx ON fx.deal_id = deals.id';
+  const pipeline = STAGES.map((s) => ({ ...s, ...get(`SELECT COUNT(*) AS count, COALESCE(SUM(amount),0) AS amount, COALESCE(SUM(fx.amount2),0) AS amount2 FROM deals${FX} WHERE stage=?${o}`, s.key) }));
   const open = pipeline.filter((s) => !['won', 'lost'].includes(s.key));
-  const forecast = get(`SELECT COALESCE(SUM(amount*probability/100.0),0) AS v FROM deals WHERE stage NOT IN ('won','lost')${o}`).v;
+  const fc = get(`SELECT COALESCE(SUM(amount*probability/100.0),0) AS v, COALESCE(SUM(fx.amount2*probability/100.0),0) AS v2 FROM deals${FX} WHERE stage NOT IN ('won','lost')${o}`); const forecast = fc.v;
   const won = get(`SELECT COUNT(*) AS n FROM deals WHERE stage='won'${o}`).n, lost = get(`SELECT COUNT(*) AS n FROM deals WHERE stage='lost'${o}`).n;
   const months = [];
   for (let i = 5; i >= 0; i--) { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i); months.push(d.toISOString().slice(0, 7)); }
-  const revRows = all(`SELECT ${month('COALESCE(closed_at, close_date, created_at)')} AS m, SUM(amount) AS v FROM deals WHERE stage='won'${o} GROUP BY m`);
+  const revRows = all(`SELECT ${month('COALESCE(closed_at, close_date, deals.created_at)')} AS m, SUM(amount) AS v, SUM(fx.amount2) AS v2 FROM deals${FX} WHERE stage='won'${o} GROUP BY m`);
   const newRows = all(`SELECT ${month('created_at')} AS m, COUNT(*) AS n FROM contacts WHERE 1=1${o} GROUP BY m`);
   return {
     kpis: {
       contacts: get(`SELECT COUNT(*) n FROM contacts WHERE 1=1${o}`).n,
       accounts: get(`SELECT COUNT(*) n FROM accounts WHERE 1=1${o}`).n,
-      openDeals: open.reduce((a, s) => a + s.count, 0), pipelineValue: open.reduce((a, s) => a + s.amount, 0), forecast,
-      wonValue: pipeline.find((s) => s.key === 'won').amount, winRate: won + lost ? won / (won + lost) : 0,
+      openDeals: open.reduce((a, s) => a + s.count, 0), pipelineValue: open.reduce((a, s) => a + s.amount, 0), pipelineValue2: open.reduce((a, s) => a + s.amount2, 0), forecast, forecast2: fc.v2,
+      wonValue: pipeline.find((s) => s.key === 'won').amount, wonValue2: pipeline.find((s) => s.key === 'won').amount2,
+      dealsWithoutRate: get(`SELECT COUNT(*) n FROM deals${FX} WHERE fx.fx_rate IS NULL${o}`).n, winRate: won + lost ? won / (won + lost) : 0,
       openTasks: get(`SELECT COUNT(*) n FROM tasks WHERE done=0${o}`).n,
       overdueTasks: get(`SELECT COUNT(*) n FROM tasks WHERE done=0 AND due_date < date('now')${o}`).n,
     },
     pipeline,
-    revenueByMonth: months.map((m) => ({ month: m, value: revRows.find((r) => r.m === m)?.v || 0, contacts: newRows.find((r) => r.m === m)?.n || 0 })),
+    revenueByMonth: months.map((m) => ({ month: m, value: revRows.find((r) => r.m === m)?.v || 0, value2: revRows.find((r) => r.m === m)?.v2 || 0, contacts: newRows.find((r) => r.m === m)?.n || 0 })),
     leadSources: all(`SELECT COALESCE(source,'Unknown') AS source, COUNT(*) AS count FROM contacts WHERE 1=1${o} GROUP BY 1 ORDER BY 2 DESC LIMIT 8`),
     contactsByStatus: all(`SELECT status, COUNT(*) AS count FROM contacts WHERE 1=1${o} GROUP BY status`),
-    topDeals: all(`SELECT d.id, d.name, d.amount, d.stage, ac.name AS account_name FROM deals d LEFT JOIN accounts ac ON ac.id=d.account_id WHERE d.stage NOT IN ('won','lost')${o.replace('owner_id', 'd.owner_id')} ORDER BY d.amount DESC LIMIT 5`),
+    topDeals: all(`SELECT d.id, d.name, d.amount, fx.amount2, d.stage, ac.name AS account_name FROM deals d LEFT JOIN accounts ac ON ac.id=d.account_id LEFT JOIN deal_fx fx ON fx.deal_id=d.id WHERE d.stage NOT IN ('won','lost')${o.replace('owner_id', 'd.owner_id')} ORDER BY d.amount DESC LIMIT 5`),
     tasksDue: all(`SELECT t.id, t.title, t.due_date, t.priority FROM tasks t WHERE t.done=0${o.replace('owner_id', 't.owner_id')} ORDER BY t.due_date IS NULL, t.due_date LIMIT 6`),
     recentActivity: all('SELECT a.id, a.type, a.body, a.created_at, a.contact_id, a.deal_id, a.account_id, u.name AS user_name FROM activities a LEFT JOIN users u ON u.id=a.user_id ORDER BY a.created_at DESC, a.id DESC LIMIT 8'),
     campaigns: all(`${CAMPAIGN_LIST} WHERE c.status IN ('sent','sending') ORDER BY COALESCE(c.sent_at,c.created_at) DESC LIMIT 4`),
-    leaderboard: all("SELECT u.name, COUNT(d.id) AS deals, COALESCE(SUM(d.amount),0) AS value FROM users u JOIN deals d ON d.owner_id=u.id AND d.stage='won' GROUP BY u.id ORDER BY value DESC LIMIT 5"),
+    leaderboard: all("SELECT u.name, COUNT(d.id) AS deals, COALESCE(SUM(d.amount),0) AS value, COALESCE(SUM(fx.amount2),0) AS value2 FROM users u JOIN deals d ON d.owner_id=u.id AND d.stage='won' LEFT JOIN deal_fx fx ON fx.deal_id=d.id GROUP BY u.id ORDER BY value DESC LIMIT 5"),
   };
 });

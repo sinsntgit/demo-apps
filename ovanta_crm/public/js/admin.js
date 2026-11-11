@@ -2,6 +2,7 @@ import {
   api, html, raw, setHtml, on, store, toast, fail, modal, confirmBox, field, formValues, badge, fmtDate, fmtDateTime, ago, applyTheme, purgeModal, allow, THEME_PRESETS, DEFAULT_THEME, $,
 } from './core.js';
 import { securityCard } from './security.js';
+import { currencyCard } from './currency.js';
 
 const page = (title, actions = '') => html`<div class="topbar"><h1>${title}</h1><span class="grow"></span>${actions}</div>`;
 
@@ -109,6 +110,7 @@ export async function settings(root) {
       <div class="card"><div class="hd"><h2>Email delivery</h2></div><div class="bd">
         <p>Sending is configured per sender mailbox under <a href="#/senders"><b>Email senders</b></a> (Google, Microsoft 365, Zoho or any SMTP server) — add one entry per address you send from. Notification emails are configured under <a href="#/notifications"><b>Notifications</b></a>.</p>
         <p class="muted small">Tracking links use <span class="mono">${m_baseUrl()}</span>. Set the <span class="mono">BASE_URL</span> environment variable to your public address so opens, clicks and unsubscribes reach this server.</p></div></div></div>
+    <div class="mt" id="fxcard"></div>
     <div class="mt" id="seccard"></div>
     ${canBackup ? html`<div class="card mt"><div class="hd"><h2>Backups</h2><span class="muted small">an automatic backup is taken daily · before every upgrade a restore point is saved</span><span class="grow"></span><button class="btn sm" data-act="mkbackup">Create backup now</button><a class="btn sm primary" href="/api/admin/backup">Download backup</a></div>
       ${backups.length ? html`<div class="tablewrap" style="max-height:240px;overflow:auto"><table><tbody>${backups.slice(0, 20).map((b) => html`<tr><td class="mono small">${b.name}</td><td>${b.label.startsWith('premigration') ? 'before upgrade' : b.label}</td><td class="small right">${(b.size / 1024).toFixed(0)} KB</td><td class="small muted">${fmtDateTime(b.mtime)}</td></tr>`)}</tbody></table></div>` : html`<div class="empty">No backups yet.</div>`}
@@ -117,6 +119,7 @@ export async function settings(root) {
     ${outbox.length ? html`<div class="card mt"><div class="hd"><h2>Recent simulated mail</h2><span class="muted small">emails handled by simulation senders since server start — nothing was delivered</span></div><div class="tablewrap" style="max-height:320px;overflow:auto"><table><tbody>${outbox.map((o) => html`<tr><td class="small muted nowrap">${ago(o.at)}</td><td>${o.to}</td><td>${o.subject}</td></tr>`)}</tbody></table></div></div>` : ''}`);
   function m_baseUrl() { return store.meta.baseUrl; }
   securityCard($('#seccard', root), { admin }).catch(fail);
+  currencyCard($('#fxcard', root), { admin }).catch(fail);
   $('#pw', root).addEventListener('submit', async (e) => {
     e.preventDefault(); const f = e.currentTarget;
     try { await api('POST', '/auth/password', { current: f.current.value, next: f.next.value }); toast('Password changed', 'ok'); f.reset(); } catch (x) { fail(x); }

@@ -34,8 +34,9 @@ export const ROUTE_PERMS = {
   'GET /api/files': 'attachments.view', 'POST /api/files': 'attachments.upload', 'GET /api/files/:id/download': 'attachments.view', 'DELETE /api/files/:id': 'attachments.view', 'PUT /api/files/:id': 'attachments.upload', 'GET /api/files/:id/view': 'attachments.view', 'POST /api/files/:id/link': 'attachments.view',
   'POST /api/users/:id/reset-2fa': 'users.manage', 'GET /api/settings/security': 'settings.manage', 'PUT /api/settings/security': 'settings.manage',
   'GET /api/tasks/:id/activity': 'tasks.view', 'POST /api/tasks/:id/status': 'tasks.view', 'POST /api/tasks/:id/comment': 'tasks.view', 'POST /api/tasks/:id/assign': 'tasks.edit',
+  'PUT /api/currency': 'settings.manage', 'PUT /api/currency/rates/:year': 'settings.manage', 'DELETE /api/currency/rates/:year': 'settings.manage',
   'GET /api/receivables': 'receivables.view', 'GET /api/readiness': 'readiness.view',
 };
 /** Routes that only need a valid login (they expose no restricted data). */
 export const LOGIN_ONLY = new Set(['GET /api/auth/me', 'POST /api/auth/password', 'GET /api/meta', 'GET /api/lookup', 'GET /api/dashboard', 'GET /api/notifications/events', 'GET /api/ai/status', 'GET /api/customization',
-  'GET /api/live', 'POST /api/live/presence', 'GET /api/tasks-summary', 'POST /api/tasks/test-email', 'POST /api/tasks/prefs', 'POST /api/search/ai', 'GET /api/search/fields', 'GET /api/2fa/status', 'POST /api/2fa/setup', 'POST /api/2fa/enable', 'POST /api/2fa/disable', 'POST /api/2fa/recovery-codes', 'GET /api/sessions', 'DELETE /api/sessions/:id', 'POST /api/sessions/revoke-others']);
+  'GET /api/live', 'POST /api/live/presence', 'GET /api/currency', 'GET /api/tasks-summary', 'POST /api/tasks/test-email', 'POST /api/tasks/prefs', 'POST /api/search/ai', 'GET /api/search/fields', 'GET /api/2fa/status', 'POST /api/2fa/setup', 'POST /api/2fa/enable', 'POST /api/2fa/disable', 'POST /api/2fa/recovery-codes', 'GET /api/sessions', 'DELETE /api/sessions/:id', 'POST /api/sessions/revoke-others']);

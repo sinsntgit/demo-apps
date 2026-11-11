@@ -264,7 +264,8 @@ export function resetLayout(user, entity) { run('DELETE FROM layouts WHERE entit
 /** Everything the browser needs to draw forms, lists and detail pages. */
 export function customizationBundle() {
   const out = { types: FIELD_TYPES, entities: {} };
-  for (const e of ENTITIES_WITH_CUSTOM) out.entities[e] = { builtin: BUILTIN[e], fields: listFields(e, { archived: true }), layout: effectiveLayout(e) };
+  const c1 = get("SELECT value FROM settings WHERE key='currency.c1'")?.value || 'USD';
+  for (const e of ENTITIES_WITH_CUSTOM) out.entities[e] = { builtin: BUILTIN[e].map((b) => (e === 'deals' && b.key === 'amount' ? { ...b, label: `Amount (${c1})` } : b)), fields: listFields(e, { archived: true }), layout: effectiveLayout(e) };
   return out;
 }
 

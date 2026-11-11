@@ -270,6 +270,22 @@ await tina.waitForSelector('.modal [data-conflicts] :text("Amount")', { timeout:
 await tina.check('.modal input[name="cf__amount"][value=mine]'); await tina.click('.modal button[type=submit]'); await tina.waitForSelector('.toast:has-text("Deal saved")', { timeout: 5000 }).catch(() => errors.push('save after choosing failed'));
 if ((await page.evaluate((id) => fetch(`/api/deals/${id}`).then((r) => r.json()), sdeal.id)).amount !== 75000) errors.push('chosen value not saved');
 await ctx7.close();
+// ===== Two currencies with yearly rates =====
+const YR = new Date().getFullYear();
+await page.goto(`${base}/#/settings`); await page.waitForSelector('#fxpair');
+await page.selectOption('#fxpair select[name=c2]', 'SAR'); await page.click('#fxpair button'); await page.waitForSelector('#fxcard button[data-act=add]');
+await page.click('#fxcard button[data-act=add]'); await page.fill('.modal input[name=year]', String(YR)); await page.fill('.modal input[name=rate]', '3.75'); await page.fill('.modal input[name=note]', 'Finance budget rate');
+await page.click('.modal button[type=submit]'); await page.waitForSelector(`#fxcard td:has-text("1 USD = 3.75 SAR")`, { timeout: 5000 }).catch(() => errors.push('yearly rate not listed'));
+await page.click('#fxcard button[data-act=edit]'); await page.fill('.modal input[name=rate]', '3.76'); await page.click('.modal button[type=submit]'); await page.waitForSelector('#fxcard td:has-text("1 USD = 3.76 SAR")');
+await page.click('#fxcard details summary'); if (!(await page.textContent('#fxcard details')).includes('3.75 → 3.76')) errors.push('rate change history missing'); if (!(await page.textContent('#fxcard table')).includes('Finance budget rate')) errors.push('note lost when editing the rate');
+await page.evaluate(() => document.getElementById('fxcard').scrollIntoView()); await shot('currencies');
+const fxDeal = await page.evaluate(async (y) => (await (await fetch('/api/deals', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'FX demo deal', amount: 10000, close_date: `${y}-12-20`, custom: { cf_deal_type: 'Direct' } }) })).json()), YR);
+if (fxDeal.amount2 !== 37600) errors.push('deal not converted on save ' + fxDeal.amount2);
+await page.goto(`${base}/#/deals/${fxDeal.id}`); await page.waitForSelector('.stat-big:has-text("SAR")', { timeout: 5000 }).catch(() => errors.push('converted amount not on the deal page'));
+if (!(await page.textContent('body')).includes(`Rate ${YR}: 1 USD = 3.76 SAR`)) errors.push('rate explanation missing on the deal page'); await shot('deal-two-currencies');
+await page.click('a[data-nav=deals]'); await page.click('button:has-text("List")'); await page.waitForSelector('th:has-text("Amount (SAR)")', { timeout: 5000 }).catch(() => errors.push('SAR column missing in the deals list'));
+await page.click('button:has-text("Board")'); await page.waitForSelector('.col .ch :text("SAR")', { timeout: 5000 }).catch(() => errors.push('SAR totals missing on the board')); await shot('board-two-currencies');
+await page.click('a[data-nav=dashboard]'); await page.waitForSelector('.kpi .s b:has-text("SAR")', { timeout: 5000 }).catch(() => errors.push('SAR totals missing on the dashboard'));
 // segment builder + deal drag/drop
 await page.click('a[data-nav=segments]'); await page.click('text=+ New segment'); await page.fill('.modal input[name=name]', 'E2E seg');
 await page.waitForSelector('#segprev b'); await page.click('.modal button[type=submit]'); await page.waitForSelector('td:has-text("E2E seg")');

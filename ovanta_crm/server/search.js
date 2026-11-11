@@ -5,6 +5,7 @@ import { hasPerm, scopeOf } from './permissions.js';
 import { listFields } from './customfields.js';
 import { aiConfigured, callClaude, responseText } from './ai.js';
 import { canSeeRecord } from './files.js';
+import { currencyPair as cur } from './currency.js';
 
 /*
  * Natural-language search. Claude only ever sees the question plus field NAMES (never record data) and answers with a
@@ -24,12 +25,12 @@ const FILE_KIND = `CASE WHEN f.mime LIKE 'image/%' THEN 'image' WHEN f.mime='app
 const BASE = {
   deals: {
     label: 'Deals', perm: 'deals.view', owner: 'd.owner_id', alias: 'd',
-    from: 'deals d LEFT JOIN accounts ac ON ac.id=d.account_id LEFT JOIN contacts c ON c.id=d.contact_id LEFT JOIN users u ON u.id=d.owner_id',
-    select: "d.id, d.name, d.amount, d.stage, d.close_date, d.custom, ac.name AS account_name, u.name AS owner_name", text: ['d.name', 'ac.name'], sort: 'd.created_at DESC',
-    fields: { name: ['d.name', 'text'], amount: ['d.amount', 'number'], stage: ['d.stage', 'enum', STAGE_KEYS], probability: ['d.probability', 'number'], close_date: ['d.close_date', 'date'],
+    from: 'deals d LEFT JOIN accounts ac ON ac.id=d.account_id LEFT JOIN contacts c ON c.id=d.contact_id LEFT JOIN users u ON u.id=d.owner_id LEFT JOIN deal_fx fx ON fx.deal_id=d.id',
+    select: "d.id, d.name, d.amount, fx.amount2, d.stage, d.close_date, d.custom, ac.name AS account_name, u.name AS owner_name", text: ['d.name', 'ac.name'], sort: 'd.created_at DESC',
+    fields: { name: ['d.name', 'text'], amount: ['d.amount', 'number'], amount_currency2: ['fx.amount2', 'number'], stage: ['d.stage', 'enum', STAGE_KEYS], probability: ['d.probability', 'number'], close_date: ['d.close_date', 'date'],
       created_at: ['d.created_at', 'date'], closed_at: ['d.closed_at', 'date'], owner: ['u.name', 'text'], account: ['ac.name', 'text'], contact: [FULLNAME('c'), 'text'],
       file_count: ["(SELECT COUNT(*) FROM files fx WHERE fx.entity='deals' AND fx.record_id=d.id)", 'number'] },
-    row: (r) => ({ id: r.id, title: r.name, subtitle: [STAGES.find((s) => s.key === r.stage)?.label, money(r.amount), r.account_name, r.owner_name && `owner ${r.owner_name}`].filter(Boolean).join(' · '), link: `#/deals/${r.id}` }),
+    row: (r) => ({ id: r.id, title: r.name, subtitle: [STAGES.find((s) => s.key === r.stage)?.label, money(r.amount) + (r.amount2 != null ? ` (${money(r.amount2, cur().c2)})` : ''), r.account_name, r.owner_name && `owner ${r.owner_name}`].filter(Boolean).join(' · '), link: `#/deals/${r.id}` }),
   },
   contacts: {
     label: 'Contacts', perm: 'contacts.view', owner: 'c.owner_id', alias: 'c',
@@ -75,7 +76,7 @@ const BASE = {
 };
 export const SEARCH_ENTITIES = Object.keys(BASE);
 const OPS = ['eq', 'neq', 'contains', 'starts_with', 'gt', 'gte', 'lt', 'lte', 'between', 'in', 'empty', 'not_empty'];
-function money(n) { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n || 0); }
+function money(n, code = cur().c1) { try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: code || 'USD', maximumFractionDigits: 0 }).format(n || 0); } catch { return `${code} ${Math.round(n || 0)}`; } }
 
 /** The catalogue for this moment: built-ins plus the admin's custom fields (deals, contacts, accounts). */
 function catalogue() {
@@ -185,6 +186,7 @@ function systemPrompt(cat, user) {
 Searchable record kinds and their fields:
 ${SEARCH_ENTITIES.filter((e) => hasPerm(user, cat[e].perm)).map((e) => `${e}:\n${describe(e)}`).join('\n')}
 
+Deal amounts: "amount" is in ${cur().c1}${cur().c2 ? `; "amount_currency2" is the same amount converted to ${cur().c2}. Use amount_currency2 when the user states a ${cur().c2} value` : ''}.
 Deal stages: ${STAGES.map((s) => `${s.key} = "${s.label}"`).join(', ')}. Open deals are those whose stage is not won or lost (use op "in" with the open stages).
 Users (for owner / uploaded_by): ${users.join(', ')}. The person asking is ${user.name} — "my"/"mine" means owner = "${user.name}".
 Rules:

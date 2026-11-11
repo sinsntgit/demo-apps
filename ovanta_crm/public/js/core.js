@@ -22,7 +22,12 @@ export const $ = (s, r = document) => r.querySelector(s);
 export const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 // ---- formatting ----
-export const money = (n, compact = false) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0, ...(compact ? { notation: 'compact', maximumFractionDigits: 1 } : {}) }).format(n || 0);
+/** Deal currencies from Settings: c1 = what amounts are entered in, c2 = the second currency (optional). */
+export const curOf = () => store.meta?.currency || { c1: 'USD', c2: null };
+export const money = (n, compact = false, code) => { const c = code || curOf().c1 || 'USD'; try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: c, maximumFractionDigits: 0, ...(compact ? { notation: 'compact', maximumFractionDigits: 1 } : {}) }).format(n || 0); } catch { return `${c} ${Math.round(n || 0)}`; } };
+export const hasC2 = () => !!curOf().c2;
+/** Amount in Currency 2, or a dash when no rate applies. */
+export const money2 = (n, compact = false) => (n === null || n === undefined ? '—' : money(n, compact, curOf().c2));
 export const pct = (n, d = 1) => `${((n || 0) * 100).toFixed(d)}%`;
 export const num = (n) => new Intl.NumberFormat('en-US').format(n || 0);
 const parseDt = (s) => (s ? new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(s) ? s : s.replace(' ', 'T') + (s.length <= 10 ? 'T00:00:00' : '') + (s.length > 10 ? 'Z' : '')) : null);

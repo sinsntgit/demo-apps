@@ -102,6 +102,29 @@ export const MIGRATIONS = [
       }
     },
   },
+  {
+    version: 8, name: 'deal_currencies_and_yearly_rates',
+    up(db) {
+      // 1 unit of c1 = rate units of c2, for a calendar year. Old pairs/years stay as history.
+      db.exec(`CREATE TABLE IF NOT EXISTS fx_rates (c1 TEXT NOT NULL, c2 TEXT NOT NULL, year INTEGER NOT NULL, rate REAL NOT NULL CHECK (rate > 0), note TEXT,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')), updated_by_name TEXT, PRIMARY KEY (c1, c2, year))`);
+      db.exec(`CREATE TABLE IF NOT EXISTS fx_rate_changes (id INTEGER PRIMARY KEY, c1 TEXT NOT NULL, c2 TEXT NOT NULL, year INTEGER NOT NULL, old_rate REAL, new_rate REAL,
+        note TEXT, changed_by_name TEXT, changed_at TEXT NOT NULL DEFAULT (datetime('now')))`);
+      db.exec('DROP VIEW IF EXISTS deal_fx');
+      // Which date picks the rate: closed deals -> the date they closed; open deals -> expected close date, else the created date.
+      // The year's rate is used; if that year has none, the latest earlier year's rate (fx_exact = 0).
+      db.exec(`CREATE VIEW deal_fx AS
+        SELECT x.deal_id, x.rate_date, r.year AS fx_year, r.rate AS fx_rate, CASE WHEN r.rate IS NULL THEN NULL ELSE ROUND(x.amount * r.rate, 2) END AS amount2,
+          CASE WHEN r.year = CAST(substr(x.rate_date, 1, 4) AS INTEGER) THEN 1 ELSE 0 END AS fx_exact
+        FROM (SELECT d.id AS deal_id, d.amount,
+                CASE WHEN d.stage IN ('won','lost') THEN substr(COALESCE(d.closed_at, d.close_date, d.created_at), 1, 10)
+                     ELSE substr(COALESCE(d.close_date, d.created_at), 1, 10) END AS rate_date
+              FROM deals d) x
+        LEFT JOIN fx_rates r ON r.c1 = COALESCE((SELECT value FROM settings WHERE key = 'currency.c1'), 'USD')
+          AND r.c2 = (SELECT value FROM settings WHERE key = 'currency.c2')
+          AND r.year = (SELECT MAX(r2.year) FROM fx_rates r2 WHERE r2.c1 = r.c1 AND r2.c2 = r.c2 AND r2.year <= CAST(substr(x.rate_date, 1, 4) AS INTEGER))`);
+    },
+  },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 
