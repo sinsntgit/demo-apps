@@ -27,7 +27,8 @@ Upgrading from an earlier version: replace the code, run `npm install`, start �
 | Google (Gmail / Workspace) | `smtp.gmail.com` 587 (STARTTLS) or 465 (SSL) | Needs an **App Password** (Google Account → Security → 2-Step Verification → App passwords). From address must be that account or a verified "Send mail as" alias. ~500/day personal, ~2,000/day Workspace. |
 | Microsoft 365 | `smtp.office365.com` 587 | Admin must enable **SMTP AUTH** for the mailbox. Microsoft is disabling Basic-auth SMTP by default for existing tenants from end of Dec 2026 — plan on a transactional relay. |
 | Zoho Mail (India) | `smtp.zoho.in` 465 (SSL) | Full address as username; app-specific password if 2FA is on. Other regions: `smtp.zoho.com`, `.eu`, `.com.au`. |
-| Titan Mail | `smtp.titan.email` 465 (SSL) | Full address as username, mailbox password. EU accounts: `smtp0101.titan.email`. If 465 fails try 587 with SSL off. |
+| Titan Mail / GoDaddy Professional Email | `smtpout.secureserver.net` 465 (SSL) | Full address as username, mailbox password. If 465 fails try 587 with SSL off. |
+| Titan Mail (Hostinger, BigRock, other hosts) | `smtp.titan.email` 465 (SSL) | Full address as username, mailbox password. EU accounts: `smtp0101.titan.email`. |
 | Other | any | Port 587 = STARTTLS (SSL/TLS off), 465 = SSL/TLS on. For bulk sending use Amazon SES, SendGrid, Postmark, Brevo etc. |
 
 Example for several addresses: create three senders — `santosh@syncsense.in`, `santosh.t@ezdatamunch.com`, `janvi@syncsense.in` — each with its own mailbox's SMTP host and app password. Each has its own **24-hour limit** and **pause between emails**; a campaign that reaches its sender's limit pauses and resumes automatically.
@@ -39,7 +40,7 @@ Run the built-in diagnostic — it tests the credentials *saved in the app* on b
 ```bash
 npm run smtp-test -- --list          # shows saved senders and their ids
 npm run smtp-test -- --sender 1      # tests sender #1 exactly as saved
-npm run smtp-test -- --host smtp.titan.email --user you@domain.com   # tests typed-in credentials (prompts for the password)
+npm run smtp-test -- --host smtpout.secureserver.net --user you@domain.com   # tests typed-in credentials (prompts for the password)
 ```
 If every attempt says **"Greeting never received"** although `Test-NetConnection` to the port succeeds, your network may be connecting over IPv6 and stalling. Retry with `npm run smtp-test -- --sender 1 --ipv4`; if that works, start the app with `SMTP_FORCE_IPV4=1` (PowerShell: `$env:SMTP_FORCE_IPV4=1; npm start`, or `setx SMTP_FORCE_IPV4 1` once and reopen the terminal).
 

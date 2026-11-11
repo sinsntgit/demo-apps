@@ -1,7 +1,7 @@
 // Diagnose an SMTP login problem.
 //   node scripts/smtp-test.mjs --list                 show saved senders
 //   node scripts/smtp-test.mjs --sender 1             test the credentials SAVED in the app for sender #1
-//   node scripts/smtp-test.mjs --host smtp.titan.email --user me@x.com   (password read from env SMTP_PASS, or prompted)
+//   node scripts/smtp-test.mjs --host smtpout.secureserver.net --user me@x.com   (password read from env SMTP_PASS, or prompted)
 //   (waits up to 60s for slow servers) add --port 587 to test one port only; add --ipv4 to connect over IPv4 only (use if every attempt says "Greeting never received")
 // Tries port 465 (SSL/TLS) and 587 (STARTTLS) with both AUTH PLAIN and AUTH LOGIN and prints the server's replies.
 // Credentials are never printed (only length and first/last character of the password).

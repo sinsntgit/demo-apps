@@ -89,7 +89,8 @@ export function explainSmtpError(e, sender = null) {
   if (e.code === 'EAUTH' || code === 535 || code === 534) {
     const hint = host.includes('gmail') || host.includes('google') ? 'Google needs an App Password (2-Step Verification on), not your normal password.'
       : host.includes('office365') || host.includes('outlook') ? 'Microsoft 365 needs SMTP AUTH enabled for this mailbox by your admin.'
-      : host.includes('titan') ? 'For Titan, use the mailbox password set in Titan (the one that works in Titan webmail). If unsure, reset it in Titan and re-enter it here.'
+      : host.includes('secureserver') ? 'For Titan/GoDaddy Professional Email, use the full email address and the mailbox password that works in webmail. If it still fails, try port 587 with SSL/TLS off, or reset the mailbox password in GoDaddy.'
+      : host.includes('titan') ? 'For Titan, use the mailbox password set in Titan (the one that works in Titan webmail). If your mailbox was bought through GoDaddy, use the server smtpout.secureserver.net instead.'
       : host.includes('zoho') ? 'Zoho needs an application-specific password if two-factor is on, and the host must match your data centre (smtp.zoho.in for India).'
       : 'Check the username (usually the full email address) and password.';
     return `Authentication failed — the server was reached but rejected the login (${msg.replace(/\s+/g, ' ').slice(0, 100)}). ${hint} Re-type the password with “Show password” ticked, then Verify again.`;
