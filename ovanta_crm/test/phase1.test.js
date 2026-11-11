@@ -143,7 +143,7 @@ test('attachments: upload, list, download safely, size/type limits, scope, clean
   assert.equal((await call(rep, 'GET', `/api/files?entity=deals&id=${others.id}`)).status, 404);
   assert.equal((await fetch(`${base}/api/files/${f.id}/download`)).status, 401);
   const stored = path.join(process.env.FILES_DIR, (await import('../server/db.js')).get('SELECT path FROM files WHERE id=?', f.id).path); assert.ok(fs.existsSync(stored));
-  assert.equal((await call(rep, 'DELETE', `/api/files/${f.id}`)).status, 200); assert.ok(!fs.existsSync(stored)); assert.equal((await fetch(`${base}/api/files/${f.id}/download`, { headers: { cookie: rep } })).status, 404);
+  assert.equal((await call(rep, 'DELETE', `/api/files/${f.id}`)).status, 403, 'only administrators delete files'); assert.ok(fs.existsSync(stored)); assert.equal((await call(admin, 'DELETE', `/api/files/${f.id}`)).status, 200); assert.ok(!fs.existsSync(stored)); assert.equal((await fetch(`${base}/api/files/${f.id}/download`, { headers: { cookie: rep } })).status, 404);
   // deleting the record removes its files
   await upload(rep, 'deals', mine.id, form('f', 'bye', 'bye.txt')); assert.equal((await call(rep, 'DELETE', `/api/deals/${mine.id}`)).status, 200);
   assert.equal((await import('../server/db.js')).get('SELECT COUNT(*) n FROM files WHERE entity=? AND record_id=?', 'deals', mine.id).n, 0);

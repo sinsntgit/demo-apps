@@ -159,8 +159,9 @@ export function servePublicFile(res, id, exp, sig) {
 }
 
 DELETE('/api/files/:id', ({ params, user }) => {
+  if (!user.is_admin) throw forbidden('Only administrators can delete files.'); // deliberate: files are evidence (POs, signed proposals, task issues)
   const f = get('SELECT * FROM files WHERE id=?', params.id); if (!f) throw notFound('File not found');
-  guardRecord(f.entity, f.record_id, user, true);
+  guardRecord(f.entity, f.record_id, user);
   run('DELETE FROM files WHERE id=?', f.id);
   try { fs.unlinkSync(absPath(f.path)); } catch {}
   audit(user, 'delete_file', f.entity, f.record_id, f.name);

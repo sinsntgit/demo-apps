@@ -15,7 +15,7 @@ export const RESOURCES = {
   tasks: { label: 'Tasks', scoped: true, actions: rec() },
   activities: { label: 'Activity notes (calls, notes, meetings)', scoped: true, actions: { create: B, delete: S } },
   invoices: { label: 'Invoices', scoped: true, actions: rec({ issue: B, payment: B, remind: B, notes: B, import: B, submit: B }) },
-  attachments: { label: 'File attachments (on records you can see)', actions: { view: B, upload: B, delete: B } },
+  attachments: { label: 'File attachments (on records you can see) — only Administrators can delete files', actions: { view: B, upload: B } },
   campaigns: { label: 'Campaigns', actions: { view: B, create: B, edit: B, delete: B, send: B } },
   segments: { label: 'Segments', actions: { view: B, create: B, edit: B, delete: B } },
   templates: { label: 'Email templates', actions: { view: B, create: B, edit: B, delete: B } },

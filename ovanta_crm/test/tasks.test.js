@@ -78,3 +78,17 @@ test('who can see and act: assigners keep seeing tasks they delegated; outsiders
   const tg = await call(ben, 'POST', `/api/tasks/${t.id}/toggle`); assert.equal(tg.status, 200); assert.equal(tg.body.status, 'done');
   assert.equal(get('SELECT done FROM tasks WHERE id=?', t.id).done, 1);
 });
+
+test('only administrators can delete files (deal stage folders and tasks) — not managers, reps or custom roles', async () => {
+  const deal = (await call(admin, 'POST', '/api/deals', { name: 'File-guard deal', stage: 'proposal', owner_id: ids.maya })).body;
+  const up = async (ck, q) => { const fd = new FormData(); fd.append('file', new Blob(['x']), 'po.txt'); return (await (await fetch(`${base}/api/files?${q}`, { method: 'POST', headers: { cookie: ck }, body: fd })).json()).files[0]; };
+  const dealFile = await up(maya, `entity=deals&id=${deal.id}&stage=proposal`); const taskFile = await up(maya, `entity=tasks&id=${task.id}`);
+  const role = (await call(admin, 'POST', '/api/roles', { name: 'Everything but admin', permissions: { deals: { view: 'all', edit: 'all', delete: 'all' }, tasks: { view: 'all', edit: 'all', delete: 'all' }, attachments: { view: true, upload: true, delete: true } } })).body;
+  await call(admin, 'POST', '/api/users', { name: 'Power', email: 'power@t.example', password: 'Ovantaa@123', role_id: role.id }); const power = await login('power@t.example');
+  assert.equal((await call(power, 'GET', '/api/auth/me')).body.user.perms.attachments.delete, undefined, 'the delete permission cannot be granted any more');
+  for (const ck of [maya, liam, power]) for (const f of [dealFile, taskFile]) assert.equal((await call(ck, 'DELETE', `/api/files/${f.id}`)).status, 403);
+  assert.equal((await call(maya, 'GET', `/api/files?entity=deals&id=${deal.id}`)).body.length, 1, 'file still there');
+  assert.equal((await call(admin, 'GET', '/api/auth/me')).body.user.is_admin, true); assert.equal((await call(maya, 'GET', '/api/auth/me')).body.user.is_admin, false);
+  for (const f of [dealFile, taskFile]) assert.equal((await call(admin, 'DELETE', `/api/files/${f.id}`)).status, 200);
+  assert.ok(all("SELECT * FROM audit_log WHERE action='delete_file'").length >= 2);
+});

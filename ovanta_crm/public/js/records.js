@@ -83,7 +83,7 @@ const fileRow = (f, { canDel, canMove, stages }) => html`<div class="frow" style
 /** File attachments card. Deals get one folder per stage (plus General); other records a flat list. */
 export async function attachments(root, entity, id, opts = {}) {
   if (!allow('attachments.view')) return;
-  const files = await api('GET', `/files?entity=${entity}&id=${id}`); const canUp = allow('attachments.upload'), canDel = allow('attachments.delete');
+  const files = await api('GET', `/files?entity=${entity}&id=${id}`); const canUp = allow('attachments.upload'), canDel = !!store.user.is_admin; // only Administrators may delete files
   const isDeal = entity === 'deals'; const stages = isDeal ? store.meta.stages : null;
   const target = root.__target ?? (isDeal ? opts.stage || '' : '');
   const groups = isDeal ? [...stages.map((s) => ({ key: s.key, label: s.label })), { key: '', label: 'General' }].map((g) => ({ ...g, files: files.filter((f) => (f.stage || '') === g.key) })) : [{ key: '', label: '', files }];

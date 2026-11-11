@@ -91,7 +91,7 @@ export function loadUser(uid) {
   let raw = {}; try { raw = JSON.parse(u.perms_json || '{}'); } catch {}
   const { perms_json, role_is_system, totp_enabled, ...rest } = u;
   const perms = role_is_system && u.role === 'admin' ? SYSTEM_ROLES[0].permissions : normalizePerms(raw); // the Administrator role is always full access, including permissions added in later versions
-  return { ...rest, twofa_enabled: !!totp_enabled, perms };
+  return { ...rest, twofa_enabled: !!totp_enabled, is_admin: !!(role_is_system && u.role === 'admin'), perms };
 }
 export function parseCookies(header = '') {
   const out = {};
