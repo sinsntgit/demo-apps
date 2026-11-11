@@ -8,12 +8,12 @@ export const setHtml = (el, h) => { el.innerHTML = h.__raw ?? esc(h); };
 
 export const store = { user: null, meta: null };
 
-export class ApiError extends Error { constructor(m, status) { super(m); this.status = status; } }
+export class ApiError extends Error { constructor(m, status, data) { super(m); this.status = status; this.data = data; } }
 export async function api(method, path, body) {
   const r = await fetch('/api' + path, { method, headers: body !== undefined ? { 'Content-Type': 'application/json' } : {}, body: body !== undefined ? JSON.stringify(body) : undefined });
   let data = null; try { data = await r.json(); } catch {}
   if (r.status === 401 && !path.startsWith('/auth/login') && !path.startsWith('/auth/2fa')) { store.user = null; location.hash = '#/login'; window.dispatchEvent(new Event('ovantaa:logout')); }
-  if (!r.ok) throw new ApiError(data?.error || `Request failed (${r.status})`, r.status);
+  if (!r.ok) throw new ApiError(data?.error || `Request failed (${r.status})`, r.status, data);
   return data;
 }
 export const qs = (o) => { const p = new URLSearchParams(); for (const [k, v] of Object.entries(o)) if (v !== '' && v != null) p.set(k, v); const s = p.toString(); return s ? '?' + s : ''; };
@@ -77,7 +77,9 @@ export function modal(opts) {
     ${opts.hideFooter ? '' : html`<footer><button type="button" class="btn" data-close>Cancel</button><button class="btn ${opts.danger ? 'danger' : 'primary'}" type="submit">${opts.submitLabel || 'Save'}</button></footer>`}
   </form>`);
   const form = $('form', ov); const err = $('.err', ov);
-  const close = () => { ov.remove(); document.removeEventListener('keydown', onKey); };
+  let closed = false;
+  const close = () => { ov.remove(); document.removeEventListener('keydown', onKey); if (!closed) { closed = true; opts.onClose?.(); } };
+  ov.__close = close;
   const onKey = (e) => { if (e.key === 'Escape') close(); };
   document.addEventListener('keydown', onKey);
   ov.addEventListener('mousedown', (e) => { if (e.target === ov) close(); });

@@ -14,6 +14,7 @@ import './api6.js';
 import './leads.js';
 import { servePublicFile } from './files.js';
 import './search.js';
+import './live.js';
 import { portalGet, portalClaim } from './api3.js';
 import { recordEvent, signUrl, startScheduler } from './campaigns.js';
 import { seedIfEmpty } from './seed.js';

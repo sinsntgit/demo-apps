@@ -8,6 +8,8 @@ import { config } from './config.js';
 import { ENTITIES, STAGES, getOne } from './entities.js';
 import { hasPerm, canOnRecord } from './permissions.js';
 import { hmac } from './auth.js';
+import { publishChange } from './live.js';
+const touched = (entity, recordId, user) => { if (['contacts', 'accounts', 'deals', 'tasks'].includes(entity)) { const r = get(`SELECT * FROM ${entity} WHERE id=?`, recordId); if (r) publishChange(entity, r, user, 'files'); } };
 
 const KINDS = ['contacts', 'accounts', 'deals', 'invoices', 'tasks'];
 const MAX_FILES = 20;
@@ -103,6 +105,7 @@ POST('/api/files', async ({ req, query, user }) => {
   let stage;
   try { guardRecord(query.entity, query.id, user, true); stage = checkStage(query.entity, query.stage); } catch (e) { req.resume(); throw e; }
   const { saved, errors } = await receiveFiles(req, { entity: query.entity, recordId: query.id, stage, uploader: user });
+  if (saved.length) touched(query.entity, Number(query.id), user);
   if (saved.length) audit(user, 'upload', query.entity, Number(query.id), `${saved.length} file(s)${stage ? ` to ${stage}` : ''}: ${saved.map((f) => f.name).join(', ').slice(0, 300)}`);
   if (!saved.length) throw new HttpError(errors[0]?.status || 400, errors[0]?.error || 'Choose at least one file to upload', { errors });
   return { files: saved, errors };
@@ -120,6 +123,7 @@ PUT('/api/files/:id', ({ params, body, user }) => {
     try { const dest = absPath(rel); fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.renameSync(absPath(f.path), dest); } catch { rel = f.path; }
   }
   run('UPDATE files SET stage=?, note=?, path=? WHERE id=?', stage, note, rel, f.id);
+  touched(f.entity, f.record_id, user);
   audit(user, 'update_file', f.entity, f.record_id, `${f.name}${stage !== f.stage ? ` → ${stage || 'general'}` : ''}`);
   return out(get('SELECT * FROM files WHERE id=?', f.id));
 });
@@ -165,5 +169,6 @@ DELETE('/api/files/:id', ({ params, user }) => {
   run('DELETE FROM files WHERE id=?', f.id);
   try { fs.unlinkSync(absPath(f.path)); } catch {}
   audit(user, 'delete_file', f.entity, f.record_id, f.name);
+  touched(f.entity, f.record_id, user);
   return { ok: true };
 });

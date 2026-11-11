@@ -5,6 +5,7 @@ import { ENTITIES, getOne, update, hooks } from './entities.js';
 import { hasPerm, scopeOf } from './permissions.js';
 import { systemSender, sendLogged } from './mailer.js';
 import { fileOut } from './files.js';
+import { publishChange } from './live.js';
 import { getSetting, setSetting } from './settings.js';
 
 /*
@@ -108,10 +109,10 @@ export function setStatus(t, status, note, user) {
   note = String(note || '').trim();
   if (status === 'issue' && !note) throw bad('Describe the issue so the person who assigned the task can act on it');
   if (status === t.status && !note) return activity(t.id, user);
-  run('UPDATE tasks SET status=?, done=?, completed_at=? WHERE id=?', status, status === 'done' ? 1 : 0, status === 'done' ? nowIso() : null, t.id);
+  run('UPDATE tasks SET status=?, done=?, completed_at=?, version=version+1, updated_at=?, updated_by=? WHERE id=?', status, status === 'done' ? 1 : 0, status === 'done' ? nowIso() : null, nowIso(), user.id, t.id);
   const kind = { done: 'completed', issue: 'issue', open: 'reopened' }[status];
   addEvent(t.id, kind, note, user); audit(user, `task_${kind}`, 'tasks', t.id, t.title);
-  const fresh = getOne(TASKS, t.id);
+  const fresh = getOne(TASKS, t.id); publishChange('tasks', fresh, user, 'updated');
   const subject = { done: `Task completed: ${t.title}`, issue: `Issue raised on task: ${t.title}`, open: `Task reopened: ${t.title}` }[status];
   const intro = { done: `${user.name} marked this task as completed.`, issue: `${user.name} raised an issue on this task. Reply on the task, reopen it, or reassign it.`, open: `${user.name} reopened this task (due ${nice(fresh.due_date)}).` }[status];
   const mail = mailUsers(others(fresh), fresh, subject, { heading: subject.split(':')[0], intro, note, event: `task.${kind}` }, user);
@@ -130,7 +131,7 @@ POST('/api/tasks/:id/status', ({ params, body, user }) => setStatus(loadTask(par
 POST('/api/tasks/:id/comment', ({ params, body, user }) => {
   const t = loadTask(params.id, user); if (!canWork(t, user)) throw forbidden('Only the assignee or the person who assigned it can reply on this task.');
   const text = String(body.body || '').trim(); if (!text) throw bad('Write a reply first');
-  addEvent(t.id, 'comment', text, user);
+  addEvent(t.id, 'comment', text, user); publishChange('tasks', t, user, 'activity');
   const mail = mailUsers(others(t), t, `New reply on task: ${t.title}`, { heading: 'New reply on a task', intro: `${user.name} replied on this task.`, note: text, event: 'task.comment' }, user);
   return { ...activity(t.id, user), mail };
 });
@@ -140,9 +141,9 @@ POST('/api/tasks/:id/assign', ({ params, body, user }) => {
   const to = Number(body.owner_id); if (!to) throw bad('Choose who should do the task');
   const patch = { owner_id: to, assign_note: body.note }; if (body.due_date !== undefined) patch.due_date = body.due_date || null;
   if (to === t.owner_id) { // same person again: reopen and remind them
-    run('UPDATE tasks SET due_date=? WHERE id=?', patch.due_date ?? t.due_date, t.id);
-    run("UPDATE tasks SET status='open', done=0, completed_at=NULL, assigned_by=?, assigned_at=? WHERE id=?", user.id, nowIso(), t.id);
-    const fresh = getOne(TASKS, t.id); const note = String(body.note || '').trim();
+    run('UPDATE tasks SET due_date=?, version=version+1, updated_at=?, updated_by=? WHERE id=?', patch.due_date ?? t.due_date, nowIso(), user.id, t.id);
+    run("UPDATE tasks SET status='open', done=0, completed_at=NULL, assigned_by=?, assigned_at=?, version=version+1, updated_by=? WHERE id=?", user.id, nowIso(), user.id, t.id);
+    const fresh = getOne(TASKS, t.id); publishChange('tasks', fresh, user, 'updated'); const note = String(body.note || '').trim();
     addEvent(t.id, 'reassigned', `Sent back to ${fresh.owner_name} (due ${nice(fresh.due_date)})${note ? ` — ${note}` : ''}`, user);
     const mail = mailUsers([fresh.owner_id], fresh, `Task sent back to you: ${fresh.title} (due ${nice(fresh.due_date)})`, { heading: 'A task was sent back to you', intro: `${user.name} has addressed the issue and sent the task back to you. It is due ${nice(fresh.due_date)}.`, note, event: 'task.assigned' }, user);
     return { ...activity(t.id, user), mail };

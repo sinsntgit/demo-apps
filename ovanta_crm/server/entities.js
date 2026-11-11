@@ -5,7 +5,9 @@ import { all, get, run, audit, nowIso } from './db.js';
 import { bad, notFound, forbidden } from './http.js';
 import { notify, dealEvents } from './notifications.js';
 import { scopeOf, canOnRecord } from './permissions.js';
-import { mergeCustom, shapeRows, customQuery, BUILTIN } from './customfields.js';
+import { mergeCustom, shapeRows, customQuery, BUILTIN, listFields } from './customfields.js';
+import { publishChange } from './live.js';
+import { HttpError } from './http.js';
 
 export const STAGES = [
   { key: 'prospecting', label: 'Prospecting', prob: 10 },
@@ -184,20 +186,63 @@ export function create(ent, body, user) {
   if (ent.table === 'deals') recordStageChange(created, null, body.stage_comment || 'Deal created', user);
   if (ev) notify([ev], created, {}, user);
   hooks.after[ent.table]?.(created, null, body, user);
+  publishChange(ent.table, created, user, 'created');
   return created;
+}
+
+// ---------------------------------------------------------------- concurrent edits
+/** Comparable form of a value as forms send it ("25000" == 25000, '' == null, arrays order-free). */
+const norm = (v) => {
+  if (v === null || v === undefined || v === '') return '';
+  if (typeof v === 'boolean') return v ? '1' : '0';
+  if (Array.isArray(v)) return JSON.stringify(v.map(String).sort());
+  const s = String(v).trim(); return s !== '' && !isNaN(s) ? String(Number(s)) : s;
+};
+const TASK_LABELS = { title: 'Task', due_date: 'Due date', priority: 'Priority', notes: 'Details', owner_id: 'Assigned to', contact_id: 'Related contact', deal_id: 'Related deal' };
+function fieldLabel(table, f) { return (BUILTIN[table] || []).find((b) => b.key === f)?.label || TASK_LABELS[f] || listFields(table).find((d) => d.key === f)?.label || f; }
+function display(table, f, v) {
+  if (v === null || v === undefined || v === '') return '—';
+  const one = (sql) => get(sql, v)?.n ?? `#${v}`;
+  if (f === 'owner_id') return one('SELECT name n FROM users WHERE id=?');
+  if (f === 'account_id') return one('SELECT name n FROM accounts WHERE id=?');
+  if (f === 'contact_id') return one("SELECT TRIM(first_name||' '||COALESCE(last_name,'')) n FROM contacts WHERE id=?");
+  if (f === 'deal_id') return one('SELECT name n FROM deals WHERE id=?');
+  if (f === 'stage') return STAGES.find((s) => s.key === v)?.label || v;
+  if (Array.isArray(v)) return v.join(', ');
+  if (typeof v === 'boolean') return v ? 'yes' : 'no';
+  return String(v);
+}
+/**
+ * Three-way check: for each field this save changes, compare what the editor originally loaded (`body.__base`) with what is stored now.
+ * If someone else changed that same field in the meantime (and not to the same value), it is a conflict. Fields listed in
+ * `body.__force` are ones the editor has already decided to overwrite. Fields nobody else touched simply merge.
+ */
+function findConflicts(ent, existing, data, body) {
+  const base = body.__base; if (!base || typeof base !== 'object') return [];
+  const force = new Set(Array.isArray(body.__force) ? body.__force.map(String) : []); const out = [];
+  const check = (f, cur, was, mine) => { if (force.has(f)) return; if (norm(cur) !== norm(was) && norm(cur) !== norm(mine)) out.push({ field: f, label: fieldLabel(ent.table, f), base: display(ent.table, f, was), theirs: display(ent.table, f, cur), yours: display(ent.table, f, mine), theirs_raw: cur ?? null }); };
+  for (const f of Object.keys(data)) if (f !== 'custom' && Object.prototype.hasOwnProperty.call(base, f)) check(f, existing[f], base[f], data[f]);
+  if (ent.custom && body.custom && base.custom && typeof base.custom === 'object') for (const k of Object.keys(body.custom)) if (Object.prototype.hasOwnProperty.call(base.custom, k)) check(k, existing.custom?.[k], base.custom[k], body.custom[k]);
+  return out;
 }
 
 export function update(ent, id, body, user) {
   const existing = getOne(ent, id, user);
   if (!canEdit(user, ent, existing)) throw forbidden(`Your role can only edit ${ent.noun.toLowerCase()}s you own.`);
   const data = clean(ent, body, { partial: true });
+  const conflicts = findConflicts(ent, existing, data, body);
+  if (conflicts.length) {
+    const who = existing.updated_by ? get('SELECT name FROM users WHERE id=?', existing.updated_by)?.name : null;
+    throw new HttpError(409, `${who || 'Someone else'} changed ${conflicts.map((c) => c.label).join(', ')} while you were editing. Choose which values to keep.`, { conflict: true, conflicts, updated_by_name: who, updated_at: existing.updated_at, version: existing.version });
+  }
   hooks.before[ent.table]?.(data, body, existing, user);
   if (ent.custom && body.custom !== undefined) data.custom = JSON.stringify(mergeCustom(ent.table, body.custom, { existing: existing.custom || {}, record: { ...existing, ...data }, isCreate: false }));
   if (ent.table === 'deals') applyDealStage(data, existing);
   const cols = Object.keys(data);
-  if (cols.length) run(`UPDATE ${ent.table} SET ${cols.map((c) => `${c}=?`).join(',')} WHERE id=?`, ...Object.values(data), id);
+  if (cols.length) run(`UPDATE ${ent.table} SET ${cols.map((c) => `${c}=?`).join(',')}, version = version + 1, updated_at = ?, updated_by = ? WHERE id=?`, ...Object.values(data), nowIso(), user?.id ?? null, id);
   audit(user, 'update', ent.table, id, existing.name || existing.title || existing.first_name);
   const updated = getOne(ent, id);
+  if (cols.length) publishChange(ent.table, updated, user, 'updated');
   hooks.after[ent.table]?.(updated, existing, body, user);
   if (ent.table === 'deals') {
     if (existing.stage !== updated.stage) recordStageChange(updated, existing.stage, body.stage_comment, user);
@@ -222,6 +267,7 @@ export function remove(ent, id, user) {
   dropFiles(ent.table, id);
   audit(user, 'delete', ent.table, id, existing.name || existing.title || existing.first_name);
   hooks.removed?.[ent.table]?.(existing, user);
+  publishChange(ent.table, existing, user, 'deleted');
   if (ent.table === 'deals') notify(['deal.deleted'], existing, {}, user);
   if (ent.table === 'contacts') notify(['contact.deleted'], existing, {}, user);
   return { ok: true };

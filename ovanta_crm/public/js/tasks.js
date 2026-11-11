@@ -1,6 +1,7 @@
 import { api, html, raw, setHtml, store, toast, fail, on, $, modal, confirmBox, purgeModal, field, formValues, badge, fmtDate, fmtDateTime, todayStr, allow, fullName } from './core.js';
 import { mountList } from './list.js';
 import { attachments, uploadFiles } from './records.js';
+import { onPageChange, watchFormRecord, conflictPanel, changedOnly } from './live.js';
 
 const userOpts = () => store.meta.users.map((u) => [u.id, u.name]);
 const page = (title, actions = '') => html`<div class="topbar"><h1>${title}</h1><span class="grow"></span>${actions}</div>`;
@@ -23,21 +24,28 @@ export async function taskForm(t = {}, onDone) {
     { name: 'owner_id', label: 'Assign to', type: 'select', options: userOpts(), blank: false, default: store.user.id }, { name: 'contact_id', label: 'Related contact', type: 'select', options: c.rows.map((x) => [x.id, fullName(x)]) },
     { name: 'deal_id', label: 'Related deal', type: 'select', options: d.rows.map((x) => [x.id, x.name]) }, { name: 'notes', label: 'Details', type: 'textarea' }];
   const f = (n) => field(fields.find((x) => x.name === n), t);
-  modal({ title: t.id ? 'Edit task' : 'New task',
+  let pending = null, stopWatch = null;
+  modal({ title: t.id ? 'Edit task' : 'New task', onClose: () => stopWatch?.(),
     body: html`${f('title')}<div class="row">${f('due_date')}${f('priority')}</div>${f('owner_id')}
       <label data-assignnote>Message to the assignee (optional)<textarea name="assign_note" rows="2" placeholder="Anything they should know"></textarea></label>
       <p class="small muted" data-assignnote style="margin-top:-6px">They will get an email with the task and its due date.</p>
       <div class="row">${f('contact_id')}${f('deal_id')}</div>${f('notes')}`,
-    onOpen: (form) => { const sync = () => form.querySelectorAll('[data-assignnote]').forEach((e) => { e.hidden = String(form.owner_id.value) === String(t.id ? t.owner_id : store.user.id); }); form.owner_id.addEventListener('change', sync); sync(); },
+    onOpen: (form) => { if (t.id) stopWatch = watchFormRecord(form, 'tasks', t.id); const sync = () => form.querySelectorAll('[data-assignnote]').forEach((e) => { e.hidden = String(form.owner_id.value) === String(t.id ? t.owner_id : store.user.id); }); form.owner_id.addEventListener('change', sync); sync(); },
     onSubmit: async (form) => {
-      const v = formValues(form, fields); v.assign_note = form.assign_note.value;
-      const saved = t.id ? await api('PUT', `/tasks/${t.id}`, v) : await api('POST', '/tasks', v);
+      const all = formValues(form, fields); let v = t.id ? changedOnly(all, t) : all;
+      if (form.assign_note.value) v.assign_note = form.assign_note.value;
+      if (t.id && !Object.keys(v).some((k) => !['__base', 'assign_note'].includes(k))) { toast('No changes to save'); return; }
+      if (pending) v = pending.apply(v);
+      let saved;
+      try { saved = t.id ? await api('PUT', `/tasks/${t.id}`, v) : await api('POST', '/tasks', v); }
+      catch (e) { if (e.status === 409 && e.data?.conflict) { pending = conflictPanel(form, e); throw new Error(e.message); } throw e; }
       mailToast(saved.email_notice, saved.owner_id !== store.user.id && (!t.id || t.owner_id !== saved.owner_id) ? `Task assigned to ${saved.owner_name}` : 'Task saved'); onDone?.(saved);
     } });
 }
 
 /** The task panel: details, timeline, files, and the actions the viewer may take. */
 export async function openTask(id, onChange) {
+  let liveNote = () => {};
   let a; try { a = await api('GET', `/tasks/${id}/activity`); } catch (e) { return fail(e); }
   const t = a.task; const others = userOpts();
   modal({ title: t.title, wide: true, hideFooter: true, body: html`
@@ -54,8 +62,13 @@ export async function openTask(id, onChange) {
     <div id="tp-form"></div>
     <div class="grid g2"><div><h3 style="margin-top:0">Timeline</h3><ul class="timeline">${a.events.map((e) => html`<li><div><b>${EVENT[e.kind] || e.kind}</b> <span class="small muted">· ${e.actor_name || 'system'} · ${fmtDateTime(e.created_at)}</span></div>${e.body ? html`<div style="margin-top:4px;white-space:pre-wrap;${['issue', 'email_failed'].includes(e.kind) ? 'padding:6px 10px;background:#fee2e2;color:#7f1d1d;border-radius:8px' : ''}">${e.body}</div>` : ''}</li>`)}</ul>${a.events.length ? '' : html`<p class="muted small">No activity yet.</p>`}</div>
       <div id="tp-files"></div></div>`,
+  onClose: () => window.removeEventListener('ovantaa:changed', liveNote),
   onOpen: (form, close) => {
     const box = $('#tp-form', form); const refresh = () => { close(); onChange?.(); openTask(id, onChange); };
+    liveNote = (e) => { const d = e.detail; if (d.entity !== 'tasks' || Number(d.id) !== Number(id) || d.by_id === store.user.id) return;
+      if (box.innerHTML.trim()) { let n = form.querySelector('[data-live-note]'); if (!n) { n = document.createElement('div'); n.dataset.liveNote = ''; n.style.cssText = 'margin-bottom:10px;padding:8px 12px;border-radius:8px;background:#fef3c7;color:#78350f'; form.querySelector('.body').prepend(n); } n.textContent = `${d.by || 'Someone'} just updated this task. Finish what you are typing; the panel refreshes after you submit.`; }
+      else refresh(); };
+    window.addEventListener('ovantaa:changed', liveNote);
     attachments($('#tp-files', form), 'tasks', id).catch(() => {});
     const sub = (inner, label, submit) => {
       setHtml(box, html`<div class="card" style="margin-bottom:12px"><div class="bd">${inner}<div style="display:flex;gap:8px;margin-top:8px"><button type="button" class="btn primary" data-act="go">${label}</button><button type="button" class="btn" data-act="cancelsub">Cancel</button></div><div class="err" hidden></div></div></div>`);
@@ -126,5 +139,6 @@ export async function tasks(root) {
     del: async (el) => { if (await confirmBox('Delete this task?', 'Delete')) { await api('DELETE', `/tasks/${el.dataset.id}`); reload(); } },
   });
   await drawTabs();
+  onPageChange((d) => d.entity === 'tasks', () => reload());
   const m = location.hash.match(/[?&]task=(\d+)/); if (m) { history.replaceState(null, '', '#/tasks'); openTask(m[1], reload); }
 }

@@ -1,3 +1,4 @@
+import { watchFormRecord, conflictPanel, changedOnly } from './live.js';
 import { api, html, raw, setHtml, esc, store, toast, modal, badge, money, fmtDate, $, $$ } from './core.js';
 
 // ------------------------------------------------------------------ bundle (field definitions + layouts)
@@ -86,13 +87,24 @@ export function readValues(form, entity, lk) {
 /** Create/edit dialog for contacts, accounts and deals, driven by the admin's layout. */
 export function openEntityForm(entity, rec, { lk, onDone, titles, extra, afterBody } = {}) {
   const t = titles || {}; const isNew = !rec?.id; rec = rec || {};
+  let pending = null, stopWatch = null; // pending: choices for fields someone else changed meanwhile
   modal({ title: isNew ? t.new : t.edit, wide: true,
     body: html`${renderFields(entity, rec, lk)}${extra ? extra(rec) : ''}`,
-    onOpen: (form) => { applyVisibility(form, entity, lk); form.addEventListener('input', () => applyVisibility(form, entity, lk)); form.addEventListener('change', () => applyVisibility(form, entity, lk)); afterBody?.(form); },
+    onOpen: (form) => {
+      applyVisibility(form, entity, lk); form.addEventListener('input', () => applyVisibility(form, entity, lk)); form.addEventListener('change', () => applyVisibility(form, entity, lk)); afterBody?.(form);
+      if (!isNew) stopWatch = watchFormRecord(form, entity, rec.id);
+    },
+    onClose: () => stopWatch?.(),
     onSubmit: async (form) => {
-      const body = readValues(form, entity, lk); if (extra) for (const e of $$('[data-extra]', form)) body[e.name] = e.value;
-      const saved = isNew ? await api('POST', `/${entity}`, body) : await api('PUT', `/${entity}/${rec.id}`, body);
-      toast(`${t.noun || 'Record'} saved`, 'ok'); onDone?.(saved);
+      // edits send only what changed, with the values originally loaded, so other people's changes to other fields are kept
+      let body = isNew ? readValues(form, entity, lk) : changedOnly(readValues(form, entity, lk), rec);
+      if (extra) for (const e of $$('[data-extra]', form)) if (e.value) body[e.name] = e.value;
+      if (!isNew && !Object.keys(body).some((k) => k !== '__base')) { toast('No changes to save'); return; }
+      if (pending) body = pending.apply(body);
+      let saved;
+      try { saved = isNew ? await api('POST', `/${entity}`, body) : await api('PUT', `/${entity}/${rec.id}`, body); }
+      catch (e) { if (e.status === 409 && e.data?.conflict) { pending = conflictPanel(form, e); throw new Error(e.message); } throw e; }
+      pending = null; toast(`${t.noun || 'Record'} saved`, 'ok'); onDone?.(saved);
     } });
 }
 

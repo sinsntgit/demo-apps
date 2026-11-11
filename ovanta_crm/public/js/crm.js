@@ -4,6 +4,17 @@ import {
 import { mountList } from './list.js';
 import { mountAttachments, convertLead, uploadFiles } from './records.js';
 import { taskForm, tasks, openTask } from './tasks.js';
+import { watchRecord, onPageChange, changedBy } from './live.js';
+/** Presence badges under the page header, and redraw when someone else changes this record. */
+function livePage(root, entity, id, draw) {
+  let pres = root.querySelector('[data-presence]');
+  if (!pres) { pres = document.createElement('div'); pres.dataset.presence = ''; pres.style.marginBottom = '8px'; root.firstElementChild?.after(pres); }
+  watchRecord(entity, id, pres);
+  onPageChange((d) => (d.entity === entity && Number(d.id) === Number(id)) || (d.entity === 'tasks' && d.action !== 'activity' && root.querySelector(`[data-act=opentask][data-id="${d.id}"]`)), async (d) => {
+    if (d.entity === entity && d.action === 'deleted') { toast(changedBy(d)); location.hash = `#/${entity}`; return; }
+    await draw(); toast(d.entity === entity ? changedBy(d) : `${d.by || 'Someone'} updated a task on this page`);
+  });
+}
 export { tasks };
 import { viewFile, fileIcon } from './viewer.js';
 import { openEntityForm, customDetailCard, customColumns, customFilters, customCardLines, displayValue, activeFields } from './forms.js';
@@ -133,6 +144,7 @@ export async function contacts(root) {
     const q = body.querySelector('.search').value.trim(); const f = {}; $$('[data-filter]', body).forEach((s) => { if (s.value) f[s.dataset.filter] = s.value; });
     e.currentTarget.href = '/api/contacts/export.csv' + qs({ q, ...f });
   });
+  onPageChange((d) => d.entity === 'contacts', () => list.reload());
 }
 
 // ---- timeline widget shared by contact/deal/account pages ----
@@ -167,7 +179,7 @@ export async function contactDetail(root, id) {
         ${customDetailCard('contacts', c)}
         <div class="card"><div class="hd"><h2>Deals</h2><span class="grow"></span><button class="btn sm" data-act="deal">+ Deal</button></div><div class="bd">${d.deals.length ? d.deals.map((x) => html`<div style="display:flex;justify-content:space-between;padding:5px 0"><a href="#/deals/${x.id}">${x.name}</a><span>${money(x.amount, true)} ${badge(x.stage)}</span></div>`) : html`<span class="muted">No deals.</span>`}</div></div>
         ${miniTasks(d.tasks)}</div></div>`);
-    wireTimeline(root, 'contact_id', id, draw); mountAttachments(root, 'contacts', id);
+    wireTimeline(root, 'contact_id', id, draw); mountAttachments(root, 'contacts', id); livePage(root, 'contacts', id, draw);
     on(root, {
       convert: () => convertLead(id, draw),
       edit: async () => contactForm(c, await lookups(), draw),
@@ -195,6 +207,7 @@ export async function accounts(root) {
     ],
   });
   on(head, { new: () => accountForm({}, (a) => { location.hash = `#/accounts/${a.id}`; }), purge: () => purgeModal('accounts', () => list.reload()) });
+  onPageChange((d) => d.entity === 'accounts', () => list.reload());
 }
 export async function accountDetail(root, id) {
   const draw = async () => {
@@ -209,7 +222,7 @@ export async function accountDetail(root, id) {
           <div class="card"><div class="hd"><h2>Contacts (${d.contacts.length})</h2></div><div class="bd">${d.contacts.length ? d.contacts.map((c) => html`<div style="padding:5px 0"><a href="#/contacts/${c.id}">${fullName(c)}</a> ${badge(c.status)}<div class="small muted">${c.title || ''}</div></div>`) : html`<span class="muted">No contacts.</span>`}</div></div>
           <div class="card"><div class="hd"><h2>Deals (${d.deals.length})</h2></div><div class="bd">${d.deals.length ? d.deals.map((x) => html`<div style="display:flex;justify-content:space-between;padding:5px 0"><a href="#/deals/${x.id}">${x.name}</a><span>${money(x.amount, true)} ${badge(x.stage)}</span></div>`) : html`<span class="muted">No deals.</span>`}</div></div>
         </div></div>`);
-    wireTimeline(root, 'account_id', id, draw); mountAttachments(root, 'accounts', id);
+    wireTimeline(root, 'account_id', id, draw); mountAttachments(root, 'accounts', id); livePage(root, 'accounts', id, draw);
     on(root, {
       edit: () => accountForm(a, draw),
       del: async () => { if (await confirmBox(`Delete ${a.name}? Contacts and deals stay but lose their company link.`, 'Delete')) { await api('DELETE', `/accounts/${id}`); location.hash = '#/accounts'; } },
@@ -301,6 +314,7 @@ export async function deals(root) {
   };
   on(body, { hist: (el) => historyModal(el.dataset.id, el.dataset.name) });
   reload = drawBoard; await drawBoard();
+  onPageChange((d) => d.entity === 'deals', () => reload?.());
 }
 export async function dealDetail(root, id) {
   const draw = async () => {
@@ -314,7 +328,7 @@ export async function dealDetail(root, id) {
           <div><span class="muted small">Account</span><br>${x.account_id ? html`<a href="#/accounts/${x.account_id}">${x.account_name}</a>` : '—'}</div>
           <div><span class="muted small">Contact</span><br>${x.contact_id ? html`<a href="#/contacts/${x.contact_id}">${x.contact_name}</a>` : '—'}</div>
           <div><span class="muted small">Expected close</span><br>${fmtDate(x.close_date)}</div><div><span class="muted small">Owner</span><br>${x.owner_name || '—'}</div></div></div>${customDetailCard('deals', x)}${miniTasks(d.tasks)}</div></div>`);
-    wireTimeline(root, 'deal_id', id, draw); mountAttachments(root, 'deals', id, { stage: x.stage, onChange: draw });
+    wireTimeline(root, 'deal_id', id, draw); mountAttachments(root, 'deals', id, { stage: x.stage, onChange: draw }); livePage(root, 'deals', id, draw);
     on(root, {
       edit: async () => dealForm(x, await lookups(), draw), stage: () => stageModal(x, draw), task: () => taskForm({ deal_id: id }, draw),
       viewfile: (el) => viewFile(files.find((f) => String(f.id) === el.dataset.id), files),

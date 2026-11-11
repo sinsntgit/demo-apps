@@ -247,6 +247,29 @@ await p6.goto(`${base}/#/dashboard`); await p6.goto(`${base}/#/tasks?task=${awai
 await p6.waitForSelector('.modal button[data-act=done]', { timeout: 5000 }).catch(() => errors.push('email link did not open the task')); await p6.click('.modal button[data-act=done]'); await p6.fill('#tp-form textarea[name=note]', 'PO received');
 await p6.click('#tp-form button[data-act=go]'); await p6.waitForSelector('.modal button[data-act=reopen]', { timeout: 5000 }).catch(() => errors.push('task not completed')); await ctx6.close();
 await new Promise((r) => setTimeout(r, 200)); if (!taskMails('admin@ovantaa.com').some((s) => /Task completed: E2E: collect signed PO/.test(s))) errors.push('assigner not emailed on completion');
+// ===== Two people on the same deal: presence, merged edits, conflicts, live refresh =====
+const ctx7 = await browser.newContext({ viewport: { width: 1360, height: 900 } }); const tina = await ctx7.newPage(); tina.on('pageerror', (e) => errors.push('pageerror(live): ' + e.message));
+await tina.goto(base); await tina.fill('input[name=email]', 'tina@ovantaa.com'); await tina.fill('input[name=password]', 'Ovantaa@123'); await tina.click('button.primary'); await tina.waitForSelector('.kpi');
+await page.goto(`${base}/#/deals/${sdeal.id}`); await page.waitForSelector('h1:has-text("Folder demo deal")');
+await tina.goto(`${base}/#/deals/${sdeal.id}`); await tina.waitForSelector('h1:has-text("Folder demo deal")');
+await page.waitForSelector('[data-presence] :text("Tina Field is viewing")', { timeout: 8000 }).catch(() => errors.push('presence (viewing) not shown'));
+await tina.click('button[data-act=edit]'); await tina.waitForSelector('.modal input[name=f__amount]');
+await page.waitForSelector('[data-presence] :text("Tina Field is editing")', { timeout: 8000 }).catch(() => errors.push('presence (editing) not shown')); await shot('presence-editing');
+// admin changes the amount while Tina's form is open -> Tina is warned; Tina changes only the close date -> both changes kept
+await page.click('button[data-act=edit]'); await page.fill('.modal input[name=f__amount]', '70000'); await page.click('.modal button[type=submit]'); await page.waitForSelector('.toast:has-text("Deal saved")');
+await tina.waitForSelector('.modal [data-live-note]', { timeout: 8000 }).catch(() => errors.push('editing user not warned about the other save'));
+await tina.fill('.modal input[name=f__close_date]', '2027-02-01'); await tina.click('.modal button[type=submit]'); await tina.waitForSelector('.toast:has-text("Deal saved")', { timeout: 5000 }).catch(() => errors.push('merge save failed'));
+const merged = await page.evaluate((id) => fetch(`/api/deals/${id}`).then((r) => r.json()), sdeal.id);
+if (merged.amount !== 70000 || merged.close_date !== '2027-02-01') errors.push('edits were not merged ' + JSON.stringify([merged.amount, merged.close_date]));
+await page.waitForSelector('.toast:has-text("Tina Field updated this just now")', { timeout: 8000 }).catch(() => errors.push('other user\'s page did not refresh'));
+// both change the amount -> the second one gets the conflict chooser and picks their own value
+await tina.click('button[data-act=edit]'); await tina.waitForSelector('.modal input[name=f__amount]');
+await page.click('button[data-act=edit]'); await page.fill('.modal input[name=f__amount]', '80000'); await page.click('.modal button[type=submit]'); await page.waitForSelector('.toast:has-text("Deal saved")');
+await tina.fill('.modal input[name=f__amount]', '75000'); await tina.click('.modal button[type=submit]');
+await tina.waitForSelector('.modal [data-conflicts] :text("Amount")', { timeout: 5000 }).catch(() => errors.push('conflict chooser not shown')); await tina.screenshot({ path: `${process.env.SHOTS || '/tmp'}/conflict.png` });
+await tina.check('.modal input[name="cf__amount"][value=mine]'); await tina.click('.modal button[type=submit]'); await tina.waitForSelector('.toast:has-text("Deal saved")', { timeout: 5000 }).catch(() => errors.push('save after choosing failed'));
+if ((await page.evaluate((id) => fetch(`/api/deals/${id}`).then((r) => r.json()), sdeal.id)).amount !== 75000) errors.push('chosen value not saved');
+await ctx7.close();
 // segment builder + deal drag/drop
 await page.click('a[data-nav=segments]'); await page.click('text=+ New segment'); await page.fill('.modal input[name=name]', 'E2E seg');
 await page.waitForSelector('#segprev b'); await page.click('.modal button[type=submit]'); await page.waitForSelector('td:has-text("E2E seg")');

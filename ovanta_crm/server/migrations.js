@@ -91,6 +91,17 @@ export const MIGRATIONS = [
       }
     },
   },
+  {
+    version: 7, name: 'record_versions_for_concurrent_editing',
+    up(db) {
+      for (const t of ['contacts', 'accounts', 'deals', 'tasks']) {
+        for (const [c, ddl] of [['version', 'INTEGER NOT NULL DEFAULT 1'], ['updated_at', 'TEXT'], ['updated_by', 'INTEGER']]) if (!hasColumn(db, t, c)) db.exec(`ALTER TABLE ${t} ADD COLUMN ${c} ${ddl}`);
+        // Any write that does not bump the version itself (bulk actions, imports, background jobs) still counts as a change
+        db.exec(`CREATE TRIGGER IF NOT EXISTS trg_${t}_version AFTER UPDATE ON ${t} WHEN NEW.version = OLD.version
+          BEGIN UPDATE ${t} SET version = OLD.version + 1, updated_at = datetime('now'), updated_by = NULL WHERE id = NEW.id; END`);
+      }
+    },
+  },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 

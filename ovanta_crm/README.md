@@ -109,6 +109,14 @@ Custom values appear on the record's detail page (grouped by your sections), in 
 * Task and notification emails use your **default sender if it is a real mailbox**, otherwise the first active real (SMTP) sender — never the built-in *Demo sender (simulation)* when a real one exists. Adding your first real sender also makes it the default. After each action the app tells you who is being emailed and from which address; if only the simulation sender exists, the Tasks page shows a warning and nothing is claimed as sent. A delivery failure (wrong password, server down…) appears on the task's timeline with the server's message, and every task email is in *Notifications → Email log*.
 * People with own-scope roles also see tasks they assigned to others.
 
+## Several people working on the same record
+
+* **Edits merge.** An edit form sends only the fields you changed. If Liam changes a deal's amount while Maya changes its close date, both changes are kept.
+* **Same-field conflicts are caught.** If someone else changed the *same* field after you opened the form, nothing is overwritten: the form shows *Was / Their value / Your value* for each such field and you choose, then Save again. Works for built-in and custom fields on contacts, accounts, deals and tasks. (Every record carries a version number; changes made by bulk actions, imports or background jobs count too.)
+* **See who else is there.** Record pages show *“👁 Liam is viewing”* / *“✏️ Liam is editing”*. If someone saves while your edit form is open, the form tells you straight away.
+* **Pages refresh themselves.** When someone else changes a record you are looking at (or a list of contacts, accounts, deals or tasks you have open), it updates within a second — but never while you have a dialog open; it waits until you close it. You only hear about records your role lets you see.
+* History-type data (deal stage moves, notes, task timeline, files, audit log, invoice events) is only ever added to, so it never conflicts. Issued invoices cannot change at all.
+
 ## AI search
 
 **AI search** (top of the menu, or **Ctrl + K** anywhere) answers questions in plain language across **deals, contacts, accounts, files, campaigns and segments**, including your custom fields — e.g. *“open partner deals over 100k closing this quarter”*, *“proposal PDFs uploaded in the last 30 days”*, *“accounts with more than 3 open deals”*, *“everything about Acme”*. The results show how the question was understood (the filters used), and file results open in the viewer.
@@ -153,7 +161,7 @@ See [`docs/ROADMAP-CRITICAL-GAPS.md`](docs/ROADMAP-CRITICAL-GAPS.md). Done: foun
 
 ## Tests
 ```bash
-npm test       # 82 tests (API, permissions, migrations, backups): auth, CRUD, injection, campaigns, SMTP sending against a local fake mail server,
+npm test       # 89 tests (API, permissions, migrations, backups): auth, CRUD, injection, campaigns, SMTP sending against a local fake mail server,
                # daily-limit pause/resume, notifications, AI (fake Claude API), themes, import options
 npm run e2e    # browser test (needs Playwright + Chromium): navigation, forms, xlsx import, theme, AI panel, drag-and-drop
 npm run seed   # reset to demo data
