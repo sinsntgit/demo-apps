@@ -117,6 +117,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToP
     else console.error('Could not start the server:', e.message);
     db.close(); process.exit(1);
   });
-  server.listen(config.port, () => console.log(`Ovantaa CRM running at ${config.baseUrl}  (mail transport: ${config.mailTransport})`));
+  server.listen(config.port, () => console.log(`Ovantaa CRM v${config.version} running at ${config.baseUrl}  (mail transport: ${config.mailTransport})`));
   process.on('SIGTERM', () => { server.close(); db.close(); process.exit(0); });
 }

@@ -138,6 +138,15 @@ POST('/api/tasks/:id/assign', ({ params, body, user }) => {
   const saved = update(TASKS, t.id, patch, user);
   return { ...activity(t.id, user), mail: saved.email_notice || null };
 });
+/** Send yourself a sample task email now and report exactly what the mail server said. */
+POST('/api/tasks/test-email', async ({ user }) => {
+  const u = userRow(user.id); const sender = systemSender();
+  if (!u?.email) throw bad('Your user account has no email address');
+  const sample = { id: 0, title: 'Test task email', due_date: new Date().toISOString().slice(0, 10), priority: 'medium', status: 'open', owner_name: u.name, assigned_by_name: u.name };
+  const msg = mailFor(sample, { heading: 'Test task email', intro: 'If you can read this, task emails from Ovantaa CRM reach you.', actor: user });
+  const r = await sendLogged({ sender, to: u.email, subject: 'Ovantaa CRM — test task email', ...msg, kind: 'task', event: 'task.test' });
+  return { to: u.email, via: sender ? `${sender.label} (${sender.from_email})` : 'no sender', simulated: !sender || sender.mode !== 'smtp', status: r.status, error: r.error };
+});
 /** Counts for the Tasks page tabs and the menu badge. */
 GET('/api/tasks-summary', ({ user }) => ({
   email: (() => { const s = systemSender(); return { real: !!s && s.mode === 'smtp', via: s ? `${s.label} (${s.from_email})` : null }; })(),

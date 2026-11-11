@@ -81,7 +81,8 @@ export async function tasks(root) {
   setHtml(head, page('Tasks', html`<button class="btn primary" data-act="new">+ New task</button>${allow('data.purge') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`));
   const drawTabs = async () => {
     const s = await api('GET', '/tasks-summary').catch(() => ({}));
-    setHtml(tabs, html`${s.email && !s.email.real ? html`<div class="banner warn" style="margin-bottom:12px;padding:10px 14px;border-radius:10px;background:#fef3c7;color:#78350f">⚠️ <b>Task emails are not being delivered.</b> The only email sender is a simulation${s.email.via ? ` (${s.email.via})` : ''}. ${allow('senders.view') ? html`Add your Gmail / GoDaddy / Titan mailbox in <a href="#/senders">Email senders</a> and click Verify — task emails will then use it automatically.` : 'Ask an administrator to add a real email sender.'}</div>` : ''}
+    setHtml(tabs, html`${s.email && !s.email.real ? html`<div class="banner warn" style="margin-bottom:12px;padding:10px 14px;border-radius:10px;background:#fef3c7;color:#78350f">⚠️ <b>Task emails are not being delivered.</b> The only email sender is a simulation${s.email.via ? ` (${s.email.via})` : ''}. ${allow('senders.view') ? html`Add your Gmail / GoDaddy / Titan mailbox in <a href="#/senders">Email senders</a> and click Verify — task emails will then use it automatically.` : 'Ask an administrator to add a real email sender.'} <a href="#" data-act="testmail">Send me a test task email</a></div>` : ''}
+    ${s.email?.real ? html`<div class="small muted" style="margin-bottom:10px">✉️ Task emails are sent from <b>${s.email.via}</b> · <a href="#" data-act="testmail">Send me a test task email</a></div>` : ''}
     <div class="tabs" role="tablist" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
       ${[['to_me', `Assigned to me`, s.to_me_open, s.to_me_overdue ? `${s.to_me_overdue} overdue` : ''], ['by_me', 'Assigned by me', s.by_me_open, s.by_me_issues ? `${s.by_me_issues} issue${s.by_me_issues > 1 ? 's' : ''}` : ''], ...(seeAll ? [['all', 'All tasks']] : [])].map(([k, l, n, warn]) =>
         html`<button class="btn ${k === tab ? 'primary' : ''}" role="tab" aria-selected="${k === tab}" data-act="tab" data-t="${k}">${l}${n ? html` <span class="badge plain" style="margin-left:4px">${n}</span>` : ''}${warn ? html` <span class="badge lost plain">${warn}</span>` : ''}</button>`)}</div>`);
@@ -102,7 +103,19 @@ export async function tasks(root) {
     ] });
   const reload = () => { list.reload(); drawTabs(); };
   on(head, { new: () => taskForm({}, reload), purge: () => purgeModal('tasks', reload) });
-  on(tabs, { tab: (el) => { tab = el.dataset.t; sessionStorage.setItem('taskTab', tab); reload(); } });
+  on(tabs, {
+    tab: (el) => { tab = el.dataset.t; sessionStorage.setItem('taskTab', tab); reload(); },
+    testmail: async (el) => {
+      el.textContent = 'Sending…';
+      try {
+        const r = await api('POST', '/tasks/test-email');
+        if (r.status === 'sent') toast(`Test email accepted by the mail server for ${r.to} (sent from ${r.via}). Check your inbox and spam folder.`, 'ok');
+        else if (r.simulated) toast(`Not sent: only the simulation sender exists (${r.via}). Add a real sender in Email senders.`, 'bad');
+        else toast(`Sending failed via ${r.via}: ${r.error}`, 'bad');
+      } catch (x) { fail(x); }
+      el.textContent = 'Send me a test task email';
+    },
+  });
   body.addEventListener('change', async (e) => { if (e.target.dataset.act === 'toggle') { try { await api('POST', `/tasks/${e.target.dataset.id}/toggle`); reload(); } catch (x) { fail(x); reload(); } } });
   on(body, {
     open: (el) => openTask(el.dataset.id, reload),

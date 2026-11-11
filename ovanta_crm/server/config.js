@@ -1,4 +1,5 @@
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -33,6 +34,7 @@ config.smtpTlsInsecure = process.env.SMTP_TLS_INSECURE === '1';
 config.seedBillingDemo = process.env.SEED_BILLING_DEMO !== '0';
 config.backupDir = process.env.BACKUP_DIR || path.join(config.dataDir, 'backups');
 config.backupKeep = Math.max(1, Number(process.env.BACKUP_KEEP || 14));
+try { config.version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version; } catch { config.version = 'dev'; }
 config.filesDir = process.env.FILES_DIR || path.join(config.dataDir, 'files');
 config.maxUploadMb = Math.max(1, Number(process.env.MAX_UPLOAD_MB || 25));
 config.backupDaily = process.env.BACKUP_DAILY !== '0';

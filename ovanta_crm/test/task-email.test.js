@@ -63,3 +63,13 @@ test('a failed email is shown on the task timeline with the server error', async
   assert.ok(ev, 'failure recorded'); assert.match(ev.body, /maya@ovantaa.com/); assert.match(ev.body, /Authentication failed/i);
   assert.ok(all("SELECT * FROM email_log WHERE kind='task' AND status='failed'").length >= 1);
 });
+
+test('"Send me a test task email" reports the real outcome', async () => {
+  const s = (await call(admin, 'GET', '/api/senders')).body.find((x) => x.mode === 'smtp');
+  await call(admin, 'PUT', `/api/senders/${s.id}`, { ...sender(), is_default: true });
+  const ok = (await call(admin, 'POST', '/api/tasks/test-email')).body; assert.equal(ok.status, 'sent', JSON.stringify(ok)); assert.equal(ok.to, 'admin@ovantaa.com');
+  assert.ok(await waitFor(() => inbox.find((x) => /test task email/i.test(x.raw) && x.to.includes('admin@ovantaa.com'))));
+  await call(admin, 'PUT', `/api/senders/${s.id}`, { ...sender(), password: 'nope' });
+  const bad = (await call(admin, 'POST', '/api/tasks/test-email')).body; assert.equal(bad.status, 'failed'); assert.match(bad.error, /Authentication failed/i);
+  assert.match((await call(admin, 'GET', '/api/meta')).body.version, /^\d+\.\d+\.\d+$/);
+});
