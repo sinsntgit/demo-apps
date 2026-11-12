@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from . import config, security
 from .db import get_db
-from .models import AuditLog, Connection, ConnectionAccess, Setting, User
+from .models import AuditLog, Connection, ConnectionAccess, ConnectionGroupAccess, Setting, User, UserGroupMember
 
 
 def get_settings(db: Session) -> dict:
@@ -71,8 +71,13 @@ def can_use(db: Session, user: User, conn: Connection) -> bool:
         return False
     if not conn.restricted:
         return True
-    return db.scalar(select(ConnectionAccess.id).where(
-        ConnectionAccess.connection_id == conn.id, ConnectionAccess.user_id == user.id)) is not None
+    if db.scalar(select(ConnectionAccess.id).where(
+            ConnectionAccess.connection_id == conn.id, ConnectionAccess.user_id == user.id)) is not None:
+        return True
+    # ...or through any user group they belong to
+    return db.scalar(select(ConnectionGroupAccess.id).join(
+        UserGroupMember, UserGroupMember.group_id == ConnectionGroupAccess.group_id).where(
+        ConnectionGroupAccess.connection_id == conn.id, UserGroupMember.user_id == user.id)) is not None
 
 
 def get_connection(db: Session, user: User, conn_id: int) -> Connection:

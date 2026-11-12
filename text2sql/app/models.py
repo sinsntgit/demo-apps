@@ -57,6 +57,15 @@ class ConnectionAccess(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
 
 
+class ConnectionGroupAccess(Base):
+    """A user group that may use a restricted data model."""
+    __tablename__ = "connection_group_access"
+    __table_args__ = (UniqueConstraint("connection_id", "group_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    connection_id: Mapped[int] = mapped_column(ForeignKey("connections.id", ondelete="CASCADE"), index=True)
+    group_id: Mapped[int] = mapped_column(Integer, index=True)
+
+
 class TrainingItem(Base):
     __tablename__ = "training_items"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -164,8 +173,9 @@ class DataFilter(Base):
     connection_id: Mapped[int] = mapped_column(ForeignKey("connections.id", ondelete="CASCADE"), index=True)
     table_name: Mapped[str] = mapped_column(String(255))
     condition: Mapped[str] = mapped_column(Text)                       # SQL boolean expression on that table
-    scope: Mapped[str] = mapped_column(String(10), default="all")      # all | role | user
+    scope: Mapped[str] = mapped_column(String(10), default="all")      # all | role | group | user
     role: Mapped[str] = mapped_column(String(20), default="")
+    group_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     description: Mapped[str] = mapped_column(String(500), default="")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)

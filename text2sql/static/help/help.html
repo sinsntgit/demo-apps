@@ -404,7 +404,7 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 
 <section id="groups" data-title="User groups (admin)" data-role="Administrators">
 <h2>User groups</h2>
-<p><b>Admin → User groups.</b> A group is a named list of users — a team, a department, a management layer. Groups are used in two places: a report can be <b>shared</b> with a group, and a scheduled report can be <b>emailed</b> to a group.</p>
+<p><b>Admin → User groups.</b> A group is a named list of users — a team, a department, a management layer. Groups are used in three places: a group can be given <b>access to a data model</b> (and its own data filters), a report can be <b>shared</b> with a group, and a scheduled report can be <b>emailed</b> to a group.</p>
 <figure><img src="/static/help/img/groups.png" alt="The User groups tab listing a group and its members"><figcaption>Admin → User groups.</figcaption></figure>
 <ol>
 <li>Press <b>＋ New group</b>, give it a name and an optional description.</li>
@@ -414,8 +414,8 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 <ul>
 <li>A user can belong to any number of groups.</li>
 <li>Changing a group's members takes effect immediately: new members can open reports shared with the group and receive its scheduled emails from the next run; removed members stop.</li>
-<li>Deleting a group removes the sharing and schedule entries that pointed at it. The users themselves are not affected.</li>
-<li>Groups do not grant access to data. What each member sees is still decided by <a href="#/help/access">Data access</a>.</li>
+<li>Deleting a group removes the report sharing, schedule entries, data-model access and data filters that pointed at it. The users themselves are not deleted. Afterwards check Data access: a former member who still has access another way is no longer limited by the deleted group's filters.</li>
+<li>A group on its own grants nothing. Give it access to data models, and limit the rows its members see, on the <a href="#/help/access">Data access</a> tab.</li>
 </ul>
 </section>
 
@@ -476,8 +476,14 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 <table>
 <tr><th>Setting</th><th>Effect</th></tr>
 <tr><td>Enabled</td><td>Untick to switch the data model off for everyone except administrators. Nothing is deleted.</td></tr>
-<tr><td>Only selected users may use it</td><td>Unticked: every signed-in user can query it. Ticked: only the people you tick under <i>Users with access</i>.</td></tr>
+<tr><td>Only selected groups and users may use it</td><td>Unticked: every signed-in user can query it. Ticked: only the <b>user groups</b> and <b>individual users</b> you tick under <i>Who has access</i>.</td></tr>
 </table>
+<p><b>Giving access to a group:</b> tick <i>Only selected groups and users may use it</i>, tick the group under <i>User groups</i>, and press <b>Save access</b>. Every member of the group can then use the data model. Groups are created on the <a href="#/help/groups">User groups</a> tab.</p>
+<ul>
+<li>A person has access if they are ticked individually <b>or</b> belong to any ticked group. The list of individual users shows “already has access via …” next to people covered by a ticked group.</li>
+<li>Adding someone to the group gives them access straight away; removing them takes it away (unless they are also ticked individually or are in another ticked group).</li>
+<li>To give a whole team access, prefer a group over ticking people one by one — joiners and leavers are then handled in one place.</li>
+</ul>
 <p>Press <b>Save access</b>. Changes apply to the user's very next question, and to every report: a result from a data model someone can no longer use is hidden from them.</p>
 <h3>Data filters — limiting the rows people see</h3>
 <p>A data filter is a condition on one table. Whenever a person it applies to runs a query that touches that table, they only get the rows that meet the condition.</p>
@@ -486,7 +492,7 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 <tr><th>Field</th><th>Meaning</th><th>Example</th></tr>
 <tr><td>Table</td><td>The table the rule is about.</td><td><code>customers</code></td></tr>
 <tr><td>Only show rows where</td><td>A condition on that table's columns — what you would write after WHERE.</td><td><code>region = 'North'</code></td></tr>
-<tr><td>Applies to</td><td>Everyone (except administrators), everyone with a role, or one person.</td><td>Role: analysts</td></tr>
+<tr><td>Applies to</td><td>Everyone (except administrators), everyone with a role, everyone in a user group, or one person.</td><td>Group: North sales team</td></tr>
 <tr><td>Filter is active</td><td>Untick to suspend it without deleting.</td><td></td></tr>
 </table>
 <p><b>Per-person rules without one filter per person:</b> use a placeholder that is replaced by the signed-in person's own details.</p>
@@ -500,7 +506,8 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 <ul>
 <li>The <b>server</b> applies them, not the AI model. Before any query runs, every mention of a filtered table is swapped for “that table, limited to the allowed rows”. This happens for model-written SQL, SQL the user edits by hand, and reports.</li>
 <li>The SQL shown to the user stays as written; a “🔒 Your data filters are applied” badge appears on the result.</li>
-<li>If <b>several filters</b> on the same table apply to someone (say one for their role and one for them personally), they must satisfy <b>all</b> of them.</li>
+<li>If <b>several filters</b> on the same table apply to someone (say one for their role, one for a group they belong to and one for them personally), they must satisfy <b>all</b> of them. Someone in two groups that each have a filter on the same table sees only rows allowed by both.</li>
+<li>A group filter follows membership: it applies to people while they are in the group.</li>
 <li><b>Administrators are never filtered.</b></li>
 <li>A filter removes rows from the table it names. Queries that join to that table inherit the limit through the join — orders joined to North-only customers give North-only orders. A query on <code>orders</code> alone is not limited by a filter on <code>customers</code>; if orders must be limited too, add a filter on <code>orders</code> (for example <code>region_code = 'N'</code>).</li>
 <li>A query the server cannot analyse with certainty is refused for filtered users rather than run unfiltered.</li>

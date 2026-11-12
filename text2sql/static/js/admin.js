@@ -147,24 +147,30 @@ function accessTab(el) {
       data.connections.length ? data.connections.map(c => card(c, people, data)) : h('div', { class: 'empty' }, 'No data models yet.')));
   }
   function card(c, people, data) {
-    const st = { is_active: c.is_active, restricted: c.restricted, users: new Set(c.user_ids) };
-    const userBox = h('div', { class: 'access-users' });
-    const drawUsers = () => fill(userBox, !st.restricted ? h('div', { class: 'small dim' }, 'Every signed-in user can query this data model.')
-      : people.length ? people.map(u => check(`${u.name}  ·  ${u.role}`, st.users.has(u.id), v => v ? st.users.add(u.id) : st.users.delete(u.id), u.email))
-        : h('div', { class: 'small dim' }, 'There are no non-admin users yet.'));
+    const st = { is_active: c.is_active, restricted: c.restricted, users: new Set(c.user_ids), groups: new Set(c.group_ids) };
+    const userBox = h('div', { class: 'stack' });
+    const viaGroup = u => data.groups.filter(g => st.groups.has(g.id) && g.user_ids.includes(u.id)).map(g => g.name);
+    const drawUsers = () => fill(userBox, !st.restricted ? h('div', { class: 'small dim' }, 'Every signed-in user can query this data model.') : [
+      h('div', {}, h('div', { class: 'small', style: 'font-weight:600;margin-bottom:6px' }, 'User groups'),
+        data.groups.length ? h('div', { class: 'access-users' }, data.groups.map(g => check(g.name, st.groups.has(g.id), v => { v ? st.groups.add(g.id) : st.groups.delete(g.id); drawUsers(); }, `${g.user_ids.length} member${g.user_ids.length === 1 ? '' : 's'}`)))
+          : h('div', { class: 'small dim' }, 'No groups yet — create them on the User groups tab.')),
+      h('div', {}, h('div', { class: 'small', style: 'font-weight:600;margin-bottom:6px' }, 'Individual users'),
+        people.length ? h('div', { class: 'access-users' }, people.map(u => { const via = viaGroup(u);
+          return check(`${u.name}  ·  ${u.role}`, st.users.has(u.id), v => v ? st.users.add(u.id) : st.users.delete(u.id), via.length ? `${u.email} — already has access via ${via.join(', ')}` : u.email); }))
+          : h('div', { class: 'small dim' }, 'There are no non-admin users yet.'))]);
     drawUsers();
     const saveBtn = h('button', { class: 'btn primary sm', onclick: () => busy(saveBtn, async () => {
-      await api('PUT', `/api/admin/access/${c.id}`, { is_active: st.is_active, restricted: st.restricted, user_ids: [...st.users] }); toast(`Access to “${c.name}” saved`); draw();
+      await api('PUT', `/api/admin/access/${c.id}`, { is_active: st.is_active, restricted: st.restricted, user_ids: [...st.users], group_ids: [...st.groups] }); toast(`Access to “${c.name}” saved`); draw();
     }) }, 'Save access');
     return h('div', { class: 'card stack' },
       h('div', { class: 'row wrap' }, h('h2', { style: 'margin:0' }, c.name), c.is_active ? h('span', { class: 'badge good' }, 'enabled') : h('span', { class: 'badge bad' }, 'disabled'),
-        c.restricted ? h('span', { class: 'badge warn' }, `🔒 ${c.user_ids.length} user(s)`) : h('span', { class: 'badge' }, 'open to all users'),
+        c.restricted ? h('span', { class: 'badge warn' }, `🔒 ${c.group_ids.length} group(s) + ${c.user_ids.length} user(s)`) : h('span', { class: 'badge' }, 'open to all users'),
         c.filters.length ? h('span', { class: 'badge info' }, `${c.filters.filter(f => f.enabled).length} data filter(s)`) : null),
       h('div', { class: 'grid2' },
         h('div', { class: 'stack' }, h('h3', {}, 'Access'),
           check('Enabled', st.is_active, v => { st.is_active = v; }, 'Turn off to hide this data model from everyone except administrators.'),
-          check('Only selected users may use it', st.restricted, v => { st.restricted = v; drawUsers(); }, 'Otherwise it is open to every signed-in user.'), h('div', {}, saveBtn)),
-        h('div', { class: 'stack' }, h('h3', {}, 'Users with access'), userBox)),
+          check('Only selected groups and users may use it', st.restricted, v => { st.restricted = v; drawUsers(); }, 'Otherwise it is open to every signed-in user.'), h('div', {}, saveBtn)),
+        h('div', { class: 'stack' }, h('h3', {}, 'Who has access'), userBox)),
       h('div', {}, h('div', { class: 'row' }, h('h3', { style: 'margin:0' }, 'Data filters'), h('span', { class: 'spacer' }), h('button', { class: 'btn sm', onclick: () => editFilter(c, null, data) }, '＋ Add filter')),
         c.filters.length ? h('div', { class: 'tbl-wrap', style: 'margin-top:8px;max-height:none' }, h('table', { class: 'tbl' },
           h('thead', {}, h('tr', {}, ['Table', 'Only rows where', 'Applies to', 'Note', ''].map(t => h('th', {}, t)))),
@@ -177,10 +183,11 @@ function accessTab(el) {
     const table = h('input', { type: 'text', value: f?.table_name || '', list: 'filter-tables', placeholder: 'e.g. customers' });
     const cond = h('textarea', { class: 'mono', style: 'min-height:70px', placeholder: "region = 'North'" }, f?.condition || '');
     const note = h('input', { type: 'text', value: f?.description || '', placeholder: 'Optional: why this filter exists' });
-    const st = { scope: f?.scope || 'role', role: f?.role || 'analyst', user_id: f?.user_id || '' };
+    const st = { scope: f?.scope || 'role', role: f?.role || 'analyst', user_id: f?.user_id || '', group_id: f?.group_id || '' };
     const who = h('div', { class: 'row wrap' });
-    const drawWho = () => fill(who, select([['all', 'Everyone (except administrators)'], ['role', 'Everyone with the role…'], ['user', 'One person…']], st.scope, v => { st.scope = v; drawWho(); }, { class: 'inline' }),
+    const drawWho = () => fill(who, select([['all', 'Everyone (except administrators)'], ['role', 'Everyone with the role…'], ['group', 'Everyone in the user group…'], ['user', 'One person…']], st.scope, v => { st.scope = v; drawWho(); }, { class: 'inline' }),
       st.scope === 'role' ? select(ROLE, st.role, v => { st.role = v; }, { class: 'inline' }) : null,
+      st.scope === 'group' ? select([['', 'choose…'], ...data.groups.map(g => [g.id, `${g.name} (${g.user_ids.length})`])], st.group_id, v => { st.group_id = v; }, { class: 'inline' }) : null,
       st.scope === 'user' ? select([['', 'choose…'], ...data.users.filter(u => u.role !== 'admin').map(u => [u.id, `${u.name} (${u.email})`])], st.user_id, v => { st.user_id = v; }, { class: 'inline' }) : null);
     drawWho();
     const on = check('Filter is active', f ? f.enabled : true);
@@ -190,9 +197,9 @@ function accessTab(el) {
       h('div', { class: 'small dim' }, 'Examples: ', h('span', { class: 'mono' }, "region = 'North'"), ' · ', h('span', { class: 'mono' }, "country IN ('IN', 'AE')"), ' · ', h('span', { class: 'mono' }, 'sales_rep_email = {user_email}'),
         h('br'), 'Placeholders filled in with the signed-in person’s details: ', h('span', { class: 'mono' }, data.placeholders.join('  ')), '.'),
       field('Applies to', who), field('Note', note), on,
-      h('div', { class: 'banner info small' }, 'If several filters on the same table apply to someone (for example one for their role and one for them personally) they must satisfy all of them. To filter a table that links to this one (for example orders of North-region customers), add a filter on that table too, or rely on the join: rows are only removed from the table named here.')), {
+      h('div', { class: 'banner info small' }, 'If several filters on the same table apply to someone (for example one for their role, one for a group they are in and one for them personally) they must satisfy all of them. To filter a table that links to this one (for example orders of North-region customers), add a filter on that table too, or rely on the join: rows are only removed from the table named here.')), {
       wide: true, actions: close => [h('button', { class: 'btn', onclick: close }, 'Cancel'), h('button', { class: 'btn primary', onclick: e => busy(e.target, async () => {
-        const body = { connection_id: c.id, table_name: table.value, condition: cond.value, scope: st.scope, role: st.role, user_id: st.user_id ? Number(st.user_id) : null, description: note.value, enabled: on.input.checked };
+        const body = { connection_id: c.id, table_name: table.value, condition: cond.value, scope: st.scope, role: st.role, user_id: st.user_id ? Number(st.user_id) : null, group_id: st.group_id ? Number(st.group_id) : null, description: note.value, enabled: on.input.checked };
         await (f ? api('PUT', `/api/admin/filters/${f.id}`, body) : api('POST', '/api/admin/filters', body)); close(); toast('Data filter saved'); draw();
       }) }, 'Save filter')] });
   }
@@ -228,7 +235,7 @@ function groupsTab(el) {
           g.description ? h('div', { class: 'muted small' }, g.description) : null,
           h('div', { class: 'small dim', style: 'margin-top:4px' }, g.user_ids.map(name).filter(Boolean).join(', ') || 'No members yet')),
         h('button', { class: 'btn sm', onclick: () => edit(g) }, 'Edit'),
-        h('button', { class: 'btn sm danger', onclick: async () => { if (await confirmDialog('Delete group?', `“${g.name}” will be removed. Reports shared with it stop being shared with its members; schedules stop emailing it. The users themselves are not affected.`, 'Delete')) { await api('DELETE', `/api/admin/groups/${g.id}`).catch(fail); draw(); } } }, 'Delete'))))
+        h('button', { class: 'btn sm danger', onclick: async () => { if (await confirmDialog('Delete group?', `“${g.name}” will be removed. Reports shared with it stop being shared with its members, schedules stop emailing it, and data-model access and data filters given to the group are removed. Check Data access afterwards: a member who still has access another way will no longer be limited by the group’s filters. The users themselves are not deleted.`, 'Delete')) { await api('DELETE', `/api/admin/groups/${g.id}`).catch(fail); draw(); } } }, 'Delete'))))
         : h('div', { class: 'empty' }, 'No groups yet.')));
   }
   draw().catch(fail);

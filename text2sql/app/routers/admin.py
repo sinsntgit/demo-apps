@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from .. import config, llm, mailer, rowfilter, security
 from ..db import get_db
 from ..deps import admin_only, audit, get_settings
-from ..models import (ROLES, AuditLog, Connection, ConnectionAccess, DataFilter, EmailLog, EmailSender, LLMModel,
+from ..models import (ROLES, AuditLog, Connection, ConnectionAccess, ConnectionGroupAccess, DataFilter, EmailLog, EmailSender, LLMModel,
                       Setting, User, UserGroup, UserGroupMember)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -454,6 +454,8 @@ def delete_group(group_id: int, request: Request, admin: User = Depends(admin_on
         raise HTTPException(404, "Not found")
     from ..models import ReportShare
     db.execute(delete(ReportShare).where(ReportShare.scope == "group", ReportShare.group_id == g.id))
+    db.execute(delete(ConnectionGroupAccess).where(ConnectionGroupAccess.group_id == g.id))
+    db.execute(delete(DataFilter).where(DataFilter.scope == "group", DataFilter.group_id == g.id))
     audit(db, request, admin, "group.deleted", g.name)
     db.delete(g)
     db.commit()
@@ -465,24 +467,27 @@ class AccessIn(BaseModel):
     is_active: bool
     restricted: bool
     user_ids: list[int] = []
+    group_ids: list[int] = []
 
 
 class FilterIn(BaseModel):
     connection_id: int
     table_name: str
     condition: str
-    scope: str = "all"              # all | role | user
+    scope: str = "all"              # all | role | group | user
     role: str = ""
     user_id: int | None = None
+    group_id: int | None = None
     description: str = ""
     enabled: bool = True
 
 
-def _filter(f: DataFilter, users: dict) -> dict:
+def _filter(f: DataFilter, users: dict, groups: dict | None = None) -> dict:
     who = "Everyone except administrators" if f.scope == "all" else f"Role: {f.role}" if f.scope == "role" \
+        else f"Group: {(groups or {}).get(f.group_id, '(deleted)')}" if f.scope == "group" \
         else f"User: {users.get(f.user_id, '(deleted)')}"
     return {"id": f.id, "connection_id": f.connection_id, "table_name": f.table_name, "condition": f.condition,
-            "scope": f.scope, "role": f.role, "user_id": f.user_id, "description": f.description,
+            "scope": f.scope, "role": f.role, "user_id": f.user_id, "group_id": f.group_id, "description": f.description,
             "enabled": f.enabled, "applies_to": who}
 
 
@@ -493,15 +498,25 @@ def access_overview(_: User = Depends(admin_only), db: Session = Depends(get_db)
     grants: dict = {}
     for a in db.scalars(select(ConnectionAccess)):
         grants.setdefault(a.connection_id, []).append(a.user_id)
+    group_grants: dict = {}
+    for a in db.scalars(select(ConnectionGroupAccess)):
+        group_grants.setdefault(a.connection_id, []).append(a.group_id)
+    members: dict = {}
+    for m in db.scalars(select(UserGroupMember)):
+        members.setdefault(m.group_id, []).append(m.user_id)
+    all_groups = list(db.scalars(select(UserGroup).order_by(UserGroup.name)))
+    group_names = {g.id: g.name for g in all_groups}
     filters: dict = {}
     for f in db.scalars(select(DataFilter).order_by(DataFilter.table_name, DataFilter.id)):
-        filters.setdefault(f.connection_id, []).append(_filter(f, names))
+        filters.setdefault(f.connection_id, []).append(_filter(f, names, group_names))
     return {
         "users": [{"id": u.id, "name": u.name or u.email, "email": u.email, "role": u.role, "is_active": u.is_active}
                   for u in users.values()],
         "placeholders": list(rowfilter.PLACEHOLDERS),
+        "groups": [{"id": g.id, "name": g.name, "user_ids": members.get(g.id, [])} for g in all_groups],
         "connections": [{"id": c.id, "name": c.name, "db_type": c.db_type, "is_active": c.is_active,
                          "restricted": c.restricted, "user_ids": grants.get(c.id, []),
+                         "group_ids": [g for g in group_grants.get(c.id, []) if g in group_names],
                          "tables": sorted({t["name"] for t in (c.schema_json or {}).get("tables", [])}),
                          "filters": filters.get(c.id, [])}
                         for c in db.scalars(select(Connection).order_by(Connection.name))]}
@@ -518,8 +533,12 @@ def set_access(conn_id: int, body: AccessIn, request: Request, admin: User = Dep
     for uid in set(body.user_ids):
         if db.get(User, uid):
             db.add(ConnectionAccess(connection_id=conn_id, user_id=uid))
+    db.execute(delete(ConnectionGroupAccess).where(ConnectionGroupAccess.connection_id == conn_id))
+    for gid in set(body.group_ids):
+        if db.get(UserGroup, gid):
+            db.add(ConnectionGroupAccess(connection_id=conn_id, group_id=gid))
     audit(db, request, admin, "connection.access_changed", c.name,
-          f"enabled={c.is_active} restricted={c.restricted} users={len(set(body.user_ids))}")
+          f"enabled={c.is_active} restricted={c.restricted} users={len(set(body.user_ids))} groups={len(set(body.group_ids))}")
     db.commit()
     return {"ok": True}
 
@@ -530,8 +549,10 @@ def _apply_filter(f: DataFilter, body: FilterIn, db: Session):
         raise HTTPException(404, "Data model not found")
     if not body.table_name.strip():
         raise HTTPException(400, "Choose the table the filter applies to.")
-    if body.scope not in ("all", "role", "user"):
+    if body.scope not in ("all", "role", "group", "user"):
         raise HTTPException(400, "Unknown scope.")
+    if body.scope == "group" and not (body.group_id and db.get(UserGroup, body.group_id)):
+        raise HTTPException(400, "Choose the user group.")
     if body.scope == "role" and body.role not in ("analyst", "steward"):
         raise HTTPException(400, "Choose the role (analyst or steward). Administrators are never filtered.")
     if body.scope == "user" and not (body.user_id and db.get(User, body.user_id)):
@@ -543,6 +564,7 @@ def _apply_filter(f: DataFilter, body: FilterIn, db: Session):
     f.connection_id, f.table_name, f.condition = conn.id, body.table_name.strip(), body.condition.strip()
     f.scope, f.role = body.scope, body.role if body.scope == "role" else ""
     f.user_id = body.user_id if body.scope == "user" else None
+    f.group_id = body.group_id if body.scope == "group" else None
     f.description, f.enabled = body.description.strip()[:500], body.enabled
     return conn
 

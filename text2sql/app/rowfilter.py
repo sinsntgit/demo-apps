@@ -11,7 +11,7 @@ import sqlglot
 from sqlalchemy import or_, select
 from sqlglot import exp
 
-from .models import DataFilter
+from .models import DataFilter, UserGroupMember
 from .sqlguard import _FORBIDDEN_FUNCS, SQLGLOT_DIALECT, Checked, SQLBlocked, _func_names
 
 PLACEHOLDERS = ("{user_email}", "{user_name}", "{user_id}")
@@ -20,11 +20,14 @@ PLACEHOLDERS = ("{user_email}", "{user_name}", "{user_id}")
 def applicable(db, user, conn) -> list[DataFilter]:
     if user.role == "admin":
         return []
+    groups = list(db.scalars(select(UserGroupMember.group_id).where(UserGroupMember.user_id == user.id)))
+    who = [DataFilter.scope == "all",
+           (DataFilter.scope == "role") & (DataFilter.role == user.role),
+           (DataFilter.scope == "user") & (DataFilter.user_id == user.id)]
+    if groups:
+        who.append((DataFilter.scope == "group") & DataFilter.group_id.in_(groups))
     return list(db.scalars(select(DataFilter).where(
-        DataFilter.connection_id == conn.id, DataFilter.enabled,
-        or_(DataFilter.scope == "all",
-            (DataFilter.scope == "role") & (DataFilter.role == user.role),
-            (DataFilter.scope == "user") & (DataFilter.user_id == user.id)))))
+        DataFilter.connection_id == conn.id, DataFilter.enabled, or_(*who))))
 
 
 def _lit(value) -> str:

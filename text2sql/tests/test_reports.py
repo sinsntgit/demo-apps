@@ -252,6 +252,45 @@ def test_senders_groups_schedule_and_email(people):
         a.delete(f"/api/admin/senders/{x['id']}", headers=H)
 
 
+def test_data_model_access_and_filters_by_group(admin):
+    client, conn, model = admin
+    kim, kim_id = _login(client, "kim@test.local", name="Kim")
+    lee, lee_id = _login(client, "lee@test.local", name="Lee")
+    g = client.post("/api/admin/groups", headers=H, json={"name": "West desk", "user_ids": [kim_id]}).json()["id"]
+    sees = lambda u: conn in [c["id"] for c in u.get("/api/connections").json()]      # noqa: E731
+
+    # restricted to the group: members get in, others do not; membership changes apply at once
+    client.put(f"/api/admin/access/{conn}", headers=H, json={"is_active": True, "restricted": True, "group_ids": [g]})
+    assert sees(kim) and not sees(lee)
+    card = next(c for c in client.get("/api/admin/access").json()["connections"] if c["id"] == conn)
+    assert card["group_ids"] == [g] and card["user_ids"] == []
+    client.put(f"/api/admin/groups/{g}", headers=H, json={"name": "West desk", "user_ids": [kim_id, lee_id]})
+    assert sees(lee)
+    assert ask(lee, conn, model, "count the orders")["run"]["status"] == "success"
+
+    # a data filter for the group
+    bad = client.post("/api/admin/filters", headers=H, json={"connection_id": conn, "table_name": "customers",
+                                                             "condition": "region = 'West'", "scope": "group"})
+    assert bad.status_code == 400
+    f = client.post("/api/admin/filters", headers=H, json={"connection_id": conn, "table_name": "customers",
+                                                           "condition": "region = 'West'", "scope": "group", "group_id": g}).json()["id"]
+    shown = next(c for c in client.get("/api/admin/access").json()["connections"] if c["id"] == conn)["filters"]
+    assert [x["applies_to"] for x in shown if x["id"] == f] == ["Group: West desk"]
+    assert _regions(ask(kim, conn, model, "revenue and orders by region")["run"]) == {"West"}
+    client.put(f"/api/admin/groups/{g}", headers=H, json={"name": "West desk", "user_ids": [lee_id]})
+    assert not sees(kim)                                    # removed from the group: access gone
+    client.put(f"/api/admin/access/{conn}", headers=H, json={"is_active": True, "restricted": True, "group_ids": [g], "user_ids": [kim_id]})
+    assert len(_regions(ask(kim, conn, model, "revenue and orders by region")["run"])) == 4      # individual access, not in the group: unfiltered
+    assert _regions(ask(lee, conn, model, "revenue and orders by region")["run"]) == {"West"}
+
+    # deleting the group removes its access and its filters
+    client.delete(f"/api/admin/groups/{g}", headers=H)
+    assert not sees(lee) and sees(kim)
+    after = next(c for c in client.get("/api/admin/access").json()["connections"] if c["id"] == conn)
+    assert after["group_ids"] == [] and all(x["id"] != f for x in after["filters"])
+    client.put(f"/api/admin/access/{conn}", headers=H, json={"is_active": True, "restricted": False})
+
+
 def test_side_by_side_layout_in_pdf(admin):
     """Components given half / third width sit next to each other on the page."""
     from pypdf import PdfReader
