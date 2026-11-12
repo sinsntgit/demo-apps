@@ -1,0 +1,370 @@
+// One answered question: SQL review + feedback, chart / table / summary views, exports.
+import { h, fill, prettySQL, api, busy, toast, fail, select, fmtNum, fmtCompact, highlightSQL, download, theme, modal, state } from './core.js';
+
+// Categorical palette (fixed order, colour-blind-safe adjacent pairs) for light / dark surfaces.
+const PALETTE = {
+  light: ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'],
+  dark: ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'],
+};
+const INK = {
+  light: { text: '#55544e', grid: '#e9e8e3', surface: '#ffffff' },
+  dark: { text: '#c3c2b7', grid: '#2c2c29', surface: '#1c1c1a' },
+};
+const CHART_TYPES = [['bar', 'Bar'], ['hbar', 'Horizontal bar'], ['stacked', 'Stacked bar'], ['line', 'Line'], ['area', 'Area'],
+  ['pie', 'Pie'], ['doughnut', 'Doughnut'], ['scatter', 'Scatter'], ['kpi', 'Big numbers']];
+const MAX_SERIES = 8, MAX_POINTS = 300;
+
+const label = v => v == null ? '(blank)' : String(v).replace(/ 00:00:00$/, '');
+
+/** Build a Chart.js config from rows + the user's chart settings. */
+export function chartConfig(run, cfg, mode) {
+  const colors = PALETTE[mode], ink = INK[mode];
+  const idx = Object.fromEntries(run.columns.map((c, i) => [c.name, i]));
+  const rows = run.rows.slice(0, MAX_POINTS);
+  const ys = (cfg.y || []).filter(y => y in idx);
+  const x = cfg.x in idx ? cfg.x : null;
+  const type = cfg.type;
+  if (!ys.length || (!x && type !== 'kpi')) return null;
+  let labels, datasets;
+
+  if (type === 'scatter') {
+    datasets = [{ label: `${ys[0]} vs ${x}`, data: rows.map(r => ({ x: r[idx[x]], y: r[idx[ys[0]]] })), backgroundColor: colors[0] + 'cc', pointRadius: 4, pointHoverRadius: 6 }];
+  } else if (type === 'pie' || type === 'doughnut') {
+    let pts = rows.map(r => [label(r[idx[x]]), Number(r[idx[ys[0]]]) || 0]).sort((a, b) => b[1] - a[1]);
+    if (pts.length > MAX_SERIES) {    // never invent a 9th colour: fold the tail into "Other"
+      const rest = pts.slice(MAX_SERIES - 1).reduce((s, p) => s + p[1], 0);
+      pts = [...pts.slice(0, MAX_SERIES - 1), ['Other', rest]];
+    }
+    labels = pts.map(p => p[0]);
+    datasets = [{ label: ys[0], data: pts.map(p => p[1]), backgroundColor: pts.map((_, i) => colors[i]), borderColor: ink.surface, borderWidth: 2 }];
+  } else if (cfg.series && cfg.series in idx && ys.length === 1) {    // pivot one measure by a second dimension
+    labels = [...new Set(rows.map(r => label(r[idx[x]])))];
+    const totals = new Map();
+    rows.forEach(r => { const s = label(r[idx[cfg.series]]); totals.set(s, (totals.get(s) || 0) + Math.abs(Number(r[idx[ys[0]]]) || 0)); });
+    const keep = [...totals.entries()].sort((a, b) => b[1] - a[1]).slice(0, totals.size > MAX_SERIES ? MAX_SERIES - 1 : MAX_SERIES).map(e => e[0]);
+    const names = totals.size > keep.length ? [...keep, 'Other'] : keep;
+    const grid = new Map(names.map(n => [n, new Map()]));
+    rows.forEach(r => {
+      const s = label(r[idx[cfg.series]]), key = keep.includes(s) ? s : 'Other', xl = label(r[idx[x]]);
+      const m = grid.get(key); m.set(xl, (m.get(xl) || 0) + (Number(r[idx[ys[0]]]) || 0));
+    });
+    datasets = names.map((n, i) => ({ label: n, data: labels.map(l => grid.get(n).get(l) ?? null), color: colors[i] }));
+  } else {
+    labels = rows.map(r => label(r[idx[x]]));
+    datasets = ys.slice(0, MAX_SERIES).map((y, i) => ({ label: y, data: rows.map(r => r[idx[y]]), color: colors[i] }));
+  }
+
+  const isLine = type === 'line' || type === 'area';
+  const isBar = type === 'bar' || type === 'hbar' || type === 'stacked';
+  if (isLine || isBar) {
+    datasets = datasets.map(d => ({
+      label: d.label, data: d.data, backgroundColor: isLine ? d.color + (type === 'area' ? '33' : '') : d.color,
+      borderColor: isLine ? d.color : ink.surface, borderWidth: isLine ? 2 : (type === 'stacked' ? 1 : 0), fill: type === 'area',
+      pointRadius: isLine ? (labels.length > 40 ? 0 : 3) : undefined, pointHoverRadius: 5, tension: 0.25, spanGaps: true,
+      borderRadius: isBar ? 4 : undefined, maxBarThickness: 44,
+    }));
+  }
+  const multi = datasets.length > 1 || type === 'pie' || type === 'doughnut';
+  const axis = (title, numeric) => ({
+    title: { display: !!title, text: title, color: ink.text, font: { size: 11 } },
+    grid: { color: numeric ? ink.grid : 'transparent' }, border: { color: ink.grid },
+    ticks: { color: ink.text, maxRotation: 45, autoSkip: true, callback(v) { return numeric ? fmtCompact(v) : String(this.getLabelForValue(v)).slice(0, 22); } },
+    stacked: type === 'stacked', beginAtZero: numeric && !isLine,
+  });
+  const horizontal = type === 'hbar';
+  const scales = (type === 'pie' || type === 'doughnut') ? {} : type === 'scatter'
+    ? { x: { ...axis(x, true), type: 'linear' }, y: axis(ys[0], true) }
+    : { [horizontal ? 'y' : 'x']: axis(x, false), [horizontal ? 'x' : 'y']: axis(!multi ? ys[0] : '', true) };
+  return {
+    type: isBar ? 'bar' : isLine ? 'line' : type,
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false, indexAxis: horizontal ? 'y' : 'x', scales,
+      interaction: { mode: isLine ? 'index' : 'nearest', intersect: !isLine },
+      plugins: {
+        legend: { display: multi, position: 'bottom', labels: { color: ink.text, boxWidth: 12, boxHeight: 12, usePointStyle: false } },
+        tooltip: { callbacks: { label: c => ` ${c.dataset.label ?? ''}: ${type === 'scatter' ? `(${fmtNum(c.parsed.x)}, ${fmtNum(c.parsed.y)})` : fmtNum(horizontal ? c.parsed.x : (c.parsed.y ?? c.parsed))}` } },
+      },
+    },
+  };
+}
+
+function csvOf(run) {
+  const q = v => v == null ? '' : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
+  return [run.columns.map(c => q(c.name)).join(','), ...run.rows.map(r => r.map(q).join(','))].join('\n');
+}
+
+/** Render a chart off-screen on a white background for PDF / PNG export. */
+function chartImage(run, cfg, fmt = 'image/png') {
+  const conf = chartConfig(run, cfg, 'light');
+  if (!conf) return null;
+  const canvas = h('canvas', { width: 1400, height: 640 });
+  conf.options.responsive = false; conf.options.animation = false; conf.options.devicePixelRatio = 1;
+  conf.plugins = [{ id: 'bg', beforeDraw(c) { c.ctx.save(); c.ctx.fillStyle = '#fff'; c.ctx.fillRect(0, 0, c.width, c.height); c.ctx.restore(); } }];
+  conf.options.font = { size: 22 };
+  for (const sc of Object.values(conf.options.scales || {})) { sc.ticks.font = { size: 20 }; sc.title.font = { size: 20 }; }
+  conf.options.plugins.legend.labels.font = { size: 20 };
+  const chart = new Chart(canvas, conf);
+  const url = canvas.toDataURL(fmt, 0.92);
+  chart.destroy();
+  return url;
+}
+
+function exportPDF(run, cfg) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+  const W = doc.internal.pageSize.getWidth(), M = 40;
+  let y = 48;
+  const para = (text, size, style = 'normal', color = 20, font = 'helvetica', gap = 6) => {
+    doc.setFont(font, style); doc.setFontSize(size); doc.setTextColor(color);
+    const safe = String(text).replace(/→/g, 'to').replace(/[–—]/g, '-').replace(/×/g, 'x').replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/•/g, '-').replace(/[^\x00-\xff]/g, '?');
+    for (const line of doc.splitTextToSize(safe, W - 2 * M)) {
+      if (y > 780) { doc.addPage(); y = 48; }
+      doc.text(line, M, y); y += size * 1.35;
+    }
+    y += gap;
+  };
+  para(run.question, 15, 'bold');
+  para(`${state.me?.app_name || 'AskData'} · ${new Date(run.created_at + 'Z').toLocaleString()} · ${run.model_label} · ${run.row_count} rows${run.truncated ? ' (row limit reached)' : ''}`, 9, 'normal', 110, 'helvetica', 10);
+  if (run.summary) {
+    para('Summary', 11, 'bold');
+    para(run.summary.headline, 10);
+    (run.summary.bullets || []).forEach(b => para('-  ' + b, 10, 'normal', 40, 'helvetica', 2));
+    y += 8;
+  }
+  if (cfg.type !== 'kpi') {
+    const img = chartImage(run, cfg, 'image/jpeg');
+    if (img) {
+      const hgt = (W - 2 * M) * 640 / 1400;
+      if (y + hgt > 790) { doc.addPage(); y = 48; }
+      doc.addImage(img, 'JPEG', M, y, W - 2 * M, hgt); y += hgt + 16;
+    }
+  }
+  para('SQL', 11, 'bold');
+  para(run.final_sql, 8.5, 'normal', 40, 'courier', 10);
+  const cap = 1000;
+  doc.autoTable({
+    startY: Math.min(y, 760), margin: { left: M, right: M }, styles: { fontSize: 8, cellPadding: 3, overflow: 'linebreak' },
+    headStyles: { fillColor: [42, 120, 214] },
+    didParseCell: d => { if (d.section === 'head' && run.columns[d.column.index]?.type === 'number') d.cell.styles.halign = 'right'; },
+    head: [run.columns.map(c => c.name)],
+    body: run.rows.slice(0, cap).map(r => r.map(v => v == null ? '' : typeof v === 'number' ? fmtNum(v) : String(v).slice(0, 200))),
+    columnStyles: Object.fromEntries(run.columns.map((c, i) => [i, { halign: c.type === 'number' ? 'right' : 'left' }])),
+  });
+  if (run.rows.length > cap) { doc.setFontSize(8); doc.text(`Showing first ${cap} of ${run.rows.length} rows.`, M, doc.lastAutoTable.finalY + 14); }
+  const pages = doc.getNumberOfPages();
+  for (let i = 1; i <= pages; i++) { doc.setPage(i); doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(150); doc.text(`Page ${i} of ${pages}`, W - M, 822, { align: 'right' }); }
+  doc.save(`query-${run.id}.pdf`);
+}
+
+function dataTable(run) {
+  let sort = null, dir = 1, page = 0;
+  const size = 50, wrap = h('div', {});
+  const draw = () => {
+    const rows = [...run.rows];
+    if (sort != null) rows.sort((a, b) => (a[sort] == null) - (b[sort] == null) || (a[sort] > b[sort] ? dir : a[sort] < b[sort] ? -dir : 0));
+    const pages = Math.max(1, Math.ceil(rows.length / size));
+    page = Math.min(page, pages - 1);
+    fill(wrap, 
+      h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' },
+        h('thead', {}, h('tr', {}, run.columns.map((c, i) => h('th', {
+          class: 'sortable' + (c.type === 'number' ? ' num' : ''), title: c.masked ? 'Masked by policy' : 'Sort',
+          onclick: () => { dir = sort === i ? -dir : 1; sort = i; draw(); },
+        }, c.name, c.masked ? ' 🔒' : '', sort === i ? (dir > 0 ? ' ▲' : ' ▼') : '')))),
+        h('tbody', {}, rows.slice(page * size, (page + 1) * size).map(r => h('tr', {}, r.map((v, i) =>
+          v == null ? h('td', { class: 'null' }, 'null')
+            : h('td', { class: run.columns[i].type === 'number' ? 'num' : '' }, run.columns[i].type === 'number' ? fmtNum(v) : label(v)))))))),
+      pages > 1 ? h('div', { class: 'row small muted', style: 'margin-top:8px' },
+        h('button', { class: 'btn sm', disabled: page === 0, onclick: () => { page--; draw(); } }, '‹ Prev'),
+        `Page ${page + 1} of ${pages}`,
+        h('button', { class: 'btn sm', disabled: page >= pages - 1, onclick: () => { page++; draw(); } }, 'Next ›')) : null);
+  };
+  draw();
+  return wrap;
+}
+
+function kpiTiles(run, cfg) {
+  const idx = Object.fromEntries(run.columns.map((c, i) => [c.name, i]));
+  const ys = (cfg.y || []).filter(y => y in idx);
+  const single = run.rows.length === 1;
+  return h('div', { class: 'kpis' }, ys.map(y => {
+    const vals = run.rows.map(r => r[idx[y]]).filter(v => typeof v === 'number');
+    const total = vals.reduce((a, b) => a + b, 0);
+    return h('div', { class: 'kpi' }, h('div', { class: 'l' }, y.replace(/_/g, ' ')),
+      h('div', { class: 'v' }, fmtCompact(single ? vals[0] : total)),
+      single ? null : h('div', { class: 's' }, `sum of ${vals.length} rows · avg ${fmtCompact(total / (vals.length || 1))}`));
+  }));
+}
+
+/**
+ * ctx: { readonly, onFollowup(question), onChange(run) }
+ */
+export function runCard(run, ctx = {}) {
+  const root = h('div', {});
+  let chart = null, editing = false;
+  const cleanup = () => { chart?.destroy(); chart = null; };
+  const refresh = updated => { Object.assign(run, updated); ctx.onChange?.(run); draw(); };
+
+  function sqlSection() {
+    const sec = h('div', { class: 'sec' });
+    const meta = h('span', { class: 'small dim' }, [run.model_label, run.llm_ms ? `${(run.llm_ms / 1000).toFixed(1)}s to write` : null,
+      run.status === 'success' ? `${run.db_ms} ms to run` : null, run.attempts > 1 ? (run.status === 'success' ? `auto-corrected ×${run.attempts - 1}` : `${run.attempts - 1} repair attempt(s) failed`) : null,
+      run.edited ? 'edited by you' : null].filter(Boolean).join(' · '));
+    sec.append(h('div', { class: 'sec-head' }, h('h3', {}, 'SQL'), meta, h('span', { class: 'spacer' }),
+      h('button', { class: 'btn sm ghost', onclick: () => navigator.clipboard?.writeText(run.final_sql).then(() => toast('SQL copied')) }, 'Copy'),
+      ctx.readonly ? null : h('button', { class: 'btn sm' + (editing ? ' active' : ''), onclick: () => { editing = !editing; draw(); } }, editing ? 'Cancel edit' : '✎ Edit SQL')));
+    if (editing) {
+      const ta = h('textarea', { class: 'sql-edit', spellcheck: 'false' }, prettySQL(run.final_sql));
+      const runBtn = h('button', { class: 'btn primary', onclick: () => busy(runBtn, async () => {
+        const updated = await api('POST', `/api/chat/runs/${run.id}/execute`, { sql: ta.value });
+        editing = updated.status !== 'success';
+        refresh(updated);
+      }) }, '▶ Run edited SQL');
+      sec.append(ta, h('div', { class: 'row', style: 'margin-top:8px' }, runBtn,
+        h('span', { class: 'small dim' }, 'Read-only: only a single SELECT is allowed. Confirm it afterwards to teach the model.')));
+    } else {
+      sec.append(h('pre', { class: 'sql', html: highlightSQL(prettySQL(run.final_sql)) }));
+      if (run.explanation) sec.append(h('p', { class: 'muted small', style: 'margin:8px 0 0' }, run.explanation));
+    }
+    if (run.status === 'pending_review' && !editing && !ctx.readonly) {
+      const go = h('button', { class: 'btn primary', onclick: () => busy(go, async () => refresh(await api('POST', `/api/chat/runs/${run.id}/execute`, {}))) }, '▶ Run this SQL');
+      sec.append(h('div', { class: 'feedback' }, go, h('span', { class: 'small muted' }, 'Review the SQL, edit it if needed, then run it.')));
+    }
+    if (run.status === 'error' || run.status === 'blocked') {
+      sec.append(h('div', { class: 'banner bad', style: 'margin-top:10px' },
+        h('b', {}, run.status === 'blocked' ? 'Blocked by the read-only guard: ' : 'The database returned an error: '), run.error));
+    }
+    if (run.status === 'success' && !ctx.readonly) sec.append(feedbackBar());
+    else if (run.feedback) sec.append(h('div', { class: 'feedback' }, feedbackBadge()));
+    return sec;
+  }
+
+  function feedbackBadge() {
+    return run.feedback === 'incorrect' ? h('span', { class: 'badge bad' }, '✗ Marked incorrect')
+      : run.feedback === 'corrected' ? h('span', { class: 'badge good' }, '✓ Corrected SQL saved for training')
+      : h('span', { class: 'badge good' }, '✓ Confirmed correct');
+  }
+
+  function feedbackBar() {
+    const bar = h('div', { class: 'feedback' });
+    const send = (btn, verdict, note = '') => busy(btn, async () => {
+      const res = await api('POST', `/api/chat/runs/${run.id}/feedback`, { verdict, note });
+      if (res.training === 'approved') toast('Saved as a verified example — the model will use it from now on.');
+      else if (res.training === 'pending') toast('Thanks — sent to a data steward for approval before it is used for training.');
+      refresh(res.run.rows == null ? { ...res.run, rows: run.rows } : res.run);
+    });
+    if (run.feedback) {
+      bar.append(feedbackBadge(), h('button', { class: 'btn sm ghost', onclick: () => { run.feedback = ''; draw(); } }, 'Change'));
+      return bar;
+    }
+    const yes = h('button', { class: 'btn sm good', onclick: () => send(yes, 'correct') }, run.edited ? '✓ Yes — save my correction for training' : '✓ Correct');
+    const no = h('button', { class: 'btn sm danger', onclick: () => {
+      const note = h('textarea', { placeholder: 'Optional: what is wrong with it?' });
+      modal('Mark this SQL as incorrect', h('div', { class: 'stack' }, note,
+        h('p', { class: 'small muted' }, 'Tip: use “Edit SQL” to fix the query yourself — a confirmed correction teaches the model the right answer.')), {
+        actions: close => [h('button', { class: 'btn', onclick: close }, 'Cancel'),
+          h('button', { class: 'btn danger', onclick: () => { close(); send(no, 'incorrect', note.value); } }, 'Mark incorrect')],
+      });
+    } }, '✗ Incorrect');
+    bar.append(h('span', { class: 'small muted' }, run.edited ? 'Does your edited SQL give the right answer?' : 'Is this SQL correct?'), yes,
+      ...(run.edited ? [] : [h('button', { class: 'btn sm', onclick: () => { editing = true; draw(); } }, '✎ Fix it')]), no);
+    return bar;
+  }
+
+  function resultSection() {
+    const sec = h('div', { class: 'sec' });
+    if (!run.rows) {
+      sec.append(h('div', { class: 'banner info' }, 'Result rows are not kept in history. ',
+        ctx.readonly ? '' : h('button', { class: 'btn sm', onclick: e => busy(e.target, async () => refresh(await api('POST', `/api/chat/runs/${run.id}/execute`, {}))) }, 'Run again')));
+      return sec;
+    }
+    const cfg = run.chart = { type: 'table', ...(run.chart || {}) };
+    if (cfg.type === 'table') { cfg.view = cfg.view || 'table'; }
+    const nums = run.columns.filter(c => c.type === 'number').map(c => c.name);
+    const all = run.columns.map(c => c.name);
+    const canChart = nums.length > 0 && run.rows.length > 0;
+    let view = cfg.view || (canChart && cfg.type !== 'table' ? 'chart' : 'table');
+    if (view === 'chart' && !canChart) view = 'table';
+    const body = h('div', {});
+    const save = () => { if (!ctx.readonly) api('PUT', `/api/chat/runs/${run.id}/chart`, cfg).catch(() => {}); };
+    const setView = v => { view = cfg.view = v; save(); paint(); };
+
+    const exportMenu = h('div', { class: 'menu' });
+    const pop = h('div', { class: 'pop hidden' },
+      h('button', { onclick: () => { exportPDF(run, cfg.type === 'table' ? { ...cfg, type: 'kpi' } : cfg); } }, 'PDF report'),
+      h('button', { onclick: () => download(`query-${run.id}.csv`, csvOf(run), 'text/csv') }, 'CSV'),
+      h('button', { onclick: () => { location.href = `/api/chat/runs/${run.id}/export.xlsx`; } }, 'Excel (.xlsx)'),
+      canChart ? h('button', { onclick: () => { const img = chartImage(run, cfg); if (img) fetch(img).then(r => r.blob()).then(b => download(`query-${run.id}.png`, b)); else toast('Choose a chart type first', true); } }, 'Chart image (PNG)') : null);
+    pop.addEventListener('click', () => pop.classList.add('hidden'));
+    exportMenu.append(h('button', { class: 'btn sm', onclick: e => { e.stopPropagation(); pop.classList.toggle('hidden'); } }, '⬇ Export'), pop);
+
+    const viewBtns = h('div', { class: 'row' });
+    sec.append(h('div', { class: 'sec-head' }, h('h3', {}, 'Result'),
+      h('span', { class: 'small dim' }, `${run.row_count.toLocaleString()} row${run.row_count === 1 ? '' : 's'}${run.truncated ? ' (row limit reached)' : ''}`),
+      h('span', { class: 'spacer' }), viewBtns, exportMenu), body);
+
+    function paint() {
+      cleanup();
+      fill(viewBtns, ...[['chart', 'Chart'], ['table', 'Table'], ['summary', 'Summary']].filter(v => v[0] !== 'chart' || canChart)
+        .map(([v, l]) => h('button', { class: 'btn sm' + (view === v ? ' active' : ''), onclick: () => setView(v) }, l)));
+      fill(body);
+      if (view === 'table') return body.append(dataTable(run));
+      if (view === 'summary') {
+        const s = run.summary || {};
+        body.append(h('p', {}, h('b', {}, s.headline || '')), h('ul', { class: 'bul' }, (s.bullets || []).map(b => h('li', {}, b))),
+          h('div', { class: 'tbl-wrap', style: 'margin-top:12px' }, h('table', { class: 'tbl' },
+            h('thead', {}, h('tr', {}, ['Column', 'Type', 'Distinct', 'Nulls', 'Min', 'Max', 'Average', 'Total'].map((t, i) => h('th', { class: i > 1 ? 'num' : '' }, t)))),
+            h('tbody', {}, (s.stats || []).map(c => h('tr', {}, h('td', {}, c.column), h('td', {}, c.type),
+              ...[c.distinct, c.nulls, c.min, c.max, c.mean, c.sum].map(v => h('td', { class: 'num' }, v == null ? '–' : typeof v === 'number' ? fmtNum(v) : String(v)))))))),
+          h('p', { class: 'small dim', style: 'margin-top:8px' }, 'Summary computed on the server from the result rows. Result data is never sent to the AI model.'));
+        return;
+      }
+      if (cfg.type === 'table') { cfg.type = 'bar'; cfg.x = cfg.x || all.find(c => !nums.includes(c)) || all[0]; cfg.y = cfg.y?.length ? cfg.y : nums.filter(n => n !== cfg.x).slice(0, 1); }
+      const change = (k, v) => { cfg[k] = v; save(); paint(); };
+      const dims = all.filter(c => c !== cfg.x && !nums.includes(c));
+      const controls = h('div', { class: 'chart-controls' },
+        h('label', {}, 'Chart type', select(CHART_TYPES, cfg.type, v => change('type', v))),
+        cfg.type === 'kpi' ? null : h('label', {}, cfg.type === 'pie' || cfg.type === 'doughnut' ? 'Slices' : 'X axis', select(all, cfg.x, v => change('x', v))),
+        h('label', {}, cfg.type === 'kpi' ? 'Measure' : 'Y axis', select(nums, cfg.y?.[0], v => change('y', [v, ...(cfg.y || []).slice(1).filter(y => y !== v)]))),
+        ['bar', 'hbar', 'stacked', 'line', 'area'].includes(cfg.type) && nums.length > 1 && !cfg.series
+          ? h('label', {}, 'Add measure', select([['', '—'], ...nums.filter(n => n !== cfg.y?.[0])], cfg.y?.[1] || '', v => change('y', v ? [cfg.y[0], v] : [cfg.y[0]]))) : null,
+        ['bar', 'hbar', 'stacked', 'line', 'area'].includes(cfg.type) && dims.length
+          ? h('label', {}, 'Split by', select([['', '—'], ...dims], cfg.series || '', v => { cfg.series = v || null; if (v) cfg.y = cfg.y.slice(0, 1); save(); paint(); })) : null);
+      body.append(controls);
+      if (cfg.type === 'kpi') return body.append(kpiTiles(run, cfg));
+      const conf = chartConfig(run, cfg, theme());
+      if (!conf) return body.append(h('div', { class: 'empty' }, 'Pick the columns to plot.'));
+      const canvas = h('canvas', { role: 'img', 'aria-label': `${cfg.type} chart of ${cfg.y.join(', ')} by ${cfg.x}` });
+      body.append(h('div', { class: 'chart-box' }, canvas));
+      if (run.rows.length > MAX_POINTS) body.append(h('p', { class: 'small dim' }, `Chart shows the first ${MAX_POINTS} rows; the table has all ${run.rows.length}.`));
+      chart = new Chart(canvas, conf);
+    }
+    paint();
+    sec._repaint = paint;
+    return sec;
+  }
+
+  let resultSec = null;
+  function draw() {
+    cleanup();
+    const card = h('div', { class: 'card flush run' });
+    if (run.status === 'clarification') {
+      card.append(h('div', { class: 'sec' }, h('div', { class: 'sec-head' }, h('h3', {}, 'I need a bit more detail'), h('span', { class: 'small dim' }, run.model_label)), h('p', { style: 'margin:0' }, run.explanation)));
+    } else if (!run.final_sql) {
+      card.append(h('div', { class: 'sec' }, h('div', { class: 'banner bad' }, run.error || 'Something went wrong.')));
+    } else {
+      card.append(sqlSection());
+      resultSec = run.status === 'success' ? resultSection() : null;
+      if (resultSec) card.append(resultSec);
+    }
+    if (run.followups?.length && ctx.onFollowup && (run.status === 'success' || run.status === 'clarification')) {
+      card.append(h('div', { class: 'sec' }, h('div', { class: 'sec-head' }, h('h3', {}, 'Follow-up questions')),
+        h('div', { class: 'chips' }, run.followups.map(f => h('button', { class: 'chip', onclick: () => ctx.onFollowup(f) }, f)))));
+    }
+    fill(root, h('div', { class: 'q' }, h('div', {}, run.question)), card);
+  }
+  const onTheme = () => { if (!root.isConnected) return window.removeEventListener('themechange', onTheme); resultSec?._repaint?.(); };
+  window.addEventListener('themechange', onTheme);
+  draw();
+  return root;
+}

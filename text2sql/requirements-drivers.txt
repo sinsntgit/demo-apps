@@ -1,0 +1,6 @@
+# Source database drivers - install the ones you need (the Docker image installs all).
+psycopg2-binary>=2.9        # PostgreSQL
+pymysql>=1.1                # MySQL, SingleStore
+pymssql>=2.3                # Microsoft SQL Server
+oracledb>=2.2               # Oracle (thin mode, no client libraries needed)
+snowflake-sqlalchemy>=1.6   # Snowflake

@@ -1,0 +1,81 @@
+customer_id,customer_name,email,segment,region,city,signup_date
+1,Zoe Hale,zoe.hale1@example.com,Enterprise,East,Norwich,2022-03-16
+2,Felix Adler,felix.adler2@example.com,Consumer,North,Newcastle,2022-08-08
+3,Mia Hale,mia.hale3@example.com,Small Business,North,Leeds,2022-09-04
+4,Milo Hale,milo.hale4@example.com,Consumer,North,Newcastle,2022-05-07
+5,Tara Shaw,tara.shaw5@example.com,Enterprise,South,Bristol,2023-02-11
+6,Lucas Shaw,lucas.shaw6@example.com,Enterprise,North,Leeds,2022-10-24
+7,Zoe Reyes,zoe.reyes7@example.com,Consumer,West,Bath,2023-07-28
+8,Liam Adler,liam.adler8@example.com,Enterprise,South,Bristol,2022-07-12
+9,Liam Reyes,liam.reyes9@example.com,Enterprise,East,Norwich,2023-08-01
+10,Reid Okafor,reid.okafor10@example.com,Small Business,North,Newcastle,2023-06-29
+11,Ruby Novak,ruby.novak11@example.com,Enterprise,West,Bath,2023-01-06
+12,Lucas Dunn,lucas.dunn12@example.com,Consumer,East,Norwich,2022-03-25
+13,Lena Novak,lena.novak13@example.com,Small Business,East,Cambridge,2022-10-22
+14,Liam Reyes,liam.reyes14@example.com,Small Business,North,Leeds,2024-02-15
+15,Zoe Frost,zoe.frost15@example.com,Small Business,East,Cambridge,2022-02-10
+16,Milo Adler,milo.adler16@example.com,Small Business,North,Manchester,2023-12-13
+17,Reid Novak,reid.novak17@example.com,Enterprise,East,Cambridge,2022-03-12
+18,Nora Novak,nora.novak18@example.com,Enterprise,North,Newcastle,2022-03-08
+19,Owen Brandt,owen.brandt19@example.com,Enterprise,North,Newcastle,2024-04-21
+20,Owen Costa,owen.costa20@example.com,Small Business,West,Bath,2022-01-24
+21,Felix Kim,felix.kim21@example.com,Enterprise,West,Cardiff,2023-05-21
+22,Ivy Dunn,ivy.dunn22@example.com,Small Business,North,Leeds,2024-01-27
+23,Elsa Hale,elsa.hale23@example.com,Small Business,South,London,2022-06-20
+24,Elsa Reyes,elsa.reyes24@example.com,Small Business,West,Cardiff,2024-04-18
+25,Milo Lind,milo.lind25@example.com,Enterprise,West,Bath,2023-01-03
+26,Lucas Kim,lucas.kim26@example.com,Consumer,West,Cardiff,2022-06-04
+27,Lucas Shaw,lucas.shaw27@example.com,Small Business,South,Bristol,2022-07-06
+28,Owen Shaw,owen.shaw28@example.com,Consumer,East,Cambridge,2023-07-02
+29,Reid Adler,reid.adler29@example.com,Small Business,East,Norwich,2023-12-09
+30,Iris Frost,iris.frost30@example.com,Enterprise,North,Newcastle,2023-02-06
+31,Elsa Hale,elsa.hale31@example.com,Consumer,West,Bath,2023-10-12
+32,Noah Okafor,noah.okafor32@example.com,Consumer,West,Cardiff,2023-03-28
+33,Liam Moreau,liam.moreau33@example.com,Enterprise,South,London,2022-04-15
+34,Tara Kim,tara.kim34@example.com,Enterprise,North,Leeds,2023-01-08
+35,Mia Egan,mia.egan35@example.com,Consumer,North,Newcastle,2023-01-21
+36,Nora Moreau,nora.moreau36@example.com,Enterprise,South,Brighton,2023-05-01
+37,Liam Egan,liam.egan37@example.com,Small Business,North,Manchester,2023-05-07
+38,Owen Patel,owen.patel38@example.com,Consumer,West,Cardiff,2024-02-07
+39,Nora Novak,nora.novak39@example.com,Enterprise,East,Norwich,2023-06-13
+40,Ivy Reyes,ivy.reyes40@example.com,Small Business,North,Leeds,2023-12-08
+41,Lena Lind,lena.lind41@example.com,Enterprise,North,Leeds,2023-12-14
+42,Lena Moreau,lena.moreau42@example.com,Consumer,East,Cambridge,2024-03-01
+43,Milo Reyes,milo.reyes43@example.com,Enterprise,South,Brighton,2023-10-14
+44,Reid Dunn,reid.dunn44@example.com,Consumer,South,London,2024-04-17
+45,Lucas Okafor,lucas.okafor45@example.com,Enterprise,West,Bath,2022-12-31
+46,Ava Dunn,ava.dunn46@example.com,Small Business,North,Manchester,2022-09-23
+47,Reid Moreau,reid.moreau47@example.com,Small Business,South,Bristol,2022-12-24
+48,Mia Okafor,mia.okafor48@example.com,Consumer,East,Norwich,2023-04-27
+49,Ruby Okafor,ruby.okafor49@example.com,Small Business,South,Bristol,2023-09-17
+50,Jude Frost,jude.frost50@example.com,Enterprise,North,Manchester,2024-03-29
+51,Liam Frost,liam.frost51@example.com,Small Business,North,Newcastle,2024-02-08
+52,Jude Frost,jude.frost52@example.com,Consumer,South,Brighton,2024-03-19
+53,Mia Dunn,mia.dunn53@example.com,Enterprise,East,Cambridge,2023-04-20
+54,Mia Costa,mia.costa54@example.com,Consumer,West,Cardiff,2022-05-11
+55,Zoe Adler,zoe.adler55@example.com,Small Business,North,Newcastle,2022-05-30
+56,Felix Kim,felix.kim56@example.com,Enterprise,West,Cardiff,2022-01-22
+57,Liam Reyes,liam.reyes57@example.com,Enterprise,North,Leeds,2023-03-21
+58,Ivy Shaw,ivy.shaw58@example.com,Small Business,South,London,2022-10-27
+59,Tara Moreau,tara.moreau59@example.com,Small Business,South,Bristol,2023-03-06
+60,Noah Frost,noah.frost60@example.com,Enterprise,South,Brighton,2023-04-15
+61,Lena Kim,lena.kim61@example.com,Enterprise,West,Cardiff,2023-06-21
+62,Iris Dunn,iris.dunn62@example.com,Consumer,North,Newcastle,2022-01-05
+63,Ethan Kim,ethan.kim63@example.com,Small Business,South,Bristol,2024-01-13
+64,Milo Shaw,milo.shaw64@example.com,Small Business,North,Newcastle,2023-06-15
+65,Liam Frost,liam.frost65@example.com,Enterprise,West,Cardiff,2022-09-12
+66,Nora Shaw,nora.shaw66@example.com,Consumer,South,Bristol,2023-04-09
+67,Mia Novak,mia.novak67@example.com,Small Business,North,Newcastle,2023-06-02
+68,Nora Novak,nora.novak68@example.com,Enterprise,South,Bristol,2024-04-06
+69,Lena Okafor,lena.okafor69@example.com,Enterprise,West,Bath,2023-07-27
+70,Iris Kim,iris.kim70@example.com,Small Business,South,London,2023-02-06
+71,Ruby Patel,ruby.patel71@example.com,Enterprise,West,Cardiff,2023-03-15
+72,Ivy Brandt,ivy.brandt72@example.com,Small Business,North,Leeds,2024-03-06
+73,Felix Kim,felix.kim73@example.com,Small Business,South,London,2023-04-24
+74,Liam Hale,liam.hale74@example.com,Small Business,South,London,2023-11-15
+75,Ethan Costa,ethan.costa75@example.com,Small Business,South,Bristol,2023-02-18
+76,Hugo Okafor,hugo.okafor76@example.com,Small Business,East,Cambridge,2022-04-05
+77,Ava Moreau,ava.moreau77@example.com,Enterprise,East,Cambridge,2023-03-28
+78,Elsa Moreau,elsa.moreau78@example.com,Enterprise,North,Newcastle,2022-10-30
+79,Liam Frost,liam.frost79@example.com,Consumer,North,Leeds,2022-03-28
+80,Nora Shaw,nora.shaw80@example.com,Consumer,East,Cambridge,2024-02-13

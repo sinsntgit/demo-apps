@@ -1,0 +1,26 @@
+product_id,product_name,category,unit_cost,list_price
+101,AeroBook 13,Laptops,491.68,811.94
+102,AeroBook 15,Laptops,1260.98,1789.27
+103,WorkPro 14,Laptops,522.97,973.26
+104,WorkPro 16,Laptops,1156.1,1798.96
+105,Featherlite 12,Laptops,796.88,1525.52
+106,ViewMax 24,Monitors,103.07,153.37
+107,ViewMax 27,Monitors,189.98,366.68
+108,UltraWide 34,Monitors,437.48,664.24
+109,ColorPro 27,Monitors,304.72,584.94
+110,Compact 22,Monitors,318.58,616.61
+111,USB-C Hub,Accessories,74.85,122.02
+112,Laptop Sleeve,Accessories,34.1,53.43
+113,Wireless Mouse,Accessories,73.93,130.39
+114,Mech Keyboard,Accessories,16.38,25.93
+115,Webcam HD,Accessories,21.22,40.24
+116,Studio Headphones,Audio,42.19,82.31
+117,Earbuds Pro,Audio,55.85,96.63
+118,Desk Speaker,Audio,91.95,133.28
+119,Conference Mic,Audio,79.97,127.94
+120,Soundbar Mini,Audio,51.72,88.15
+121,Mesh Router,Networking,20.86,37.08
+122,8-Port Switch,Networking,24.58,35.98
+123,WiFi Extender,Networking,134.05,244.91
+124,Travel Router,Networking,157.85,215.16
+125,PoE Injector,Networking,50.35,71.45
