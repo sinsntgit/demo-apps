@@ -15,6 +15,10 @@ duckdb>=1.0
 pandas>=2.2
 openpyxl>=3.1
 xlrd>=2.0
+# Reports: server-side PDF and charts, schedules in local time
+fpdf2>=2.8
+matplotlib>=3.8
+tzdata>=2024.1
 # Training documents
 pypdf>=4.2
 python-docx>=1.1

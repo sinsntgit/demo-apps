@@ -288,6 +288,8 @@ def _package(names, raw_rows, max_rows, ms):
         vals = [r[i] for r in raw_rows]
         typ = _col_type(vals)
         cols.append({"name": str(n), "type": typ, "role": column_role(str(n), typ, vals[:500])})
+    from .summarize import enrich
+    enrich(cols)            # marks averages / rates / prices as non-additive
     rows = [[_jsonable(v) for v in r] for r in raw_rows]
     for r in rows:
         for i, v in enumerate(r):

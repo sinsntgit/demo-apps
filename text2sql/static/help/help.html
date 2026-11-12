@@ -16,9 +16,9 @@
 <h3>Who can do what</h3>
 <table>
 <tr><th>Role</th><th>Can do</th></tr>
-<tr><td><b>Analyst</b></td><td>Ask questions, view and export results, manage their own chats, confirm or correct SQL.</td></tr>
+<tr><td><b>Analyst</b></td><td>Ask questions, view and export results, manage their own chats, confirm or correct SQL, build, share and schedule reports.</td></tr>
 <tr><td><b>Data steward</b></td><td>Everything an analyst can, plus: manage training data, approve user feedback, sync schemas, upload data files, view the dashboard.</td></tr>
-<tr><td><b>Administrator</b></td><td>Everything, plus: connect databases, manage users, AI models, settings and the audit log.</td></tr>
+<tr><td><b>Administrator</b></td><td>Everything, plus: connect databases, manage users, data access and data filters, AI models, settings and the audit log. Administrators see all rows and all reports.</td></tr>
 </table>
 <p>You only see the menu items your role allows.</p>
 </section>
@@ -122,10 +122,26 @@
 <h3>Table</h3>
 <p>Click a column heading to sort; click again to reverse. Results longer than 50 rows are paged. Empty values show as <i>null</i>.</p>
 <h3>Summary</h3>
-<p>A plain-language summary of the result: the highest and lowest values, totals and averages, the change from first to last period when the result runs over time, and how concentrated the total is. Below it is a per-column table.</p>
-<figure><img src="/static/help/img/summary.png" alt="The Summary view with headline, bullet points and a per-column statistics table"><figcaption>The Summary view.</figcaption></figure>
-<p>Totals and averages are given for measures only. For category columns (including IDs and years) you get the number of distinct values and the range.</p>
-<p>The summary is calculated by the AskData server from the rows. It is <b>not</b> written by the AI model — the model never sees your results.</p>
+<p>The Summary explains in words what the result shows. It looks at the shape of the result and writes the explanation that fits:</p>
+<table>
+<tr><th>If the result is…</th><th>The summary tells you</th></tr>
+<tr><td>A figure over time (by day, month, year…)</td><td>The total and the average per period, the highest and lowest periods, the change from the first period to the last, how the latest period compares with the one before (with a warning if it looks incomplete), and whether the second half of the period is running above or below the first.</td></tr>
+<tr><td>A figure for each category (by product, region…)</td><td>Who leads and with what share of the total, the next two, the lowest, how concentrated the total is in the top three, and how many are above average. With two or more figures it also says when the leaders differ.</td></tr>
+<tr><td>A figure broken down two ways (channel and category)</td><td>The leader on each side and the single biggest combination.</td></tr>
+<tr><td>A pivot table (one column per month, for example)</td><td>The grand total, the largest and smallest rows across all columns, the highest and lowest columns, the change from the first column to the last, and the biggest single cell.</td></tr>
+<tr><td>A plain list with no figures</td><td>How many rows, and how the values in each column are spread.</td></tr>
+<tr><td>One row</td><td>The figures themselves.</td></tr>
+</table>
+<figure><img src="/static/help/img/summary.png" alt="The Summary view with a headline sentence, bullet points and a per-column table"><figcaption>The Summary view.</figcaption></figure>
+<p>Rules it follows so the explanation is correct:</p>
+<ul>
+<li><b>Only quantities are totalled.</b> Averages, rates, percentages and prices (columns whose names contain words like <i>avg</i>, <i>rate</i>, <i>pct</i>, <i>price</i>, <i>margin</i>) are averaged, never added up.</li>
+<li><b>IDs, codes and years are categories</b>, never totalled or averaged.</li>
+<li>If the row limit was reached, it says the figures are partial.</li>
+<li>Rows with no value are left out and you are told.</li>
+</ul>
+<p>The table under the summary lists every column with its kind (measure, averaged measure, category, date) and its range.</p>
+<p>The summary is calculated by the AskData server from the rows. It is <b>not</b> written by the AI model — the model never sees your results. Opening an older chat recalculates its summary with the current rules.</p>
 <h3>Export</h3>
 <p>Use <b>⬇ Export</b> at the top right of any result:</p>
 <table>
@@ -134,6 +150,7 @@
 <tr><td>CSV</td><td>All returned rows.</td></tr>
 <tr><td>Excel (.xlsx)</td><td>All returned rows on one sheet; the question, SQL, model and time on a second sheet.</td></tr>
 <tr><td>Chart image (PNG)</td><td>The current chart on a white background, ready for a slide.</td></tr>
+<tr><td>＋ Add to a report…</td><td>Puts this result into one of your reports (or a new one). See <a href="#/help/reports">Reports</a>.</td></tr>
 </table>
 <p>The PDF and PNG use whatever chart you currently have selected, so set the chart up first.</p>
 </section>
@@ -152,6 +169,70 @@
 <p>The <b>History</b> page lists every individual question you have asked, grouped by month, with its status. Search it by words in the question or the SQL; click a row to open the chat it belongs to.</p>
 <p>Your chats are private to you. Administrators and stewards can see questions and SQL in the dashboard's query log for monitoring.</p>
 <p>If your administrator has switched off result storage, chats keep the question and SQL but not the rows; press <b>Run again</b> to fetch fresh results.</p>
+</section>
+
+<section id="reports" data-title="Reports">
+<h2>Reports</h2>
+<p>A report brings together results from any of your chats — charts, tables and summaries — with your own headings and commentary, and can be exported to PDF, shared and scheduled.</p>
+<p><b>A report stores the questions, not the numbers.</b> Every time it is opened, each result is run again on the database, so charts, tables, summaries and any live text always show the latest data.</p>
+<figure><img src="/static/help/img/report-view.png" alt="A report showing a header line, title, a result with its summary, chart and table"><figcaption>A report, refreshed on opening.</figcaption></figure>
+<h3>Creating a report</h3>
+<p>Two ways:</p>
+<ul>
+<li>In a chat, on any result: <b>⬇ Export → ＋ Add to a report…</b> and pick a report or name a new one.</li>
+<li><b>Reports → ＋ New report</b>, then <b>＋ Result from a chat</b> and tick as many of your past answers as you like — from different chats and different data models.</li>
+</ul>
+<figure><img src="/static/help/img/reports-list.png" alt="The Reports page listing reports"><figcaption>The Reports page lists your reports and those shared with you.</figcaption></figure>
+<h3>Editing</h3>
+<p>Open the report and press <b>✎ Edit</b>.</p>
+<figure><img src="/static/help/img/report-edit.png" alt="The report editor with title, header, footer and a list of components"><figcaption>The report editor.</figcaption></figure>
+<table>
+<tr><th>Part</th><th>What it is</th></tr>
+<tr><td>Title, Description</td><td>Shown at the top of the report and in the Reports list.</td></tr>
+<tr><td>Header, Footer</td><td>A line printed at the top and bottom of every PDF page.</td></tr>
+<tr><td>Page numbers</td><td>Adds “Page 1 of 3” to the bottom right of every PDF page.</td></tr>
+<tr><td>Heading</td><td>A large or small heading.</td></tr>
+<tr><td>Text</td><td>Your own commentary. Leave a blank line between paragraphs.</td></tr>
+<tr><td>Result from a chat</td><td>One answered question. Choose its title, whether to show the <b>Summary</b>, <b>Chart</b> and <b>Table</b>, how many table rows to show, and set up the chart with the usual <a href="#/help/charts">chart controls</a>.</td></tr>
+<tr><td>Divider, Page break</td><td>A line; or start a new page in the PDF.</td></tr>
+</table>
+<p>Use <b>↑ ↓</b> to reorder and <b>✕</b> to remove a component. Nothing is saved until you press <b>Save report</b>. A report can hold up to 40 components.</p>
+<h3>Text that updates itself</h3>
+<p>Type these placeholders in any heading, text, header or footer. They are filled in each time the report is opened:</p>
+<table>
+<tr><th>Placeholder</th><th>Becomes</th></tr>
+<tr><td><code>{{date}}</code>, <code>{{datetime}}</code></td><td>Today's date; date and time.</td></tr>
+<tr><td><code>{{viewer}}</code></td><td>The name of the person looking at the report.</td></tr>
+<tr><td><code>{{title}}</code></td><td>The report title.</td></tr>
+<tr><td><code>{{summary:1}}</code></td><td>The one-sentence summary of the 1st result in the report (use 2, 3… for the others).</td></tr>
+<tr><td><code>{{rows:1}}</code></td><td>The number of rows in the 1st result.</td></tr>
+</table>
+<h3>Viewing and exporting</h3>
+<ul>
+<li><b>⟳ Refresh</b> runs everything again.</li>
+<li><b>⬇ PDF</b> downloads the report as a PDF with header, footer and page numbers, using the data as you are allowed to see it.</li>
+</ul>
+<h3>Sharing</h3>
+<p>A report is private until its owner shares it: <b>👥 Share</b>, then give each role or person <i>Can view</i> or <i>Can view and edit</i>.</p>
+<figure><img src="/static/help/img/report-share.png" alt="The share window with access choices per role and per person"><figcaption>Sharing a report.</figcaption></figure>
+<p>Sharing a report never widens anyone's access to data:</p>
+<ul>
+<li>The report is refreshed <b>for the person opening it</b>. A result from a data model they cannot use shows “You do not have access…” instead of data.</li>
+<li>Their <a href="#/help/access">data filters</a> apply. Two people can open the same report and correctly see different numbers. A “🔒 your data filters applied” badge shows when this happens.</li>
+<li>Masked columns stay masked.</li>
+<li>Someone with edit rights can add only their own answered questions and cannot change the query behind an existing result.</li>
+<li>Only the owner (or an administrator) can share, schedule or delete a report.</li>
+</ul>
+<h3>Scheduling</h3>
+<p><b>🕒 Schedule</b> (owner only): choose every day, every weekday, a day of the week or a day of the month, and a time in your own time zone. Optionally list email addresses to receive the PDF.</p>
+<figure><img src="/static/help/img/report-schedule.png" alt="The schedule window with frequency, time and recipients"><figcaption>Scheduling a report.</figcaption></figure>
+<ul>
+<li>Each run refreshes the report and saves a dated PDF under <b>🗂 Saved copies</b>. The latest 30 are kept.</li>
+<li>If email has been set up by an administrator, the PDF is emailed to the recipients. If not, it is still saved in the app.</li>
+<li><b>Scheduled runs use the owner's data access.</b> Recipients receive what the owner would see, so only add people who are allowed to see it. Saved copies are visible to the owner and administrators only.</li>
+<li><b>▶ Run now</b> makes a saved copy immediately, and emails it if you tick the box.</li>
+<li>The server must be running at the scheduled time. A run missed while the server was down happens when it next starts.</li>
+</ul>
 </section>
 
 <section id="security" data-title="Security &amp; 2FA">
@@ -209,6 +290,9 @@
 <tr><td><b>Schema</b></td><td>The tables and columns read from the source. Press <b>Sync schema from source</b> after the database structure changes.</td><td>Only names, types, keys and comments are read. Column comments in the database are passed to the model — they are free documentation.</td></tr>
 <tr><td><b>Review queue</b></td><td>Answers that analysts confirmed or corrected, waiting for approval.</td><td>Approve the ones that are right; edit first if nearly right; reject the rest.</td></tr>
 </table>
+<h3>Working in a large window</h3>
+<p>Every training editor has a <b>⤢ Maximise</b> button at the top right, next to the ✕. It expands the editor to the full screen — useful for long SQL, DDL or documentation — and <b>⤡</b> restores it. The <b>⤢</b> button on each item in the lists, on each uploaded document and on each table in the Schema tab opens that item full-size for reading.</p>
+<figure><img src="/static/help/img/maximise.png" alt="A training editor maximised to the full window"><figcaption>A training editor, maximised.</figcaption></figure>
 <h3>Importing examples in bulk</h3>
 <p>On the <b>Question → SQL</b> tab press <b>Import CSV / JSON</b>.</p>
 <ul>
@@ -290,11 +374,52 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 <table>
 <tr><th>Option</th><th>Effect</th></tr>
 <tr><td>Enabled</td><td>Untick to hide the data model from users without deleting it.</td></tr>
-<tr><td>Restrict to selected users</td><td>Only users you tick under <b>Access</b> (and administrators) can see and query it. Otherwise every signed-in user can.</td></tr>
+<tr><td>Restrict to selected users</td><td>Only users you tick under <b>Access</b> (and administrators) can see and query it. Otherwise every signed-in user can. The same settings, together with row-level data filters, are on <a href="#/help/access">Admin → Data access</a>.</td></tr>
 <tr><td>Masked columns</td><td>One column name or pattern per line (<code>email</code>, <code>*phone*</code>, <code>ssn</code>). Values of these columns are replaced with •••••• in every result, including when the column is renamed or wrapped in a function. For strict protection, also remove the column from the database account's grants.</td></tr>
 <tr><td>Share sample values of chosen columns</td><td>Off by default. When on, up to 20 distinct values of the columns you list as <code>table.column</code> are given to the AI model as hints. Use only for harmless code lists such as statuses or regions. Takes effect at the next schema sync; turning it off removes the stored values.</td></tr>
 </table>
 <p>Deleting a data model deletes its training and all chats about it. The source database is never touched.</p>
+</section>
+
+<section id="access" data-title="Data access &amp; filters (admin)" data-role="Administrators">
+<h2>Data access and data filters</h2>
+<p><b>Admin → Data access</b> is where you decide who may use each data model and which rows they are allowed to see.</p>
+<figure><img src="/static/help/img/access.png" alt="The Data access tab with enable switch, user list and data filters for a data model"><figcaption>Admin → Data access.</figcaption></figure>
+<h3>Enabling and disabling access</h3>
+<table>
+<tr><th>Setting</th><th>Effect</th></tr>
+<tr><td>Enabled</td><td>Untick to switch the data model off for everyone except administrators. Nothing is deleted.</td></tr>
+<tr><td>Only selected users may use it</td><td>Unticked: every signed-in user can query it. Ticked: only the people you tick under <i>Users with access</i>.</td></tr>
+</table>
+<p>Press <b>Save access</b>. Changes apply to the user's very next question, and to every report: a result from a data model someone can no longer use is hidden from them.</p>
+<h3>Data filters — limiting the rows people see</h3>
+<p>A data filter is a condition on one table. Whenever a person it applies to runs a query that touches that table, they only get the rows that meet the condition.</p>
+<figure><img src="/static/help/img/filter-form.png" alt="The data filter form: table, condition, who it applies to"><figcaption>Adding a data filter.</figcaption></figure>
+<table>
+<tr><th>Field</th><th>Meaning</th><th>Example</th></tr>
+<tr><td>Table</td><td>The table the rule is about.</td><td><code>customers</code></td></tr>
+<tr><td>Only show rows where</td><td>A condition on that table's columns — what you would write after WHERE.</td><td><code>region = 'North'</code></td></tr>
+<tr><td>Applies to</td><td>Everyone (except administrators), everyone with a role, or one person.</td><td>Role: analysts</td></tr>
+<tr><td>Filter is active</td><td>Untick to suspend it without deleting.</td><td></td></tr>
+</table>
+<p><b>Per-person rules without one filter per person:</b> use a placeholder that is replaced by the signed-in person's own details.</p>
+<table>
+<tr><th>Placeholder</th><th>Replaced by</th><th>Example condition</th></tr>
+<tr><td><code>{user_email}</code></td><td>Their sign-in email</td><td><code>sales_rep_email = {user_email}</code></td></tr>
+<tr><td><code>{user_name}</code></td><td>Their name</td><td><code>account_manager = {user_name}</code></td></tr>
+<tr><td><code>{user_id}</code></td><td>Their AskData user number</td><td></td></tr>
+</table>
+<h3>How filters are enforced</h3>
+<ul>
+<li>The <b>server</b> applies them, not the AI model. Before any query runs, every mention of a filtered table is swapped for “that table, limited to the allowed rows”. This happens for model-written SQL, SQL the user edits by hand, and reports.</li>
+<li>The SQL shown to the user stays as written; a “🔒 Your data filters are applied” badge appears on the result.</li>
+<li>If <b>several filters</b> on the same table apply to someone (say one for their role and one for them personally), they must satisfy <b>all</b> of them.</li>
+<li><b>Administrators are never filtered.</b></li>
+<li>A filter removes rows from the table it names. Queries that join to that table inherit the limit through the join — orders joined to North-only customers give North-only orders. A query on <code>orders</code> alone is not limited by a filter on <code>customers</code>; if orders must be limited too, add a filter on <code>orders</code> (for example <code>region_code = 'N'</code>).</li>
+<li>A query the server cannot analyse with certainty is refused for filtered users rather than run unfiltered.</li>
+<li>Conditions are checked when saved: they must be a single condition, with no sub-queries.</li>
+</ul>
+<p>Every filter change is recorded in the audit log.</p>
 </section>
 
 <section id="models" data-title="AI models (admin)" data-role="Administrators">
@@ -342,9 +467,12 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 <tr><td>Automatic SQL repair attempts</td><td>2</td><td>How many times the model may retry after a database error. 0 switches repair off.</td></tr>
 <tr><td>Keep result snapshots in chat history</td><td>On</td><td>Off = results are never stored by AskData; users re-run to see them again.</td></tr>
 <tr><td>When an analyst confirms or corrects SQL</td><td>Approval first</td><td>Whether analyst feedback trains the model straight away or waits in the review queue.</td></tr>
+<tr><td>Email for scheduled reports</td><td>Off</td><td>Your outgoing mail server: host, port, security (STARTTLS / SSL / none), from address, and a username and password if the server needs them. <b>Save &amp; send test email</b> checks it. The password is stored encrypted. Leave the host blank to switch email off.</td></tr>
+<tr><td>Web address of this app</td><td>blank</td><td>Used for the “open the live report” link in report emails.</td></tr>
 </table>
+<figure><img src="/static/help/img/email-settings.png" alt="The email settings card"><figcaption>Email settings for scheduled reports.</figcaption></figure>
 <h3>Audit log</h3>
-<p><b>Admin → Audit log</b> records who did what and when: sign-ins (successful and failed), questions asked, SQL edits, feedback, training changes, connection, user, model and setting changes. Filter by event type, search, and export to CSV.</p>
+<p><b>Admin → Audit log</b> records who did what and when: sign-ins (successful and failed), questions asked, SQL edits, feedback, training changes, report opening, sharing and scheduling, data-access and data-filter changes, connection, user, model and setting changes. Filter by event type, search, and export to CSV.</p>
 </section>
 
 <section id="dashboard" data-title="Dashboard (stewards)" data-role="Data stewards &amp; administrators">
@@ -400,6 +528,7 @@ python -m uvicorn app.main:app --port 8000</pre>
 <tr><td><code>T2S_DATABASE_URL</code></td><td>Where AskData keeps its own records (users, training, history). Default: a SQLite file in the data folder. For production use PostgreSQL: <code>postgresql+psycopg2://user:password@host:5432/askdata</code>.</td></tr>
 <tr><td><code>T2S_DATA_DIR</code></td><td>The data folder: SQLite file, uploaded data files, generated secret. Default <code>./data</code>.</td></tr>
 <tr><td><code>T2S_APP_NAME</code></td><td>The product name shown in the interface.</td></tr>
+<tr><td><code>T2S_SCHEDULER</code></td><td>Scheduled reports run inside the server. Set to <code>0</code> to switch the scheduler off on an instance. Default <code>1</code>.</td></tr>
 </table>
 <p>PowerShell example: <code>$env:T2S_SECRET_KEY="…"; python -m uvicorn app.main:app --port 8000</code></p>
 <h3>Docker</h3>
@@ -440,6 +569,11 @@ docker compose up --build</pre>
 <tr><td>The model invents columns or gets joins wrong</td><td>Sync the schema; add a documentation note explaining the tables; add a verified example. See Training.</td></tr>
 <tr><td>Answers ignore a business rule</td><td>Write the rule as a documentation note with the words users use, and add one example applying it.</td></tr>
 <tr><td>“Stored secret cannot be decrypted”</td><td><code>T2S_SECRET_KEY</code> changed. Restore the original key, or re-enter database passwords and API keys.</td></tr>
+<tr><td>A scheduled report was not emailed</td><td>Open the report → Saved copies and read the note on that run. Usual causes: email not set up (Admin → Settings), the mail server rejected the login, or no recipients were entered. The PDF is still saved.</td></tr>
+<tr><td>Test email fails</td><td>Check host, port and security go together (587 with STARTTLS, 465 with SSL), that the server can reach the mail server, and whether it needs a username and password or an app password.</td></tr>
+<tr><td>A scheduled report did not run</td><td>The server was not running at that time (it runs on the next start), the schedule is switched off, or the owner's account is disabled.</td></tr>
+<tr><td>“This SQL … cannot be checked against your data filters”</td><td>The query uses syntax the server cannot analyse, so it is refused rather than run unfiltered. Rephrase the question or simplify the SQL.</td></tr>
+<tr><td>Two people see different numbers in the same report</td><td>Expected when data filters apply: each person sees only their rows. Look for the 🔒 badge.</td></tr>
 <tr><td>“You are asking questions too quickly”</td><td>The per-minute limit was reached. Wait a minute, or raise it in Settings.</td></tr>
 <tr><td>Signed out unexpectedly</td><td>The session expired, your password was changed or reset, or your account was disabled.</td></tr>
 <tr><td>An Excel sheet loads with wrong or missing columns</td><td>Make row 1 the headings, start at A1, remove merged title rows and blank leading rows, then re-upload and sync.</td></tr>
@@ -455,6 +589,6 @@ docker compose up --build</pre>
 <p><b>Why is a number column not offered on the Y axis?</b><br>It looks like an identifier, code or period (see <a href="#/help/charts">Charts</a>). It is still available as the X axis, in <i>Split by</i>, and with <i>Count of rows</i>. If it really is a quantity, ask the question so the column gets a clearer name — “…as total_units”.</p>
 <p><b>Can I ask across two data models at once?</b><br>No. A question runs against one data model. If two sets of data need combining, an administrator can expose them through one database connection.</p>
 <p><b>How fresh is the data?</b><br>Live. Every question runs on the source at that moment. Reopening a saved chat shows the result as it was; use Edit SQL → Run to refresh.</p>
-<p><b>Can I share a result?</b><br>Export it as PDF, Excel, CSV or PNG. Chats themselves are private to each user.</p>
+<p><b>Can I share a result?</b><br>Put it in a <a href="#/help/reports">report</a> and share that, or export it as PDF, Excel, CSV or PNG. Chats themselves are private to each user.</p>
 <p><b>Does it work in other languages?</b><br>You can ask in any language the chosen AI model understands. Training notes in the same language as the questions work best.</p>
 </section>

@@ -38,8 +38,11 @@ answers a few questions about the sample data (add it as a *Self-hosted* model, 
 | **Model choice** | Admins register models (Anthropic Claude, OpenAI, self-hosted OpenAI-compatible such as Ollama / vLLM); users choose one per question. Keys are encrypted at rest. |
 | **Answers** | Shows the generated SQL and a one-line explanation. Optional *review SQL before running*. Auto-repair when the database rejects the SQL. Clarifying question when the request is ambiguous. |
 | **Confirm / correct** | *Correct* turns the answer into a verified example. *Edit SQL* → run → *save my correction* teaches the model the right query. *Incorrect* flags it with a note. Analyst feedback can go through a steward approval queue (admin setting). |
+| **Summary** | Explains the result by its shape (trend, ranking, two-way breakdown, pivot, listing): leaders and shares, highs and lows, change over the period, concentration. Averages, rates and prices are never totalled. Computed on the server. |
 | **Output** | Chart (bar, horizontal, stacked, line, area, pie, doughnut, scatter, big numbers) with selectable axes, extra measure and split-by. IDs, codes and years are treated as categories, never summed; two measures on different scales get a panel each; sortable table; locally computed summary. Export **PDF report**, CSV, Excel, chart PNG. |
 | **Follow-ups & history** | Suggested follow-up questions; conversations keep context (earlier questions + SQL); chats and results are saved, searchable, renamable and grouped by date. |
+| **Reports** | Build a report from results of any number of chats (chart, table, summary each optional) plus headings, text, header, footer and page numbers. Stores queries, not data: refreshed live for whoever opens it. Live text placeholders. PDF export. Share with users or roles (view / edit). Schedule daily / weekdays / weekly / monthly in your time zone; each run saves a dated PDF and can email it. |
+| **Data access & filters** | Admin → Data access: enable / disable a data model, open it to all or to selected users, and add row-level filters (`region = 'North'`, `rep_email = {user_email}`) per user, per role or for everyone. Filters are applied by the server to every query — model-written, hand-edited or in a report. |
 | **Help** | Built-in Help page for users, stewards and administrators with screenshots, search and print (`static/help/help.html`). |
 | **Security** | TOTP two-factor authentication with recovery codes (optional or enforced org-wide), bcrypt passwords with policy, account lockout, session revocation, roles, per-data-model access, CSRF protection, security headers, full audit log. |
 | **Admin** | Users (roles, reset password / 2FA, unlock), AI models, settings (row limit, timeout, rate limit, 2FA enforcement, feedback mode, result retention), audit log with CSV export. |
@@ -73,6 +76,8 @@ If even schema names must stay on your network, use a self-hosted model.
   `SELECT`. DML, DDL, multi-statements, `SELECT … INTO`, and file / shell / sleep functions are rejected.
 - Sessions are opened read-only where the database supports it, with a statement timeout and a row cap.
 - Excel / CSV folders are loaded into an in-memory DuckDB with file-system access switched off.
+- Row-level data filters are enforced by rewriting every reference to a filtered table into a filtered
+  sub-select (`app/rowfilter.py`); SQL that cannot be analysed is refused for filtered users.
 - Masked columns: values are replaced in results, including when reached through aliases or CTEs.
 - **Still give the platform a database account with SELECT-only grants on just the schemas it needs.**
   The guard is defence in depth, not a substitute for database permissions.
@@ -94,7 +99,7 @@ Everything else is under **Admin → Settings**.
 ## Tests
 
 ```bash
-pip install pytest httpx
+pip install -r requirements-dev.txt
 python -m pytest
 # include live-PostgreSQL checks:
 T2S_TEST_PG=user:password@host:5432/dbname python -m pytest
@@ -117,4 +122,6 @@ T2S_TEST_PG=user:password@host:5432/dbname python -m pytest
   containers and a shared PostgreSQL metadata store.
 - Tables are created automatically at start-up; there is no migration tool yet, so back up the metadata
   database before upgrading.
-- Not included: SSO (SAML / OIDC), row-level security per user, scheduled reports.
+- Scheduled reports run in a background thread of the app process; email needs your SMTP server entered under
+  Admin → Settings. Email delivery was tested against a local test mail server, not a real provider.
+- Not included: SSO (SAML / OIDC).

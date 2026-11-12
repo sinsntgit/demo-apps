@@ -41,6 +41,8 @@ export function chartConfig(run, cfg, mode) {
   const x = cfg.x in idx ? cfg.x : null;
   const type = cfg.type;
   const val = (r, y) => y === COUNT ? 1 : r[idx[y]];
+  const byName = Object.fromEntries(run.columns.map(c => [c.name, c]));
+  const averaged = y => y !== COUNT && byName[y]?.additive === false;     // rates, prices, averages
   let grouped = false;
   if (!ys.length || (!x && type !== 'kpi')) return null;
   let labels, datasets;
@@ -48,8 +50,9 @@ export function chartConfig(run, cfg, mode) {
   if (type === 'scatter') {
     datasets = [{ label: `${ys[0]} vs ${x}`, data: rows.map(r => ({ x: r[idx[x]], y: r[idx[ys[0]]] })), backgroundColor: colors[0] + 'cc', pointRadius: 4, pointHoverRadius: 6 }];
   } else if (type === 'pie' || type === 'doughnut') {
-    const sums = new Map();
-    rows.forEach(r => { const k = label(r[idx[x]]); sums.set(k, (sums.get(k) || 0) + (Number(val(r, ys[0])) || 0)); });
+    const sums = new Map(), seen = new Map();
+    rows.forEach(r => { const k = label(r[idx[x]]); sums.set(k, (sums.get(k) || 0) + (Number(val(r, ys[0])) || 0)); seen.set(k, (seen.get(k) || 0) + 1); });
+    if (averaged(ys[0])) sums.forEach((v, k) => sums.set(k, v / seen.get(k)));
     grouped = sums.size < rows.length;
     let pts = [...sums].sort((a, b) => b[1] - a[1]);
     if (pts.length > MAX_SERIES) {    // never invent a 9th colour: fold the tail into "Other"
@@ -72,13 +75,14 @@ export function chartConfig(run, cfg, mode) {
     datasets = names.map((n, i) => ({ label: n, data: labels.map(l => grid.get(n).get(l) ?? null), color: colors[i] }));
   } else {
     // one mark per X value: rows sharing an X value are added together
-    const groups = new Map();
+    const groups = new Map(), counts = new Map();
     rows.forEach(r => {
       const k = label(r[idx[x]]);
-      let g = groups.get(k);
-      if (!g) groups.set(k, g = ys.map(() => null));
-      ys.forEach((y, i) => { const v = val(r, y); if (v != null) g[i] = (g[i] ?? 0) + Number(v); });
+      let g = groups.get(k), n = counts.get(k);
+      if (!g) { groups.set(k, g = ys.map(() => null)); counts.set(k, n = ys.map(() => 0)); }
+      ys.forEach((y, i) => { const v = val(r, y); if (v != null) { g[i] = (g[i] ?? 0) + Number(v); n[i]++; } });
     });
+    groups.forEach((g, k) => ys.forEach((y, i) => { if (averaged(y) && g[i] != null) g[i] /= counts.get(k)[i]; }));
     grouped = groups.size < rows.length;
     labels = [...groups.keys()];
     datasets = ys.slice(0, MAX_SERIES).map((y, i) => ({ label: yName(y), data: labels.map(l => groups.get(l)[i]), color: colors[i] }));
@@ -193,7 +197,7 @@ function exportPDF(run, cfg) {
   doc.save(`query-${run.id}.pdf`);
 }
 
-function dataTable(run) {
+export function dataTable(run) {
   let sort = null, dir = 1, page = 0;
   const size = 50, wrap = h('div', {});
   const draw = () => {
@@ -226,11 +230,93 @@ function kpiTiles(run, cfg) {
   return h('div', { class: 'kpis' }, ys.map(y => {
     if (y === COUNT) return h('div', { class: 'kpi' }, h('div', { class: 'l' }, 'Count of rows'), h('div', { class: 'v' }, fmtNum(run.rows.length)));
     const vals = run.rows.map(r => r[idx[y]]).filter(v => typeof v === 'number');
-    const total = vals.reduce((a, b) => a + b, 0);
-    return h('div', { class: 'kpi' }, h('div', { class: 'l' }, y.replace(/_/g, ' ') + (single ? '' : ' — total')),
-      h('div', { class: 'v' }, fmtCompact(single ? vals[0] : total)),
-      single ? null : h('div', { class: 's' }, `across ${vals.length} rows · average ${fmtCompact(total / (vals.length || 1))} · min ${fmtCompact(Math.min(...vals))} · max ${fmtCompact(Math.max(...vals))}`));
+    const total = vals.reduce((a, b) => a + b, 0), avg = total / (vals.length || 1);
+    const additive = run.columns[idx[y]].additive !== false;
+    return h('div', { class: 'kpi' }, h('div', { class: 'l' }, y.replace(/_/g, ' ') + (single ? '' : additive ? ' — total' : ' — average')),
+      h('div', { class: 'v' }, fmtCompact(single ? vals[0] : additive ? total : avg)),
+      single ? null : h('div', { class: 's' }, `across ${vals.length} rows · ${additive ? `average ${fmtCompact(avg)} · ` : ''}min ${fmtCompact(Math.min(...vals))} · max ${fmtCompact(Math.max(...vals))}`));
   }));
+}
+
+/** The Summary view: what the result says, in words, plus per-column figures. */
+export function summaryBlock(run, { table = true } = {}) {
+  const s = run.summary || {};
+  return h('div', {}, h('p', { style: 'margin-bottom:6px' }, h('b', {}, s.headline || '')), h('ul', { class: 'bul' }, (s.bullets || []).map(b => h('li', {}, b))),
+    !table ? null : h('div', { class: 'tbl-wrap', style: 'margin-top:12px' }, h('table', { class: 'tbl' },
+      h('thead', {}, h('tr', {}, ['Column', 'Kind', 'Distinct', 'Nulls', 'Min', 'Max', 'Average', 'Total'].map((t, i) => h('th', { class: i > 1 ? 'num' : '' }, t)))),
+      h('tbody', {}, (s.stats || []).map(c => h('tr', {}, h('td', {}, c.column),
+        h('td', {}, c.role === 'measure' ? (c.additive === false ? 'measure (averaged)' : 'measure') : c.type === 'number' ? 'category (number)' : c.type === 'date' ? 'date' : 'category'),
+        ...[c.distinct, c.nulls, c.min, c.max, c.mean, c.sum].map(v => h('td', { class: 'num' }, v == null ? '–' : typeof v === 'number' ? fmtNum(v) : String(v)))))))),
+    !table ? null : h('p', { class: 'small dim', style: 'margin-top:8px' }, 'Totals are shown for quantities that can be added up. Averages, rates and prices are averaged instead; identifiers, codes and years are treated as categories. Computed on the server — result data is never sent to the AI model.'));
+}
+
+/**
+ * A chart with its controls. `run` needs {columns, rows}; `cfg` is edited in place.
+ * Returns { el, destroy(), repaint() }.
+ */
+export function chartBlock(run, cfg, { controls = true, onChange } = {}) {
+  const el = h('div', {});
+  let charts = [];
+  const destroy = () => { charts.forEach(c => c.destroy()); charts = []; };
+  const nums = run.columns.filter(isMeasure).map(c => c.name);
+  const all = [...run.columns.filter(c => !isMeasure(c)), ...run.columns.filter(isMeasure)].map(c => c.name);   // categories first
+  const measureOpts = [...nums, [COUNT, 'Count of rows']];
+  function paint() {
+    destroy(); fill(el);
+    if (!cfg.type || cfg.type === 'table') cfg.type = 'bar';
+    if (!all.includes(cfg.x)) cfg.x = all[0];
+    cfg.y = (cfg.y || []).filter(y => nums.includes(y) || y === COUNT);
+    if (!cfg.y.length) cfg.y = [nums.find(n => n !== cfg.x) ?? COUNT];
+    if (cfg.type === 'scatter' && (cfg.y[0] === COUNT || nums.length < 2)) cfg.type = 'bar';
+    if (cfg.type === 'scatter' && !nums.includes(cfg.x)) cfg.x = nums.find(n => n !== cfg.y[0]) || nums[0];
+    const change = (k, v) => { cfg[k] = v; onChange?.(cfg); paint(); };
+    const dims = all.filter(c => c !== cfg.x && !nums.includes(c));
+    const multiOK = ['bar', 'hbar', 'stacked', 'line', 'area'].includes(cfg.type);
+    if (!multiOK || cfg.y[0] === COUNT) cfg.y = cfg.y.slice(0, 1);
+    if (controls) el.append(h('div', { class: 'chart-controls' },
+      h('label', {}, 'Chart type', select(CHART_TYPES.filter(t => t[0] !== 'scatter' || nums.length > 1), cfg.type, v => change('type', v))),
+      cfg.type === 'kpi' ? null : h('label', { title: 'The category, date or label each bar / point / slice stands for' }, cfg.type === 'pie' || cfg.type === 'doughnut' ? 'Slices (category)' : cfg.type === 'scatter' ? 'X axis (measure)' : 'X axis (category)',
+        select(cfg.type === 'scatter' ? nums : all, cfg.x, v => change('x', v))),
+      h('label', { title: 'The number being plotted. Only measures are listed; IDs, codes and years are categories.' }, cfg.type === 'kpi' ? 'Measure' : 'Y axis (measure)',
+        select(cfg.type === 'scatter' ? nums : measureOpts, cfg.y[0], v => change('y', [v, ...cfg.y.slice(1).filter(y => y !== v)]))),
+      multiOK && cfg.y[0] !== COUNT && nums.length > 1 && !cfg.series
+        ? h('label', { title: 'Plot a second number alongside the first' }, 'Add measure', select([['', '—'], ...nums.filter(n => n !== cfg.y[0])], cfg.y[1] || '', v => change('y', v ? [cfg.y[0], v] : [cfg.y[0]]))) : null,
+      multiOK && dims.length
+        ? h('label', { title: 'Break each X value into one coloured series per value of this column' }, 'Split by', select([['', '—'], ...dims], cfg.series || '', v => { cfg.series = v || null; if (v) cfg.y = cfg.y.slice(0, 1); onChange?.(cfg); paint(); })) : null,
+      h('a', { class: 'small', href: '#/help/charts', target: '_blank', rel: 'noopener', title: 'How to read and change charts', style: 'margin-bottom:5px' }, '? Chart help')));
+    if (cfg.type === 'kpi') return el.append(kpiTiles(run, cfg));
+    const panels = chartPanels(run, cfg);
+    const notes = [];
+    for (const panel of panels) {
+      const conf = chartConfig(run, panel, theme());
+      if (!conf) { el.append(h('div', { class: 'empty' }, 'Pick the columns to plot.')); break; }
+      const canvas = h('canvas', { role: 'img', 'aria-label': `${cfg.type} chart of ${panel.y.map(yName).join(', ')} by ${cfg.x}` });
+      if (panels.length > 1) el.append(h('h3', { style: 'margin:10px 0 2px' }, yName(panel.y[0])));
+      el.append(h('div', { class: 'chart-box', style: panels.length > 1 ? 'height:230px' : '' }, canvas));
+      if (conf.$grouped && !notes.length) notes.push(panel.y[0] === COUNT ? `Counting result rows for each ${cfg.x}.` : `Several rows share the same ${cfg.x}; their values are combined (added, or averaged for rates and prices).`);
+      delete conf.$grouped;
+      charts.push(new Chart(canvas, conf));
+    }
+    if (panels.length > 1) notes.push('These two measures are on very different scales, so each gets its own panel rather than sharing one axis.');
+    if (run.rows.length > MAX_POINTS) notes.push(`Chart uses the first ${MAX_POINTS} rows; the table has all ${run.rows.length}.`);
+    if (notes.length) el.append(h('p', { class: 'small dim', style: 'margin:8px 0 0' }, notes.join(' ')));
+  }
+  paint();
+  return { el, destroy, repaint: paint };
+}
+
+/** Pick one of the user's reports (or start a new one) and append this result to it. */
+async function addToReport(run) {
+  const reports = (await api('GET', '/api/reports').catch(() => [])).filter(r => r.can_edit);
+  const name = h('input', { type: 'text', placeholder: 'Name of the new report' });
+  const add = async (id, close) => { try { const r = await api('POST', `/api/reports/${id}/components`, { run_id: run.id }); close(); toast(`Added to “${r.title}”. Open Reports to arrange it.`); } catch (e) { fail(e); } };
+  const close = modal('Add this result to a report', h('div', { class: 'stack' },
+    h('p', { class: 'muted small' }, 'The report keeps the query, not the numbers: it re-runs for whoever opens it, so it always shows the latest data.'),
+    reports.length ? h('div', { class: 'card flush' }, reports.map(r => h('div', { class: 'item row' }, h('div', { style: 'flex:1' }, h('b', {}, r.title), h('div', { class: 'small dim' }, `${r.results} result(s)`)),
+      h('button', { class: 'btn sm primary', onclick: () => add(r.id, close) }, 'Add here')))) : null,
+    h('div', { class: 'row' }, name, h('button', { class: 'btn', onclick: async () => {
+      try { const r = await api('POST', '/api/reports', { title: name.value.trim() || 'Untitled report', components: [] }); await add(r.id, close); } catch (e) { fail(e); }
+    } }, 'Create new report'))));
 }
 
 /**
@@ -238,8 +324,8 @@ function kpiTiles(run, cfg) {
  */
 export function runCard(run, ctx = {}) {
   const root = h('div', {});
-  let charts = [], editing = false;
-  const cleanup = () => { charts.forEach(c => c.destroy()); charts = []; };
+  let block = null, editing = false;
+  const cleanup = () => { block?.destroy(); block = null; };
   const refresh = updated => { Object.assign(run, updated); ctx.onChange?.(run); draw(); };
 
   function sqlSection() {
@@ -332,6 +418,7 @@ export function runCard(run, ctx = {}) {
       h('button', { onclick: () => { exportPDF(run, cfg.type === 'table' ? { ...cfg, type: 'kpi' } : cfg); } }, 'PDF report'),
       h('button', { onclick: () => download(`query-${run.id}.csv`, csvOf(run), 'text/csv') }, 'CSV'),
       h('button', { onclick: () => { location.href = `/api/chat/runs/${run.id}/export.xlsx`; } }, 'Excel (.xlsx)'),
+      ctx.readonly ? null : h('button', { onclick: () => addToReport(run) }, '＋ Add to a report…'),
       canChart ? h('button', { onclick: () => { const imgs = cfg.type === 'table' || cfg.type === 'kpi' ? [] : chartPanels(run, cfg).map(p => chartImage(run, p)).filter(Boolean); if (!imgs.length) return toast('Open the Chart view and choose a chart first', true); imgs.forEach((img, i) => fetch(img).then(r => r.blob()).then(b => download(`query-${run.id}${imgs.length > 1 ? '-' + (i + 1) : ''}.png`, b))); } }, 'Chart image (PNG)') : null);
     pop.addEventListener('click', () => pop.classList.add('hidden'));
     exportMenu.append(h('button', { class: 'btn sm', onclick: e => { e.stopPropagation(); pop.classList.toggle('hidden'); } }, '⬇ Export'), pop);
@@ -346,55 +433,11 @@ export function runCard(run, ctx = {}) {
       fill(viewBtns, ...[['chart', 'Chart'], ['table', 'Table'], ['summary', 'Summary']].filter(v => v[0] !== 'chart' || canChart)
         .map(([v, l]) => h('button', { class: 'btn sm' + (view === v ? ' active' : ''), onclick: () => setView(v) }, l)));
       fill(body);
+      if (run.context?.filters?.length) body.append(h('p', { class: 'small', style: 'margin:0 0 8px' }, h('span', { class: 'badge warn', title: 'An administrator has limited which rows this person can see in this data model' }, ctx.readonly ? '🔒 Data filters were applied to this query' : '🔒 Your data filters are applied')));
       if (view === 'table') return body.append(dataTable(run));
-      if (view === 'summary') {
-        const s = run.summary || {};
-        body.append(h('p', {}, h('b', {}, s.headline || '')), h('ul', { class: 'bul' }, (s.bullets || []).map(b => h('li', {}, b))),
-          h('div', { class: 'tbl-wrap', style: 'margin-top:12px' }, h('table', { class: 'tbl' },
-            h('thead', {}, h('tr', {}, ['Column', 'Kind', 'Distinct', 'Nulls', 'Min', 'Max', 'Average', 'Total'].map((t, i) => h('th', { class: i > 1 ? 'num' : '' }, t)))),
-            h('tbody', {}, (s.stats || []).map(c => h('tr', {}, h('td', {}, c.column), h('td', {}, c.type === 'number' ? (c.sum == null ? 'category (number)' : 'measure') : c.type === 'date' ? 'date' : 'category'),
-              ...[c.distinct, c.nulls, c.min, c.max, c.mean, c.sum].map(v => h('td', { class: 'num' }, v == null ? '–' : typeof v === 'number' ? fmtNum(v) : String(v)))))))),
-          h('p', { class: 'small dim', style: 'margin-top:8px' }, 'Totals and averages are shown for measures only; identifiers, codes and years are treated as categories. Computed on the server — result data is never sent to the AI model.'));
-        return;
-      }
-      if (cfg.type === 'table') { cfg.type = 'bar'; }
-      if (!all.includes(cfg.x)) cfg.x = all[0];
-      cfg.y = (cfg.y || []).filter(y => nums.includes(y) || y === COUNT);
-      if (!cfg.y.length) cfg.y = [nums.find(n => n !== cfg.x) ?? COUNT];
-      if (cfg.type === 'scatter' && cfg.y[0] === COUNT) cfg.type = 'bar';
-      if (cfg.type === 'scatter' && !nums.includes(cfg.x)) cfg.x = nums.find(n => n !== cfg.y[0]) || nums[0];
-      const change = (k, v) => { cfg[k] = v; save(); paint(); };
-      const dims = all.filter(c => c !== cfg.x && !nums.includes(c));
-      const multiOK = ['bar', 'hbar', 'stacked', 'line', 'area'].includes(cfg.type);
-      if (!multiOK || cfg.y[0] === COUNT) cfg.y = cfg.y.slice(0, 1);
-      const controls = h('div', { class: 'chart-controls' },
-        h('label', {}, 'Chart type', select(CHART_TYPES.filter(t => t[0] !== 'scatter' || nums.length > 1), cfg.type, v => change('type', v))),
-        cfg.type === 'kpi' ? null : h('label', { title: 'The category, date or label each bar / point / slice stands for' }, cfg.type === 'pie' || cfg.type === 'doughnut' ? 'Slices (category)' : cfg.type === 'scatter' ? 'X axis (measure)' : 'X axis (category)',
-          select(cfg.type === 'scatter' ? nums : all, cfg.x, v => change('x', v))),
-        h('label', { title: 'The number being plotted. Only measures are listed; IDs, codes and years are categories.' }, cfg.type === 'kpi' ? 'Measure' : 'Y axis (measure)',
-          select(cfg.type === 'scatter' ? nums : measureOpts, cfg.y[0], v => change('y', [v, ...cfg.y.slice(1).filter(y => y !== v)]))),
-        multiOK && cfg.y[0] !== COUNT && nums.length > 1 && !cfg.series
-          ? h('label', { title: 'Plot a second number alongside the first' }, 'Add measure', select([['', '—'], ...nums.filter(n => n !== cfg.y[0])], cfg.y[1] || '', v => change('y', v ? [cfg.y[0], v] : [cfg.y[0]]))) : null,
-        multiOK && dims.length
-          ? h('label', { title: 'Break each X value into one coloured series per value of this column' }, 'Split by', select([['', '—'], ...dims], cfg.series || '', v => { cfg.series = v || null; if (v) cfg.y = cfg.y.slice(0, 1); save(); paint(); })) : null,
-        h('a', { class: 'small', href: '#/help/charts', target: '_blank', rel: 'noopener', title: 'How to read and change charts', style: 'margin-bottom:5px' }, '? Chart help'));
-      body.append(controls);
-      if (cfg.type === 'kpi') return body.append(kpiTiles(run, cfg));
-      const panels = chartPanels(run, cfg);
-      const notes = [];
-      for (const panel of panels) {
-        const conf = chartConfig(run, panel, theme());
-        if (!conf) { body.append(h('div', { class: 'empty' }, 'Pick the columns to plot.')); break; }
-        const canvas = h('canvas', { role: 'img', 'aria-label': `${cfg.type} chart of ${panel.y.map(yName).join(', ')} by ${cfg.x}` });
-        if (panels.length > 1) body.append(h('h3', { style: 'margin:10px 0 2px' }, yName(panel.y[0])));
-        body.append(h('div', { class: 'chart-box', style: panels.length > 1 ? 'height:230px' : '' }, canvas));
-        if (conf.$grouped && !notes.length) notes.push(panel.y[0] === COUNT ? `Counting result rows for each ${cfg.x}.` : `Several rows share the same ${cfg.x}; their values are added together.`);
-        delete conf.$grouped;
-        charts.push(new Chart(canvas, conf));
-      }
-      if (panels.length > 1) notes.push('These two measures are on very different scales, so each gets its own panel rather than sharing one axis.');
-      if (run.rows.length > MAX_POINTS) notes.push(`Chart uses the first ${MAX_POINTS} rows; the table has all ${run.rows.length}.`);
-      if (notes.length) body.append(h('p', { class: 'small dim', style: 'margin:8px 0 0' }, notes.join(' ')));
+      if (view === 'summary') return body.append(summaryBlock(run));
+      block = chartBlock(run, cfg, { onChange: save });
+      body.append(block.el);
     }
     paint();
     sec._repaint = paint;

@@ -1,4 +1,5 @@
 import logging
+import os
 import shutil
 from contextlib import asynccontextmanager
 
@@ -10,7 +11,7 @@ from sqlalchemy import select
 from . import config, security
 from .db import Base, SessionLocal, engine
 from .models import Connection, LLMModel, TrainingItem, User
-from .routers import admin, analytics, auth, chat, connections, training
+from .routers import admin, analytics, auth, chat, connections, reports, training
 
 log = logging.getLogger("text2sql")
 STATIC = config.BASE_DIR / "static"
@@ -65,7 +66,13 @@ def bootstrap():
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     bootstrap()
+    stop = None
+    if os.environ.get("T2S_SCHEDULER", "1") == "1":      # set to 0 on extra instances if you prefer one scheduler
+        from . import reporting
+        stop = reporting.start_scheduler()
     yield
+    if stop:
+        stop.set()
 
 
 app = FastAPI(title=f"{config.APP_NAME} - Text-to-SQL platform", lifespan=lifespan, docs_url=None,
@@ -93,7 +100,7 @@ async def security_layer(request: Request, call_next):
     return response
 
 
-for r in (auth.router, connections.router, training.router, chat.router, admin.router, analytics.router):
+for r in (auth.router, connections.router, training.router, chat.router, admin.router, analytics.router, reports.router):
     app.include_router(r)
 
 

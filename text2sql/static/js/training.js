@@ -40,7 +40,7 @@ export async function trainingView(root, arg) {
     modal(`${item ? 'Edit' : 'Add'} ${isPair ? 'question → SQL example' : kind === 'ddl' ? 'DDL' : 'documentation'}`,
       h('div', { class: 'stack' }, isPair ? [field('Question', question), field('SQL', sql, 'a verified, read-only query that answers it')]
         : [field('Title', title), field(kind === 'ddl' ? 'DDL' : 'Text', content, kind === 'ddl' ? 'CREATE TABLE / VIEW statements not picked up by schema sync' : 'business rules, metric definitions, jargon, join logic…')]),
-      { wide: true, actions: close => [h('button', { class: 'btn', onclick: close }, 'Cancel'),
+      { wide: true, maximizable: true, actions: close => [h('button', { class: 'btn', onclick: close }, 'Cancel'),
         h('button', { class: 'btn primary', onclick: e => busy(e.target, async () => {
           const payload = { kind, title: title.value, content: content.value, question: question.value, sql: sql.value };
           await (item ? api('PUT', `/api/training/item/${item.id}`, payload) : api('POST', `/api/training/${connId}`, payload));
@@ -51,7 +51,9 @@ export async function trainingView(root, arg) {
     if (!await confirmDialog('Delete this training item?', 'The model will stop using it immediately.', 'Delete')) return;
     await api('DELETE', `/api/training/item/${item.id}`).catch(fail); draw(tab);
   };
-  const actions = (item, tab) => h('div', { class: 'row' }, h('button', { class: 'btn sm', onclick: () => editItem(item.kind, item, tab) }, 'Edit'), h('button', { class: 'btn sm danger', onclick: del(item, tab) }, 'Delete'));
+  const expand = (title, text, code) => modal(title, code ? h('pre', { class: 'sql', style: 'max-height:none', html: highlightSQL(prettySQL(text)) }) : h('div', { style: 'white-space:pre-wrap' }, text), { wide: true, maximizable: true });
+  const actions = (item, tab) => h('div', { class: 'row' }, h('button', { class: 'btn sm ghost', title: 'Open in a large window', 'aria-label': 'Open in a large window', onclick: () => expand(item.question || item.title || 'Training item', item.kind === 'sql_pair' ? item.sql : item.content, item.kind === 'sql_pair' || item.kind === 'ddl') }, '⤢'),
+    h('button', { class: 'btn sm', onclick: () => editItem(item.kind, item, tab) }, 'Edit'), h('button', { class: 'btn sm danger', onclick: del(item, tab) }, 'Delete'));
 
   function pairsTab(items) {
     const file = h('input', { type: 'file', accept: '.csv,.json', class: 'hidden', onchange: async e => {
@@ -86,6 +88,7 @@ export async function trainingView(root, arg) {
       h('span', { class: 'small dim' }, 'PDF, Word, Excel data dictionaries, Markdown, text, SQL. Documents are split into passages; the relevant ones are retrieved per question.')),
     byDoc.size ? h('div', { class: 'card flush' }, [...byDoc].map(([name, parts]) => h('details', { class: 'schema-table' },
       h('summary', {}, name, h('span', { class: 'dim small' }, `  ${parts.length} passage(s)  `),
+        h('button', { class: 'btn sm ghost', style: 'float:right;margin-left:6px', title: 'Open in a large window', onclick: e => { e.preventDefault(); expand(name, parts.map(p => p.content).join('\n\n— — —\n\n')); } }, '⤢'),
         h('button', { class: 'btn sm danger', style: 'float:right', onclick: async e => { e.preventDefault();
           if (!await confirmDialog('Remove document?', `${name} will no longer be used for training.`, 'Remove')) return;
           await api('DELETE', `/api/training/${connId}/document?name=${encodeURIComponent(name)}`).catch(fail); draw('files'); } }, 'Remove')),
@@ -99,7 +102,8 @@ export async function trainingView(root, arg) {
     const syncBtn = h('button', { class: 'btn', onclick: () => busy(syncBtn, async () => { const r = await api('POST', `/api/connections/${connId}/sync`); toast(`Schema synced: ${r.tables} tables, ${r.columns} columns`); draw('schema'); }) }, '⟳ Sync schema from source');
     fill(el, h('div', { class: 'stack' }, h('div', { class: 'row' }, syncBtn, h('span', { class: 'small dim' }, s.synced_at ? `Last synced ${fmtTime(s.synced_at)} · ${s.tables.length} tables. Only names and types are read — never row data.` : 'Not synced yet.')),
       s.tables.length ? h('div', { class: 'card flush' }, s.tables.map(t => h('details', { class: 'schema-table' },
-        h('summary', {}, t.fqn, h('span', { class: 'dim small' }, `  ${t.type} · ${t.columns.length} columns${t.comment ? ' · ' + t.comment : ''}`)),
+        h('summary', {}, t.fqn, h('span', { class: 'dim small' }, `  ${t.type} · ${t.columns.length} columns${t.comment ? ' · ' + t.comment : ''}`),
+          h('button', { class: 'btn sm ghost', style: 'float:right', title: 'Open in a large window', onclick: e => { e.preventDefault(); expand(t.fqn, t.ddl, true); } }, '⤢')),
         h('div', { class: 'cols' }, h('pre', { class: 'sql', html: highlightSQL(t.ddl) })))))
         : h('div', { class: 'empty' }, 'No tables found. Press “Sync schema”.')));
   }

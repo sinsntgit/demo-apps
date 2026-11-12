@@ -2,7 +2,7 @@
 import { h, fill, api, busy, fail, toast, modal, field, check, select, tabs, confirmDialog, fmtTime, state } from './core.js';
 
 export async function adminView(root, arg) {
-  const t = tabs([['users', 'Users', usersTab], ['models', 'AI models', modelsTab], ['settings', 'Settings', settingsTab], ['audit', 'Audit log', auditTab]], arg || 'users');
+  const t = tabs([['users', 'Users', usersTab], ['access', 'Data access', accessTab], ['models', 'AI models', modelsTab], ['settings', 'Settings', settingsTab], ['audit', 'Audit log', auditTab]], arg || 'users');
   fill(root, h('div', { class: 'page' }, h('div', { class: 'page-head' }, h('h1', {}, 'Admin')), t));
 }
 
@@ -98,6 +98,9 @@ function settingsTab(el) {
   api('GET', '/api/admin/settings').then(s => {
     const num = k => h('input', { type: 'number', value: s[k], style: 'max-width:140px', oninput: e => { s[k] = e.target.value; } });
     const bool = (k, label, hint) => check(label, s[k], v => { s[k] = v; }, hint);
+    const text = (k, ph) => h('input', { type: 'text', value: s[k] || '', placeholder: ph, oninput: e => { s[k] = e.target.value; } });
+    const testTo = h('input', { type: 'email', placeholder: 'send a test to…', value: state.me.email, style: 'max-width:260px' });
+    const testOut = h('span', { class: 'small' });
     const fb = select([['approval', 'Send to a steward for approval first'], ['instant', 'Use immediately for training']], s.feedback_mode, v => { s.feedback_mode = v; }, { style: 'max-width:340px' });
     const save = h('button', { class: 'btn primary', onclick: () => busy(save, async () => { await api('PUT', '/api/admin/settings', s); toast('Settings saved'); }) }, 'Save settings');
     fill(el, h('div', { class: 'stack', style: 'max-width:680px' },
@@ -108,6 +111,18 @@ function settingsTab(el) {
         field('Automatic SQL repair attempts', num('max_repair_attempts'), 'after a database error')),
         bool('store_results', 'Keep result snapshots in chat history', 'Turn off if query results must never be stored outside the source database. Users can still re-run saved SQL.')),
       h('div', { class: 'card stack' }, h('h2', {}, 'Training from user feedback'), field('When an analyst confirms or corrects SQL', fb, 'admins and data stewards are always trusted')),
+      h('div', { class: 'card stack' }, h('h2', {}, 'Email for scheduled reports'),
+        h('p', { class: 'small dim', style: 'margin:0' }, 'Your organisation’s outgoing mail server (SMTP). Leave the server blank to switch email off; scheduled reports are then only saved in the app.'),
+        h('div', { class: 'grid2' }, field('Mail server (host)', text('smtp_host', 'smtp.yourcompany.com')), field('Port', num('smtp_port')),
+          field('Security', select([['starttls', 'STARTTLS (usually port 587)'], ['ssl', 'SSL / TLS (usually port 465)'], ['none', 'None (internal relay only)']], s.smtp_security, v => { s.smtp_security = v; })),
+          field('From address', text('smtp_from', 'reports@yourcompany.com')), field('Username', text('smtp_user', 'leave blank if not required')),
+          field('Password', h('input', { type: 'password', autocomplete: 'new-password', placeholder: s.smtp_password_set ? '•••••••• (unchanged)' : '', oninput: e => { s.smtp_password = e.target.value; } }), 'stored encrypted')),
+        field('Web address of this app', text('public_url', 'https://askdata.yourcompany.com'), 'used for the “open the live report” link in emails'),
+        h('div', { class: 'row wrap' }, testTo, h('button', { class: 'btn', onclick: e => busy(e.target, async () => {
+          await api('PUT', '/api/admin/settings', s);
+          const r = await api('POST', '/api/admin/settings/test-email', { to: testTo.value });
+          testOut.replaceChildren(h('span', { class: 'badge ' + (r.ok ? 'good' : 'bad') }, r.ok ? '✓ ' : '✗ ', r.message));
+        }) }, 'Save & send test email'), testOut)),
       h('div', {}, save)));
   }).catch(fail);
 }
@@ -120,7 +135,7 @@ function auditTab(el) {
   const qs = () => new URLSearchParams({ q: f.q, action: f.action, page: f.page }).toString();
   const prev = h('button', { class: 'btn sm', onclick: () => { f.page--; draw(); } }, '‹ Newer'), next = h('button', { class: 'btn sm', onclick: () => { f.page++; draw(); } }, 'Older ›');
   fill(el, h('div', { class: 'stack' }, h('div', { class: 'row wrap' }, search,
-    select([['', 'All events'], ['login', 'Sign-ins'], ['query', 'Queries'], ['training', 'Training'], ['connection', 'Data models'], ['user', 'Users'], ['model', 'AI models'], ['settings', 'Settings'], ['2fa', '2FA'], ['password', 'Passwords']], '', v => { f.action = v; f.page = 1; draw(); }, { class: 'inline' }),
+    select([['', 'All events'], ['login', 'Sign-ins'], ['query', 'Queries'], ['training', 'Training'], ['report', 'Reports'], ['connection', 'Data models'], ['filter', 'Data filters'], ['user', 'Users'], ['model', 'AI models'], ['settings', 'Settings'], ['2fa', '2FA'], ['password', 'Passwords']], '', v => { f.action = v; f.page = 1; draw(); }, { class: 'inline' }),
     h('span', { class: 'spacer' }), prev, next, h('a', { class: 'btn sm', href: '#', onclick: e => { e.preventDefault(); location.href = '/api/admin/audit.csv?' + qs(); } }, '⬇ CSV')), body));
   async function draw() {
     const r = await api('GET', '/api/admin/audit?' + qs()).catch(fail);
@@ -130,4 +145,67 @@ function auditTab(el) {
       h('tbody', {}, r.items.map(a => h('tr', {}, h('td', { class: 'nowrap' }, fmtTime(a.at)), h('td', {}, a.user), h('td', { class: 'mono' }, a.action), h('td', {}, a.target), h('td', { class: 'small' }, a.detail), h('td', { class: 'mono' }, a.ip)))))));
   }
   draw();
+}
+
+// Who can use each data model, and which rows they are allowed to see.
+function accessTab(el) {
+  const ROLE = [['analyst', 'analysts'], ['steward', 'data stewards']];
+  async function draw() {
+    const data = await api('GET', '/api/admin/access');
+    const people = data.users.filter(u => u.role !== 'admin');
+    fill(el, h('div', { class: 'stack' },
+      h('p', { class: 'muted', style: 'max-width:820px' }, 'Control who can query each data model, and limit the rows they see. Administrators always have full access. Filters are added to every query by the server — in chats, in edited SQL and in reports — so they cannot be bypassed.'),
+      data.connections.length ? data.connections.map(c => card(c, people, data)) : h('div', { class: 'empty' }, 'No data models yet.')));
+  }
+  function card(c, people, data) {
+    const st = { is_active: c.is_active, restricted: c.restricted, users: new Set(c.user_ids) };
+    const userBox = h('div', { class: 'access-users' });
+    const drawUsers = () => fill(userBox, !st.restricted ? h('div', { class: 'small dim' }, 'Every signed-in user can query this data model.')
+      : people.length ? people.map(u => check(`${u.name}  ·  ${u.role}`, st.users.has(u.id), v => v ? st.users.add(u.id) : st.users.delete(u.id), u.email))
+        : h('div', { class: 'small dim' }, 'There are no non-admin users yet.'));
+    drawUsers();
+    const saveBtn = h('button', { class: 'btn primary sm', onclick: () => busy(saveBtn, async () => {
+      await api('PUT', `/api/admin/access/${c.id}`, { is_active: st.is_active, restricted: st.restricted, user_ids: [...st.users] }); toast(`Access to “${c.name}” saved`); draw();
+    }) }, 'Save access');
+    return h('div', { class: 'card stack' },
+      h('div', { class: 'row wrap' }, h('h2', { style: 'margin:0' }, c.name), c.is_active ? h('span', { class: 'badge good' }, 'enabled') : h('span', { class: 'badge bad' }, 'disabled'),
+        c.restricted ? h('span', { class: 'badge warn' }, `🔒 ${c.user_ids.length} user(s)`) : h('span', { class: 'badge' }, 'open to all users'),
+        c.filters.length ? h('span', { class: 'badge info' }, `${c.filters.filter(f => f.enabled).length} data filter(s)`) : null),
+      h('div', { class: 'grid2' },
+        h('div', { class: 'stack' }, h('h3', {}, 'Access'),
+          check('Enabled', st.is_active, v => { st.is_active = v; }, 'Turn off to hide this data model from everyone except administrators.'),
+          check('Only selected users may use it', st.restricted, v => { st.restricted = v; drawUsers(); }, 'Otherwise it is open to every signed-in user.'), h('div', {}, saveBtn)),
+        h('div', { class: 'stack' }, h('h3', {}, 'Users with access'), userBox)),
+      h('div', {}, h('div', { class: 'row' }, h('h3', { style: 'margin:0' }, 'Data filters'), h('span', { class: 'spacer' }), h('button', { class: 'btn sm', onclick: () => editFilter(c, null, data) }, '＋ Add filter')),
+        c.filters.length ? h('div', { class: 'tbl-wrap', style: 'margin-top:8px;max-height:none' }, h('table', { class: 'tbl' },
+          h('thead', {}, h('tr', {}, ['Table', 'Only rows where', 'Applies to', 'Note', ''].map(t => h('th', {}, t)))),
+          h('tbody', {}, c.filters.map(f => h('tr', {}, h('td', { class: 'mono' }, f.table_name), h('td', { class: 'mono' }, f.condition), h('td', {}, f.applies_to, f.enabled ? null : h('span', { class: 'badge bad', style: 'margin-left:6px' }, 'off')),
+            h('td', { class: 'small' }, f.description), h('td', { class: 'right nowrap' }, h('button', { class: 'btn sm', onclick: () => editFilter(c, f, data) }, 'Edit'), ' ',
+              h('button', { class: 'btn sm danger', onclick: async () => { if (await confirmDialog('Delete data filter?', `${f.table_name}: ${f.condition} — the people it applied to will see all rows again.`, 'Delete')) { await api('DELETE', `/api/admin/filters/${f.id}`).catch(fail); draw(); } } }, 'Delete')))))))
+          : h('p', { class: 'small dim', style: 'margin:6px 0 0' }, 'No filters: everyone with access sees all rows.')));
+  }
+  function editFilter(c, f, data) {
+    const table = h('input', { type: 'text', value: f?.table_name || '', list: 'filter-tables', placeholder: 'e.g. customers' });
+    const cond = h('textarea', { class: 'mono', style: 'min-height:70px', placeholder: "region = 'North'" }, f?.condition || '');
+    const note = h('input', { type: 'text', value: f?.description || '', placeholder: 'Optional: why this filter exists' });
+    const st = { scope: f?.scope || 'role', role: f?.role || 'analyst', user_id: f?.user_id || '' };
+    const who = h('div', { class: 'row wrap' });
+    const drawWho = () => fill(who, select([['all', 'Everyone (except administrators)'], ['role', 'Everyone with the role…'], ['user', 'One person…']], st.scope, v => { st.scope = v; drawWho(); }, { class: 'inline' }),
+      st.scope === 'role' ? select(ROLE, st.role, v => { st.role = v; }, { class: 'inline' }) : null,
+      st.scope === 'user' ? select([['', 'choose…'], ...data.users.filter(u => u.role !== 'admin').map(u => [u.id, `${u.name} (${u.email})`])], st.user_id, v => { st.user_id = v; }, { class: 'inline' }) : null);
+    drawWho();
+    const on = check('Filter is active', f ? f.enabled : true);
+    modal(f ? 'Edit data filter' : `Add data filter — ${c.name}`, h('div', { class: 'stack' },
+      h('datalist', { id: 'filter-tables' }, c.tables.map(t => h('option', { value: t }))),
+      field('Table', table, 'the filter applies wherever this table is used'), field('Only show rows where', cond, 'a condition on that table’s columns — what you would write after WHERE'),
+      h('div', { class: 'small dim' }, 'Examples: ', h('span', { class: 'mono' }, "region = 'North'"), ' · ', h('span', { class: 'mono' }, "country IN ('IN', 'AE')"), ' · ', h('span', { class: 'mono' }, 'sales_rep_email = {user_email}'),
+        h('br'), 'Placeholders filled in with the signed-in person’s details: ', h('span', { class: 'mono' }, data.placeholders.join('  ')), '.'),
+      field('Applies to', who), field('Note', note), on,
+      h('div', { class: 'banner info small' }, 'If several filters on the same table apply to someone (for example one for their role and one for them personally) they must satisfy all of them. To filter a table that links to this one (for example orders of North-region customers), add a filter on that table too, or rely on the join: rows are only removed from the table named here.')), {
+      wide: true, actions: close => [h('button', { class: 'btn', onclick: close }, 'Cancel'), h('button', { class: 'btn primary', onclick: e => busy(e.target, async () => {
+        const body = { connection_id: c.id, table_name: table.value, condition: cond.value, scope: st.scope, role: st.role, user_id: st.user_id ? Number(st.user_id) : null, description: note.value, enabled: on.input.checked };
+        await (f ? api('PUT', `/api/admin/filters/${f.id}`, body) : api('POST', '/api/admin/filters', body)); close(); toast('Data filter saved'); draw();
+      }) }, 'Save filter')] });
+  }
+  draw().catch(fail);
 }

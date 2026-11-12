@@ -8,6 +8,7 @@ document.addEventListener('click', () => document.querySelectorAll('.menu .pop')
 
 const ROUTES = [
   { path: 'ask', label: 'Ask', icon: '💬', roles: null, full: true, load: async (root, arg) => chatView(root, arg ? Number(arg) : null) },
+  { path: 'reports', label: 'Reports', icon: '📄', roles: null, load: async (root, arg) => (await import('./reports.js')).reportsView(root, arg) },
   { path: 'history', label: 'History', icon: '🕘', roles: null, load: async root => historyView(root) },
   { sect: 'Curate', roles: ['admin', 'steward'] },
   { path: 'training', label: 'Training', icon: '🎓', roles: ['admin', 'steward'], load: async (root, arg) => (await import('./training.js')).trainingView(root, arg) },

@@ -1,0 +1,242 @@
+"""Row-level data filters, custom reports (access, live refresh, PDF, schedule + email), summaries."""
+import datetime as dt
+import io
+
+import pytest
+
+from tests.conftest import H
+from tests.test_platform import ask
+
+SMTP_PORT = 8792
+
+
+def _login(client, email, role="analyst", name=""):
+    from fastapi.testclient import TestClient
+    from app.main import app
+    made = client.post("/api/admin/users", headers=H, json={"email": email, "role": role, "name": name}).json()
+    u = TestClient(app)
+    u.post("/api/auth/login", headers=H, json={"email": email, "password": made["temporary_password"]})
+    u.post("/api/auth/change-password", headers=H, json={"current": made["temporary_password"], "new": "Report-Passw0rd"})
+    return u, made["id"]
+
+
+@pytest.fixture(scope="module")
+def people(admin):
+    client, conn, model = admin
+    north, north_id = _login(client, "north@test.local", name="Nia North")
+    south, south_id = _login(client, "south@test.local", name="Sam South")
+    return {"admin": client, "conn": conn, "model": model, "north": north, "north_id": north_id,
+            "south": south, "south_id": south_id}
+
+
+def _regions(run):
+    i = [c["name"] for c in run["columns"]].index("region")
+    return {r[i] for r in run["rows"]}
+
+
+def test_filters_are_validated_and_enforced(people):
+    a, conn, model = people["admin"], people["conn"], people["model"]
+    new = lambda **kw: a.post("/api/admin/filters", headers=H, json={"connection_id": conn, "table_name": "customers", **kw})   # noqa: E731
+    assert new(condition="region = 'North'; DROP TABLE x").status_code == 400
+    assert new(condition="region IN (SELECT region FROM customers)").status_code == 400
+    assert new(condition="region = {nope}").status_code == 400
+    assert new(condition="region = 'North'", scope="role", role="admin").status_code == 400
+    f1 = new(condition="region = 'North'", scope="user", user_id=people["north_id"], description="North team").json()["id"]
+    f2 = new(condition="region = 'South'", scope="user", user_id=people["south_id"]).json()["id"]
+
+    q = "revenue and orders by region"
+    assert _regions(ask(people["north"], conn, model, q)["run"]) == {"North"}
+    assert _regions(ask(people["south"], conn, model, q)["run"]) == {"South"}
+    assert len(_regions(ask(a, conn, model, q)["run"])) == 4                      # administrators are not filtered
+
+    # hand-written SQL cannot get round it: aliases, sub-queries, a CTE reusing the table's name
+    run = ask(people["north"], conn, model, "anything", review_first=True)["run"]
+    go = lambda sql: people["north"].post(f"/api/chat/runs/{run['id']}/execute", headers=H, json={"sql": sql}).json()   # noqa: E731
+    assert go("SELECT DISTINCT x.region FROM customers AS x")["rows"] == [["North"]]
+    assert go("SELECT region FROM (SELECT * FROM customers) t GROUP BY 1")["rows"] == [["North"]]
+    assert go("SELECT count(*) FROM orders o WHERE o.customer_id IN (SELECT customer_id FROM customers WHERE region = 'South')")["rows"] == [[0]]
+    assert go("WITH customers AS (SELECT 1 AS region) SELECT * FROM customers")["status"] == "blocked"
+    done = go("SELECT DISTINCT region FROM customers")
+    assert done["context"]["filters"] == [f1] and "North" not in done["final_sql"]    # shown SQL stays as written
+
+    # role-wide filter using the signed-in user's own attributes, combined (AND) with the user filter
+    f3 = new(condition="lower(email) <> lower({user_email}) AND segment = 'Enterprise'", scope="role", role="analyst").json()["id"]
+    assert go("SELECT DISTINCT region, segment FROM customers")["rows"] == [["North", "Enterprise"]]
+    a.put(f"/api/admin/filters/{f3}", headers=H, json={"connection_id": conn, "table_name": "customers",
+                                                        "condition": "segment = 'Enterprise'", "scope": "role",
+                                                        "role": "analyst", "enabled": False})
+    assert len(go("SELECT DISTINCT segment FROM customers")["rows"]) == 3
+    people["filters"] = [f1, f2, f3]
+
+
+def test_report_lifecycle_sharing_and_live_refresh(people):
+    a, conn, model, north, south = (people[k] for k in ("admin", "conn", "model", "north", "south"))
+    r1 = ask(north, conn, model, "revenue and orders by region")["run"]
+    r2 = ask(north, conn, model, "What is revenue by month?")["run"]
+    theirs = ask(south, conn, model, "revenue by category")["run"]
+
+    comps = [{"type": "heading", "text": "Regional review for {{viewer}}", "level": 1},
+             {"type": "text", "text": "Prepared {{date}}. {{summary:1}} Rows: {{rows:1}}."},
+             {"type": "result", "run_id": r1["id"], "title": "By region", "chart": {"type": "bar", "x": "region", "y": ["revenue", "orders"]},
+              "sql": "SELECT * FROM customers"},                       # client-supplied SQL must be ignored
+             {"type": "pagebreak"},
+             {"type": "result", "run_id": r2["id"], "table_rows": 5}]
+    rep = north.post("/api/reports", headers=H, json={"title": "Regional pack", "header_text": "Confidential · {{title}}",
+                                                       "footer_text": "AskData", "components": comps}).json()
+    rid = rep["id"]
+    assert rep["results"] == 2 and all("sql" not in c for c in rep["components"])
+    assert north.post("/api/reports", headers=H, json={"title": "x", "components": [{"type": "result", "run_id": theirs["id"]}]}).status_code == 400
+
+    out = north.get(f"/api/reports/{rid}/render").json()
+    first = next(c for c in out["components"] if c["type"] == "result")
+    assert first["status"] == "ok" and first["filtered"] and {r[0] for r in first["rows"]} == {"North"}
+    assert "revenue" in first["sql"].lower() and "customers" in first["sql"] and "SELECT * FROM customers" != first["sql"]
+    assert out["components"][0]["text"] == "Regional review for Nia North"
+    assert "{{" not in out["components"][1]["text"] and "Rows: 1." in out["components"][1]["text"]
+    assert out["header_text"] == "Confidential · Regional pack"
+
+    # private until shared; then each viewer sees their own slice of the data
+    assert south.get(f"/api/reports/{rid}").status_code == 404
+    north.put(f"/api/reports/{rid}/shares", headers=H, json={"shares": [{"scope": "user", "user_id": people["south_id"]}]})
+    seen = south.get(f"/api/reports/{rid}/render").json()
+    assert {r[0] for r in next(c for c in seen["components"] if c["type"] == "result")["rows"]} == {"South"}
+    assert seen["components"][0]["text"].endswith("Sam South")
+    assert south.put(f"/api/reports/{rid}", headers=H, json={"title": "Hacked", "components": []}).status_code == 403
+    assert south.put(f"/api/reports/{rid}/schedule", headers=H, json={"enabled": True}).status_code == 403
+    assert south.get(f"/api/reports/{rid}/snapshots").status_code == 403
+    assert south.delete(f"/api/reports/{rid}", headers=H).status_code == 403
+    assert [r["title"] for r in south.get("/api/reports").json()] == ["Regional pack"]
+
+    # can-edit share: may add their own results; existing components keep their stored SQL
+    north.put(f"/api/reports/{rid}/shares", headers=H, json={"shares": [{"scope": "role", "role": "analyst", "can_edit": True}]})
+    assert south.post(f"/api/reports/{rid}/components", headers=H, json={"run_id": theirs["id"]}).status_code == 200
+    assert south.post(f"/api/reports/{rid}/components", headers=H, json={"run_id": r1["id"]}).status_code == 400
+    assert north.get(f"/api/reports/{rid}").json()["results"] == 3
+
+    # data-model access is honoured per viewer: restrict the model and the shared viewer loses the data, not the report
+    c = next(x for x in a.get("/api/admin/access").json()["connections"] if x["id"] == conn)
+    a.put(f"/api/admin/access/{conn}", headers=H, json={"is_active": True, "restricted": True, "user_ids": [people["north_id"]]})
+    blocked = south.get(f"/api/reports/{rid}/render").json()
+    assert {x["status"] for x in blocked["components"] if x["type"] == "result"} == {"no_access"}
+    assert all("sql" not in x and "rows" not in x for x in blocked["components"] if x["type"] == "result")
+    assert conn not in [x["id"] for x in south.get("/api/connections").json()]
+    a.put(f"/api/admin/access/{conn}", headers=H, json={"is_active": False, "restricted": False, "user_ids": []})
+    assert conn not in [x["id"] for x in north.get("/api/connections").json()]         # disabled for everyone but admins
+    a.put(f"/api/admin/access/{conn}", headers=H, json={"is_active": c["is_active"], "restricted": False, "user_ids": []})
+
+    pdf = north.get(f"/api/reports/{rid}/pdf")
+    assert pdf.status_code == 200 and pdf.content[:5] == b"%PDF-"
+    from pypdf import PdfReader
+    reader = PdfReader(io.BytesIO(pdf.content))
+    text = " ".join(p.extract_text() for p in reader.pages)
+    assert len(reader.pages) >= 2 and "Regional review for Nia North" in text and "Confidential" in text
+    assert "Page 1 of" in text and "By region" in text and "North" in text and "South" not in text.replace("Sam South", "")
+    assert sum(len(p.images) for p in reader.pages) >= 3            # region chart split into two panels + month chart
+    people["report"] = rid
+
+
+def test_schedule_snapshot_and_email(people):
+    from aiosmtpd.controller import Controller
+    from app import reporting
+    from app.db import SessionLocal
+    from app.models import Report
+
+    inbox = []
+
+    class Sink:
+        async def handle_DATA(self, server, session, envelope):
+            inbox.append(envelope)
+            return "250 OK"
+
+    a, north, rid = people["admin"], people["north"], people["report"]
+    a.put("/api/admin/settings", headers=H, json={"smtp_host": "127.0.0.1", "smtp_port": SMTP_PORT, "smtp_security": "none",
+                                                   "smtp_from": "reports@test.local", "smtp_password": "s3cret",
+                                                   "public_url": "https://askdata.test"})
+    shown = a.get("/api/admin/settings").json()
+    assert "smtp_password" not in shown and shown["smtp_password_set"]
+
+    assert north.put(f"/api/reports/{rid}/schedule", headers=H, json={"enabled": True, "frequency": "hourly"}).status_code == 400
+    assert north.put(f"/api/reports/{rid}/schedule", headers=H, json={"enabled": True, "recipients": ["nope"]}).status_code == 400
+    s = north.put(f"/api/reports/{rid}/schedule", headers=H, json={
+        "enabled": True, "frequency": "weekly", "weekday": 0, "time": "08:30", "tz": "Asia/Kolkata",
+        "recipients": ["boss@test.local", "team@test.local"]}).json()
+    nxt = dt.datetime.fromisoformat(s["next_run_at"])
+    assert nxt > dt.datetime.utcnow() and (nxt.hour, nxt.minute) == (3, 0) and nxt.weekday() == 0      # 08:30 IST = 03:00 UTC
+
+    # calendar maths
+    base = dt.datetime(2026, 11, 12, 10, 0)             # a Thursday, UTC
+    assert reporting.next_run({"enabled": True, "frequency": "daily", "time": "09:00", "tz": "UTC"}, base) == dt.datetime(2026, 11, 13, 9, 0)
+    assert reporting.next_run({"enabled": True, "frequency": "daily", "time": "11:00", "tz": "UTC"}, base) == dt.datetime(2026, 11, 12, 11, 0)
+    assert reporting.next_run({"enabled": True, "frequency": "weekdays", "time": "09:00", "tz": "UTC"}, base + dt.timedelta(days=1)) == dt.datetime(2026, 11, 16, 9, 0)
+    assert reporting.next_run({"enabled": True, "frequency": "monthly", "monthday": 1, "time": "06:00", "tz": "UTC"}, base) == dt.datetime(2026, 12, 1, 6, 0)
+    assert reporting.next_run({"enabled": False}, base) is None
+
+    server = Controller(Sink(), hostname="127.0.0.1", port=SMTP_PORT)
+    server.start()
+    try:
+        assert a.post("/api/admin/settings/test-email", headers=H, json={"to": "me@test.local"}).json()["ok"]
+        with SessionLocal() as db:                       # make it due, then let the scheduler tick
+            db.get(Report, rid).next_run_at = dt.datetime.utcnow() - dt.timedelta(minutes=1)
+            db.commit()
+        assert reporting.run_due() == 1
+        assert reporting.run_due() == 0                  # claimed: does not fire twice
+    finally:
+        server.stop()
+    assert [e.rcpt_tos for e in inbox] == [["me@test.local"], ["boss@test.local", "team@test.local"]]
+    body = inbox[1].content.decode(errors="replace")
+    assert "Regional pack" in body and "application/pdf" in body and "https://askdata.test/#/reports/" in body
+
+    snaps = north.get(f"/api/reports/{rid}/snapshots").json()
+    assert len(snaps) == 1 and snaps[0]["status"] == "ok" and snaps[0]["emailed_to"] == ["boss@test.local", "team@test.local"]
+    got = north.get(f"/api/reports/{rid}/snapshots/{snaps[0]['id']}/pdf")
+    assert got.content[:5] == b"%PDF-"
+    with SessionLocal() as db:
+        assert db.get(Report, rid).next_run_at > dt.datetime.utcnow()
+
+    # mail server down: the snapshot is still saved, with the reason recorded
+    manual = north.post(f"/api/reports/{rid}/snapshots", headers=H, json={"send": True}).json()
+    assert manual["status"] == "ok" and "not emailed" in manual["note"] and manual["emailed_to"] == []
+
+    assert north.delete(f"/api/reports/{rid}", headers=H).status_code == 200
+    assert north.get("/api/reports").json() == []
+    for f in people["filters"]:
+        a.delete(f"/api/admin/filters/{f}", headers=H)
+    a.put("/api/admin/settings", headers=H, json={"smtp_host": ""})
+
+
+def test_summary_explains_each_shape():
+    from app.connectors import _package
+    from app.summarize import summarize
+
+    def s(names, rows):
+        r = _package(names, rows, 1000, 1)
+        return summarize(r["columns"], r["rows"], False)
+
+    trend = s(["month", "revenue"], [("2025-01", 100.0), ("2025-02", 150.0), ("2025-03", 300.0), ("2025-04", 90.0)])
+    assert trend["shape"] == "trend" and "from 2025-01 to 2025-04" in trend["headline"]
+    text = " ".join(trend["bullets"])
+    assert "totals 640" in text and "Highest in 2025-03 (300)" in text and "down 70%" in text and "complete" in text
+
+    rank = s(["category", "revenue", "avg_price"], [("A", 600.0, 10.0), ("B", 300.0, 30.0), ("C", 100.0, 20.0)])
+    text = " ".join(rank["bullets"])
+    assert rank["shape"] == "ranking" and "A has the highest revenue at 600 — 60% of the 1,000 total" in text
+    assert "Avg price averages 20" in text and "avg price at" not in text          # averages are never totalled
+    assert next(x for x in rank["stats"] if x["column"] == "avg_price").get("sum") is None
+
+    cross = s(["channel", "category", "revenue"], [("Web", "A", 5.0), ("Web", "B", 7.0), ("Shop", "A", 1.0), ("Shop", "B", 2.0)])
+    assert cross["shape"] == "cross" and "Biggest single combination: Web / B at 7" in " ".join(cross["bullets"])
+
+    pivot = s(["product_id", "product", "2025-01", "2025-02", "2025-03", "2025-04", "2025-05"],
+              [(1, "Pen", 1.0, 2.0, 3.0, 4.0, 5.0), (2, "Ink", 10.0, 0.0, 10.0, 10.0, 20.0)])
+    text = " ".join(pivot["bullets"])
+    assert pivot["shape"] == "pivot" and "2 products (rows) by 5 columns" in pivot["headline"]
+    assert "Largest row: Ink with 50" in text and "Highest column: 2025-05 (25)" in text and "product_id" not in text
+
+    years = s(["order_year", "orders"], [(2023, 10), (2024, 15)])
+    assert years["shape"] == "trend" and "from 2023 to 2024" in years["headline"] and "2,023" not in str(years)
+
+    listing = s(["customer_id", "name", "city"], [(1, "a", "X"), (2, "b", "X"), (3, "c", "Y")])
+    assert listing["shape"] == "listing" and "nothing numeric to total" in listing["headline"]
+    assert "2 distinct cities; most frequent: X (2)" in " ".join(listing["bullets"])
+
+    assert "no rows" in s(["a"], [])["headline"]

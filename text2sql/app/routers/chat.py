@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from .. import engine, security, sqlguard
+from .. import engine, security, sqlguard, summarize
 from ..db import get_db, now
 from ..deps import audit, current_user, get_connection, get_settings
 from ..models import Connection, Conversation, LLMModel, QueryRun, User
@@ -37,11 +37,16 @@ class TitleIn(BaseModel):
 
 
 def run_dto(r: QueryRun, rows: bool = True) -> dict:
+    summary, columns = r.summary, r.columns or []
+    if rows and r.result_rows is not None and r.status == "success":
+        # recomputed on read, so saved answers always get the current summary logic
+        columns = summarize.enrich([dict(c) for c in columns])
+        summary = summarize.summarize(columns, r.result_rows, r.truncated)
     return {"id": r.id, "conversation_id": r.conversation_id, "question": r.question,
             "generated_sql": r.generated_sql, "final_sql": r.final_sql, "edited": r.edited,
             "explanation": r.explanation, "status": r.status, "error": r.error, "row_count": r.row_count,
-            "truncated": r.truncated, "columns": r.columns or [], "rows": (r.result_rows if rows else None),
-            "rows_stored": r.result_rows is not None, "summary": r.summary, "chart": r.chart,
+            "truncated": r.truncated, "columns": columns, "rows": (r.result_rows if rows else None),
+            "rows_stored": r.result_rows is not None, "summary": summary, "chart": r.chart,
             "followups": r.followups or [], "feedback": r.feedback, "feedback_note": r.feedback_note,
             "model_label": r.model_label, "input_tokens": r.input_tokens, "output_tokens": r.output_tokens,
             "cost": round(r.cost, 6), "llm_ms": r.llm_ms, "db_ms": r.db_ms, "attempts": r.attempts,
@@ -108,7 +113,7 @@ def ask(body: AskIn, request: Request, user: User = Depends(current_user), db: S
     db.add(run)
     prompt = engine.generate(db, run, conn, model, history, cfg)
     if prompt and not body.review_first:
-        engine.execute(db, run, conn, cfg, model, prompt)
+        engine.execute(db, run, conn, cfg, model, prompt, user=user)
     conv.updated_at = now()
     audit(db, request, user, "query.asked", conn.name, f"run status={run.status}")
     db.commit()
@@ -130,7 +135,7 @@ def execute(run_id: int, body: ExecIn, request: Request, user: User = Depends(cu
     if not run.final_sql:
         raise HTTPException(400, "There is no SQL to run.")
     run.feedback = "" if run.edited else run.feedback
-    engine.execute(db, run, conn, cfg)
+    engine.execute(db, run, conn, cfg, user=user)
     audit(db, request, user, "query.executed", conn.name,
           f"run #{run.id} status={run.status}{' (edited SQL)' if run.edited else ''}")
     db.commit()

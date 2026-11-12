@@ -48,4 +48,14 @@ DEFAULT_SETTINGS = {
     "store_results": True,         # keep result snapshots in chat history
     "lockout_attempts": 5,
     "lockout_minutes": 15,
+    # outgoing email, for scheduled reports
+    "smtp_host": "",
+    "smtp_port": 587,
+    "smtp_security": "starttls",   # starttls | ssl | none
+    "smtp_user": "",
+    "smtp_password": "",           # stored encrypted
+    "smtp_from": "",
+    "public_url": "",              # e.g. https://askdata.yourcompany.com - used for links in emails
 }
+REPORTS_DIR = DATA_DIR / "reports"
+REPORTS_DIR.mkdir(parents=True, exist_ok=True)

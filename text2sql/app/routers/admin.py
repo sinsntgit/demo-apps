@@ -4,13 +4,13 @@ import io
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import Session
 
-from .. import config, llm, security
+from .. import config, llm, mailer, rowfilter, security
 from ..db import get_db
 from ..deps import admin_only, audit, get_settings
-from ..models import ROLES, AuditLog, LLMModel, Setting, User
+from ..models import ROLES, AuditLog, Connection, ConnectionAccess, DataFilter, LLMModel, Setting, User
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -211,12 +211,18 @@ def test_model(model_id: int, _: User = Depends(admin_only), db: Session = Depen
 # ---- settings ----------------------------------------------------------------------
 _LIMITS = {"max_rows": (1, 50000), "query_timeout_s": (5, 900), "rate_limit_per_min": (1, 600),
            "session_hours": (1, 168), "max_repair_attempts": (0, 5), "lockout_attempts": (3, 20),
-           "lockout_minutes": (1, 1440)}
+           "lockout_minutes": (1, 1440), "smtp_port": (1, 65535)}
+
+
+def _public_settings(db: Session) -> dict:
+    out = get_settings(db)
+    out["smtp_password_set"] = bool(out.pop("smtp_password"))
+    return out
 
 
 @router.get("/settings")
 def settings(_: User = Depends(admin_only), db: Session = Depends(get_db)):
-    return get_settings(db)
+    return _public_settings(db)
 
 
 @router.put("/settings")
@@ -238,15 +244,157 @@ def save_settings(body: dict, request: Request, admin: User = Depends(admin_only
                 raise HTTPException(400, f"{key} must be between {lo} and {hi}.")
         elif key == "feedback_mode" and val not in ("approval", "instant"):
             raise HTTPException(400, "feedback_mode must be 'approval' or 'instant'.")
+        elif key == "smtp_security" and val not in ("starttls", "ssl", "none"):
+            raise HTTPException(400, "smtp_security must be starttls, ssl or none.")
+        elif key == "smtp_password":
+            if not val:
+                continue                    # blank = keep the stored password
+            val = security.encrypt(str(val))
+        elif isinstance(default, str):
+            val = str(val or "").strip()[:500]
         row = db.get(Setting, key)
         if row:
             row.value = {"v": val}
         else:
             db.add(Setting(key=key, value={"v": val}))
-        changed.append(f"{key}={val}")
+        changed.append(f"{key}={'***' if key == 'smtp_password' else val}")
     audit(db, request, admin, "settings.updated", "", ", ".join(changed))
     db.commit()
-    return get_settings(db)
+    return _public_settings(db)
+
+
+class TestMailIn(BaseModel):
+    to: str
+
+
+@router.post("/settings/test-email")
+def test_email(body: TestMailIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    try:
+        mailer.send(get_settings(db), [body.to.strip()], f"{config.APP_NAME} test email",
+                    f"This is a test message from {config.APP_NAME}. Scheduled reports will be sent from this address.")
+        return {"ok": True, "message": f"Sent to {body.to.strip()}."}
+    except mailer.MailError as e:
+        return {"ok": False, "message": str(e)}
+
+
+# ---- data access: who can use each data model, and which rows they see -----------------
+class AccessIn(BaseModel):
+    is_active: bool
+    restricted: bool
+    user_ids: list[int] = []
+
+
+class FilterIn(BaseModel):
+    connection_id: int
+    table_name: str
+    condition: str
+    scope: str = "all"              # all | role | user
+    role: str = ""
+    user_id: int | None = None
+    description: str = ""
+    enabled: bool = True
+
+
+def _filter(f: DataFilter, users: dict) -> dict:
+    who = "Everyone except administrators" if f.scope == "all" else f"Role: {f.role}" if f.scope == "role" \
+        else f"User: {users.get(f.user_id, '(deleted)')}"
+    return {"id": f.id, "connection_id": f.connection_id, "table_name": f.table_name, "condition": f.condition,
+            "scope": f.scope, "role": f.role, "user_id": f.user_id, "description": f.description,
+            "enabled": f.enabled, "applies_to": who}
+
+
+@router.get("/access")
+def access_overview(_: User = Depends(admin_only), db: Session = Depends(get_db)):
+    users = {u.id: u for u in db.scalars(select(User).order_by(User.email))}
+    names = {i: (u.name or u.email) for i, u in users.items()}
+    grants: dict = {}
+    for a in db.scalars(select(ConnectionAccess)):
+        grants.setdefault(a.connection_id, []).append(a.user_id)
+    filters: dict = {}
+    for f in db.scalars(select(DataFilter).order_by(DataFilter.table_name, DataFilter.id)):
+        filters.setdefault(f.connection_id, []).append(_filter(f, names))
+    return {
+        "users": [{"id": u.id, "name": u.name or u.email, "email": u.email, "role": u.role, "is_active": u.is_active}
+                  for u in users.values()],
+        "placeholders": list(rowfilter.PLACEHOLDERS),
+        "connections": [{"id": c.id, "name": c.name, "db_type": c.db_type, "is_active": c.is_active,
+                         "restricted": c.restricted, "user_ids": grants.get(c.id, []),
+                         "tables": sorted({t["name"] for t in (c.schema_json or {}).get("tables", [])}),
+                         "filters": filters.get(c.id, [])}
+                        for c in db.scalars(select(Connection).order_by(Connection.name))]}
+
+
+@router.put("/access/{conn_id}")
+def set_access(conn_id: int, body: AccessIn, request: Request, admin: User = Depends(admin_only),
+               db: Session = Depends(get_db)):
+    c = db.get(Connection, conn_id)
+    if not c:
+        raise HTTPException(404, "Not found")
+    c.is_active, c.restricted = body.is_active, body.restricted
+    db.execute(delete(ConnectionAccess).where(ConnectionAccess.connection_id == conn_id))
+    for uid in set(body.user_ids):
+        if db.get(User, uid):
+            db.add(ConnectionAccess(connection_id=conn_id, user_id=uid))
+    audit(db, request, admin, "connection.access_changed", c.name,
+          f"enabled={c.is_active} restricted={c.restricted} users={len(set(body.user_ids))}")
+    db.commit()
+    return {"ok": True}
+
+
+def _apply_filter(f: DataFilter, body: FilterIn, db: Session):
+    conn = db.get(Connection, body.connection_id)
+    if not conn:
+        raise HTTPException(404, "Data model not found")
+    if not body.table_name.strip():
+        raise HTTPException(400, "Choose the table the filter applies to.")
+    if body.scope not in ("all", "role", "user"):
+        raise HTTPException(400, "Unknown scope.")
+    if body.scope == "role" and body.role not in ("analyst", "steward"):
+        raise HTTPException(400, "Choose the role (analyst or steward). Administrators are never filtered.")
+    if body.scope == "user" and not (body.user_id and db.get(User, body.user_id)):
+        raise HTTPException(400, "Choose the user.")
+    try:
+        rowfilter.validate(body.condition, conn.db_type)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    f.connection_id, f.table_name, f.condition = conn.id, body.table_name.strip(), body.condition.strip()
+    f.scope, f.role = body.scope, body.role if body.scope == "role" else ""
+    f.user_id = body.user_id if body.scope == "user" else None
+    f.description, f.enabled = body.description.strip()[:500], body.enabled
+    return conn
+
+
+@router.post("/filters")
+def create_filter(body: FilterIn, request: Request, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    f = DataFilter()
+    conn = _apply_filter(f, body, db)
+    db.add(f)
+    audit(db, request, admin, "filter.created", conn.name, f"{f.table_name}: {f.condition} [{f.scope}]")
+    db.commit()
+    return {"id": f.id}
+
+
+@router.put("/filters/{filter_id}")
+def update_filter(filter_id: int, body: FilterIn, request: Request, admin: User = Depends(admin_only),
+                  db: Session = Depends(get_db)):
+    f = db.get(DataFilter, filter_id)
+    if not f:
+        raise HTTPException(404, "Not found")
+    conn = _apply_filter(f, body, db)
+    audit(db, request, admin, "filter.updated", conn.name, f"{f.table_name}: {f.condition} [{f.scope}] enabled={f.enabled}")
+    db.commit()
+    return {"id": f.id}
+
+
+@router.delete("/filters/{filter_id}")
+def delete_filter(filter_id: int, request: Request, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    f = db.get(DataFilter, filter_id)
+    if not f:
+        raise HTTPException(404, "Not found")
+    audit(db, request, admin, "filter.deleted", str(f.connection_id), f"{f.table_name}: {f.condition}")
+    db.delete(f)
+    db.commit()
+    return {"ok": True}
 
 
 # ---- audit log ---------------------------------------------------------------------

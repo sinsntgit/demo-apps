@@ -10,7 +10,7 @@ import re
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import connectors, llm, retrieval, security, sqlguard, summarize
+from . import connectors, llm, retrieval, rowfilter, security, sqlguard, summarize
 from .models import Connection, LLMModel, QueryRun, TrainingItem
 
 MAX_FULL_SCHEMA_TABLES = 40
@@ -102,6 +102,31 @@ def build_prompt(db: Session, conn: Connection, question: str, history: list[Que
     return system, "\n\n".join(tail), context
 
 
+def _mask(conn: Connection, checked, res: dict):
+    """Hide the values of masked columns in a result, in place."""
+    names = [c["name"] for c in res["columns"]]
+    masked = sqlguard.masked_output_columns(checked, names, conn.masked_columns or [])
+    for row in res["rows"]:
+        for i in masked:
+            if row[i] is not None:
+                row[i] = "••••••"
+    for i in masked:
+        res["columns"][i].update(type="string", masked=True, role="dimension")
+        res["columns"][i].pop("additive", None)
+
+
+def run_sql(db: Session, conn: Connection, sql: str, cfg: dict, user) -> dict:
+    """Guard, apply the user's data filters, run and mask. Used for stored SQL (reports).
+    Raises sqlguard.SQLBlocked / connectors.ConnectorError."""
+    checked = sqlguard.check(sql, conn.db_type)
+    to_run, applied = rowfilter.apply(checked, rowfilter.applicable(db, user, conn), conn.db_type, user)
+    res = connectors.run_query(conn, security.decrypt_json(conn.config_enc), to_run, cfg["max_rows"], cfg["query_timeout_s"])
+    _mask(conn, checked, res)
+    res["filters"] = applied
+    res["summary"] = summarize.summarize(res["columns"], res["rows"], res["truncated"])
+    return res
+
+
 def _call(run: QueryRun, model: LLMModel, system: str, user: str) -> dict:
     res = llm.complete(model, system, user)
     run.attempts += 1
@@ -132,16 +157,19 @@ def generate(db: Session, run: QueryRun, conn: Connection, model: LLMModel, hist
 
 
 def execute(db: Session, run: QueryRun, conn: Connection, cfg: dict, model: LLMModel | None = None,
-            prompt: tuple | None = None):
+            prompt: tuple | None = None, user=None):
     """Guard and run run.final_sql on the source. With `model` and `prompt`, a failing
     model-written query is sent back for repair (error text scrubbed) up to N times."""
     conn_cfg = security.decrypt_json(conn.config_enc)
     repairs_left = cfg["max_repair_attempts"] if (model and prompt and not run.edited) else 0
+    filters = rowfilter.applicable(db, user, conn) if user is not None else []
+    applied: list[int] = []
     while True:
         problem = None
         try:
             checked = sqlguard.check(run.final_sql, conn.db_type)
-            res = connectors.run_query(conn, conn_cfg, checked.sql, cfg["max_rows"], cfg["query_timeout_s"])
+            to_run, applied = rowfilter.apply(checked, filters, conn.db_type, user)
+            res = connectors.run_query(conn, conn_cfg, to_run, cfg["max_rows"], cfg["query_timeout_s"])
         except sqlguard.SQLBlocked as e:
             problem, status = str(e), "blocked"
         except connectors.ConnectorError as e:
@@ -167,18 +195,9 @@ def execute(db: Session, run: QueryRun, conn: Connection, cfg: dict, model: LLMM
         run.explanation = ans["explanation"] or run.explanation
         run.followups = ans["followups"] or run.followups
 
-    names = [c["name"] for c in res["columns"]]
-    masked = sqlguard.masked_output_columns(checked, names, conn.masked_columns or [])
-    if masked:
-        for row in res["rows"]:
-            for i in masked:
-                if row[i] is not None:
-                    row[i] = "••••••"
-        for i in masked:
-            res["columns"][i]["type"] = "string"
-            res["columns"][i]["masked"] = True
-            res["columns"][i]["role"] = "dimension"
+    _mask(conn, checked, res)
     run.final_sql = checked.sql
+    run.context = {**(run.context or {}), "filters": applied}      # which row filters were enforced
     run.status, run.error = "success", ""
     run.columns, run.row_count, run.truncated, run.db_ms = res["columns"], len(res["rows"]), res["truncated"], res["ms"]
     run.summary = summarize.summarize(res["columns"], res["rows"], res["truncated"])

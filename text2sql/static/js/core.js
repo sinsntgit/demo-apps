@@ -54,14 +54,19 @@ export async function busy(btn, fn) {
   try { return await fn(); } catch (e) { fail(e); } finally { if (btn) btn.disabled = false; }
 }
 
-export function modal(title, body, { wide, actions, onClose } = {}) {
+export function modal(title, body, { wide, actions, onClose, maximizable } = {}) {
   const close = () => { overlay.remove(); document.removeEventListener('keydown', esc); onClose?.(); };
   const esc = e => { if (e.key === 'Escape') close(); };
   const footer = actions ? h('footer', {}, actions(close)) : null;
-  const overlay = h('div', { class: 'overlay', onmousedown: e => { if (e.target === overlay) close(); } },
-    h('div', { class: 'modal' + (wide ? ' wide' : ''), role: 'dialog', 'aria-modal': 'true' },
-      h('header', {}, h('h2', {}, title), h('button', { class: 'btn ghost sm', onclick: close, 'aria-label': 'Close' }, '✕')),
-      h('div', { class: 'body' }, body), footer));
+  const canMax = maximizable ?? !!wide;
+  const maxBtn = !canMax ? null : h('button', { class: 'btn ghost sm', title: 'Maximise', 'aria-label': 'Maximise', onclick: () => {
+    const on = box.classList.toggle('max');
+    maxBtn.textContent = on ? '⤡' : '⤢'; maxBtn.title = on ? 'Restore size' : 'Maximise'; maxBtn.setAttribute('aria-label', maxBtn.title);
+  } }, '⤢');
+  const box = h('div', { class: 'modal' + (wide ? ' wide' : ''), role: 'dialog', 'aria-modal': 'true' },
+    h('header', {}, h('h2', {}, title), maxBtn, h('button', { class: 'btn ghost sm', onclick: close, 'aria-label': 'Close' }, '✕')),
+    h('div', { class: 'body' }, body), footer);
+  const overlay = h('div', { class: 'overlay', onmousedown: e => { if (e.target === overlay) close(); } }, box);
   document.body.append(overlay);
   document.addEventListener('keydown', esc);
   overlay.querySelector('input, textarea, select')?.focus();

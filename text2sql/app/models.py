@@ -155,3 +155,57 @@ class Setting(Base):
     __tablename__ = "settings"
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[dict] = mapped_column(JSON)   # {"v": ...}
+
+
+class DataFilter(Base):
+    """Row-level filter: a condition on one table, applied to every query a user runs."""
+    __tablename__ = "data_filters"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    connection_id: Mapped[int] = mapped_column(ForeignKey("connections.id", ondelete="CASCADE"), index=True)
+    table_name: Mapped[str] = mapped_column(String(255))
+    condition: Mapped[str] = mapped_column(Text)                       # SQL boolean expression on that table
+    scope: Mapped[str] = mapped_column(String(10), default="all")      # all | role | user
+    role: Mapped[str] = mapped_column(String(20), default="")
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    description: Mapped[str] = mapped_column(String(500), default="")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class Report(Base):
+    __tablename__ = "reports"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(300), default="Untitled report")
+    description: Mapped[str] = mapped_column(Text, default="")
+    header_text: Mapped[str] = mapped_column(String(300), default="")
+    footer_text: Mapped[str] = mapped_column(String(300), default="")
+    page_numbers: Mapped[bool] = mapped_column(Boolean, default=True)
+    components: Mapped[list] = mapped_column(JSON, default=list)
+    schedule: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    next_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)   # UTC
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class ReportShare(Base):
+    __tablename__ = "report_shares"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    report_id: Mapped[int] = mapped_column(ForeignKey("reports.id", ondelete="CASCADE"), index=True)
+    scope: Mapped[str] = mapped_column(String(10))                     # user | role
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    role: Mapped[str] = mapped_column(String(20), default="")
+    can_edit: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class ReportSnapshot(Base):
+    """A dated PDF produced by a schedule (or on demand), rendered with the owner's access."""
+    __tablename__ = "report_snapshots"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    report_id: Mapped[int] = mapped_column(ForeignKey("reports.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    trigger: Mapped[str] = mapped_column(String(20), default="schedule")   # schedule | manual
+    status: Mapped[str] = mapped_column(String(20), default="ok")          # ok | error
+    file_name: Mapped[str] = mapped_column(String(300), default="")
+    emailed_to: Mapped[list] = mapped_column(JSON, default=list)
+    note: Mapped[str] = mapped_column(Text, default="")
