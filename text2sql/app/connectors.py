@@ -261,10 +261,33 @@ def _col_type(values) -> str:
     return "string"
 
 
+# Numeric columns that label things rather than measure them: never summed or averaged.
+_ID_SUFFIX = re.compile(r"(?:^|[_\s.])(id|ids|key|code|no|nr|num|number|zip|zipcode|postcode|pincode|pin|sku|year|yr|"
+                        r"month|mon|week|day|quarter|qtr|fy|period|rank|version)$", re.I)
+_ID_CAMEL = re.compile(r"[a-z0-9](Id|ID|Key|Code|No|Num|Year|Month)$")
+_MEASURE_WORD = re.compile(r"(count|total|sum|avg|average|amount|qty|quantity|revenue|sales|price|cost|per_|pct|percent|"
+                           r"rate|ratio|score|days|months|years|number_of|num_|no_of)", re.I)
+
+
+def column_role(name: str, col_type: str, values) -> str:
+    """'measure' = a quantity that can be added up; 'dimension' = a label / category / identifier."""
+    if col_type != "number":
+        return "dimension"
+    whole = all(isinstance(v, int) or (isinstance(v, (float, decimal.Decimal)) and v == int(v))
+                for v in values if v is not None)
+    if whole and (_ID_SUFFIX.search(name) or _ID_CAMEL.search(name)) and not _MEASURE_WORD.search(name):
+        return "dimension"
+    return "measure"
+
+
 def _package(names, raw_rows, max_rows, ms):
     truncated = len(raw_rows) > max_rows
     raw_rows = raw_rows[:max_rows]
-    cols = [{"name": str(n), "type": _col_type([r[i] for r in raw_rows])} for i, n in enumerate(names)]
+    cols = []
+    for i, n in enumerate(names):
+        vals = [r[i] for r in raw_rows]
+        typ = _col_type(vals)
+        cols.append({"name": str(n), "type": typ, "role": column_role(str(n), typ, vals[:500])})
     rows = [[_jsonable(v) for v in r] for r in raw_rows]
     for r in rows:
         for i, v in enumerate(r):

@@ -177,6 +177,7 @@ def execute(db: Session, run: QueryRun, conn: Connection, cfg: dict, model: LLMM
         for i in masked:
             res["columns"][i]["type"] = "string"
             res["columns"][i]["masked"] = True
+            res["columns"][i]["role"] = "dimension"
     run.final_sql = checked.sql
     run.status, run.error = "success", ""
     run.columns, run.row_count, run.truncated, run.db_ms = res["columns"], len(res["rows"]), res["truncated"], res["ms"]

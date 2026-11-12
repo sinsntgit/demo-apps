@@ -15,6 +15,8 @@ const ROUTES = [
   { path: 'dashboard', label: 'Dashboard', icon: '📈', roles: ['admin', 'steward'], load: async root => (await import('./dashboard.js')).dashboardView(root) },
   { sect: 'Manage', roles: ['admin'] },
   { path: 'admin', label: 'Admin', icon: '⚙', roles: ['admin'], load: async (root, arg) => (await import('./admin.js')).adminView(root, arg) },
+  { sect: 'Support', roles: null },
+  { path: 'help', label: 'Help', icon: '❓', roles: null, load: async (root, arg) => (await import('./help.js')).helpView(root, arg) },
   { path: 'account', label: 'My account', icon: '👤', roles: null, hidden: true, load: async root => (await import('./account.js')).accountView(root, boot) },
 ];
 const allowed = r => !r.roles || r.roles.includes(state.me.role);

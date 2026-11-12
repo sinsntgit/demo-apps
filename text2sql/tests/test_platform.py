@@ -266,3 +266,30 @@ def test_excel_folder_connection(admin):
     assert done["rows"] == [["Ops", 800], ["Sales", 2500.5]]
     # training is per data model: the retail examples are not visible here
     assert client.get(f"/api/training/{conn['id']}").json()["items"] == []
+
+
+def test_identifier_columns_are_categories_not_measures():
+    from app.connectors import _package
+    from app.summarize import suggest_chart, summarize
+    roles = lambda r: {c["name"]: c["role"] for c in r["columns"]}       # noqa: E731
+    wide = _package(["product_id", "product_name", "2024-01", "2024-02", "2024-03", "2024-04", "2024-05"],
+                    [(101, "A", 1.5, 2, 3, 4, 5), (102, "B", 2, 3, 4, 5, 6)], 100, 1)
+    assert roles(wide)["product_id"] == "dimension" and roles(wide)["2024-01"] == "measure"
+    assert suggest_chart(wide["columns"], wide["rows"])["type"] == "table"          # pivot reads best as a table
+    stats = {s["column"]: s for s in summarize(wide["columns"], wide["rows"], False)["stats"]}
+    assert "sum" not in stats["product_id"] and stats["product_id"]["distinct"] == 2 and stats["2024-01"]["sum"] == 3.5
+    mixed = _package(["Language", "Total_Impressions", "Total_Revenue"], [("en", 9e8, 1200.5), ("hi", 5e8, 800.0)], 100, 1)
+    chart = suggest_chart(mixed["columns"], mixed["rows"])
+    assert chart == {"type": "bar", "x": "Language", "y": ["Total_Impressions"]}    # never two scales on one axis
+    names = ["CustomerID", "order_no", "fiscal_year", "order_count", "days_open", "zip", "unit_price"]
+    r = _package(names, [(1, 10, 2025, 3, 4, 90210, 5), (2, 11, 2024, 5, 6, 10001, 7)], 100, 1)
+    assert [roles(r)[n] for n in names] == ["dimension", "dimension", "dimension", "measure", "measure", "dimension", "measure"]
+    yearly = _package(["order_year", "orders"], [(2023, 10), (2024, 12)], 100, 1)
+    assert suggest_chart(yearly["columns"], yearly["rows"])["x"] == "order_year"
+
+
+def test_rename_conversation(admin):
+    client, conn, model = admin
+    conv = ask(client, conn, model, "count orders please")["conversation"]
+    assert client.put(f"/api/chat/conversations/{conv['id']}", headers=H, json={"title": "  Weekly order count "}).json()["ok"]
+    assert any(c["title"] == "Weekly order count" for c in client.get("/api/chat/conversations").json())

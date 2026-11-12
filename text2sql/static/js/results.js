@@ -14,6 +14,22 @@ const CHART_TYPES = [['bar', 'Bar'], ['hbar', 'Horizontal bar'], ['stacked', 'St
   ['pie', 'Pie'], ['doughnut', 'Doughnut'], ['scatter', 'Scatter'], ['kpi', 'Big numbers']];
 const MAX_SERIES = 8, MAX_POINTS = 300;
 
+export const COUNT = '__count__';            // pseudo-measure: number of rows per category
+const yName = y => y === COUNT ? 'Count of rows' : y;
+const ID_NAME = /(?:^|[_\s.])(id|ids|key|code|no|nr|num|number|zip|zipcode|postcode|pincode|pin|sku|year|yr|month|mon|week|day|quarter|qtr|fy|period|rank|version)$/i;
+/** A measure is a quantity that can be added up. IDs, codes, years etc. are labels (dimensions). */
+export const isMeasure = c => c.type === 'number' && (c.role ? c.role === 'measure' : !(ID_NAME.test(c.name) || /[a-z0-9](Id|ID|Key|Code|No)$/.test(c.name)));
+
+/** Two measures on very different scales get a panel each (never a second axis). */
+export function chartPanels(run, cfg) {
+  const idx = Object.fromEntries(run.columns.map((c, i) => [c.name, i]));
+  const ys = (cfg.y || []).filter(y => y in idx);
+  if (ys.length !== 2 || cfg.series || !['bar', 'hbar', 'stacked', 'line', 'area'].includes(cfg.type)) return [cfg];
+  const peak = y => Math.max(0, ...run.rows.map(r => Math.abs(Number(r[idx[y]]) || 0)));
+  const [a, b] = ys.map(peak);
+  return a && b && Math.max(a, b) / Math.min(a, b) > 20 ? ys.map(y => ({ ...cfg, y: [y] })) : [cfg];
+}
+
 const label = v => v == null ? '(blank)' : String(v).replace(/ 00:00:00$/, '');
 
 /** Build a Chart.js config from rows + the user's chart settings. */
@@ -21,37 +37,51 @@ export function chartConfig(run, cfg, mode) {
   const colors = PALETTE[mode], ink = INK[mode];
   const idx = Object.fromEntries(run.columns.map((c, i) => [c.name, i]));
   const rows = run.rows.slice(0, MAX_POINTS);
-  const ys = (cfg.y || []).filter(y => y in idx);
+  const ys = (cfg.y || []).filter(y => y in idx || y === COUNT);
   const x = cfg.x in idx ? cfg.x : null;
   const type = cfg.type;
+  const val = (r, y) => y === COUNT ? 1 : r[idx[y]];
+  let grouped = false;
   if (!ys.length || (!x && type !== 'kpi')) return null;
   let labels, datasets;
 
   if (type === 'scatter') {
     datasets = [{ label: `${ys[0]} vs ${x}`, data: rows.map(r => ({ x: r[idx[x]], y: r[idx[ys[0]]] })), backgroundColor: colors[0] + 'cc', pointRadius: 4, pointHoverRadius: 6 }];
   } else if (type === 'pie' || type === 'doughnut') {
-    let pts = rows.map(r => [label(r[idx[x]]), Number(r[idx[ys[0]]]) || 0]).sort((a, b) => b[1] - a[1]);
+    const sums = new Map();
+    rows.forEach(r => { const k = label(r[idx[x]]); sums.set(k, (sums.get(k) || 0) + (Number(val(r, ys[0])) || 0)); });
+    grouped = sums.size < rows.length;
+    let pts = [...sums].sort((a, b) => b[1] - a[1]);
     if (pts.length > MAX_SERIES) {    // never invent a 9th colour: fold the tail into "Other"
       const rest = pts.slice(MAX_SERIES - 1).reduce((s, p) => s + p[1], 0);
       pts = [...pts.slice(0, MAX_SERIES - 1), ['Other', rest]];
     }
     labels = pts.map(p => p[0]);
-    datasets = [{ label: ys[0], data: pts.map(p => p[1]), backgroundColor: pts.map((_, i) => colors[i]), borderColor: ink.surface, borderWidth: 2 }];
+    datasets = [{ label: yName(ys[0]), data: pts.map(p => p[1]), backgroundColor: pts.map((_, i) => colors[i]), borderColor: ink.surface, borderWidth: 2 }];
   } else if (cfg.series && cfg.series in idx && ys.length === 1) {    // pivot one measure by a second dimension
     labels = [...new Set(rows.map(r => label(r[idx[x]])))];
     const totals = new Map();
-    rows.forEach(r => { const s = label(r[idx[cfg.series]]); totals.set(s, (totals.get(s) || 0) + Math.abs(Number(r[idx[ys[0]]]) || 0)); });
+    rows.forEach(r => { const s = label(r[idx[cfg.series]]); totals.set(s, (totals.get(s) || 0) + Math.abs(Number(val(r, ys[0])) || 0)); });
     const keep = [...totals.entries()].sort((a, b) => b[1] - a[1]).slice(0, totals.size > MAX_SERIES ? MAX_SERIES - 1 : MAX_SERIES).map(e => e[0]);
     const names = totals.size > keep.length ? [...keep, 'Other'] : keep;
     const grid = new Map(names.map(n => [n, new Map()]));
     rows.forEach(r => {
       const s = label(r[idx[cfg.series]]), key = keep.includes(s) ? s : 'Other', xl = label(r[idx[x]]);
-      const m = grid.get(key); m.set(xl, (m.get(xl) || 0) + (Number(r[idx[ys[0]]]) || 0));
+      const m = grid.get(key); m.set(xl, (m.get(xl) || 0) + (Number(val(r, ys[0])) || 0));
     });
     datasets = names.map((n, i) => ({ label: n, data: labels.map(l => grid.get(n).get(l) ?? null), color: colors[i] }));
   } else {
-    labels = rows.map(r => label(r[idx[x]]));
-    datasets = ys.slice(0, MAX_SERIES).map((y, i) => ({ label: y, data: rows.map(r => r[idx[y]]), color: colors[i] }));
+    // one mark per X value: rows sharing an X value are added together
+    const groups = new Map();
+    rows.forEach(r => {
+      const k = label(r[idx[x]]);
+      let g = groups.get(k);
+      if (!g) groups.set(k, g = ys.map(() => null));
+      ys.forEach((y, i) => { const v = val(r, y); if (v != null) g[i] = (g[i] ?? 0) + Number(v); });
+    });
+    grouped = groups.size < rows.length;
+    labels = [...groups.keys()];
+    datasets = ys.slice(0, MAX_SERIES).map((y, i) => ({ label: yName(y), data: labels.map(l => groups.get(l)[i]), color: colors[i] }));
   }
 
   const isLine = type === 'line' || type === 'area';
@@ -68,14 +98,16 @@ export function chartConfig(run, cfg, mode) {
   const axis = (title, numeric) => ({
     title: { display: !!title, text: title, color: ink.text, font: { size: 11 } },
     grid: { color: numeric ? ink.grid : 'transparent' }, border: { color: ink.grid },
-    ticks: { color: ink.text, maxRotation: 45, autoSkip: true, callback(v) { return numeric ? fmtCompact(v) : String(this.getLabelForValue(v)).slice(0, 22); } },
+    ticks: { color: ink.text, maxRotation: 45, autoSkip: true, precision: numeric && ys.every(y => y === COUNT) ? 0 : undefined,
+      callback(v) { return numeric ? (Math.abs(v) >= 1e4 ? fmtCompact(v) : Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 })) : String(this.getLabelForValue(v)).slice(0, 22); } },
     stacked: type === 'stacked', beginAtZero: numeric && !isLine,
   });
   const horizontal = type === 'hbar';
   const scales = (type === 'pie' || type === 'doughnut') ? {} : type === 'scatter'
-    ? { x: { ...axis(x, true), type: 'linear' }, y: axis(ys[0], true) }
-    : { [horizontal ? 'y' : 'x']: axis(x, false), [horizontal ? 'x' : 'y']: axis(!multi ? ys[0] : '', true) };
+    ? { x: { ...axis(x, true), type: 'linear' }, y: axis(yName(ys[0]), true) }
+    : { [horizontal ? 'y' : 'x']: axis(x, false), [horizontal ? 'x' : 'y']: axis(!multi ? yName(ys[0]) : '', true) };
   return {
+    $grouped: grouped,
     type: isBar ? 'bar' : isLine ? 'line' : type,
     data: { labels, datasets },
     options: {
@@ -98,6 +130,7 @@ function csvOf(run) {
 function chartImage(run, cfg, fmt = 'image/png') {
   const conf = chartConfig(run, cfg, 'light');
   if (!conf) return null;
+  delete conf.$grouped;
   const canvas = h('canvas', { width: 1400, height: 640 });
   conf.options.responsive = false; conf.options.animation = false; conf.options.devicePixelRatio = 1;
   conf.plugins = [{ id: 'bg', beforeDraw(c) { c.ctx.save(); c.ctx.fillStyle = '#fff'; c.ctx.fillRect(0, 0, c.width, c.height); c.ctx.restore(); } }];
@@ -133,9 +166,12 @@ function exportPDF(run, cfg) {
     y += 8;
   }
   if (cfg.type !== 'kpi') {
-    const img = chartImage(run, cfg, 'image/jpeg');
-    if (img) {
-      const hgt = (W - 2 * M) * 640 / 1400;
+    const panels = chartPanels(run, cfg);
+    for (const panel of panels) {
+      const img = chartImage(run, panel, 'image/jpeg');
+      if (!img) continue;
+      const hgt = (W - 2 * M) * 640 / 1400 * (panels.length > 1 ? 0.7 : 1);
+      if (panels.length > 1) para(yName(panel.y[0]), 10, 'bold', 40, 'helvetica', 0);
       if (y + hgt > 790) { doc.addPage(); y = 48; }
       doc.addImage(img, 'JPEG', M, y, W - 2 * M, hgt); y += hgt + 16;
     }
@@ -185,14 +221,15 @@ function dataTable(run) {
 
 function kpiTiles(run, cfg) {
   const idx = Object.fromEntries(run.columns.map((c, i) => [c.name, i]));
-  const ys = (cfg.y || []).filter(y => y in idx);
+  const ys = (cfg.y || []).filter(y => y in idx || y === COUNT);
   const single = run.rows.length === 1;
   return h('div', { class: 'kpis' }, ys.map(y => {
+    if (y === COUNT) return h('div', { class: 'kpi' }, h('div', { class: 'l' }, 'Count of rows'), h('div', { class: 'v' }, fmtNum(run.rows.length)));
     const vals = run.rows.map(r => r[idx[y]]).filter(v => typeof v === 'number');
     const total = vals.reduce((a, b) => a + b, 0);
-    return h('div', { class: 'kpi' }, h('div', { class: 'l' }, y.replace(/_/g, ' ')),
+    return h('div', { class: 'kpi' }, h('div', { class: 'l' }, y.replace(/_/g, ' ') + (single ? '' : ' — total')),
       h('div', { class: 'v' }, fmtCompact(single ? vals[0] : total)),
-      single ? null : h('div', { class: 's' }, `sum of ${vals.length} rows · avg ${fmtCompact(total / (vals.length || 1))}`));
+      single ? null : h('div', { class: 's' }, `across ${vals.length} rows · average ${fmtCompact(total / (vals.length || 1))} · min ${fmtCompact(Math.min(...vals))} · max ${fmtCompact(Math.max(...vals))}`));
   }));
 }
 
@@ -201,8 +238,8 @@ function kpiTiles(run, cfg) {
  */
 export function runCard(run, ctx = {}) {
   const root = h('div', {});
-  let chart = null, editing = false;
-  const cleanup = () => { chart?.destroy(); chart = null; };
+  let charts = [], editing = false;
+  const cleanup = () => { charts.forEach(c => c.destroy()); charts = []; };
   const refresh = updated => { Object.assign(run, updated); ctx.onChange?.(run); draw(); };
 
   function sqlSection() {
@@ -280,9 +317,10 @@ export function runCard(run, ctx = {}) {
     }
     const cfg = run.chart = { type: 'table', ...(run.chart || {}) };
     if (cfg.type === 'table') { cfg.view = cfg.view || 'table'; }
-    const nums = run.columns.filter(c => c.type === 'number').map(c => c.name);
-    const all = run.columns.map(c => c.name);
-    const canChart = nums.length > 0 && run.rows.length > 0;
+    const nums = run.columns.filter(isMeasure).map(c => c.name);                 // measures: can be summed
+    const all = [...run.columns.filter(c => !isMeasure(c)), ...run.columns.filter(isMeasure)].map(c => c.name);   // dimensions first
+    const measureOpts = [...nums, [COUNT, 'Count of rows']];
+    const canChart = run.rows.length > 0 && run.columns.length > 0;
     let view = cfg.view || (canChart && cfg.type !== 'table' ? 'chart' : 'table');
     if (view === 'chart' && !canChart) view = 'table';
     const body = h('div', {});
@@ -294,7 +332,7 @@ export function runCard(run, ctx = {}) {
       h('button', { onclick: () => { exportPDF(run, cfg.type === 'table' ? { ...cfg, type: 'kpi' } : cfg); } }, 'PDF report'),
       h('button', { onclick: () => download(`query-${run.id}.csv`, csvOf(run), 'text/csv') }, 'CSV'),
       h('button', { onclick: () => { location.href = `/api/chat/runs/${run.id}/export.xlsx`; } }, 'Excel (.xlsx)'),
-      canChart ? h('button', { onclick: () => { const img = chartImage(run, cfg); if (img) fetch(img).then(r => r.blob()).then(b => download(`query-${run.id}.png`, b)); else toast('Choose a chart type first', true); } }, 'Chart image (PNG)') : null);
+      canChart ? h('button', { onclick: () => { const imgs = cfg.type === 'table' || cfg.type === 'kpi' ? [] : chartPanels(run, cfg).map(p => chartImage(run, p)).filter(Boolean); if (!imgs.length) return toast('Open the Chart view and choose a chart first', true); imgs.forEach((img, i) => fetch(img).then(r => r.blob()).then(b => download(`query-${run.id}${imgs.length > 1 ? '-' + (i + 1) : ''}.png`, b))); } }, 'Chart image (PNG)') : null);
     pop.addEventListener('click', () => pop.classList.add('hidden'));
     exportMenu.append(h('button', { class: 'btn sm', onclick: e => { e.stopPropagation(); pop.classList.toggle('hidden'); } }, '⬇ Export'), pop);
 
@@ -313,31 +351,50 @@ export function runCard(run, ctx = {}) {
         const s = run.summary || {};
         body.append(h('p', {}, h('b', {}, s.headline || '')), h('ul', { class: 'bul' }, (s.bullets || []).map(b => h('li', {}, b))),
           h('div', { class: 'tbl-wrap', style: 'margin-top:12px' }, h('table', { class: 'tbl' },
-            h('thead', {}, h('tr', {}, ['Column', 'Type', 'Distinct', 'Nulls', 'Min', 'Max', 'Average', 'Total'].map((t, i) => h('th', { class: i > 1 ? 'num' : '' }, t)))),
-            h('tbody', {}, (s.stats || []).map(c => h('tr', {}, h('td', {}, c.column), h('td', {}, c.type),
+            h('thead', {}, h('tr', {}, ['Column', 'Kind', 'Distinct', 'Nulls', 'Min', 'Max', 'Average', 'Total'].map((t, i) => h('th', { class: i > 1 ? 'num' : '' }, t)))),
+            h('tbody', {}, (s.stats || []).map(c => h('tr', {}, h('td', {}, c.column), h('td', {}, c.type === 'number' ? (c.sum == null ? 'category (number)' : 'measure') : c.type === 'date' ? 'date' : 'category'),
               ...[c.distinct, c.nulls, c.min, c.max, c.mean, c.sum].map(v => h('td', { class: 'num' }, v == null ? '–' : typeof v === 'number' ? fmtNum(v) : String(v)))))))),
-          h('p', { class: 'small dim', style: 'margin-top:8px' }, 'Summary computed on the server from the result rows. Result data is never sent to the AI model.'));
+          h('p', { class: 'small dim', style: 'margin-top:8px' }, 'Totals and averages are shown for measures only; identifiers, codes and years are treated as categories. Computed on the server — result data is never sent to the AI model.'));
         return;
       }
-      if (cfg.type === 'table') { cfg.type = 'bar'; cfg.x = cfg.x || all.find(c => !nums.includes(c)) || all[0]; cfg.y = cfg.y?.length ? cfg.y : nums.filter(n => n !== cfg.x).slice(0, 1); }
+      if (cfg.type === 'table') { cfg.type = 'bar'; }
+      if (!all.includes(cfg.x)) cfg.x = all[0];
+      cfg.y = (cfg.y || []).filter(y => nums.includes(y) || y === COUNT);
+      if (!cfg.y.length) cfg.y = [nums.find(n => n !== cfg.x) ?? COUNT];
+      if (cfg.type === 'scatter' && cfg.y[0] === COUNT) cfg.type = 'bar';
+      if (cfg.type === 'scatter' && !nums.includes(cfg.x)) cfg.x = nums.find(n => n !== cfg.y[0]) || nums[0];
       const change = (k, v) => { cfg[k] = v; save(); paint(); };
       const dims = all.filter(c => c !== cfg.x && !nums.includes(c));
+      const multiOK = ['bar', 'hbar', 'stacked', 'line', 'area'].includes(cfg.type);
+      if (!multiOK || cfg.y[0] === COUNT) cfg.y = cfg.y.slice(0, 1);
       const controls = h('div', { class: 'chart-controls' },
-        h('label', {}, 'Chart type', select(CHART_TYPES, cfg.type, v => change('type', v))),
-        cfg.type === 'kpi' ? null : h('label', {}, cfg.type === 'pie' || cfg.type === 'doughnut' ? 'Slices' : 'X axis', select(all, cfg.x, v => change('x', v))),
-        h('label', {}, cfg.type === 'kpi' ? 'Measure' : 'Y axis', select(nums, cfg.y?.[0], v => change('y', [v, ...(cfg.y || []).slice(1).filter(y => y !== v)]))),
-        ['bar', 'hbar', 'stacked', 'line', 'area'].includes(cfg.type) && nums.length > 1 && !cfg.series
-          ? h('label', {}, 'Add measure', select([['', '—'], ...nums.filter(n => n !== cfg.y?.[0])], cfg.y?.[1] || '', v => change('y', v ? [cfg.y[0], v] : [cfg.y[0]]))) : null,
-        ['bar', 'hbar', 'stacked', 'line', 'area'].includes(cfg.type) && dims.length
-          ? h('label', {}, 'Split by', select([['', '—'], ...dims], cfg.series || '', v => { cfg.series = v || null; if (v) cfg.y = cfg.y.slice(0, 1); save(); paint(); })) : null);
+        h('label', {}, 'Chart type', select(CHART_TYPES.filter(t => t[0] !== 'scatter' || nums.length > 1), cfg.type, v => change('type', v))),
+        cfg.type === 'kpi' ? null : h('label', { title: 'The category, date or label each bar / point / slice stands for' }, cfg.type === 'pie' || cfg.type === 'doughnut' ? 'Slices (category)' : cfg.type === 'scatter' ? 'X axis (measure)' : 'X axis (category)',
+          select(cfg.type === 'scatter' ? nums : all, cfg.x, v => change('x', v))),
+        h('label', { title: 'The number being plotted. Only measures are listed; IDs, codes and years are categories.' }, cfg.type === 'kpi' ? 'Measure' : 'Y axis (measure)',
+          select(cfg.type === 'scatter' ? nums : measureOpts, cfg.y[0], v => change('y', [v, ...cfg.y.slice(1).filter(y => y !== v)]))),
+        multiOK && cfg.y[0] !== COUNT && nums.length > 1 && !cfg.series
+          ? h('label', { title: 'Plot a second number alongside the first' }, 'Add measure', select([['', '—'], ...nums.filter(n => n !== cfg.y[0])], cfg.y[1] || '', v => change('y', v ? [cfg.y[0], v] : [cfg.y[0]]))) : null,
+        multiOK && dims.length
+          ? h('label', { title: 'Break each X value into one coloured series per value of this column' }, 'Split by', select([['', '—'], ...dims], cfg.series || '', v => { cfg.series = v || null; if (v) cfg.y = cfg.y.slice(0, 1); save(); paint(); })) : null,
+        h('a', { class: 'small', href: '#/help/charts', target: '_blank', rel: 'noopener', title: 'How to read and change charts', style: 'margin-bottom:5px' }, '? Chart help'));
       body.append(controls);
       if (cfg.type === 'kpi') return body.append(kpiTiles(run, cfg));
-      const conf = chartConfig(run, cfg, theme());
-      if (!conf) return body.append(h('div', { class: 'empty' }, 'Pick the columns to plot.'));
-      const canvas = h('canvas', { role: 'img', 'aria-label': `${cfg.type} chart of ${cfg.y.join(', ')} by ${cfg.x}` });
-      body.append(h('div', { class: 'chart-box' }, canvas));
-      if (run.rows.length > MAX_POINTS) body.append(h('p', { class: 'small dim' }, `Chart shows the first ${MAX_POINTS} rows; the table has all ${run.rows.length}.`));
-      chart = new Chart(canvas, conf);
+      const panels = chartPanels(run, cfg);
+      const notes = [];
+      for (const panel of panels) {
+        const conf = chartConfig(run, panel, theme());
+        if (!conf) { body.append(h('div', { class: 'empty' }, 'Pick the columns to plot.')); break; }
+        const canvas = h('canvas', { role: 'img', 'aria-label': `${cfg.type} chart of ${panel.y.map(yName).join(', ')} by ${cfg.x}` });
+        if (panels.length > 1) body.append(h('h3', { style: 'margin:10px 0 2px' }, yName(panel.y[0])));
+        body.append(h('div', { class: 'chart-box', style: panels.length > 1 ? 'height:230px' : '' }, canvas));
+        if (conf.$grouped && !notes.length) notes.push(panel.y[0] === COUNT ? `Counting result rows for each ${cfg.x}.` : `Several rows share the same ${cfg.x}; their values are added together.`);
+        delete conf.$grouped;
+        charts.push(new Chart(canvas, conf));
+      }
+      if (panels.length > 1) notes.push('These two measures are on very different scales, so each gets its own panel rather than sharing one axis.');
+      if (run.rows.length > MAX_POINTS) notes.push(`Chart uses the first ${MAX_POINTS} rows; the table has all ${run.rows.length}.`);
+      if (notes.length) body.append(h('p', { class: 'small dim', style: 'margin:8px 0 0' }, notes.join(' ')));
     }
     paint();
     sec._repaint = paint;

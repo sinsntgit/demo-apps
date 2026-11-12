@@ -20,6 +20,10 @@ RULES = [
     ("delete", "DELETE FROM orders"),
     ("email", "SELECT customer_name, email FROM customers ORDER BY customer_name LIMIT 20"),
     ("alias", "WITH c AS (SELECT customer_name, email AS contact FROM customers) SELECT customer_name, upper(contact) AS reach FROM c LIMIT 5"),
+    ("pivot", "SELECT p.product_id, p.product_name, " + ", ".join(
+        f"ROUND(SUM(CASE WHEN strftime(o.order_date, '%Y-%m') = '2025-0{m}' THEN oi.quantity * oi.unit_price ELSE 0 END), 2) AS \"2025-0{m}\""
+        for m in range(1, 7)) + f" {JOIN} JOIN products p ON p.product_id = oi.product_id WHERE o.status = 'completed' GROUP BY 1, 2 ORDER BY 2"),
+    ("product list", "SELECT product_id, product_name, category FROM products ORDER BY product_id"),
     ("month", f"SELECT CAST(date_trunc('month', o.order_date) AS DATE) AS month, {REVENUE} AS revenue {JOIN} "
               "WHERE o.status = 'completed' GROUP BY 1 ORDER BY 1"),
     ("top", f"SELECT c.customer_name, {REVENUE} AS revenue {JOIN} JOIN customers c ON c.customer_id = o.customer_id "

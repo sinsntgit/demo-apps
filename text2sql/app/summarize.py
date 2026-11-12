@@ -24,36 +24,57 @@ def _nice(name: str) -> str:
     return name.replace("_", " ").strip()
 
 
+_TIME_WORDS = ("year", "yr", "month", "week", "day", "quarter", "qtr", "fy", "period", "date")
+
+
+def is_measure(c: dict) -> bool:
+    return c["type"] == "number" and c.get("role", "measure") == "measure"
+
+
+def _comparable(columns, rows, measures) -> list[str]:
+    """The first measure plus up to two more on a similar scale (one axis only - never dual axes)."""
+    idx = {c["name"]: i for i, c in enumerate(columns)}
+
+    def peak(m):
+        return max((abs(r[idx[m]]) for r in rows if r[idx[m]] is not None), default=0)
+    first = peak(measures[0])
+    keep = [measures[0]]
+    for m in measures[1:]:
+        p = peak(m)
+        if first and p and max(first, p) / min(first, p) <= 20:
+            keep.append(m)
+    return keep[:3]
+
+
 def suggest_chart(columns: list[dict], rows: list[list]) -> dict:
     """Pick a sensible default view from the result's shape."""
-    nums = [c["name"] for c in columns if c["type"] == "number"]
+    measures = [c["name"] for c in columns if is_measure(c)]
     dates = [c["name"] for c in columns if c["type"] == "date"]
-    cats = [c["name"] for c in columns if c["type"] in ("string", "boolean")]
+    text = [c["name"] for c in columns if c["type"] in ("string", "boolean")]
+    numdims = [c["name"] for c in columns if c["type"] == "number" and not is_measure(c)]
+    time_dims = [n for n in numdims if any(w in n.lower() for w in _TIME_WORDS)]
     n = len(rows)
-    if n == 0:
-        return {"type": "table"}
-    if n == 1 and nums and len(columns) <= 4:
-        return {"type": "kpi", "y": nums[:4]}
-    # numeric column that is really an identifier/period (year, month, id) works as the x axis
     idx = {c["name"]: i for i, c in enumerate(columns)}
-    if not dates and not cats and len(nums) >= 2:
-        first = nums[0]
-        vals = [r[idx[first]] for r in rows]
-        if len(set(vals)) == n and all(isinstance(v, int) for v in vals):
-            return {"type": "line" if any(k in first.lower() for k in ("year", "month", "week", "day", "quarter"))
-                    else "bar", "x": first, "y": nums[1:4]}
-        return {"type": "scatter", "x": nums[0], "y": [nums[1]]}
-    if dates and nums:
-        return {"type": "line", "x": dates[0], "y": nums[:3], "series": cats[0] if len(cats) == 1 and len(nums) == 1 else None}
-    if cats and nums:
-        x = cats[0]
-        distinct = len({r[idx[x]] for r in rows})
-        if len(cats) >= 2 and len(nums) == 1 and distinct < n:
-            return {"type": "bar", "x": x, "y": nums[:1], "series": cats[1]}
-        if n <= 6 and len(nums) == 1 and all((r[idx[nums[0]]] or 0) >= 0 for r in rows):
-            return {"type": "doughnut", "x": x, "y": nums[:1]}
-        return {"type": "bar" if n <= 40 else "line", "x": x, "y": nums[:3]}
-    return {"type": "table"}
+    x = dates[0] if dates else text[0] if text else time_dims[0] if time_dims else numdims[0] if numdims else None
+    if n == 0 or not measures:
+        return {"type": "table", "x": x}
+    if n == 1:
+        return {"type": "kpi", "y": measures[:4]}
+    if len(measures) > 4:           # wide / pivoted result: a table reads better than a chart
+        return {"type": "table", "x": x, "y": measures[:1]}
+    y = _comparable(columns, rows, measures)
+    if x is None:
+        return {"type": "scatter", "x": measures[0], "y": [measures[1]]} if len(measures) >= 2 else {"type": "kpi", "y": measures}
+    if dates or (not text and time_dims):
+        series = text[0] if dates and len(text) == 1 and len(measures) == 1 else None
+        return {"type": "line", "x": x, "y": y[:1] if series else y, "series": series}
+    distinct = len({r[idx[x]] for r in rows})
+    others = [d for d in text + numdims if d != x]
+    if others and len(measures) == 1 and distinct < n:
+        return {"type": "bar", "x": x, "y": measures[:1], "series": others[0]}
+    if n <= 6 and len(measures) == 1 and all((r[idx[measures[0]]] or 0) >= 0 for r in rows):
+        return {"type": "doughnut", "x": x, "y": measures[:1]}
+    return {"type": "bar" if n <= 40 else "line", "x": x, "y": y}
 
 
 def summarize(columns: list[dict], rows: list[list], truncated: bool) -> dict:
@@ -64,16 +85,20 @@ def summarize(columns: list[dict], rows: list[list], truncated: bool) -> dict:
         out["headline"] = "The query ran successfully but returned no rows."
         return out
     idx = {c["name"]: i for i, c in enumerate(columns)}
-    nums = [c["name"] for c in columns if c["type"] == "number"]
-    label_cols = [c["name"] for c in columns if c["type"] in ("string", "date", "boolean")]
+    nums = [c["name"] for c in columns if is_measure(c)]       # identifiers are never totalled
+    label_cols = [c["name"] for c in columns if c["type"] in ("string", "date", "boolean")] or \
+                 [c["name"] for c in columns if c["type"] == "number" and not is_measure(c)]
 
     for c in columns:
         vals = [r[idx[c["name"]]] for r in rows]
         present = [v for v in vals if v is not None]
-        s = {"column": c["name"], "type": c["type"], "nulls": n - len(present), "distinct": len(set(map(str, present)))}
-        if c["type"] == "number" and present:
+        s = {"column": c["name"], "type": c["type"], "role": "measure" if is_measure(c) else "dimension",
+             "nulls": n - len(present), "distinct": len(set(map(str, present)))}
+        if is_measure(c) and present:
             s.update(sum=sum(present), mean=statistics.fmean(present), min=min(present), max=max(present),
                      median=statistics.median(present))
+        elif present and c["type"] == "number":
+            s.update(min=min(present), max=max(present))
         elif present:
             ordered = sorted(map(str, present))
             s.update(min=ordered[0][:80], max=ordered[-1][:80])

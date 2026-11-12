@@ -1,0 +1,460 @@
+<section id="start" data-title="Getting started">
+<h2>Getting started</h2>
+<p>AskData turns a question written in plain English into a SQL query, runs it on your database and shows the answer as a chart, a table and a short summary. You never need to write SQL, but you can always see it, check it and correct it.</p>
+<h3>The five-step flow</h3>
+<ol>
+<li><b>Pick a data model</b> — the database (or folder of Excel / CSV files) you want to ask about.</li>
+<li><b>Pick an AI model</b> — the model that will write the SQL.</li>
+<li><b>Ask</b> your question.</li>
+<li><b>Check the SQL and the result.</b> Confirm it if it is right, fix it if it is not.</li>
+<li><b>Explore</b> — change the chart, export, or ask a follow-up.</li>
+</ol>
+<figure><img src="/static/help/img/ask.png" alt="The Ask page showing a question, the generated SQL, and a chart of the result"><figcaption>The Ask page: your question, the SQL the model wrote, and the result.</figcaption></figure>
+<h3>Signing in</h3>
+<p>Sign in with the email and password your administrator gave you. A password set by an administrator is temporary: you are asked to choose your own straight away. Passwords need at least 10 characters with an upper-case letter, a lower-case letter and a digit.</p>
+<p>If your organisation requires two-factor authentication you will be taken through setting it up before you can continue. See <a href="#/help/security">Security &amp; 2FA</a>.</p>
+<h3>Who can do what</h3>
+<table>
+<tr><th>Role</th><th>Can do</th></tr>
+<tr><td><b>Analyst</b></td><td>Ask questions, view and export results, manage their own chats, confirm or correct SQL.</td></tr>
+<tr><td><b>Data steward</b></td><td>Everything an analyst can, plus: manage training data, approve user feedback, sync schemas, upload data files, view the dashboard.</td></tr>
+<tr><td><b>Administrator</b></td><td>Everything, plus: connect databases, manage users, AI models, settings and the audit log.</td></tr>
+</table>
+<p>You only see the menu items your role allows.</p>
+</section>
+
+<section id="asking" data-title="Asking questions">
+<h2>Asking questions</h2>
+<p>Type your question in the box at the bottom of the <b>Ask</b> page and press <kbd>Enter</kbd> (<kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line).</p>
+<h3>Writing questions that work well</h3>
+<ul>
+<li><b>Say what you want measured and how to break it down.</b> “Total revenue by product category for 2025” is better than “sales info”.</li>
+<li><b>Name the time period.</b> “last quarter”, “since January 2025”, “by month”.</li>
+<li><b>Say how many rows you want</b> if it matters: “top 10 customers by revenue”.</li>
+<li><b>Use your business's own words</b> if they have been taught to the model under Training (for example “AOV”, “active customer”).</li>
+<li><b>One question at a time.</b> Ask the second part as a follow-up.</li>
+</ul>
+<h3>Follow-up questions</h3>
+<p>Within one chat the model remembers your last three answered questions and their SQL, so you can say “and by region?” or “only for laptops”. Under each answer you also get suggested follow-ups — click one to ask it.</p>
+<p>A chat belongs to one data model. Changing the data model starts a new chat.</p>
+<h3>When the model asks you something back</h3>
+<p>If your question is ambiguous or the data model does not contain what you asked for, the model replies with a short clarifying question instead of guessing. Answer it in the same chat.</p>
+<h3>Review SQL before running</h3>
+<p>Tick <b>Review SQL before running</b> (top of the Ask page) if you want to see and approve the SQL before anything is run on the database. The answer then stops at the SQL with a <b>Run this SQL</b> button. This is useful on large or expensive databases.</p>
+<figure><img src="/static/help/img/review.png" alt="An answer paused at the SQL with a Run this SQL button"><figcaption>With review switched on, nothing runs until you press <b>Run this SQL</b>.</figcaption></figure>
+</section>
+
+<section id="answers" data-title="Checking &amp; correcting SQL">
+<h2>Checking and correcting the SQL</h2>
+<p>Every answer shows the SQL that produced it and a sentence explaining the approach. The grey line next to “SQL” tells you which AI model wrote it, how long writing and running took, and whether it was auto-corrected or edited by you.</p>
+<h3>Is this SQL correct?</h3>
+<table>
+<tr><th>Button</th><th>What it does</th></tr>
+<tr><td><b>✓ Correct</b></td><td>Saves your question and this SQL as a <i>verified example</i>. The model uses verified examples as its strongest guide for similar questions in future.</td></tr>
+<tr><td><b>✎ Fix it</b> / <b>Edit SQL</b></td><td>Opens the SQL for editing. Change it, press <b>Run edited SQL</b>, check the result, then press <b>Yes — save my correction for training</b>. Your corrected SQL replaces the model's as the verified example for that question.</td></tr>
+<tr><td><b>✗ Incorrect</b></td><td>Flags the answer as wrong (with an optional note) so a data steward can see it on the dashboard. Nothing is used for training. Prefer <i>Fix it</i> when you know the right query.</td></tr>
+</table>
+<figure><img src="/static/help/img/edit.png" alt="The SQL editor open on an answer with a Run edited SQL button"><figcaption>Editing the SQL. Only a single read-only SELECT is accepted.</figcaption></figure>
+<p>Depending on how your administrator has set things up, feedback from analysts is either used immediately or first sent to a data steward for approval. Feedback from stewards and administrators is always used immediately.</p>
+<h3>Messages you may see</h3>
+<table>
+<tr><th>Message</th><th>Meaning</th><th>What to do</th></tr>
+<tr><td>auto-corrected ×1</td><td>The database rejected the first SQL, the model fixed it and the fix ran.</td><td>Nothing — but do check the result.</td></tr>
+<tr><td>Blocked by the read-only guard</td><td>The SQL tried to change data or do something other than a single SELECT.</td><td>Rephrase the question. Changing data is never allowed.</td></tr>
+<tr><td>The database returned an error</td><td>The SQL was not valid for this database even after automatic repair.</td><td>Use <b>Edit SQL</b> to fix it, or rephrase. Tell a steward if it keeps happening — a training note usually cures it.</td></tr>
+<tr><td>Query exceeded the time limit</td><td>The query ran longer than the limit set by your administrator (60 seconds by default).</td><td>Narrow the question: a shorter period, fewer groups.</td></tr>
+<tr><td>row limit reached</td><td>More rows exist than the maximum returned (1,000 by default). Charts and totals cover only the rows returned.</td><td>Ask for a summary (“by month”) instead of a listing, or ask an admin to raise the limit.</td></tr>
+<tr><td>🔒 next to a column</td><td>The column is masked by policy; values are hidden.</td><td>Ask your administrator if you need access.</td></tr>
+</table>
+</section>
+
+<section id="charts" data-title="Charts &amp; chart controls">
+<h2>Charts and the chart controls</h2>
+<p>Every result can be viewed three ways using the buttons at the top right of the result: <b>Chart</b>, <b>Table</b> and <b>Summary</b>. AskData picks a sensible starting view; everything can be changed, and your choice is remembered for that answer.</p>
+<h3>Measures and categories</h3>
+<p>This is the one idea that explains all the controls:</p>
+<ul>
+<li>A <b>measure</b> is a quantity that makes sense to add up or average — revenue, quantity, number of orders, impressions.</li>
+<li>A <b>category</b> (also called a dimension) is a label that says what a row is about — product name, region, language, month, status.</li>
+</ul>
+<p>Numbers that merely <i>identify</i> something are categories, not measures. A product ID, an order number, a postcode or a year should never be totalled — “sum of product IDs” means nothing. AskData recognises these from the column name (names ending in <code>id</code>, <code>key</code>, <code>code</code>, <code>no</code>, <code>number</code>, <code>year</code>, <code>month</code>, <code>week</code>, <code>quarter</code> and similar, holding whole numbers) and keeps them out of the Y axis list and out of totals and averages.</p>
+<p>If you want to know <i>how many</i> rows fall in each category, choose <b>Count of rows</b> as the Y axis.</p>
+<h3>The controls</h3>
+<figure><img src="/static/help/img/chart-controls.png" alt="The chart control row: Chart type, X axis, Y axis, Add measure, Split by"><figcaption>The control row above every chart.</figcaption></figure>
+<table>
+<tr><th>Control</th><th>What it means</th><th>Example</th></tr>
+<tr><td><b>Chart type</b></td><td>How the result is drawn. See the list below.</td><td>Bar</td></tr>
+<tr><td><b>X axis (category)</b><br><span class="dim">“Slices” for pie charts</span></td><td>What each bar, point or slice stands for. Usually a category or a date. Categories are listed first.</td><td>Language</td></tr>
+<tr><td><b>Y axis (measure)</b></td><td>The number being plotted — the height of each bar. Only measures are listed, plus <i>Count of rows</i>.</td><td>Total_Impressions</td></tr>
+<tr><td><b>Add measure</b></td><td>Plots a second number next to the first. Appears when the result has more than one measure. Choose “—” to remove it.</td><td>Total_Revenue</td></tr>
+<tr><td><b>Split by</b></td><td>Breaks each X value into one coloured series per value of another category. Appears when the result has a second category column.</td><td>Split revenue per channel by product category</td></tr>
+</table>
+<p><b>Reading the example above:</b> “Bar · X axis = Language · Y axis = Total_Impressions · Add measure = Total_Revenue” means: draw one group of bars per language; the first bar is that language's impressions, the second is its revenue.</p>
+<h3>Two measures of very different size</h3>
+<p>Impressions may be in the hundreds of millions while revenue is in the thousands. On one shared axis the revenue bars would be invisible. When two measures differ by more than about 20×, AskData draws <b>one panel per measure</b>, each with its own scale, so both can be read. It never uses a second Y axis on the same chart, because that makes unrelated lines look related.</p>
+<figure><img src="/static/help/img/chart-panels.png" alt="Two stacked chart panels, one per measure, each with its own scale"><figcaption>Two measures on different scales get a panel each.</figcaption></figure>
+<h3>When several rows share the same X value</h3>
+<p>If you pick an X axis that repeats (for example <i>region</i> in a result that has one row per region and month), the chart adds those rows together so there is one bar per region. A note under the chart tells you when this has happened. Use <b>Split by</b> to see the breakdown instead.</p>
+<h3>Chart types</h3>
+<table>
+<tr><th>Type</th><th>Best for</th></tr>
+<tr><td>Bar</td><td>Comparing categories. The default for most results.</td></tr>
+<tr><td>Horizontal bar</td><td>Many categories or long names.</td></tr>
+<tr><td>Stacked bar</td><td>Parts of a whole across categories — use with <i>Split by</i>.</td></tr>
+<tr><td>Line</td><td>Change over time. The default when the X axis is a date, month or year.</td></tr>
+<tr><td>Area</td><td>Change over time where the total volume matters.</td></tr>
+<tr><td>Pie / Doughnut</td><td>Share of a total across a few categories. More than 8 slices are folded into “Other”.</td></tr>
+<tr><td>Scatter</td><td>The relationship between two measures. Both axes are measures.</td></tr>
+<tr><td>Big numbers</td><td>A headline figure. For a one-row result it shows the value; for several rows it shows the total, with average, minimum and maximum underneath.</td></tr>
+</table>
+<h3>Limits</h3>
+<ul>
+<li>Charts draw the first 300 rows of a result; the table always has every row returned.</li>
+<li>At most 8 coloured series. Extra values in <i>Split by</i> are grouped as “Other”.</li>
+<li>Wide, pivoted results (more than four measure columns, such as one column per month) open as a table, which is how they read best. You can still switch to Chart and pick one column as the Y axis.</li>
+</ul>
+<h3>Hovering</h3>
+<p>Move the mouse over any bar, point or slice to see its exact value.</p>
+</section>
+
+<section id="table" data-title="Table, summary &amp; export">
+<h2>Table, summary and export</h2>
+<h3>Table</h3>
+<p>Click a column heading to sort; click again to reverse. Results longer than 50 rows are paged. Empty values show as <i>null</i>.</p>
+<h3>Summary</h3>
+<p>A plain-language summary of the result: the highest and lowest values, totals and averages, the change from first to last period when the result runs over time, and how concentrated the total is. Below it is a per-column table.</p>
+<figure><img src="/static/help/img/summary.png" alt="The Summary view with headline, bullet points and a per-column statistics table"><figcaption>The Summary view.</figcaption></figure>
+<p>Totals and averages are given for measures only. For category columns (including IDs and years) you get the number of distinct values and the range.</p>
+<p>The summary is calculated by the AskData server from the rows. It is <b>not</b> written by the AI model — the model never sees your results.</p>
+<h3>Export</h3>
+<p>Use <b>⬇ Export</b> at the top right of any result:</p>
+<table>
+<tr><th>Format</th><th>Contains</th></tr>
+<tr><td>PDF report</td><td>Question, summary, the current chart, the SQL and the data table (first 1,000 rows).</td></tr>
+<tr><td>CSV</td><td>All returned rows.</td></tr>
+<tr><td>Excel (.xlsx)</td><td>All returned rows on one sheet; the question, SQL, model and time on a second sheet.</td></tr>
+<tr><td>Chart image (PNG)</td><td>The current chart on a white background, ready for a slide.</td></tr>
+</table>
+<p>The PDF and PNG use whatever chart you currently have selected, so set the chart up first.</p>
+</section>
+
+<section id="chats" data-title="Chats &amp; history">
+<h2>Chats and history</h2>
+<p>Every question and its result is saved automatically. Your chats are listed down the left of the Ask page, grouped by <b>Today</b>, <b>Yesterday</b>, <b>Earlier this week</b>, and then by month.</p>
+<figure><img src="/static/help/img/chats.png" alt="The chat list grouped by date with rename and delete buttons on hover"><figcaption>Hover over a chat to rename or delete it.</figcaption></figure>
+<ul>
+<li><b>Open</b> a chat by clicking it. Charts reappear exactly as you left them.</li>
+<li><b>Rename</b> — hover over a chat and click <b>✎</b>. A chat is first named after its opening question.</li>
+<li><b>Delete</b> — hover and click <b>🗑</b>. This removes the chat and its saved results for good.</li>
+<li><b>Find</b> — type in the <i>Find a chat</i> box above the list.</li>
+<li><b>New chat</b> starts a fresh conversation with no memory of earlier questions.</li>
+</ul>
+<p>The <b>History</b> page lists every individual question you have asked, grouped by month, with its status. Search it by words in the question or the SQL; click a row to open the chat it belongs to.</p>
+<p>Your chats are private to you. Administrators and stewards can see questions and SQL in the dashboard's query log for monitoring.</p>
+<p>If your administrator has switched off result storage, chats keep the question and SQL but not the rows; press <b>Run again</b> to fetch fresh results.</p>
+</section>
+
+<section id="security" data-title="Security &amp; 2FA">
+<h2>Your account, password and two-factor authentication</h2>
+<p>Click your name at the bottom of the left menu to open <b>My account</b>.</p>
+<h3>Turning on two-factor authentication (2FA)</h3>
+<ol>
+<li>Install an authenticator app on your phone: Microsoft Authenticator, Google Authenticator, Authy, 1Password or similar.</li>
+<li>In <b>My account</b> press <b>Set up 2FA</b>.</li>
+<li>Scan the QR code with the app (or type in the key shown under it).</li>
+<li>Enter the 6-digit code the app shows and press <b>Turn on 2FA</b>.</li>
+<li><b>Save the 8 recovery codes</b> you are shown. Each one can be used once in place of a code if you lose your phone. They are shown only once.</li>
+</ol>
+<figure><img src="/static/help/img/2fa.png" alt="The two-factor setup screen with a QR code and code entry box"><figcaption>Setting up 2FA.</figcaption></figure>
+<p>From then on, signing in asks for your password and then a code from the app.</p>
+<h3>Common situations</h3>
+<table>
+<tr><th>Situation</th><th>What to do</th></tr>
+<tr><td>“That code is not valid”</td><td>Codes change every 30 seconds — enter the current one. Check that your phone's clock is set automatically. A code cannot be used twice.</td></tr>
+<tr><td>Lost phone</td><td>Sign in with a recovery code, then go to My account and set up 2FA again. No recovery codes either? Ask an administrator to <i>Reset 2FA</i> for you.</td></tr>
+<tr><td>Running low on recovery codes</td><td>My account → <b>New recovery codes</b>. The old ones stop working.</td></tr>
+<tr><td>Account locked</td><td>After 5 wrong passwords or codes the account locks for 15 minutes (defaults). Wait, or ask an administrator to unlock it.</td></tr>
+<tr><td>Forgotten password</td><td>Ask an administrator to reset it. You get a temporary password and choose a new one at sign-in.</td></tr>
+</table>
+<p>Changing your password signs you out everywhere else.</p>
+</section>
+
+<section id="privacy" data-title="What the AI model sees">
+<h2>What the AI model sees — and what it never sees</h2>
+<p>The AI model's only job is to write SQL. AskData runs that SQL itself, directly against your database, and sends the rows straight to your browser.</p>
+<table>
+<tr><th>Sent to the AI model</th><th>Never sent to the AI model</th></tr>
+<tr><td>
+<ul><li>Your question</li><li>Table and column names, data types, keys and comments</li><li>Approved training notes, examples and document passages</li><li>Earlier questions and SQL in the same chat</li></ul>
+</td><td>
+<ul><li>Query results — no rows, no totals, no charts</li><li>Summaries (they are computed on the AskData server)</li><li>Database passwords or connection details</li><li>Literal values from database error messages</li></ul>
+</td></tr>
+</table>
+<p><b>One optional exception</b>, off by default and set per data model by an administrator: the distinct values of specific named columns (for example the list of order statuses) can be included to help the model write correct filters. Data models with this turned on show a badge “sample values shared with model” on the Data models page.</p>
+<p>If even table and column names must stay inside your network, your administrator can configure a self-hosted AI model.</p>
+</section>
+
+<section id="training" data-title="Training (stewards)" data-role="Data stewards &amp; administrators">
+<h2>Training the system</h2>
+<p>“Training” here means giving the model the knowledge it needs about <i>your</i> data. Nothing is retrained: each time a question is asked, AskData finds the most relevant pieces of what you have taught it and hands them to the model along with the schema. Changes take effect on the very next question.</p>
+<p>Training is kept <b>separately for each data model</b>. Choose the data model at the top of the Training page.</p>
+<figure><img src="/static/help/img/training.png" alt="The Training page with tabs for examples, documentation, documents, DDL, schema and review queue"><figcaption>The Training page.</figcaption></figure>
+<h3>The kinds of training</h3>
+<table>
+<tr><th>Tab</th><th>What to put there</th><th>Tips</th></tr>
+<tr><td><b>Question → SQL</b></td><td>A real question with the SQL that correctly answers it.</td><td>The most powerful kind. Aim for 20–50 covering your common metrics, joins and date logic. Up to 6 of the closest matches are used per question.</td></tr>
+<tr><td><b>Documentation</b></td><td>Short notes in plain language: metric definitions, business rules, what a status code means, which table is the source of truth, how tables join.</td><td>One topic per note with a clear title. “Revenue = quantity × unit_price × (1 − discount), completed orders only.”</td></tr>
+<tr><td><b>Documents</b></td><td>Upload existing material: data dictionaries, KPI definitions, design documents.</td><td>PDF, Word, Excel, Markdown, text, SQL, CSV, JSON, YAML, HTML; up to 20 MB. Split into passages automatically; the relevant passages are picked per question. Uploading a file with the same name replaces the earlier version.</td></tr>
+<tr><td><b>Extra DDL</b></td><td>CREATE TABLE / VIEW statements for objects that schema sync cannot see.</td><td>Rarely needed.</td></tr>
+<tr><td><b>Schema</b></td><td>The tables and columns read from the source. Press <b>Sync schema from source</b> after the database structure changes.</td><td>Only names, types, keys and comments are read. Column comments in the database are passed to the model — they are free documentation.</td></tr>
+<tr><td><b>Review queue</b></td><td>Answers that analysts confirmed or corrected, waiting for approval.</td><td>Approve the ones that are right; edit first if nearly right; reject the rest.</td></tr>
+</table>
+<h3>Importing examples in bulk</h3>
+<p>On the <b>Question → SQL</b> tab press <b>Import CSV / JSON</b>.</p>
+<ul>
+<li>CSV: a header row with the columns <code>question</code> and <code>sql</code>.</li>
+<li>JSON: <code>[{"question": "…", "sql": "…"}, …]</code></li>
+</ul>
+<p>Each SQL is checked: anything that is not a single read-only SELECT is skipped and reported. An example whose question already exists is updated rather than duplicated.</p>
+<h3>How to improve accuracy</h3>
+<ol>
+<li>Sync the schema.</li>
+<li>Write documentation for every metric people ask about and every non-obvious code or flag.</li>
+<li>Add examples for your ten most common questions.</li>
+<li>Watch the dashboard's query log for failed and corrected questions. Each one tells you what note or example is missing.</li>
+<li>Clear the review queue regularly.</li>
+</ol>
+<p><b>Export</b> (top right) downloads all approved training for a data model as JSON — keep it as a backup.</p>
+</section>
+
+<section id="datamodels" data-title="Data models (admin)" data-role="Administrators">
+<h2>Connecting data: data models</h2>
+<p>A data model is one database, or one folder of Excel / CSV files, together with its own training, access list and privacy settings. Create as many as you need — for example one per business area.</p>
+<figure><img src="/static/help/img/datamodels.png" alt="The Data models page listing connections with test, sync, files, training, edit and delete buttons"><figcaption>The Data models page.</figcaption></figure>
+<h3>Adding a database</h3>
+<ol>
+<li><b>Data models → Connect a data source.</b></li>
+<li>Give it a name and a description (users see both when choosing a data model).</li>
+<li>Choose the type and fill in the connection fields.</li>
+<li>Save. The schema is read automatically; use <b>Test connection</b> and <b>Sync schema</b> to check and refresh.</li>
+</ol>
+<figure><img src="/static/help/img/connect.png" alt="The connection form for a database with name, type, connection fields and privacy options"><figcaption>The connection form. Fields change with the database type.</figcaption></figure>
+<table>
+<tr><th>Type</th><th>Fields</th><th>Notes</th></tr>
+<tr><td>PostgreSQL</td><td>Host, port (5432), database, username, password, schemas, SSL mode</td><td>Schemas: comma-separated, default <code>public</code>. SSL mode e.g. <code>require</code>.</td></tr>
+<tr><td>MySQL</td><td>Host, port (3306), database, username, password, Require TLS</td><td></td></tr>
+<tr><td>SingleStore</td><td>Host, port (3306), database, username, password, Require TLS</td><td>Connects over the MySQL protocol.</td></tr>
+<tr><td>SQL Server</td><td>Host, port (1433), database, username, password, schemas</td><td>SQL authentication. Schemas default to <code>dbo</code>.</td></tr>
+<tr><td>Oracle</td><td>Host, port (1521), service name, username, password, schemas / owners</td><td>Uses the service name (not SID). No Oracle client software is needed.</td></tr>
+<tr><td>Snowflake</td><td>Account identifier, username, password, database, warehouse, role, schemas</td><td>Account identifier looks like <code>orgname-accountname</code> (without <code>.snowflakecomputing.com</code>).</td></tr>
+<tr><td>Excel / CSV folder</td><td>Folder path on the server — or leave blank and upload files</td><td>See below.</td></tr>
+</table>
+<h3>Use a read-only database account</h3>
+<p>AskData refuses anything that is not a single SELECT, but the database account should also be unable to change anything. Create a dedicated account with SELECT on just the schemas you want exposed:</p>
+<pre>-- PostgreSQL
+CREATE ROLE askdata LOGIN PASSWORD '…';
+GRANT USAGE ON SCHEMA public TO askdata;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO askdata;
+
+-- MySQL / SingleStore
+CREATE USER 'askdata'@'%' IDENTIFIED BY '…';
+GRANT SELECT ON mydb.* TO 'askdata'@'%';
+
+-- SQL Server
+CREATE LOGIN askdata WITH PASSWORD = '…';
+USE mydb; CREATE USER askdata FOR LOGIN askdata;
+ALTER ROLE db_datareader ADD MEMBER askdata;
+
+-- Oracle
+CREATE USER askdata IDENTIFIED BY "…";
+GRANT CREATE SESSION TO askdata;
+GRANT SELECT ON sales.orders TO askdata;   -- repeat per table, or use a role
+
+-- Snowflake
+CREATE ROLE askdata_ro;
+GRANT USAGE ON WAREHOUSE wh TO ROLE askdata_ro;
+GRANT USAGE ON DATABASE db TO ROLE askdata_ro;
+GRANT USAGE ON SCHEMA db.public TO ROLE askdata_ro;
+GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
+<p>The AskData server must be able to reach the database over the network (firewall / allow-list).</p>
+<h3>Excel and CSV folders</h3>
+<ul>
+<li>Leave the folder blank and use the <b>📁 Files</b> button to upload, or enter a folder path that exists on the AskData server.</li>
+<li>Supported: <code>.csv</code>, <code>.tsv</code>, <code>.txt</code>, <code>.xlsx</code>, <code>.xlsm</code>, <code>.xls</code>, <code>.parquet</code>; up to 200 MB per upload.</li>
+<li>Each CSV file becomes a table named after the file. An Excel file with one sheet becomes one table; with several sheets, one table per sheet named <code>file_sheet</code>. Names are lower-cased and spaces become underscores (<code>Sales 2025.xlsx</code>, sheet <code>North</code> → <code>sales_2025_north</code>).</li>
+<li>The first row must be the column headings. Keep one table per sheet, starting in cell A1, with no merged title rows.</li>
+<li>Files are re-read automatically when they change. Press <b>Sync schema</b> after adding or removing files or columns.</li>
+<li>Files are loaded into memory on the server, so very large files need a server with enough RAM.</li>
+</ul>
+<h3>Access and privacy options</h3>
+<table>
+<tr><th>Option</th><th>Effect</th></tr>
+<tr><td>Enabled</td><td>Untick to hide the data model from users without deleting it.</td></tr>
+<tr><td>Restrict to selected users</td><td>Only users you tick under <b>Access</b> (and administrators) can see and query it. Otherwise every signed-in user can.</td></tr>
+<tr><td>Masked columns</td><td>One column name or pattern per line (<code>email</code>, <code>*phone*</code>, <code>ssn</code>). Values of these columns are replaced with •••••• in every result, including when the column is renamed or wrapped in a function. For strict protection, also remove the column from the database account's grants.</td></tr>
+<tr><td>Share sample values of chosen columns</td><td>Off by default. When on, up to 20 distinct values of the columns you list as <code>table.column</code> are given to the AI model as hints. Use only for harmless code lists such as statuses or regions. Takes effect at the next schema sync; turning it off removes the stored values.</td></tr>
+</table>
+<p>Deleting a data model deletes its training and all chats about it. The source database is never touched.</p>
+</section>
+
+<section id="models" data-title="AI models (admin)" data-role="Administrators">
+<h2>AI models</h2>
+<p><b>Admin → AI models.</b> Register each model users may choose from. At least one enabled model with a working key is needed before anyone can ask a question.</p>
+<figure><img src="/static/help/img/models.png" alt="The AI models list with test, edit and delete buttons"><figcaption>Admin → AI models.</figcaption></figure>
+<table>
+<tr><th>Field</th><th>Meaning</th></tr>
+<tr><td>Provider</td><td><b>Anthropic Claude</b>, <b>OpenAI</b>, or <b>Self-hosted / OpenAI-compatible</b> (Ollama, vLLM, LM Studio, or any gateway that speaks the OpenAI chat API).</td></tr>
+<tr><td>Model ID</td><td>The provider's identifier, e.g. <code>claude-opus-5-5</code>, <code>claude-sonnet-5-5</code>, <code>gpt-5</code>, <code>llama3.3:70b</code>. Claude IDs are suggested as you type.</td></tr>
+<tr><td>Display name</td><td>What users see in the model picker.</td></tr>
+<tr><td>Base URL</td><td>Self-hosted only: the endpoint ending in <code>/v1</code>, e.g. <code>http://ollama.internal:11434/v1</code>.</td></tr>
+<tr><td>API key</td><td>Stored encrypted and never shown again. Leave blank when editing to keep the existing key. Self-hosted models often need none.</td></tr>
+<tr><td>Reasoning effort</td><td>Claude only. Higher is more thorough, slower and costlier. Leave on <i>Model default</i> unless you have a reason.</td></tr>
+<tr><td>Input / output price</td><td>US dollars per million tokens. Used only to estimate spend on the dashboard.</td></tr>
+<tr><td>Enabled / Default</td><td>Disabled models are hidden from users. The default is pre-selected for new users.</td></tr>
+</table>
+<p>Press <b>Test</b> after saving. Common results: “API key was rejected” (wrong key), “Model … was not found” (wrong Model ID), “Could not reach…” (the server has no route to the provider or the base URL is wrong).</p>
+<p><b>Choosing a model:</b> larger models write more accurate SQL on complicated schemas; smaller ones are faster and cheaper for simple questions. Offer both and compare them on the dashboard, which shows accuracy and cost per model.</p>
+</section>
+
+<section id="users" data-title="Users &amp; settings (admin)" data-role="Administrators">
+<h2>Users and settings</h2>
+<h3>Users</h3>
+<p><b>Admin → Users → Add user.</b> Enter the email, name and role. You are shown a one-time temporary password to pass on securely; the user must replace it at first sign-in.</p>
+<figure><img src="/static/help/img/users.png" alt="The user list with role, security status and action buttons"><figcaption>Admin → Users.</figcaption></figure>
+<table>
+<tr><th>Action</th><th>Effect</th></tr>
+<tr><td>Edit</td><td>Change name or role, or disable the account (signs the user out immediately).</td></tr>
+<tr><td>Reset password</td><td>Issues a new temporary password and signs the user out.</td></tr>
+<tr><td>Reset 2FA</td><td>Removes the user's authenticator so they can enrol a new phone.</td></tr>
+<tr><td>Unlock</td><td>Clears a lockout caused by failed sign-ins.</td></tr>
+<tr><td>Delete</td><td>Removes the user and their chats. The last administrator cannot be removed or demoted.</td></tr>
+</table>
+<h3>Settings</h3>
+<figure><img src="/static/help/img/settings.png" alt="The settings page with security, query execution and feedback sections"><figcaption>Admin → Settings.</figcaption></figure>
+<table>
+<tr><th>Setting</th><th>Default</th><th>Meaning</th></tr>
+<tr><td>Require two-factor authentication for everyone</td><td>Off</td><td>When on, anyone without 2FA is sent to set it up on their next click — including you.</td></tr>
+<tr><td>Session length</td><td>12 hours</td><td>How long a sign-in lasts.</td></tr>
+<tr><td>Questions per user per minute</td><td>20</td><td>Protects the database and the model budget.</td></tr>
+<tr><td>Failed sign-ins before lockout / Lockout duration</td><td>5 / 15 min</td><td>Brute-force protection.</td></tr>
+<tr><td>Maximum rows returned</td><td>1,000</td><td>Rows fetched per query. Larger values slow the browser.</td></tr>
+<tr><td>Query timeout</td><td>60 s</td><td>Longer queries are cancelled.</td></tr>
+<tr><td>Automatic SQL repair attempts</td><td>2</td><td>How many times the model may retry after a database error. 0 switches repair off.</td></tr>
+<tr><td>Keep result snapshots in chat history</td><td>On</td><td>Off = results are never stored by AskData; users re-run to see them again.</td></tr>
+<tr><td>When an analyst confirms or corrects SQL</td><td>Approval first</td><td>Whether analyst feedback trains the model straight away or waits in the review queue.</td></tr>
+</table>
+<h3>Audit log</h3>
+<p><b>Admin → Audit log</b> records who did what and when: sign-ins (successful and failed), questions asked, SQL edits, feedback, training changes, connection, user, model and setting changes. Filter by event type, search, and export to CSV.</p>
+</section>
+
+<section id="dashboard" data-title="Dashboard (stewards)" data-role="Data stewards &amp; administrators">
+<h2>The dashboard</h2>
+<p>The dashboard shows how well the system is performing and how it is being used. Filter by period, data model, AI model and user using the boxes at the top right.</p>
+<figure><img src="/static/help/img/dashboard.png" alt="The dashboard with headline tiles, charts and breakdown tables"><figcaption>The dashboard.</figcaption></figure>
+<table>
+<tr><th>Figure</th><th>How it is worked out</th></tr>
+<tr><td>Questions asked</td><td>Every question in the period, and how many different people asked.</td></tr>
+<tr><td>Ran successfully</td><td>Of the questions where SQL was run, the share that ran without error. A query can run successfully and still be the wrong answer — see accuracy.</td></tr>
+<tr><td>SQL accuracy</td><td>Of the answers users rated, the share marked <i>Correct</i> exactly as the model wrote them. Corrected and Incorrect count against it. It only reflects rated answers, so encourage people to rate.</td></tr>
+<tr><td>Auto-corrected</td><td>Questions where the model's first SQL failed and its retry succeeded.</td></tr>
+<tr><td>Avg time to write SQL / to run</td><td>Model response time and database time, separately — so you can tell which one is slow.</td></tr>
+<tr><td>Model spend</td><td>Tokens used × the prices entered for each model. An estimate.</td></tr>
+</table>
+<p>The breakdown tables give the same figures per AI model, per data model and per user. <b>Most common failures</b> lists the errors seen most often.</p>
+<h3>Query log</h3>
+<p>Every question ever asked, newest first. Filter by status or feedback, or search. Click a row to see everything about it: who asked, the SQL (and the model's original if the user edited it), the result, the user's note, token counts, and a line stating how many table definitions, examples and document passages were sent to the model.</p>
+<figure><img src="/static/help/img/querydetail.png" alt="The query detail window showing user, model, tokens, SQL and result"><figcaption>Drilling into one query.</figcaption></figure>
+<p><b>Using it to improve:</b> filter the log to <i>Incorrect</i>, <i>Corrected</i> and <i>Error</i>. Each is a gap in training — add a note or an example and the same question will work next time.</p>
+</section>
+
+<section id="install" data-title="Installation &amp; operations" data-role="Technical">
+<h2>Installation and operations</h2>
+<h3>Requirements</h3>
+<ul>
+<li>Python 3.11 or newer (developed and tested on 3.13), or Docker.</li>
+<li>Network access from the server to your databases and to the AI model provider.</li>
+<li>A modern browser. Nothing is installed on users' machines.</li>
+</ul>
+<h3>Install and run</h3>
+<p>From the <code>text2sql</code> folder. A virtual environment keeps AskData's packages separate from other Python software on the machine.</p>
+<pre># Windows (PowerShell)
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt -r requirements-drivers.txt
+python -m uvicorn app.main:app --port 8000
+
+# macOS / Linux
+python3 -m venv .venv &amp;&amp; source .venv/bin/activate
+pip install -r requirements.txt -r requirements-drivers.txt
+python -m uvicorn app.main:app --port 8000</pre>
+<p>Open <code>http://localhost:8000</code>. To let other machines connect add <code>--host 0.0.0.0</code>.</p>
+<p><code>requirements-drivers.txt</code> holds the database drivers. You may remove the lines for databases you do not use.</p>
+<h3>First sign-in</h3>
+<p>On the very first start an administrator account is created. Unless you set the variables below, the email is <code>admin@example.com</code> and a random password is printed once in the server window.</p>
+<h3>Configuration (environment variables)</h3>
+<table>
+<tr><th>Variable</th><th>Purpose</th></tr>
+<tr><td><code>T2S_SECRET_KEY</code></td><td>Signs sign-in sessions and encrypts stored database passwords and API keys. <b>Set this yourself in production and keep a copy.</b> If it changes, stored passwords and keys can no longer be read and must be re-entered. If unset, one is generated and saved in the data folder.</td></tr>
+<tr><td><code>T2S_ADMIN_EMAIL</code>, <code>T2S_ADMIN_PASSWORD</code></td><td>The first administrator. Only used when the database is empty.</td></tr>
+<tr><td><code>T2S_COOKIE_SECURE</code></td><td>Set to <code>1</code> when served over HTTPS.</td></tr>
+<tr><td><code>T2S_DATABASE_URL</code></td><td>Where AskData keeps its own records (users, training, history). Default: a SQLite file in the data folder. For production use PostgreSQL: <code>postgresql+psycopg2://user:password@host:5432/askdata</code>.</td></tr>
+<tr><td><code>T2S_DATA_DIR</code></td><td>The data folder: SQLite file, uploaded data files, generated secret. Default <code>./data</code>.</td></tr>
+<tr><td><code>T2S_APP_NAME</code></td><td>The product name shown in the interface.</td></tr>
+</table>
+<p>PowerShell example: <code>$env:T2S_SECRET_KEY="…"; python -m uvicorn app.main:app --port 8000</code></p>
+<h3>Docker</h3>
+<pre>cp .env.example .env      # then edit .env and set T2S_SECRET_KEY
+docker compose up --build</pre>
+<p>This starts AskData on port 8000 with a PostgreSQL database for its own records.</p>
+<h3>Going to production</h3>
+<ul>
+<li><b>HTTPS:</b> put AskData behind a reverse proxy (nginx, IIS, a cloud load balancer) that terminates TLS, and set <code>T2S_COOKIE_SECURE=1</code>.</li>
+<li><b>Metadata store:</b> use PostgreSQL rather than SQLite.</li>
+<li><b>One process per instance.</b> Scale by running more instances against the same PostgreSQL store.</li>
+<li><b>Turn on mandatory 2FA</b> in Admin → Settings.</li>
+<li><b>Read-only database accounts</b> for every data model.</li>
+</ul>
+<h3>Backup and restore</h3>
+<p>Back up two things: the <b>data folder</b> (or the PostgreSQL metadata database, plus the <code>files</code> sub-folder of the data folder) and the <b>secret key</b>. To restore, put both back and start the server. To move servers, copy both across.</p>
+<h3>Upgrading</h3>
+<p>Back up first. Replace the application files, reinstall requirements, restart. New tables are created automatically.</p>
+<h3>Resetting everything</h3>
+<p>Stop the server and delete the data folder. The next start creates a fresh, empty installation. This erases all users, connections, training and history.</p>
+</section>
+
+<section id="trouble" data-title="Troubleshooting" data-role="Technical">
+<h2>Troubleshooting</h2>
+<table>
+<tr><th>Problem</th><th>Cause and fix</th></tr>
+<tr><td><code>Fatal error in launcher: Unable to create process…</code> when typing <code>uvicorn …</code> on Windows</td><td>An old <code>uvicorn.exe</code> on the PATH points at a Python that is no longer there. Start the server with <code>python -m uvicorn app.main:app --port 8000</code> (or <code>py -m uvicorn …</code>).</td></tr>
+<tr><td><code>No module named uvicorn</code> / <code>fastapi</code></td><td>The packages were installed into a different Python than the one you are starting. Use a virtual environment as shown under Installation, and run both <code>pip</code> and <code>python</code> inside it.</td></tr>
+<tr><td>pip reports dependency conflicts for other packages</td><td>Installing into a shared Python changed a package another program relies on. Use a virtual environment.</td></tr>
+<tr><td>I cannot find the first admin password</td><td>It is printed once on the first start. Stop the server, delete the data folder, set <code>T2S_ADMIN_EMAIL</code> and <code>T2S_ADMIN_PASSWORD</code>, start again.</td></tr>
+<tr><td>“The … driver is not installed on the server”</td><td>Install the driver named in the message with pip and restart.</td></tr>
+<tr><td>Test connection fails: timeout or “could not connect”</td><td>The server cannot reach the database: check host, port, firewall / IP allow-list and VPN.</td></tr>
+<tr><td>Test connection fails: authentication / login failed</td><td>Wrong username or password, or the account is not permitted from this host.</td></tr>
+<tr><td>Schema sync finds 0 tables</td><td>The account has no rights on the schema, or the schema name is wrong. Fill in <i>Schemas</i> and check the grants.</td></tr>
+<tr><td>“No AI model is available”</td><td>No model is enabled. Admin → AI models: add one or enable it, and enter its key.</td></tr>
+<tr><td>“The API key was rejected”</td><td>Re-enter the key under Admin → AI models and press Test.</td></tr>
+<tr><td>“Could not reach the model provider”</td><td>The server has no outbound route to the provider (proxy / firewall), or the base URL of a self-hosted model is wrong.</td></tr>
+<tr><td>The model invents columns or gets joins wrong</td><td>Sync the schema; add a documentation note explaining the tables; add a verified example. See Training.</td></tr>
+<tr><td>Answers ignore a business rule</td><td>Write the rule as a documentation note with the words users use, and add one example applying it.</td></tr>
+<tr><td>“Stored secret cannot be decrypted”</td><td><code>T2S_SECRET_KEY</code> changed. Restore the original key, or re-enter database passwords and API keys.</td></tr>
+<tr><td>“You are asking questions too quickly”</td><td>The per-minute limit was reached. Wait a minute, or raise it in Settings.</td></tr>
+<tr><td>Signed out unexpectedly</td><td>The session expired, your password was changed or reset, or your account was disabled.</td></tr>
+<tr><td>An Excel sheet loads with wrong or missing columns</td><td>Make row 1 the headings, start at A1, remove merged title rows and blank leading rows, then re-upload and sync.</td></tr>
+<tr><td>A chart shows one huge bar and tiny ones</td><td>One category dominates. Try a horizontal bar, or ask the question excluding it. For two measures of different size, see Charts.</td></tr>
+</table>
+</section>
+
+<section id="faq" data-title="FAQ">
+<h2>Frequently asked questions</h2>
+<p><b>Can AskData change or delete my data?</b><br>No. Only single SELECT statements are run, connections are opened read-only where the database supports it, and you should give it a read-only account as well.</p>
+<p><b>Does the AI provider see my data?</b><br>It sees questions, table and column names and your training notes. It never sees query results. See <a href="#/help/privacy">What the AI model sees</a>.</p>
+<p><b>Why did the same question give different SQL today?</b><br>Models are not perfectly repeatable, and training may have changed. Confirming a good answer as <i>Correct</i> pins it as an example, which makes that question consistent.</p>
+<p><b>Why is a number column not offered on the Y axis?</b><br>It looks like an identifier, code or period (see <a href="#/help/charts">Charts</a>). It is still available as the X axis, in <i>Split by</i>, and with <i>Count of rows</i>. If it really is a quantity, ask the question so the column gets a clearer name — “…as total_units”.</p>
+<p><b>Can I ask across two data models at once?</b><br>No. A question runs against one data model. If two sets of data need combining, an administrator can expose them through one database connection.</p>
+<p><b>How fresh is the data?</b><br>Live. Every question runs on the source at that moment. Reopening a saved chat shows the result as it was; use Edit SQL → Run to refresh.</p>
+<p><b>Can I share a result?</b><br>Export it as PDF, Excel, CSV or PNG. Chats themselves are private to each user.</p>
+<p><b>Does it work in other languages?</b><br>You can ask in any language the chosen AI model understands. Training notes in the same language as the questions work best.</p>
+</section>

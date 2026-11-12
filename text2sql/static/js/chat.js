@@ -1,5 +1,5 @@
 // Ask page: pick a data model + AI model, ask questions, browse saved conversations.
-import { h, fill, api, busy, fail, select, state, ago, confirmDialog, toast } from './core.js';
+import { h, fill, api, busy, fail, select, state, ago, confirmDialog, toast, modal, field, fmtTime } from './core.js';
 import { runCard } from './results.js';
 
 const prefs = { get(k) { try { return localStorage.getItem('t2s-' + k); } catch { return null; } }, set(k, v) { try { localStorage.setItem('t2s-' + k, v); } catch { /* blocked */ } } };
@@ -16,6 +16,7 @@ export async function chatView(root, convId) {
   let sending = false;
 
   const list = h('div', { class: 'list' });
+  const filter = h('input', { type: 'search', placeholder: 'Find a chat…', 'aria-label': 'Find a chat', oninput: () => drawList() });
   const inner = h('div', { class: 'thread-inner' });
   const thread = h('div', { class: 'thread' }, inner);
   const input = h('textarea', { placeholder: 'Ask a question about your data…', rows: 1 });
@@ -24,16 +25,50 @@ export async function chatView(root, convId) {
   const modelSel = select(models.map(m => [m.id, m.name]), modelId, v => { modelId = Number(v); prefs.set('model', v); });
   const reviewChk = h('input', { type: 'checkbox', checked: review, onchange: e => { review = e.target.checked; prefs.set('review', review ? '1' : '0'); } });
 
+  function groupOf(iso) {
+    const d = new Date(iso + (iso.endsWith('Z') ? '' : 'Z')), now = new Date();
+    const day = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const diff = Math.round((day(now) - day(d)) / 86400000);
+    if (diff <= 0) return 'Today';
+    if (diff === 1) return 'Yesterday';
+    if (diff < 7) return 'Earlier this week';
+    return d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  }
+  const dayLabel = iso => new Date(iso + (iso.endsWith('Z') ? '' : 'Z')).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+
+  function renameChat(c) {
+    const input = h('input', { type: 'text', value: c.title, maxlength: 200 });
+    const save = async close => {
+      const title = input.value.trim();
+      if (!title) return toast('Give the chat a name.', true);
+      try { await api('PUT', `/api/chat/conversations/${c.id}`, { title }); c.title = title; if (conv?.id === c.id) conv.title = title; close(); drawList(); } catch (e) { fail(e); }
+    };
+    const close = modal('Rename chat', h('form', { onsubmit: e => { e.preventDefault(); save(close); } }, field('Name', input)), {
+      actions: done => [h('button', { class: 'btn', onclick: done }, 'Cancel'), h('button', { class: 'btn primary', onclick: () => save(done) }, 'Save')] });
+    input.select();
+  }
+
   function drawList() {
-    fill(list, ...(convs.length ? convs.map(c => h('div', { class: 'conv' + (conv?.id === c.id ? ' on' : ''), onclick: () => open(c.id) },
-      h('div', { class: 't' }, h('b', {}, c.title), h('span', { class: 'small dim' }, `${c.connection_name} · ${ago(c.updated_at)}`)),
-      h('button', { class: 'btn ghost sm x', title: 'Delete conversation', onclick: async e => {
-        e.stopPropagation();
-        if (!await confirmDialog('Delete conversation?', `“${c.title}” and its saved results will be removed from your history.`, 'Delete')) return;
-        await api('DELETE', `/api/chat/conversations/${c.id}`).catch(fail);
-        convs.splice(convs.indexOf(c), 1);
-        if (conv?.id === c.id) newChat(); else drawList();
-      } }, '🗑'))) : [h('div', { class: 'empty small' }, 'Your saved conversations will appear here.')]));
+    const needle = filter.value.trim().toLowerCase();
+    const shown = needle ? convs.filter(c => (c.title + ' ' + c.connection_name).toLowerCase().includes(needle)) : convs;
+    if (!shown.length) return fill(list, h('div', { class: 'empty small' }, convs.length ? 'No chats match.' : 'Your saved chats will appear here.'));
+    const out = [];
+    let group = null;
+    for (const c of shown) {
+      const g = groupOf(c.updated_at);
+      if (g !== group) { group = g; out.push(h('div', { class: 'conv-group' }, g)); }
+      out.push(h('div', { class: 'conv' + (conv?.id === c.id ? ' on' : ''), onclick: () => open(c.id), title: c.title },
+        h('div', { class: 't' }, h('b', {}, c.title), h('span', { class: 'small dim' }, `${c.connection_name} · ${['Today', 'Yesterday'].includes(g) ? ago(c.updated_at) : dayLabel(c.updated_at)}`)),
+        h('button', { class: 'btn ghost sm x', title: 'Rename chat', 'aria-label': 'Rename chat', onclick: e => { e.stopPropagation(); renameChat(c); } }, '✎'),
+        h('button', { class: 'btn ghost sm x', title: 'Delete chat', 'aria-label': 'Delete chat', onclick: async e => {
+          e.stopPropagation();
+          if (!await confirmDialog('Delete chat?', `“${c.title}” and its saved results will be removed from your history.`, 'Delete')) return;
+          await api('DELETE', `/api/chat/conversations/${c.id}`).catch(fail);
+          convs.splice(convs.indexOf(c), 1);
+          if (conv?.id === c.id) newChat(); else drawList();
+        } }, '🗑')));
+    }
+    fill(list, out);
   }
 
   function welcome() {
@@ -93,7 +128,7 @@ export async function chatView(root, convId) {
   input.addEventListener('input', () => { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 160) + 'px'; });
 
   fill(root, h('div', { class: 'ask' },
-    h('div', { class: 'convs' }, h('div', { style: 'padding:10px' }, h('button', { class: 'btn', style: 'width:100%;justify-content:center', onclick: newChat }, '＋ New chat')), list),
+    h('div', { class: 'convs' }, h('div', { style: 'padding:10px' }, h('button', { class: 'btn', style: 'width:100%;justify-content:center', onclick: newChat }, '＋ New chat'), h('div', { style: 'margin-top:8px' }, filter)), list),
     h('div', { class: 'thread-col' },
       h('div', { class: 'ask-bar' }, h('label', {}, 'Data model', connSel), h('label', {}, 'AI model', modelSel),
         h('label', { class: 'check', style: 'flex-direction:row;font-size:13px;color:var(--text-2);margin-top:14px' }, reviewChk, 'Review SQL before running')),
@@ -109,14 +144,23 @@ export async function historyView(root) {
   const body = h('div', {});
   const search = h('input', { type: 'search', placeholder: 'Search your questions and SQL…', style: 'max-width:360px' });
   const STATUS = { success: 'good', error: 'bad', blocked: 'bad', clarification: 'warn', pending_review: 'info' };
+  const monthOf = iso => new Date(iso + 'Z').toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  const row = r => h('tr', { class: 'click', onclick: () => { location.hash = `#/ask/${r.conversation_id}`; } },
+    h('td', { class: 'nowrap' }, fmtTime(r.created_at)), h('td', { class: 'clip' }, r.question), h('td', {}, r.connection_name), h('td', {}, r.model_label),
+    h('td', {}, h('span', { class: 'badge ' + (STATUS[r.status] || '') }, r.status.replace('_', ' '))), h('td', { class: 'num' }, r.row_count),
+    h('td', {}, r.feedback ? h('span', { class: 'badge ' + (r.feedback === 'incorrect' ? 'bad' : 'good') }, r.feedback) : ''));
   const load = async () => {
     const rows = await api('GET', '/api/chat/history?q=' + encodeURIComponent(search.value));
-    fill(body, rows.length ? h('div', { class: 'tbl-wrap', style: 'max-height:none' }, h('table', { class: 'tbl' },
+    if (!rows.length) return fill(body, h('div', { class: 'empty' }, 'Nothing here yet.'));
+    const trs = [];
+    rows.forEach((r, i) => {       // newest first, with a heading row per month
+      const m = monthOf(r.created_at);
+      if (i === 0 || m !== monthOf(rows[i - 1].created_at)) trs.push(h('tr', { class: 'group' }, h('td', { colspan: 7 }, m)));
+      trs.push(row(r));
+    });
+    fill(body, h('div', { class: 'tbl-wrap', style: 'max-height:none' }, h('table', { class: 'tbl' },
       h('thead', {}, h('tr', {}, ['When', 'Question', 'Data model', 'Model', 'Status', 'Rows', 'Feedback'].map(t => h('th', {}, t)))),
-      h('tbody', {}, rows.map(r => h('tr', { class: 'click', onclick: () => { location.hash = `#/ask/${r.conversation_id}`; } },
-        h('td', { class: 'nowrap' }, ago(r.created_at)), h('td', { class: 'clip' }, r.question), h('td', {}, r.connection_name), h('td', {}, r.model_label),
-        h('td', {}, h('span', { class: 'badge ' + (STATUS[r.status] || '') }, r.status.replace('_', ' '))), h('td', { class: 'num' }, r.row_count),
-        h('td', {}, r.feedback ? h('span', { class: 'badge ' + (r.feedback === 'incorrect' ? 'bad' : 'good') }, r.feedback) : '')))))) : h('div', { class: 'empty' }, 'Nothing here yet.'));
+      h('tbody', {}, trs))));
   };
   let t; search.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => load().catch(fail), 250); });
   fill(root, h('div', { class: 'page' }, h('div', { class: 'page-head' }, h('h1', {}, 'History'), h('span', { class: 'spacer' }), search), body));
