@@ -19,7 +19,7 @@ from sqlalchemy import or_, select, update
 from . import config, connectors, engine, mailer, sqlguard
 from .db import SessionLocal, now
 from .deps import can_use, get_settings
-from .models import Connection, QueryRun, Report, ReportShare, ReportSnapshot, User
+from .models import Connection, QueryRun, Report, ReportShare, ReportSnapshot, User, UserGroup, UserGroupMember
 from .summarize import is_additive, is_measure
 
 log = logging.getLogger("text2sql.reports")
@@ -30,11 +30,20 @@ MULTI = ("bar", "hbar", "stacked", "line", "area")
 
 
 # ---- access ---------------------------------------------------------------------------
+def group_ids(db, user) -> list[int]:
+    return list(db.scalars(select(UserGroupMember.group_id).where(UserGroupMember.user_id == user.id)))
+
+
+def _mine(db, user):
+    """SQL condition: a share row that applies to this user (directly, by role, or through a group)."""
+    cond = or_((ReportShare.scope == "user") & (ReportShare.user_id == user.id),
+               (ReportShare.scope == "role") & (ReportShare.role == user.role))
+    groups = group_ids(db, user)
+    return or_(cond, (ReportShare.scope == "group") & ReportShare.group_id.in_(groups)) if groups else cond
+
+
 def _share(db, user, report) -> ReportShare | None:
-    rows = list(db.scalars(select(ReportShare).where(
-        ReportShare.report_id == report.id,
-        or_((ReportShare.scope == "user") & (ReportShare.user_id == user.id),
-            (ReportShare.scope == "role") & (ReportShare.role == user.role)))))
+    rows = list(db.scalars(select(ReportShare).where(ReportShare.report_id == report.id, _mine(db, user))))
     return max(rows, key=lambda s: s.can_edit, default=None)
 
 
@@ -56,9 +65,7 @@ def can_edit(db, user, report) -> bool:
 def visible_reports(db, user) -> list[Report]:
     if user.role == "admin":
         return list(db.scalars(select(Report).order_by(Report.updated_at.desc())))
-    shared = select(ReportShare.report_id).where(
-        or_((ReportShare.scope == "user") & (ReportShare.user_id == user.id),
-            (ReportShare.scope == "role") & (ReportShare.role == user.role)))
+    shared = select(ReportShare.report_id).where(_mine(db, user))
     return list(db.scalars(select(Report).where(or_(Report.owner_id == user.id, Report.id.in_(shared)))
                            .order_by(Report.updated_at.desc())))
 
@@ -69,6 +76,46 @@ def result_component(run: QueryRun) -> dict:
             "sql": run.final_sql, "question": run.question, "title": run.question[:200],
             "show_chart": True, "show_table": True, "show_summary": True, "table_rows": 25,
             "chart": dict(run.chart or {})}
+
+
+def _width(c) -> int:
+    """Layout width in sixths of the page: 6 = full, 3 = half, 2 = a third."""
+    try:
+        w = int(c.get("width") or 6)
+    except (TypeError, ValueError):
+        w = 6
+    return w if w in (2, 3, 4, 6) else 6
+
+
+def layout_rows(components: list) -> list[list]:
+    """Pack components into rows: narrower ones sit side by side until the row is full."""
+    rows, cur, used = [], [], 0
+    for c in components:
+        w = 6 if c["type"] in ("divider", "pagebreak") else int(c.get("width") or 6)
+        if cur and (used + w > 6 or w == 6):
+            rows.append(cur)
+            cur, used = [], 0
+        cur.append(c)
+        used += w
+        if used >= 6:
+            rows.append(cur)
+            cur, used = [], 0
+    if cur:
+        rows.append(cur)
+    return rows
+
+
+def recipients(db, report: Report) -> tuple[list[User], list[str]]:
+    """Who a schedule emails: (people with an account - each gets their own view, other addresses)."""
+    s = report.schedule or {}
+    ids = set(int(i) for i in s.get("user_ids") or [])
+    gids = [int(g) for g in s.get("group_ids") or []]
+    if gids:
+        ids |= set(db.scalars(select(UserGroupMember.user_id).where(UserGroupMember.group_id.in_(gids))))
+    users = [u for u in db.scalars(select(User).where(User.id.in_(ids))) if u.is_active] if ids else []
+    known = {u.email.lower() for u in users}
+    extra = [e for e in dict.fromkeys(x.strip() for x in s.get("recipients") or []) if "@" in e and e.lower() not in known]
+    return users, extra
 
 
 def clean_components(db, user, incoming: list, existing: list) -> list:
@@ -83,7 +130,7 @@ def clean_components(db, user, incoming: list, existing: list) -> list:
             continue
         kind, cid = c.get("type"), str(c.get("id") or uuid.uuid4().hex[:10])[:20]
         if kind in ("heading", "text"):
-            item = {"id": cid, "type": kind, "text": str(c.get("text") or "")[:20000]}
+            item = {"id": cid, "type": kind, "text": str(c.get("text") or "")[:20000], "width": _width(c)}
             if kind == "heading":
                 item["level"] = 2 if c.get("level") == 2 else 1
             out.append(item)
@@ -102,7 +149,7 @@ def clean_components(db, user, incoming: list, existing: list) -> list:
             base.update(
                 title=str(c.get("title") or base["title"])[:200],
                 show_chart=bool(c.get("show_chart", True)), show_table=bool(c.get("show_table", True)),
-                show_summary=bool(c.get("show_summary", True)),
+                show_summary=bool(c.get("show_summary", True)), width=_width(c),
                 table_rows=min(max(int(c.get("table_rows") or 25), 1), 500),
                 chart={k: chart.get(k) for k in ("type", "x", "y", "series") if k in chart})
             out.append(base)
@@ -248,7 +295,7 @@ def _compact(v, _pos=None) -> str:
     return f"{v:,.0f}" if float(v).is_integer() else f"{v:,.2f}"
 
 
-def draw_panel(panel: dict, tall: bool = True) -> bytes:
+def draw_panel(panel: dict, tall: bool = True, narrow: bool = False) -> bytes:
     """One chart panel as PNG bytes."""
     import matplotlib
     matplotlib.use("Agg")
@@ -256,7 +303,8 @@ def draw_panel(panel: dict, tall: bool = True) -> bytes:
     from matplotlib.ticker import FuncFormatter
 
     kind = panel["type"]
-    fig, ax = plt.subplots(figsize=(9, 4.1 if tall else 3.0), dpi=130)
+    # a narrow (side-by-side) slot gets a smaller canvas, so text stays readable once scaled to fit
+    fig, ax = plt.subplots(figsize=(5.0, 2.9) if narrow else (9, 4.1 if tall else 3.0), dpi=170 if narrow else 130)
     grey = "#55544e"
     if kind in ("pie", "doughnut"):
         vals = panel["values"]
@@ -386,61 +434,90 @@ def build_pdf(rendered: dict) -> bytes:
         para(rendered["description"], 10, "", 90, 1.5)
     para(f"Data refreshed {dt.datetime.now().strftime('%d %b %Y %H:%M')} for {rendered['viewer']}", 8, "", 130, 5)
 
-    for c in rendered["components"]:
+    full = width
+    gap = 6
+
+    def text_h(text, size, w):
+        pdf.set_font("dv", "", size)
+        lines = pdf.multi_cell(w, size * 0.52, text, dry_run=True, output="LINES")
+        return len(lines) * size * 0.52 + 2.5
+
+    def estimate(c, w) -> float:
+        """Rough height of a component at width w, used to keep side-by-side rows on one page."""
         kind = c["type"]
-        if kind == "pagebreak":
-            pdf.add_page()
-        elif kind == "divider":
-            pdf.ln(2)
-            pdf.set_draw_color(215)
-            pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
-            pdf.ln(5)
-        elif kind == "heading":
-            if pdf.get_y() > pdf.h - 45:
-                pdf.add_page()
-            para(c["text"], 15 if c.get("level") == 1 else 12, "B", 20, 2)
+        if kind == "heading":
+            return text_h(c["text"], 15 if c.get("level") == 1 else 12, w) + 2
+        if kind == "text":
+            return sum(text_h(b, 10, w) for b in re.split(r"\n\s*\n", c["text"].strip()) if b.strip())
+        if kind != "result":
+            return 8
+        h = text_h(c.get("title") or "", 12, w) + 2
+        if c.get("status") != "ok":
+            return h + 10
+        if c.get("show_summary", True):
+            h += text_h(c["summary"]["headline"], 10, w) + sum(text_h("•  " + b, 9.5, w) for b in c["summary"]["bullets"][:8]) + 2
+        if c.get("show_chart", True):
+            n = len(chart_panels(c["columns"], c["rows"], c.get("chart") or {}))
+            h += n * (w * (0.58 if w < full - 1 else 0.47 if n == 1 else 0.36) + 5)
+        if c.get("show_table", True):
+            h += (min(len(c["rows"]), c.get("table_rows") or 25) + 1) * 5.2 + 6
+        return h + 5
+
+    def para_at(x, w, text, size=10, style="", color=30, gap_after=2.5):
+        pdf.set_font("dv", style, size)
+        pdf.set_text_color(color)
+        pdf.set_x(x)
+        pdf.multi_cell(w, size * 0.52, text, new_x=XPos.LEFT, new_y=YPos.NEXT, align="L")
+        pdf.ln(gap_after)
+
+    def draw(c, x, w, narrow):
+        kind = c["type"]
+        if kind == "heading":
+            para_at(x, w, c["text"], 15 if c.get("level") == 1 else 12, "B", 20, 2)
         elif kind == "text":
             for block in re.split(r"\n\s*\n", c["text"].strip()):
                 if block.strip():
-                    para(block.strip(), 10, "", 40, 2.5)
+                    para_at(x, w, block.strip(), 10, "", 40, 2.5)
         elif kind == "result":
-            if pdf.get_y() > pdf.h - 60:
-                pdf.add_page()
-            para(c.get("title") or c.get("question") or "Result", 12, "B", 20, 1.5)
+            para_at(x, w, c.get("title") or c.get("question") or "Result", 12, "B", 20, 1.5)
             if c.get("status") != "ok":
-                para(c.get("message") or "This result is not available.", 9.5, "", 170, 4)
-                continue
+                para_at(x, w, c.get("message") or "This result is not available.", 9.5, "", 170, 4)
+                return
             if c.get("show_summary", True):
-                para(c["summary"]["headline"], 10, "", 40, 1.5)
+                para_at(x, w, c["summary"]["headline"], 10, "", 40, 1.5)
                 for bullet in c["summary"]["bullets"][:8]:
-                    para("•  " + bullet, 9.5, "", 60, 1)
+                    para_at(x, w, "•  " + bullet, 9.5, "", 60, 1)
                 pdf.ln(2)
             if c.get("show_chart", True):
                 panels = chart_panels(c["columns"], c["rows"], c.get("chart") or {})
                 for p in panels:
-                    png = draw_panel(p, tall=len(panels) == 1)
+                    png = draw_panel(p, tall=len(panels) == 1, narrow=narrow)
                     if not png:
                         continue
-                    h = width * (0.47 if len(panels) == 1 else 0.36)
-                    if pdf.get_y() + h > pdf.h - 18:
+                    h = w * (0.58 if narrow else 0.47 if len(panels) == 1 else 0.36)
+                    if not narrow and pdf.get_y() + h > pdf.h - 18:
                         pdf.add_page()
                     if len(panels) > 1:
-                        para(p.get("y_title", ""), 9.5, "B", 60, 0.5)
-                    pdf.image(io.BytesIO(png), x=pdf.l_margin, w=width, h=h, keep_aspect_ratio=True)
-                    pdf.ln(3)
+                        para_at(x, w, p.get("y_title", ""), 9.5, "B", 60, 0.5)
+                    pdf.image(io.BytesIO(png), x=x, y=pdf.get_y(), w=w, h=h, keep_aspect_ratio=True)
+                    pdf.set_y(pdf.get_y() + h + 3)
             if c.get("show_table", True) and c["rows"]:
-                cols = c["columns"][:9]
+                cols = c["columns"][:9 if not narrow else max(2, int(w // 22))]
                 limit = c.get("table_rows") or 25
-                pdf.set_font("dv", "", 7.5)
+                pdf.set_font("dv", "", 7.5 if not narrow else 7)
                 pdf.set_text_color(40)
                 pdf.set_draw_color(225)
                 head = FontFace(emphasis="BOLD", color=255, fill_color=(42, 120, 214))
+                pdf.set_x(x)
+                saved = pdf.l_margin
+                pdf.set_left_margin(x)
                 with pdf.table(headings_style=head, line_height=5, cell_fill_color=(246, 246, 244), cell_fill_mode="ROWS",
-                               text_align=["RIGHT" if x["type"] == "number" else "LEFT" for x in cols],
-                               borders_layout="HORIZONTAL_LINES") as table:
-                    table.row([x["name"][:28] for x in cols])
+                               text_align=["RIGHT" if k["type"] == "number" else "LEFT" for k in cols], width=w,
+                               align="LEFT", borders_layout="HORIZONTAL_LINES") as table:
+                    table.row([k["name"][:28] for k in cols])
                     for r in c["rows"][:limit]:
-                        table.row([_fmt_cell(v, cols[i]["type"] == "number") for i, v in enumerate(r[:len(cols)])])
+                        table.row([_fmt_cell(v, cols[i]["type"] == "number")[:60 if not narrow else 22] for i, v in enumerate(r[:len(cols)])])
+                pdf.set_left_margin(saved)
                 notes = []
                 if c["row_count"] > limit:
                     notes.append(f"First {limit} of {c['row_count']:,} rows shown.")
@@ -450,8 +527,43 @@ def build_pdf(rendered: dict) -> bytes:
                     notes.append("Row limit reached; more rows exist in the source.")
                 if notes:
                     pdf.ln(1)
-                    para(" ".join(notes), 7.5, "", 130, 1)
+                    para_at(x, w, " ".join(notes), 7.5, "", 130, 1)
             pdf.ln(5)
+
+    usable = pdf.h - 16 - 24
+    for row in layout_rows(rendered["components"]):
+        first = row[0]
+        if first["type"] == "pagebreak":
+            pdf.add_page()
+            continue
+        if first["type"] == "divider":
+            pdf.ln(2)
+            pdf.set_draw_color(215)
+            pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
+            pdf.ln(5)
+            continue
+        widths = [(full + gap) * int(c.get("width") or 6) / 6 - gap for c in row]
+        heights = [estimate(c, w) for c, w in zip(row, widths)]
+        if len(row) == 1 and widths[0] >= full - 1:
+            if first["type"] in ("heading", "result") and pdf.get_y() > pdf.h - (45 if first["type"] == "heading" else 60):
+                pdf.add_page()
+            draw(first, pdf.l_margin, full, False)
+            continue
+        if max(heights) > usable:                      # too tall to sit side by side: stack full width instead
+            for c in row:
+                draw(c, pdf.l_margin, full, False)
+            continue
+        if pdf.get_y() + max(heights) > pdf.h - 18:
+            pdf.add_page()
+        top, x, bottom = pdf.get_y(), pdf.l_margin, pdf.get_y()
+        pdf.set_auto_page_break(False)
+        for c, w in zip(row, widths):
+            pdf.set_y(top)
+            draw(c, x, w, True)
+            bottom = max(bottom, pdf.get_y())
+            x += w + gap
+        pdf.set_auto_page_break(True, margin=16)
+        pdf.set_y(min(bottom, pdf.h - 18))
     return bytes(pdf.output())
 
 
@@ -487,7 +599,8 @@ def snapshot_path(report_id: int, snapshot_id: int):
 
 
 def make_snapshot(db, report: Report, trigger: str, send: bool) -> ReportSnapshot:
-    """Render as the owner, save the PDF, optionally email it."""
+    """Render as the owner and save the PDF. When sending: every recipient who has an account gets
+    a PDF rendered with their own data access; other addresses get the owner's copy."""
     owner = db.get(User, report.owner_id)
     snap = ReportSnapshot(report_id=report.id, trigger=trigger)
     db.add(snap)
@@ -500,20 +613,36 @@ def make_snapshot(db, report: Report, trigger: str, send: bool) -> ReportSnapsho
         snapshot_path(report.id, snap.id).write_bytes(pdf)
         stamp = dt.datetime.now().strftime("%Y-%m-%d")
         snap.file_name = re.sub(r"[^\w\- ]", "", report.title).strip()[:60] + f" {stamp}.pdf"
+        notes = []
         failed = [c for c in rendered["components"] if c["type"] == "result" and c.get("status") != "ok"]
         if failed:
-            snap.note = f"{len(failed)} result(s) could not be refreshed."
-        recipients = [r for r in (report.schedule or {}).get("recipients", []) if "@" in r]
-        if send and recipients:
+            notes.append(f"{len(failed)} result(s) could not be refreshed.")
+        users, extra = recipients(db, report)
+        if send and (users or extra):
             cfg = get_settings(db)
+            sender = mailer.pick_sender(db, (report.schedule or {}).get("sender_id"))
             link = f"\n\nOpen the live report: {cfg['public_url'].rstrip('/')}/#/reports/{report.id}" if cfg.get("public_url") else ""
-            try:
-                mailer.send(cfg, recipients, f"{report.title} - {dt.datetime.now().strftime('%d %b %Y')}",
-                            f"The scheduled report \"{report.title}\" is attached.{link}\n\n"
-                            f"Sent by {config.APP_NAME} on behalf of {owner.name or owner.email}.", (snap.file_name, pdf))
-                snap.emailed_to = recipients
-            except mailer.MailError as e:
-                snap.note = (snap.note + " " if snap.note else "") + f"Saved, but not emailed: {e}"
+            subject = f"{report.title} - {dt.datetime.now().strftime('%d %b %Y')}"
+            body = (f"The scheduled report \"{report.title}\" is attached.{link}\n\n"
+                    f"Sent by {config.APP_NAME} on behalf of {owner.name or owner.email}.")
+            sent, problems, simulated = [], [], False
+            jobs = [([u.email], u) for u in users] + ([(extra, None)] if extra else [])
+            for to, person in jobs:
+                try:
+                    attachment = pdf if person is None or person.id == owner.id else build_pdf(render(db, report, person))
+                    how = mailer.send(db, sender, to, subject, body, (snap.file_name, attachment), context=f"report: {report.title}")
+                    simulated = simulated or how == "simulated"
+                    sent += to
+                except mailer.MailError as e:
+                    problems.append(str(e))
+                    if sender is None:
+                        break
+            snap.emailed_to = sent
+            if simulated:
+                notes.append("Sender is in simulation mode - nothing was actually emailed.")
+            if problems:
+                notes.append("Not emailed to everyone: " + problems[0])
+        snap.note = " ".join(notes)
     except Exception as e:      # a broken report must not stop the scheduler
         log.exception("Report %s snapshot failed", report.id)
         snap.status, snap.note = "error", str(e)[:500]

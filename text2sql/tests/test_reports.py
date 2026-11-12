@@ -135,7 +135,7 @@ def test_report_lifecycle_sharing_and_live_refresh(people):
     people["report"] = rid
 
 
-def test_schedule_snapshot_and_email(people):
+def test_senders_groups_schedule_and_email(people):
     from aiosmtpd.controller import Controller
     from app import reporting
     from app.db import SessionLocal
@@ -148,22 +148,43 @@ def test_schedule_snapshot_and_email(people):
             inbox.append(envelope)
             return "250 OK"
 
-    a, north, rid = people["admin"], people["north"], people["report"]
-    a.put("/api/admin/settings", headers=H, json={"smtp_host": "127.0.0.1", "smtp_port": SMTP_PORT, "smtp_security": "none",
-                                                   "smtp_from": "reports@test.local", "smtp_password": "s3cret",
-                                                   "public_url": "https://askdata.test"})
-    shown = a.get("/api/admin/settings").json()
-    assert "smtp_password" not in shown and shown["smtp_password_set"]
+    a, north, south, rid = people["admin"], people["north"], people["south"], people["report"]
 
+    # --- email senders: validation, verify, test send, simulation, default
+    new = lambda **kw: a.post("/api/admin/senders", headers=H, json={"label": "Reports mailbox", "from_email": "reports@test.local", **kw})   # noqa: E731
+    assert new(mode="smtp", host="").status_code == 400
+    assert north.get("/api/admin/senders").status_code == 403
+    real = new(from_name="AskData Reports", reply_to="help@test.local", host="127.0.0.1", port=SMTP_PORT, password="s3cret").json()
+    assert real["is_default"] and real["has_password"] and "password" not in real
+    sim = new(label="Demo (simulation)", mode="simulate").json()
+    down = a.post(f"/api/admin/senders/{real['id']}/verify", headers=H).json()
+    assert not down["ok"] and "Could not connect" in down["message"]
+    assert a.get("/api/admin/senders").json()[0]["last_error"]
+
+    # --- user groups
+    g = a.post("/api/admin/groups", headers=H, json={"name": "Regional leads", "user_ids": [people["north_id"], people["south_id"]]}).json()["id"]
+    assert a.post("/api/admin/groups", headers=H, json={"name": "regional LEADS"}).status_code == 400
+    assert north.get("/api/admin/groups").status_code == 403
+    directory = north.get("/api/reports/people").json()
+    assert directory["groups"] == [{"id": g, "name": "Regional leads", "description": "", "members": 2}]
+    assert [x["label"] for x in directory["senders"]] == ["Reports mailbox <reports@test.local>", "Demo (simulation) <reports@test.local>"]
+
+    # share with the group: members get in, and lose access when removed from it
+    north.put(f"/api/reports/{rid}/shares", headers=H, json={"shares": [{"scope": "group", "group_id": g}]})
+    assert south.get(f"/api/reports/{rid}").status_code == 200
+    a.put(f"/api/admin/groups/{g}", headers=H, json={"name": "Regional leads", "user_ids": [people["north_id"]]})
+    assert south.get(f"/api/reports/{rid}").status_code == 404
+    a.put(f"/api/admin/groups/{g}", headers=H, json={"name": "Regional leads", "user_ids": [people["north_id"], people["south_id"]]})
+
+    # --- schedule to a group + a named person + outside addresses
     assert north.put(f"/api/reports/{rid}/schedule", headers=H, json={"enabled": True, "frequency": "hourly"}).status_code == 400
     assert north.put(f"/api/reports/{rid}/schedule", headers=H, json={"enabled": True, "recipients": ["nope"]}).status_code == 400
     s = north.put(f"/api/reports/{rid}/schedule", headers=H, json={
-        "enabled": True, "frequency": "weekly", "weekday": 0, "time": "08:30", "tz": "Asia/Kolkata",
-        "recipients": ["boss@test.local", "team@test.local"]}).json()
+        "enabled": True, "frequency": "weekly", "weekday": 0, "time": "08:30", "tz": "Asia/Kolkata", "sender_id": real["id"],
+        "group_ids": [g], "user_ids": [people["south_id"]], "recipients": ["boss@test.local", "board@test.local"]}).json()
     nxt = dt.datetime.fromisoformat(s["next_run_at"])
-    assert nxt > dt.datetime.utcnow() and (nxt.hour, nxt.minute) == (3, 0) and nxt.weekday() == 0      # 08:30 IST = 03:00 UTC
+    assert (nxt.hour, nxt.minute) == (3, 0) and nxt.weekday() == 0 and s["recipient_count"] == 4      # 08:30 IST = 03:00 UTC
 
-    # calendar maths
     base = dt.datetime(2026, 11, 12, 10, 0)             # a Thursday, UTC
     assert reporting.next_run({"enabled": True, "frequency": "daily", "time": "09:00", "tz": "UTC"}, base) == dt.datetime(2026, 11, 13, 9, 0)
     assert reporting.next_run({"enabled": True, "frequency": "daily", "time": "11:00", "tz": "UTC"}, base) == dt.datetime(2026, 11, 12, 11, 0)
@@ -174,7 +195,11 @@ def test_schedule_snapshot_and_email(people):
     server = Controller(Sink(), hostname="127.0.0.1", port=SMTP_PORT)
     server.start()
     try:
-        assert a.post("/api/admin/settings/test-email", headers=H, json={"to": "me@test.local"}).json()["ok"]
+        assert a.post(f"/api/admin/senders/{real['id']}/verify", headers=H).json()["ok"]
+        t = a.post(f"/api/admin/senders/{real['id']}/test", headers=H, json={"to": "me@test.local, you@test.local"}).json()
+        assert t["ok"] and not t["simulated"]
+        t = a.post(f"/api/admin/senders/{sim['id']}/test", headers=H, json={"to": "me@test.local"}).json()
+        assert t["ok"] and t["simulated"]
         with SessionLocal() as db:                       # make it due, then let the scheduler tick
             db.get(Report, rid).next_run_at = dt.datetime.utcnow() - dt.timedelta(minutes=1)
             db.commit()
@@ -182,26 +207,108 @@ def test_schedule_snapshot_and_email(people):
         assert reporting.run_due() == 0                  # claimed: does not fire twice
     finally:
         server.stop()
-    assert [e.rcpt_tos for e in inbox] == [["me@test.local"], ["boss@test.local", "team@test.local"]]
-    body = inbox[1].content.decode(errors="replace")
-    assert "Regional pack" in body and "application/pdf" in body and "https://askdata.test/#/reports/" in body
+
+    assert [e.rcpt_tos for e in inbox] == [["me@test.local", "you@test.local"], ["north@test.local"], ["south@test.local"],
+                                           ["boss@test.local", "board@test.local"]]
+    head = inbox[1].content.decode(errors="replace")
+    assert "AskData Reports <reports@test.local>" in head and "Reply-To: help@test.local" in head and "application/pdf" in head
+
+    # each person with an account received the report as *they* are allowed to see it
+    import base64
+    import email
+    from pypdf import PdfReader
+
+    def pdf_text(envelope):
+        part = next(p for p in email.message_from_bytes(envelope.content).walk() if p.get_content_type() == "application/pdf")
+        return " ".join(pg.extract_text() for pg in PdfReader(io.BytesIO(base64.b64decode(part.get_payload()))).pages)
+    to_north, to_south, to_others = pdf_text(inbox[1]), pdf_text(inbox[2]), pdf_text(inbox[3])
+    assert "Nia North" in to_north and "848,515.46" in to_north and "856,702.39" not in to_north
+    assert "Sam South" in to_south and "856,702.39" in to_south and "848,515.46" not in to_south
+    assert "Nia North" in to_others and "848,515.46" in to_others          # outside addresses get the owner's view
 
     snaps = north.get(f"/api/reports/{rid}/snapshots").json()
-    assert len(snaps) == 1 and snaps[0]["status"] == "ok" and snaps[0]["emailed_to"] == ["boss@test.local", "team@test.local"]
-    got = north.get(f"/api/reports/{rid}/snapshots/{snaps[0]['id']}/pdf")
-    assert got.content[:5] == b"%PDF-"
-    with SessionLocal() as db:
-        assert db.get(Report, rid).next_run_at > dt.datetime.utcnow()
+    assert len(snaps) == 1 and snaps[0]["status"] == "ok" and len(snaps[0]["emailed_to"]) == 4
+    assert north.get(f"/api/reports/{rid}/snapshots/{snaps[0]['id']}/pdf").content[:5] == b"%PDF-"
+    log = a.get("/api/admin/email-log").json()
+    assert [x["status"] for x in log].count("sent") == 6 and [x["status"] for x in log].count("simulated") == 1
+    assert log[0]["context"] == "report: Regional pack"
 
-    # mail server down: the snapshot is still saved, with the reason recorded
+    # mail server down: the copy is still saved, the reason is recorded and logged
     manual = north.post(f"/api/reports/{rid}/snapshots", headers=H, json={"send": True}).json()
-    assert manual["status"] == "ok" and "not emailed" in manual["note"] and manual["emailed_to"] == []
+    assert manual["status"] == "ok" and "Not emailed to everyone" in manual["note"] and manual["emailed_to"] == []
+    assert a.get("/api/admin/email-log").json()[0]["status"] == "failed"
+    # simulation sender: reported as such, nothing leaves
+    north.put(f"/api/reports/{rid}/schedule", headers=H, json={"enabled": True, "sender_id": sim["id"], "recipients": ["boss@test.local"]})
+    assert "simulation" in north.post(f"/api/reports/{rid}/snapshots", headers=H, json={"send": True}).json()["note"]
+    # deleting the group removes its shares
+    a.delete(f"/api/admin/groups/{g}", headers=H)
+    assert south.get(f"/api/reports/{rid}").status_code == 404
 
     assert north.delete(f"/api/reports/{rid}", headers=H).status_code == 200
     assert north.get("/api/reports").json() == []
     for f in people["filters"]:
         a.delete(f"/api/admin/filters/{f}", headers=H)
-    a.put("/api/admin/settings", headers=H, json={"smtp_host": ""})
+    for x in (real, sim):
+        a.delete(f"/api/admin/senders/{x['id']}", headers=H)
+
+
+def test_side_by_side_layout_in_pdf(admin):
+    """Components given half / third width sit next to each other on the page."""
+    from pypdf import PdfReader
+    client, conn, model = admin
+    r1 = ask(client, conn, model, "revenue and orders by region")["run"]
+    r2 = ask(client, conn, model, "revenue by category")["run"]
+    comps = [{"type": "heading", "text": "Side by side", "level": 1},
+             {"type": "result", "run_id": r1["id"], "title": "LEFTBLOCK", "width": 3, "show_table": False},
+             {"type": "result", "run_id": r2["id"], "title": "RIGHTBLOCK", "width": 3, "show_table": False},
+             {"type": "text", "text": "THIRD-A", "width": 2}, {"type": "text", "text": "THIRD-B", "width": 2},
+             {"type": "text", "text": "THIRD-C", "width": 2}, {"type": "text", "text": "FULLWIDTH", "width": 99}]
+    rep = client.post("/api/reports", headers=H, json={"title": "Layout", "components": comps}).json()
+    assert [c.get("width") for c in rep["components"]] == [6, 3, 3, 2, 2, 2, 6]         # invalid width falls back to full
+    data = client.get(f"/api/reports/{rep['id']}/pdf").content
+    page = PdfReader(io.BytesIO(data)).pages[0]
+    import pypdfium2
+    doc = pypdfium2.PdfDocument(data)
+    text = doc[0].get_textpage()
+    where = {}
+    for key in ("LEFTBLOCK", "RIGHTBLOCK", "THIRD-A", "THIRD-B", "THIRD-C", "FULLWIDTH"):
+        hit = text.search(key).get_next()
+        if hit:
+            left, bottom, _, _ = text.get_charbox(hit[0])
+            where[key] = (left, bottom)             # PDF coordinates: y grows upwards
+    assert len(where) == 6, where
+    assert abs(where["LEFTBLOCK"][1] - where["RIGHTBLOCK"][1]) < 2 and where["RIGHTBLOCK"][0] > where["LEFTBLOCK"][0] + 200
+    assert where["THIRD-A"][0] < where["THIRD-B"][0] < where["THIRD-C"][0]
+    assert abs(where["THIRD-A"][1] - where["THIRD-C"][1]) < 2 and where["THIRD-A"][1] < where["LEFTBLOCK"][1] - 100
+    assert where["FULLWIDTH"][1] < where["THIRD-A"][1] and abs(where["FULLWIDTH"][0] - where["THIRD-A"][0]) < 2
+    assert len(page.images) == 2              # one chart in each half
+    client.delete(f"/api/reports/{rep['id']}", headers=H)
+
+
+def test_upgrade_adds_new_columns_and_migrates_mail_settings(tmp_path):
+    """An older database gains the new columns in place; the old single mail-server setting becomes a sender."""
+    import sqlite3
+    import subprocess
+    import sys
+    db = tmp_path / "text2sql.db"
+    con = sqlite3.connect(db)
+    con.executescript("""
+        CREATE TABLE report_shares (id INTEGER PRIMARY KEY, report_id INTEGER, scope VARCHAR(10), user_id INTEGER, role VARCHAR(20), can_edit BOOLEAN);
+        CREATE TABLE settings (key VARCHAR(100) PRIMARY KEY, value JSON);
+        INSERT INTO settings VALUES ('smtp_host', '{"v": "smtp.old.example"}'), ('smtp_from', '{"v": "old@example.com"}'), ('smtp_port', '{"v": 465}'), ('smtp_security', '{"v": "ssl"}');
+        INSERT INTO report_shares VALUES (1, 1, 'role', NULL, 'analyst', 0);
+    """)
+    con.commit()
+    con.close()
+    code = ("from app.main import bootstrap; bootstrap(); import sqlite3; c = sqlite3.connect(r'%s');"
+            "print([r[1] for r in c.execute('pragma table_info(report_shares)')]);"
+            "print(c.execute('select label, host, port, secure, from_email, is_default from email_senders').fetchall());"
+            "print(c.execute('select count(*) from report_shares').fetchone())") % db
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=".",
+                         env={**__import__("os").environ, "T2S_DATA_DIR": str(tmp_path), "T2S_ADMIN_PASSWORD": "Upgrade-Passw0rd"})
+    assert out.returncode == 0, out.stderr[-600:]
+    assert "'group_id'" in out.stdout and "('Default sender', 'smtp.old.example', 465, 1, 'old@example.com', 1)" in out.stdout
+    assert "(1,)" in out.stdout
 
 
 def test_summary_explains_each_shape():

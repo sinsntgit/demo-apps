@@ -192,9 +192,10 @@ class ReportShare(Base):
     __tablename__ = "report_shares"
     id: Mapped[int] = mapped_column(primary_key=True)
     report_id: Mapped[int] = mapped_column(ForeignKey("reports.id", ondelete="CASCADE"), index=True)
-    scope: Mapped[str] = mapped_column(String(10))                     # user | role
+    scope: Mapped[str] = mapped_column(String(10))                     # user | role | group
     user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     role: Mapped[str] = mapped_column(String(20), default="")
+    group_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)     # scope == "group"
     can_edit: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
@@ -209,3 +210,52 @@ class ReportSnapshot(Base):
     file_name: Mapped[str] = mapped_column(String(300), default="")
     emailed_to: Mapped[list] = mapped_column(JSON, default=list)
     note: Mapped[str] = mapped_column(Text, default="")
+
+
+class UserGroup(Base):
+    __tablename__ = "user_groups"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), unique=True)
+    description: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class UserGroupMember(Base):
+    __tablename__ = "user_group_members"
+    __table_args__ = (UniqueConstraint("group_id", "user_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("user_groups.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+
+
+class EmailSender(Base):
+    """A mailbox the platform sends from (scheduled reports)."""
+    __tablename__ = "email_senders"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    label: Mapped[str] = mapped_column(String(200))
+    from_name: Mapped[str] = mapped_column(String(200), default="")
+    from_email: Mapped[str] = mapped_column(String(255))
+    reply_to: Mapped[str] = mapped_column(String(255), default="")
+    mode: Mapped[str] = mapped_column(String(20), default="smtp")        # smtp | simulate
+    host: Mapped[str] = mapped_column(String(255), default="")
+    port: Mapped[int] = mapped_column(Integer, default=587)
+    secure: Mapped[bool] = mapped_column(Boolean, default=False)         # SSL/TLS from the start (port 465)
+    username: Mapped[str] = mapped_column(String(255), default="")
+    password_enc: Mapped[str] = mapped_column(Text, default="")
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class EmailLog(Base):
+    __tablename__ = "email_log"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+    sender_label: Mapped[str] = mapped_column(String(200), default="")
+    to_addr: Mapped[str] = mapped_column(String(255))
+    subject: Mapped[str] = mapped_column(String(500), default="")
+    status: Mapped[str] = mapped_column(String(20))                      # sent | failed | simulated
+    error: Mapped[str] = mapped_column(Text, default="")
+    context: Mapped[str] = mapped_column(String(200), default="")        # e.g. "report: Monthly sales"

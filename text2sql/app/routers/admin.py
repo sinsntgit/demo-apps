@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 from .. import config, llm, mailer, rowfilter, security
 from ..db import get_db
 from ..deps import admin_only, audit, get_settings
-from ..models import ROLES, AuditLog, Connection, ConnectionAccess, DataFilter, LLMModel, Setting, User
+from ..models import (ROLES, AuditLog, Connection, ConnectionAccess, DataFilter, EmailLog, EmailSender, LLMModel,
+                      Setting, User, UserGroup, UserGroupMember)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -215,9 +216,7 @@ _LIMITS = {"max_rows": (1, 50000), "query_timeout_s": (5, 900), "rate_limit_per_
 
 
 def _public_settings(db: Session) -> dict:
-    out = get_settings(db)
-    out["smtp_password_set"] = bool(out.pop("smtp_password"))
-    return out
+    return {k: v for k, v in get_settings(db).items() if not k.startswith("smtp_")}
 
 
 @router.get("/settings")
@@ -263,18 +262,202 @@ def save_settings(body: dict, request: Request, admin: User = Depends(admin_only
     return _public_settings(db)
 
 
+# ---- email senders -------------------------------------------------------------------
+class SenderIn(BaseModel):
+    label: str
+    from_name: str = ""
+    from_email: str
+    reply_to: str = ""
+    mode: str = "smtp"              # smtp | simulate
+    host: str = ""
+    port: int = 587
+    secure: bool = False
+    username: str = ""
+    password: str = ""              # blank on update = keep
+    active: bool = True
+    is_default: bool = False
+
+
 class TestMailIn(BaseModel):
     to: str
 
 
-@router.post("/settings/test-email")
-def test_email(body: TestMailIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+def _sender(x: EmailSender) -> dict:
+    return {"id": x.id, "label": x.label, "from_name": x.from_name, "from_email": x.from_email, "reply_to": x.reply_to,
+            "mode": x.mode, "host": x.host, "port": x.port, "secure": x.secure, "username": x.username,
+            "has_password": bool(x.password_enc), "active": x.active, "is_default": x.is_default,
+            "last_error": x.last_error, "verified_at": x.verified_at.isoformat() if x.verified_at else None}
+
+
+def _apply_sender(x: EmailSender, body: SenderIn, db: Session):
+    if not body.label.strip():
+        raise HTTPException(400, "Give the sender a label.")
+    if "@" not in body.from_email:
+        raise HTTPException(400, "Enter the From email address.")
+    if body.mode not in ("smtp", "simulate"):
+        raise HTTPException(400, "Unknown delivery mode.")
+    if body.mode == "smtp" and not body.host.strip():
+        raise HTTPException(400, "Enter the SMTP host, or choose a provider preset.")
+    if not 1 <= body.port <= 65535:
+        raise HTTPException(400, "Port must be between 1 and 65535.")
+    x.label, x.from_name, x.from_email = body.label.strip()[:200], body.from_name.strip()[:200], body.from_email.strip()
+    x.reply_to, x.mode, x.host, x.port = body.reply_to.strip(), body.mode, body.host.strip(), body.port
+    x.secure, x.username, x.active = body.secure, body.username.strip(), body.active
+    if body.password:
+        x.password_enc = security.encrypt(body.password)
+    if body.is_default:
+        db.execute(update(EmailSender).values(is_default=False))
+    x.is_default = body.is_default
+
+
+@router.get("/senders")
+def senders(_: User = Depends(admin_only), db: Session = Depends(get_db)):
+    return [_sender(x) for x in db.scalars(select(EmailSender).order_by(EmailSender.is_default.desc(), EmailSender.label))]
+
+
+@router.post("/senders")
+def create_sender(body: SenderIn, request: Request, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    x = EmailSender()
+    _apply_sender(x, body, db)
+    if not db.scalar(select(EmailSender.id).limit(1)):
+        x.is_default = True
+    db.add(x)
+    audit(db, request, admin, "sender.created", x.label, x.from_email)
+    db.commit()
+    return _sender(x)
+
+
+@router.put("/senders/{sender_id}")
+def update_sender(sender_id: int, body: SenderIn, request: Request, admin: User = Depends(admin_only),
+                  db: Session = Depends(get_db)):
+    x = db.get(EmailSender, sender_id)
+    if not x:
+        raise HTTPException(404, "Not found")
+    _apply_sender(x, body, db)
+    audit(db, request, admin, "sender.updated", x.label)
+    db.commit()
+    return _sender(x)
+
+
+@router.delete("/senders/{sender_id}")
+def delete_sender(sender_id: int, request: Request, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    x = db.get(EmailSender, sender_id)
+    if not x:
+        raise HTTPException(404, "Not found")
+    audit(db, request, admin, "sender.deleted", x.label)
+    db.delete(x)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/senders/{sender_id}/verify")
+def verify_sender(sender_id: int, _: User = Depends(admin_only), db: Session = Depends(get_db)):
+    x = db.get(EmailSender, sender_id)
+    if not x:
+        raise HTTPException(404, "Not found")
     try:
-        mailer.send(get_settings(db), [body.to.strip()], f"{config.APP_NAME} test email",
-                    f"This is a test message from {config.APP_NAME}. Scheduled reports will be sent from this address.")
-        return {"ok": True, "message": f"Sent to {body.to.strip()}."}
+        out = {"ok": True, "message": mailer.verify(db, x)}
     except mailer.MailError as e:
-        return {"ok": False, "message": str(e)}
+        out = {"ok": False, "message": str(e)}
+    db.commit()
+    return out
+
+
+@router.post("/senders/{sender_id}/test")
+def test_sender(sender_id: int, body: TestMailIn, request: Request, admin: User = Depends(admin_only),
+                db: Session = Depends(get_db)):
+    x = db.get(EmailSender, sender_id)
+    if not x:
+        raise HTTPException(404, "Not found")
+    to = [a.strip() for a in body.to.replace(";", ",").split(",") if "@" in a]
+    try:
+        how = mailer.send(db, x, to, f"{config.APP_NAME} test email",
+                          f"This is a test message from {config.APP_NAME}, sent from the sender \"{x.label}\".\n\n"
+                          "If you received it, scheduled reports can be emailed from this address.", context="test")
+        out = {"ok": True, "simulated": how == "simulated",
+               "message": (f"Simulated - nothing was actually sent to {', '.join(to)}." if how == "simulated"
+                           else f"Test email sent to {', '.join(to)}.")}
+    except mailer.MailError as e:
+        out = {"ok": False, "message": str(e)}
+    audit(db, request, admin, "sender.test", x.label, out["message"])
+    db.commit()
+    return out
+
+
+@router.get("/email-log")
+def email_log(_: User = Depends(admin_only), db: Session = Depends(get_db)):
+    return [{"at": e.created_at.isoformat(), "sender": e.sender_label, "to": e.to_addr, "subject": e.subject,
+             "status": e.status, "error": e.error, "context": e.context}
+            for e in db.scalars(select(EmailLog).order_by(EmailLog.id.desc()).limit(200))]
+
+
+# ---- user groups ----------------------------------------------------------------------
+class GroupIn(BaseModel):
+    name: str
+    description: str = ""
+    user_ids: list[int] = []
+
+
+def _group(g: UserGroup, members: dict) -> dict:
+    return {"id": g.id, "name": g.name, "description": g.description, "user_ids": members.get(g.id, [])}
+
+
+def _save_group(g: UserGroup, body: GroupIn, db: Session):
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(400, "Give the group a name.")
+    clash = db.scalar(select(UserGroup).where(func.lower(UserGroup.name) == name.lower()))
+    if clash and clash.id != g.id:
+        raise HTTPException(400, "A group with this name already exists.")
+    g.name, g.description = name[:200], body.description.strip()[:500]
+    db.add(g)
+    db.flush()
+    db.execute(delete(UserGroupMember).where(UserGroupMember.group_id == g.id))
+    for uid in set(body.user_ids):
+        if db.get(User, uid):
+            db.add(UserGroupMember(group_id=g.id, user_id=uid))
+
+
+@router.get("/groups")
+def groups(_: User = Depends(admin_only), db: Session = Depends(get_db)):
+    members: dict = {}
+    for m in db.scalars(select(UserGroupMember)):
+        members.setdefault(m.group_id, []).append(m.user_id)
+    return [_group(g, members) for g in db.scalars(select(UserGroup).order_by(UserGroup.name))]
+
+
+@router.post("/groups")
+def create_group(body: GroupIn, request: Request, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    g = UserGroup()
+    _save_group(g, body, db)
+    audit(db, request, admin, "group.created", g.name, f"{len(set(body.user_ids))} member(s)")
+    db.commit()
+    return {"id": g.id}
+
+
+@router.put("/groups/{group_id}")
+def update_group(group_id: int, body: GroupIn, request: Request, admin: User = Depends(admin_only),
+                 db: Session = Depends(get_db)):
+    g = db.get(UserGroup, group_id)
+    if not g:
+        raise HTTPException(404, "Not found")
+    _save_group(g, body, db)
+    audit(db, request, admin, "group.updated", g.name, f"{len(set(body.user_ids))} member(s)")
+    db.commit()
+    return {"id": g.id}
+
+
+@router.delete("/groups/{group_id}")
+def delete_group(group_id: int, request: Request, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    g = db.get(UserGroup, group_id)
+    if not g:
+        raise HTTPException(404, "Not found")
+    from ..models import ReportShare
+    db.execute(delete(ReportShare).where(ReportShare.scope == "group", ReportShare.group_id == g.id))
+    audit(db, request, admin, "group.deleted", g.name)
+    db.delete(g)
+    db.commit()
+    return {"ok": True}
 
 
 # ---- data access: who can use each data model, and which rows they see -----------------

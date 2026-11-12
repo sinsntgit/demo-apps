@@ -18,7 +18,7 @@
 <tr><th>Role</th><th>Can do</th></tr>
 <tr><td><b>Analyst</b></td><td>Ask questions, view and export results, manage their own chats, confirm or correct SQL, build, share and schedule reports.</td></tr>
 <tr><td><b>Data steward</b></td><td>Everything an analyst can, plus: manage training data, approve user feedback, sync schemas, upload data files, view the dashboard.</td></tr>
-<tr><td><b>Administrator</b></td><td>Everything, plus: connect databases, manage users, data access and data filters, AI models, settings and the audit log. Administrators see all rows and all reports.</td></tr>
+<tr><td><b>Administrator</b></td><td>Everything, plus: connect databases, manage users and user groups, data access and data filters, AI models, email senders, settings and the audit log. Administrators see all rows and all reports.</td></tr>
 </table>
 <p>You only see the menu items your role allows.</p>
 </section>
@@ -183,20 +183,28 @@
 <li><b>Reports → ＋ New report</b>, then <b>＋ Result from a chat</b> and tick as many of your past answers as you like — from different chats and different data models.</li>
 </ul>
 <figure><img src="/static/help/img/reports-list.png" alt="The Reports page listing reports"><figcaption>The Reports page lists your reports and those shared with you.</figcaption></figure>
-<h3>Editing</h3>
-<p>Open the report and press <b>✎ Edit</b>.</p>
-<figure><img src="/static/help/img/report-edit.png" alt="The report editor with title, header, footer and a list of components"><figcaption>The report editor.</figcaption></figure>
+<h3>Designing the layout</h3>
+<p>Open the report and press <b>✎ Edit</b> to open the designer.</p>
+<figure><img src="/static/help/img/report-designer.png" alt="The report designer: a palette of objects on the left and the page on the right with two results side by side"><figcaption>The report designer. Objects on the left; the page on the right.</figcaption></figure>
 <table>
-<tr><th>Part</th><th>What it is</th></tr>
-<tr><td>Title, Description</td><td>Shown at the top of the report and in the Reports list.</td></tr>
-<tr><td>Header, Footer</td><td>A line printed at the top and bottom of every PDF page.</td></tr>
-<tr><td>Page numbers</td><td>Adds “Page 1 of 3” to the bottom right of every PDF page.</td></tr>
+<tr><th>To…</th><th>Do this</th></tr>
+<tr><td>Add an object</td><td><b>Drag</b> it from the <i>Objects</i> list on the left and drop it where you want it on the page — a blue edge shows where it will land. Or simply click it to add it at the end.</td></tr>
+<tr><td>Add results from chats</td><td>Drag or click <b>Result from a chat</b>, then tick as many of your answered questions as you like. They are inserted where you dropped.</td></tr>
+<tr><td>Move an object</td><td>Drag it by the <b>⠿</b> handle at its top-left and drop it on another object (before or after it). The <b>↑ ↓</b> buttons do the same one step at a time.</td></tr>
+<tr><td>Put objects side by side</td><td>Use the width buttons on each object: <b>Full</b>, <b>⅔</b>, <b>½</b>, <b>⅓</b>. Objects sit next to each other while they fit across the page — two halves, three thirds, or a third beside two-thirds — and wrap to a new row when they do not.</td></tr>
+<tr><td>Remove an object</td><td>Press <b>✕</b> on it.</td></tr>
+</table>
+<p>The objects you can place:</p>
+<table>
+<tr><th>Object</th><th>What it is</th></tr>
+<tr><td>Result from a chat</td><td>One answered question. Give it a title, tick whether to show the <b>Summary</b>, <b>Chart</b> and <b>Table</b>, and set how many table rows to show. Open <b>Chart settings and preview</b> to choose the chart type and columns with the usual <a href="#/help/charts">chart controls</a>.</td></tr>
 <tr><td>Heading</td><td>A large or small heading.</td></tr>
 <tr><td>Text</td><td>Your own commentary. Leave a blank line between paragraphs.</td></tr>
-<tr><td>Result from a chat</td><td>One answered question. Choose its title, whether to show the <b>Summary</b>, <b>Chart</b> and <b>Table</b>, how many table rows to show, and set up the chart with the usual <a href="#/help/charts">chart controls</a>.</td></tr>
-<tr><td>Divider, Page break</td><td>A line; or start a new page in the PDF.</td></tr>
+<tr><td>Divider line, Page break</td><td>A line across the page; or start a new page in the PDF. These are always full width.</td></tr>
 </table>
-<p>Use <b>↑ ↓</b> to reorder and <b>✕</b> to remove a component. Nothing is saved until you press <b>Save report</b>. A report can hold up to 40 components.</p>
+<p>Above the page you set the <b>Title</b>, <b>Description</b>, the <b>Header</b> and <b>Footer</b> printed on every PDF page, and whether to show <b>page numbers</b>.</p>
+<p>Nothing is saved until you press <b>Save report</b>. A report can hold up to 40 objects.</p>
+<p>The same layout is used on screen and in the PDF. In the PDF, a row of side-by-side objects is kept together on one page; if a row is too tall to fit on a page, its objects are stacked full-width instead. On a phone-sized screen everything is shown full width.</p>
 <h3>Text that updates itself</h3>
 <p>Type these placeholders in any heading, text, header or footer. They are filled in each time the report is opened:</p>
 <table>
@@ -213,8 +221,13 @@
 <li><b>⬇ PDF</b> downloads the report as a PDF with header, footer and page numbers, using the data as you are allowed to see it.</li>
 </ul>
 <h3>Sharing</h3>
-<p>A report is private until its owner shares it: <b>👥 Share</b>, then give each role or person <i>Can view</i> or <i>Can view and edit</i>.</p>
-<figure><img src="/static/help/img/report-share.png" alt="The share window with access choices per role and per person"><figcaption>Sharing a report.</figcaption></figure>
+<p>A report is private until its owner shares it. Press <b>👥 Share</b> and choose <i>Can view</i> or <i>Can view and edit</i> for:</p>
+<ul>
+<li><b>User groups</b> — everyone in a group set up by your administrator (for example “Sales leadership”). People added to the group later get access automatically; people removed lose it.</li>
+<li><b>Roles</b> — all analysts or all data stewards.</li>
+<li><b>Individual people</b> — one or as many as you like.</li>
+</ul>
+<figure><img src="/static/help/img/report-share.png" alt="The share window with access choices per group, per role and per person"><figcaption>Sharing a report with a group.</figcaption></figure>
 <p>Sharing a report never widens anyone's access to data:</p>
 <ul>
 <li>The report is refreshed <b>for the person opening it</b>. A result from a data model they cannot use shows “You do not have access…” instead of data.</li>
@@ -223,15 +236,23 @@
 <li>Someone with edit rights can add only their own answered questions and cannot change the query behind an existing result.</li>
 <li>Only the owner (or an administrator) can share, schedule or delete a report.</li>
 </ul>
-<h3>Scheduling</h3>
-<p><b>🕒 Schedule</b> (owner only): choose every day, every weekday, a day of the week or a day of the month, and a time in your own time zone. Optionally list email addresses to receive the PDF.</p>
-<figure><img src="/static/help/img/report-schedule.png" alt="The schedule window with frequency, time and recipients"><figcaption>Scheduling a report.</figcaption></figure>
+<h3>Scheduling and emailing</h3>
+<p><b>🕒 Schedule</b> (owner only). Choose every day, every weekday, a day of the week or a day of the month, and a time in your own time zone. Then choose who receives the PDF by email — any mix of:</p>
+<figure><img src="/static/help/img/report-schedule.png" alt="The schedule window with frequency, time, user groups, people and other addresses"><figcaption>Scheduling a report to a group, two people and two outside addresses.</figcaption></figure>
+<table>
+<tr><th>Recipients</th><th>Who gets it</th><th>What they receive</th></tr>
+<tr><td>User groups</td><td>Every member of each ticked group, as the group stands at the time of each run.</td><td rowspan="2">Their <b>own</b> copy, refreshed with their own data access and data filters — exactly what they would see opening the report themselves.</td></tr>
+<tr><td>People</td><td>Each person you tick — one or many.</td></tr>
+<tr><td>Other email addresses</td><td>Anyone without an account; separate addresses with commas or new lines.</td><td>The report as <b>you</b> (the owner) see it. Only add people who are allowed to see that.</td></tr>
+</table>
 <ul>
-<li>Each run refreshes the report and saves a dated PDF under <b>🗂 Saved copies</b>. The latest 30 are kept.</li>
-<li>If email has been set up by an administrator, the PDF is emailed to the recipients. If not, it is still saved in the app.</li>
-<li><b>Scheduled runs use the owner's data access.</b> Recipients receive what the owner would see, so only add people who are allowed to see it. Saved copies are visible to the owner and administrators only.</li>
-<li><b>▶ Run now</b> makes a saved copy immediately, and emails it if you tick the box.</li>
+<li>Someone picked more than once (in two groups, say) gets one email.</li>
+<li><b>Send from</b> chooses which mailbox the email comes from; leave it on <i>Default sender</i> unless you have a reason.</li>
+<li>Each run also saves a dated PDF under <b>🗂 Saved copies</b> (your view; the latest 30 are kept; visible to you and administrators).</li>
+<li>If no email sender has been set up, the copy is still saved and a note says it was not emailed.</li>
+<li><b>▶ Run now</b> makes a saved copy immediately, and emails everyone selected if you tick the box — a good way to test.</li>
 <li>The server must be running at the scheduled time. A run missed while the server was down happens when it next starts.</li>
+<li>To email a report you must schedule it; sharing alone gives access in the app but sends nothing.</li>
 </ul>
 </section>
 
@@ -381,6 +402,72 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 <p>Deleting a data model deletes its training and all chats about it. The source database is never touched.</p>
 </section>
 
+<section id="groups" data-title="User groups (admin)" data-role="Administrators">
+<h2>User groups</h2>
+<p><b>Admin → User groups.</b> A group is a named list of users — a team, a department, a management layer. Groups are used in two places: a report can be <b>shared</b> with a group, and a scheduled report can be <b>emailed</b> to a group.</p>
+<figure><img src="/static/help/img/groups.png" alt="The User groups tab listing a group and its members"><figcaption>Admin → User groups.</figcaption></figure>
+<ol>
+<li>Press <b>＋ New group</b>, give it a name and an optional description.</li>
+<li>Tick its members (use <i>Find a user</i> for long lists) and press <b>Save group</b>.</li>
+</ol>
+<figure><img src="/static/help/img/group-form.png" alt="The group form with name and a tick-list of members"><figcaption>Creating a group.</figcaption></figure>
+<ul>
+<li>A user can belong to any number of groups.</li>
+<li>Changing a group's members takes effect immediately: new members can open reports shared with the group and receive its scheduled emails from the next run; removed members stop.</li>
+<li>Deleting a group removes the sharing and schedule entries that pointed at it. The users themselves are not affected.</li>
+<li>Groups do not grant access to data. What each member sees is still decided by <a href="#/help/access">Data access</a>.</li>
+</ul>
+</section>
+
+<section id="senders" data-title="Email senders (admin)" data-role="Administrators">
+<h2>Email senders</h2>
+<p><b>Admin → Email senders.</b> A sender is a mailbox that AskData sends scheduled reports from. Out of the box nothing is emailed: add at least one sender, verify it and send yourself a test.</p>
+<figure><img src="/static/help/img/senders.png" alt="The Email senders tab with one verified sender and Verify, Send test, Edit and Delete buttons"><figcaption>Admin → Email senders.</figcaption></figure>
+<h3>Adding a sender</h3>
+<ol>
+<li>Press <b>＋ Add sender</b>.</li>
+<li>Enter a <b>Label</b> (how it appears in the app), the <b>From name</b> and <b>From email address</b> recipients will see, and optionally a <b>Reply-to</b> address.</li>
+<li>Choose a <b>Provider preset</b>. It fills in the server, port and SSL/TLS setting and shows the provider's sign-in notes.</li>
+<li>Enter the <b>SMTP username</b> (usually the full email address) and <b>password</b> (often an app password).</li>
+<li>Save, then press <b>Verify</b> and <b>Send test</b>.</li>
+</ol>
+<figure><img src="/static/help/img/sender-form.png" alt="The Add email sender form with provider preset and SMTP fields"><figcaption>Adding a sender. The preset fills in the server details.</figcaption></figure>
+<table>
+<tr><th>Provider preset</th><th>Server</th><th>Notes</th></tr>
+<tr><td>Titan Mail / GoDaddy Professional Email</td><td>smtpout.secureserver.net : 465, SSL/TLS on</td><td>Username is the full address; normal mailbox password. Or port 587 with SSL/TLS off.</td></tr>
+<tr><td>Titan Mail (Hostinger / BigRock / others)</td><td>smtp.titan.email : 465, SSL/TLS on</td><td>EU accounts use smtp0101.titan.email.</td></tr>
+<tr><td>Google (Gmail / Workspace)</td><td>smtp.gmail.com : 587, SSL/TLS off</td><td>Needs a 16-character App Password; normal passwords are rejected.</td></tr>
+<tr><td>Microsoft 365 / Outlook</td><td>smtp.office365.com : 587, SSL/TLS off</td><td>SMTP AUTH must be enabled for the mailbox by your Microsoft 365 administrator.</td></tr>
+<tr><td>Zoho Mail</td><td>smtp.zoho.in or smtp.zoho.com : 465, SSL/TLS on</td><td>Use an application-specific password if two-factor sign-in is on.</td></tr>
+<tr><td>Other SMTP server</td><td>you enter it</td><td>Port 587 = STARTTLS (SSL/TLS off). Port 465 = SSL/TLS on. Works with Amazon SES, SendGrid, Postmark, Brevo and internal relays.</td></tr>
+</table>
+<table>
+<tr><th>Field</th><th>Meaning</th></tr>
+<tr><td>Delivery mode</td><td><b>Real email via SMTP</b>, or <b>Simulation</b> — everything is recorded in the Email log but nothing leaves the server. Useful for demos and testing schedules.</td></tr>
+<tr><td>Use SSL/TLS from the start</td><td>On for port 465. Off for port 587, where the connection is upgraded with STARTTLS.</td></tr>
+<tr><td>Password</td><td>Encrypted at rest and never shown again. Leave blank when editing to keep the stored one. Tick <i>Show password</i> to check what you typed.</td></tr>
+<tr><td>Active</td><td>Untick to stop using a sender without deleting it.</td></tr>
+<tr><td>Use as the default sender</td><td>Used by every schedule that has not chosen a specific sender. The first sender you add becomes the default.</td></tr>
+</table>
+<h3>Testing</h3>
+<ul>
+<li><b>Verify</b> connects to the mail server and signs in, without sending anything. The Status column shows “✓ verified” or the server's error.</li>
+<li><b>Send test</b> sends a real message. Enter one or several addresses separated by commas.</li>
+</ul>
+<figure><img src="/static/help/img/sender-test.png" alt="The send test window showing a success message"><figcaption>Sending a test email.</figcaption></figure>
+<h3>Email log</h3>
+<p>Below the senders is a log of the latest 200 emails: when, to whom, the subject, which report it was for, which sender, and whether it was <i>sent</i>, <i>failed</i> (with the mail server's reason) or <i>simulated</i>. “Sent” means the mail server accepted it; SMTP cannot confirm it reached the inbox.</p>
+<figure><img src="/static/help/img/email-log.png" alt="The email log table"><figcaption>The email log.</figcaption></figure>
+<h3>If emails do not arrive</h3>
+<ul>
+<li>Check the recipient's spam folder and the Email log.</li>
+<li>Most providers need an <b>app password</b> when two-factor sign-in is on for the mailbox.</li>
+<li>The From address should be the mailbox you sign in with, or an alias it may send as.</li>
+<li>Publish SPF and DKIM records for your sending domain so messages are not treated as spam.</li>
+<li>Mailbox providers limit how many messages you can send per day; for large audiences use a transactional mail service.</li>
+</ul>
+</section>
+
 <section id="access" data-title="Data access &amp; filters (admin)" data-role="Administrators">
 <h2>Data access and data filters</h2>
 <p><b>Admin → Data access</b> is where you decide who may use each data model and which rows they are allowed to see.</p>
@@ -467,12 +554,11 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 <tr><td>Automatic SQL repair attempts</td><td>2</td><td>How many times the model may retry after a database error. 0 switches repair off.</td></tr>
 <tr><td>Keep result snapshots in chat history</td><td>On</td><td>Off = results are never stored by AskData; users re-run to see them again.</td></tr>
 <tr><td>When an analyst confirms or corrects SQL</td><td>Approval first</td><td>Whether analyst feedback trains the model straight away or waits in the review queue.</td></tr>
-<tr><td>Email for scheduled reports</td><td>Off</td><td>Your outgoing mail server: host, port, security (STARTTLS / SSL / none), from address, and a username and password if the server needs them. <b>Save &amp; send test email</b> checks it. The password is stored encrypted. Leave the host blank to switch email off.</td></tr>
 <tr><td>Web address of this app</td><td>blank</td><td>Used for the “open the live report” link in report emails.</td></tr>
 </table>
-<figure><img src="/static/help/img/email-settings.png" alt="The email settings card"><figcaption>Email settings for scheduled reports.</figcaption></figure>
+<p>Mailboxes for scheduled reports are set up on their own tab: <a href="#/help/senders">Email senders</a>.</p>
 <h3>Audit log</h3>
-<p><b>Admin → Audit log</b> records who did what and when: sign-ins (successful and failed), questions asked, SQL edits, feedback, training changes, report opening, sharing and scheduling, data-access and data-filter changes, connection, user, model and setting changes. Filter by event type, search, and export to CSV.</p>
+<p><b>Admin → Audit log</b> records who did what and when: sign-ins (successful and failed), questions asked, SQL edits, feedback, training changes, report opening, sharing and scheduling, data-access and data-filter changes, user-group and email-sender changes, test emails, connection, user, model and setting changes. Filter by event type, search, and export to CSV.</p>
 </section>
 
 <section id="dashboard" data-title="Dashboard (stewards)" data-role="Data stewards &amp; administrators">
@@ -569,8 +655,10 @@ docker compose up --build</pre>
 <tr><td>The model invents columns or gets joins wrong</td><td>Sync the schema; add a documentation note explaining the tables; add a verified example. See Training.</td></tr>
 <tr><td>Answers ignore a business rule</td><td>Write the rule as a documentation note with the words users use, and add one example applying it.</td></tr>
 <tr><td>“Stored secret cannot be decrypted”</td><td><code>T2S_SECRET_KEY</code> changed. Restore the original key, or re-enter database passwords and API keys.</td></tr>
-<tr><td>A scheduled report was not emailed</td><td>Open the report → Saved copies and read the note on that run. Usual causes: email not set up (Admin → Settings), the mail server rejected the login, or no recipients were entered. The PDF is still saved.</td></tr>
-<tr><td>Test email fails</td><td>Check host, port and security go together (587 with STARTTLS, 465 with SSL), that the server can reach the mail server, and whether it needs a username and password or an app password.</td></tr>
+<tr><td>A scheduled report was not emailed</td><td>Open the report → Saved copies and read the note on that run, then Admin → Email senders → Email log for the mail server's reason. Usual causes: no active sender, the sender is in simulation mode, the mail server rejected the sign-in, or no recipients were chosen. The PDF is still saved.</td></tr>
+<tr><td>Verify fails: “rejected the username or password”</td><td>Use the full email address as the username. If two-factor sign-in is on for the mailbox, create and use an app password.</td></tr>
+<tr><td>Verify fails: “Secure connection failed” or “Could not connect”</td><td>Port and SSL/TLS must match: 465 with SSL/TLS on, 587 with it off. Check the server name, and that the AskData server is allowed out to that port by your firewall.</td></tr>
+<tr><td>I cannot find where to set up email</td><td>Admin → <b>Email senders</b> (a tab along the top of the Admin page, administrators only). If the tab is missing you are running an older copy: replace the files, restart the server and refresh the browser with Ctrl+F5.</td></tr>
 <tr><td>A scheduled report did not run</td><td>The server was not running at that time (it runs on the next start), the schedule is switched off, or the owner's account is disabled.</td></tr>
 <tr><td>“This SQL … cannot be checked against your data filters”</td><td>The query uses syntax the server cannot analyse, so it is refused rather than run unfiltered. Rephrase the question or simplify the SQL.</td></tr>
 <tr><td>Two people see different numbers in the same report</td><td>Expected when data filters apply: each person sees only their rows. Look for the 🔒 badge.</td></tr>

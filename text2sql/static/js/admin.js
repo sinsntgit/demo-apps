@@ -2,7 +2,7 @@
 import { h, fill, api, busy, fail, toast, modal, field, check, select, tabs, confirmDialog, fmtTime, state } from './core.js';
 
 export async function adminView(root, arg) {
-  const t = tabs([['users', 'Users', usersTab], ['access', 'Data access', accessTab], ['models', 'AI models', modelsTab], ['settings', 'Settings', settingsTab], ['audit', 'Audit log', auditTab]], arg || 'users');
+  const t = tabs([['users', 'Users', usersTab], ['groups', 'User groups', groupsTab], ['access', 'Data access', accessTab], ['models', 'AI models', modelsTab], ['senders', 'Email senders', sendersTab], ['settings', 'Settings', settingsTab], ['audit', 'Audit log', auditTab]], arg || 'users');
   fill(root, h('div', { class: 'page' }, h('div', { class: 'page-head' }, h('h1', {}, 'Admin')), t));
 }
 
@@ -99,8 +99,6 @@ function settingsTab(el) {
     const num = k => h('input', { type: 'number', value: s[k], style: 'max-width:140px', oninput: e => { s[k] = e.target.value; } });
     const bool = (k, label, hint) => check(label, s[k], v => { s[k] = v; }, hint);
     const text = (k, ph) => h('input', { type: 'text', value: s[k] || '', placeholder: ph, oninput: e => { s[k] = e.target.value; } });
-    const testTo = h('input', { type: 'email', placeholder: 'send a test to…', value: state.me.email, style: 'max-width:260px' });
-    const testOut = h('span', { class: 'small' });
     const fb = select([['approval', 'Send to a steward for approval first'], ['instant', 'Use immediately for training']], s.feedback_mode, v => { s.feedback_mode = v; }, { style: 'max-width:340px' });
     const save = h('button', { class: 'btn primary', onclick: () => busy(save, async () => { await api('PUT', '/api/admin/settings', s); toast('Settings saved'); }) }, 'Save settings');
     fill(el, h('div', { class: 'stack', style: 'max-width:680px' },
@@ -111,18 +109,9 @@ function settingsTab(el) {
         field('Automatic SQL repair attempts', num('max_repair_attempts'), 'after a database error')),
         bool('store_results', 'Keep result snapshots in chat history', 'Turn off if query results must never be stored outside the source database. Users can still re-run saved SQL.')),
       h('div', { class: 'card stack' }, h('h2', {}, 'Training from user feedback'), field('When an analyst confirms or corrects SQL', fb, 'admins and data stewards are always trusted')),
-      h('div', { class: 'card stack' }, h('h2', {}, 'Email for scheduled reports'),
-        h('p', { class: 'small dim', style: 'margin:0' }, 'Your organisation’s outgoing mail server (SMTP). Leave the server blank to switch email off; scheduled reports are then only saved in the app.'),
-        h('div', { class: 'grid2' }, field('Mail server (host)', text('smtp_host', 'smtp.yourcompany.com')), field('Port', num('smtp_port')),
-          field('Security', select([['starttls', 'STARTTLS (usually port 587)'], ['ssl', 'SSL / TLS (usually port 465)'], ['none', 'None (internal relay only)']], s.smtp_security, v => { s.smtp_security = v; })),
-          field('From address', text('smtp_from', 'reports@yourcompany.com')), field('Username', text('smtp_user', 'leave blank if not required')),
-          field('Password', h('input', { type: 'password', autocomplete: 'new-password', placeholder: s.smtp_password_set ? '•••••••• (unchanged)' : '', oninput: e => { s.smtp_password = e.target.value; } }), 'stored encrypted')),
-        field('Web address of this app', text('public_url', 'https://askdata.yourcompany.com'), 'used for the “open the live report” link in emails'),
-        h('div', { class: 'row wrap' }, testTo, h('button', { class: 'btn', onclick: e => busy(e.target, async () => {
-          await api('PUT', '/api/admin/settings', s);
-          const r = await api('POST', '/api/admin/settings/test-email', { to: testTo.value });
-          testOut.replaceChildren(h('span', { class: 'badge ' + (r.ok ? 'good' : 'bad') }, r.ok ? '✓ ' : '✗ ', r.message));
-        }) }, 'Save & send test email'), testOut)),
+      h('div', { class: 'card stack' }, h('h2', {}, 'Email'),
+        field('Web address of this app', text('public_url', 'https://askdata.yourcompany.com'), 'used for the “open the live report” link in report emails'),
+        h('p', { class: 'small', style: 'margin:0' }, 'Mailboxes used to send scheduled reports are set up under ', h('a', { href: '#/admin/senders' }, 'Admin → Email senders'), '.')),
       h('div', {}, save)));
   }).catch(fail);
 }
@@ -135,7 +124,7 @@ function auditTab(el) {
   const qs = () => new URLSearchParams({ q: f.q, action: f.action, page: f.page }).toString();
   const prev = h('button', { class: 'btn sm', onclick: () => { f.page--; draw(); } }, '‹ Newer'), next = h('button', { class: 'btn sm', onclick: () => { f.page++; draw(); } }, 'Older ›');
   fill(el, h('div', { class: 'stack' }, h('div', { class: 'row wrap' }, search,
-    select([['', 'All events'], ['login', 'Sign-ins'], ['query', 'Queries'], ['training', 'Training'], ['report', 'Reports'], ['connection', 'Data models'], ['filter', 'Data filters'], ['user', 'Users'], ['model', 'AI models'], ['settings', 'Settings'], ['2fa', '2FA'], ['password', 'Passwords']], '', v => { f.action = v; f.page = 1; draw(); }, { class: 'inline' }),
+    select([['', 'All events'], ['login', 'Sign-ins'], ['query', 'Queries'], ['training', 'Training'], ['report', 'Reports'], ['connection', 'Data models'], ['filter', 'Data filters'], ['group', 'User groups'], ['sender', 'Email senders'], ['user', 'Users'], ['model', 'AI models'], ['settings', 'Settings'], ['2fa', '2FA'], ['password', 'Passwords']], '', v => { f.action = v; f.page = 1; draw(); }, { class: 'inline' }),
     h('span', { class: 'spacer' }), prev, next, h('a', { class: 'btn sm', href: '#', onclick: e => { e.preventDefault(); location.href = '/api/admin/audit.csv?' + qs(); } }, '⬇ CSV')), body));
   async function draw() {
     const r = await api('GET', '/api/admin/audit?' + qs()).catch(fail);
@@ -206,6 +195,140 @@ function accessTab(el) {
         const body = { connection_id: c.id, table_name: table.value, condition: cond.value, scope: st.scope, role: st.role, user_id: st.user_id ? Number(st.user_id) : null, description: note.value, enabled: on.input.checked };
         await (f ? api('PUT', `/api/admin/filters/${f.id}`, body) : api('POST', '/api/admin/filters', body)); close(); toast('Data filter saved'); draw();
       }) }, 'Save filter')] });
+  }
+  draw().catch(fail);
+}
+
+// Groups of users: share a report with a group, or email a scheduled report to everyone in it.
+function groupsTab(el) {
+  async function draw() {
+    const [groups, users] = await Promise.all([api('GET', '/api/admin/groups'), api('GET', '/api/admin/users')]);
+    const name = id => { const u = users.find(x => x.id === id); return u ? (u.name || u.email) : null; };
+    const edit = g => {
+      const title = h('input', { type: 'text', value: g?.name || '', placeholder: 'e.g. Finance team' });
+      const desc = h('input', { type: 'text', value: g?.description || '', placeholder: 'Optional' });
+      const picked = new Set(g?.user_ids || []);
+      const find = h('input', { type: 'search', placeholder: 'Find a user…' });
+      const list = h('div', { class: 'access-users', style: 'max-height:260px' });
+      const count = h('span', { class: 'small dim' });
+      const paint = () => { const q = find.value.toLowerCase(); count.textContent = `${picked.size} selected`;
+        fill(list, users.filter(u => u.is_active && (u.name + ' ' + u.email).toLowerCase().includes(q)).map(u => check(`${u.name || u.email}  ·  ${u.role}`, picked.has(u.id), v => { v ? picked.add(u.id) : picked.delete(u.id); count.textContent = `${picked.size} selected`; }, u.email))); };
+      find.addEventListener('input', paint); paint();
+      modal(g ? `Edit group · ${g.name}` : 'New user group', h('div', { class: 'stack' }, h('div', { class: 'grid2' }, field('Group name', title), field('Description', desc)),
+        h('div', { class: 'row' }, h('h3', { style: 'margin:0' }, 'Members'), count, h('span', { class: 'spacer' }), h('div', { style: 'width:220px' }, find)), list), {
+        wide: true, actions: close => [h('button', { class: 'btn', onclick: close }, 'Cancel'), h('button', { class: 'btn primary', onclick: e => busy(e.target, async () => {
+          const body = { name: title.value, description: desc.value, user_ids: [...picked] };
+          await (g ? api('PUT', `/api/admin/groups/${g.id}`, body) : api('POST', '/api/admin/groups', body)); close(); toast('Group saved'); draw();
+        }) }, 'Save group')] });
+    };
+    fill(el, h('div', { class: 'stack' }, h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: () => edit(null) }, '＋ New group'),
+      h('span', { class: 'small dim' }, 'Use groups to share a report with a team, or to email a scheduled report to everyone in it. A user can be in several groups.')),
+      groups.length ? h('div', { class: 'card flush' }, groups.map(g => h('div', { class: 'item row top' },
+        h('div', { style: 'flex:1' }, h('div', { class: 'row wrap' }, h('b', {}, g.name), h('span', { class: 'badge' }, `${g.user_ids.length} member${g.user_ids.length === 1 ? '' : 's'}`)),
+          g.description ? h('div', { class: 'muted small' }, g.description) : null,
+          h('div', { class: 'small dim', style: 'margin-top:4px' }, g.user_ids.map(name).filter(Boolean).join(', ') || 'No members yet')),
+        h('button', { class: 'btn sm', onclick: () => edit(g) }, 'Edit'),
+        h('button', { class: 'btn sm danger', onclick: async () => { if (await confirmDialog('Delete group?', `“${g.name}” will be removed. Reports shared with it stop being shared with its members; schedules stop emailing it. The users themselves are not affected.`, 'Delete')) { await api('DELETE', `/api/admin/groups/${g.id}`).catch(fail); draw(); } } }, 'Delete'))))
+        : h('div', { class: 'empty' }, 'No groups yet.')));
+  }
+  draw().catch(fail);
+}
+
+// Mailboxes the platform sends scheduled reports from.
+const MAIL_PRESETS = {
+  titan: { label: 'Titan Mail / GoDaddy Professional Email', host: 'smtpout.secureserver.net', port: 465, secure: true,
+    help: 'Server smtpout.secureserver.net, port 465 with SSL/TLS on (or port 587 with SSL/TLS off). Username is the full email address and the password is your normal mailbox password.' },
+  titan_direct: { label: 'Titan Mail (Hostinger / BigRock / other hosts)', host: 'smtp.titan.email', port: 465, secure: true,
+    help: 'For Titan mailboxes not bought through GoDaddy. Username is the full email address and the password is your normal mailbox password. EU-region accounts use smtp0101.titan.email. If 465 fails, try port 587 with SSL/TLS off.' },
+  google: { label: 'Google (Gmail / Workspace)', host: 'smtp.gmail.com', port: 587, secure: false,
+    help: 'Use the full email address as username and a 16-character App Password (Google Account → Security → 2-Step Verification → App passwords). Regular passwords are rejected.' },
+  microsoft: { label: 'Microsoft 365 / Outlook', host: 'smtp.office365.com', port: 587, secure: false,
+    help: 'SMTP AUTH must be enabled for the mailbox by your Microsoft 365 admin. Microsoft is phasing out basic-auth SMTP, so for Microsoft mailboxes a transactional relay is the safer long-term choice.' },
+  zoho_in: { label: 'Zoho Mail (India data centre)', host: 'smtp.zoho.in', port: 465, secure: true,
+    help: 'Use the full address as username. With two-factor auth on, create an application-specific password in Zoho Accounts → Security. Other regions use smtp.zoho.com / .eu / .com.au.' },
+  zoho: { label: 'Zoho Mail (global)', host: 'smtp.zoho.com', port: 465, secure: true, help: 'Use the full address as username; use an app-specific password if two-factor auth is on.' },
+  custom: { label: 'Other SMTP server', host: '', port: 587, secure: false,
+    help: 'Port 587 uses STARTTLS (leave SSL/TLS off); port 465 uses SSL/TLS from the start (turn it on). Amazon SES, SendGrid, Postmark, Brevo and internal relays all work this way.' },
+};
+
+function sendersTab(el) {
+  function edit(s, done) {
+    const v = s || { mode: 'smtp', port: 587, active: true };
+    const input = (k, type, ph) => h('input', { type: type || 'text', value: v[k] ?? '', placeholder: ph || '', autocomplete: 'off' });
+    const f = { label: input('label', 'text', 'e.g. Reports mailbox'), from_name: input('from_name', 'text', 'e.g. AskData Reports'), from_email: input('from_email', 'email', 'reports@yourcompany.com'),
+      reply_to: input('reply_to', 'email'), host: input('host', 'text', 'smtp.gmail.com'), port: h('input', { type: 'number', min: 1, max: 65535, value: v.port || 587 }), username: input('username', 'text', 'usually the full email address') };
+    const password = h('input', { type: 'password', autocomplete: 'new-password', placeholder: s?.has_password ? '•••••••• (unchanged)' : '' });
+    const showPw = check('Show password', false, on => { password.type = on ? 'text' : 'password'; });
+    const mode = select([['smtp', 'Real email via SMTP'], ['simulate', 'Simulation (nothing is sent — for demos / testing)']], v.mode, () => sync());
+    const guess = s ? (Object.entries(MAIL_PRESETS).find(([, p]) => p.host === s.host)?.[0] || 'custom') : 'titan';
+    const preset = select(Object.entries(MAIL_PRESETS).map(([k, p]) => [k, p.label]), guess, () => applyPreset(true));
+    const help = h('div', { class: 'banner info small' });
+    const secure = check('Use SSL/TLS from the start (port 465). Leave off for port 587 (STARTTLS).', !!v.secure);
+    const active = check('Active', v.active !== false), def = check('Use as the default sender', !!v.is_default);
+    const smtp = h('div', { class: 'stack' }, h('div', { class: 'grid2' }, field('Provider preset', preset), h('span', {})), help,
+      h('div', { class: 'grid2' }, field('SMTP host', f.host), field('Port', f.port)), secure,
+      h('div', { class: 'grid2' }, field('SMTP username', f.username), h('div', {}, field('Password / app password', password), showPw)));
+    function applyPreset(fillIn) { const p = MAIL_PRESETS[preset.value]; help.textContent = p.help; if (fillIn) { f.host.value = p.host; f.port.value = p.port; secure.input.checked = p.secure; } }
+    function sync() { smtp.classList.toggle('hidden', mode.value !== 'smtp'); }
+    f.from_email.addEventListener('blur', () => { if (!f.username.value) f.username.value = f.from_email.value; });
+    applyPreset(!s); sync();
+    modal(s ? `Edit sender · ${s.label}` : 'Add email sender', h('div', { class: 'stack' },
+      h('div', { class: 'grid2' }, field('Label (shown in the app)', f.label), field('From name', f.from_name)),
+      h('div', { class: 'grid2' }, field('From email address', f.from_email), field('Reply-to', f.reply_to, 'optional')),
+      field('Delivery mode', mode), smtp, h('div', { class: 'row wrap' }, active, def),
+      h('p', { class: 'small dim', style: 'margin:0' }, 'Passwords are encrypted at rest and never shown again. After saving, use Verify to check the connection and Send test to send yourself a message.')), {
+      wide: true, actions: close => [h('button', { class: 'btn', onclick: close }, 'Cancel'), h('button', { class: 'btn primary', onclick: e => busy(e.target, async () => {
+        const body = { ...Object.fromEntries(Object.entries(f).map(([k, i]) => [k, i.value])), port: Number(f.port.value) || 587, mode: mode.value, password: password.value,
+          secure: secure.input.checked, active: active.input.checked, is_default: def.input.checked };
+        await (s ? api('PUT', `/api/admin/senders/${s.id}`, body) : api('POST', '/api/admin/senders', body)); close(); toast('Sender saved'); done();
+      }) }, 'Save sender')] });
+  }
+  function sendTest(s, done) {
+    const to = h('input', { type: 'text', value: state.me.email, placeholder: 'one or more addresses, separated by commas' });
+    const out = h('div', {});
+    modal(`Send a test email from “${s.label}”`, h('div', { class: 'stack' }, field('Send a test to', to, 'several addresses can be separated with commas'), out), {
+      actions: close => [h('button', { class: 'btn', onclick: () => { close(); done(); } }, 'Close'), h('button', { class: 'btn primary', onclick: e => busy(e.target, async () => {
+        fill(out, h('span', { class: 'spinner' }), ' Sending…');
+        const r = await api('POST', `/api/admin/senders/${s.id}/test`, { to: to.value });
+        fill(out, h('div', { class: 'banner ' + (!r.ok ? 'bad' : r.simulated ? 'warn' : 'good') }, r.message));
+      }) }, 'Send test')] });
+  }
+  async function draw() {
+    const [list, log] = await Promise.all([api('GET', '/api/admin/senders'), api('GET', '/api/admin/email-log')]);
+    const STATUS = { sent: 'good', failed: 'bad', simulated: 'warn' };
+    fill(el, h('div', { class: 'stack' },
+      h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: () => edit(null, draw) }, '＋ Add sender'),
+        h('span', { class: 'small dim' }, 'Scheduled reports are emailed from these mailboxes. Add one sender per mailbox you send from.')),
+      !list.some(s => s.mode === 'smtp' && s.active) ? h('div', { class: 'banner warn' }, h('b', {}, 'No real sending is configured yet. '),
+        list.length ? 'Your senders are disabled or in simulation mode — ' : 'Add a sender, pick a provider preset, enter the username and password, then click Verify and Send test — until then ',
+        'scheduled reports are saved in the app but no email leaves the server.') : null,
+      list.length ? h('div', { class: 'tbl-wrap', style: 'max-height:none' }, h('table', { class: 'tbl' },
+        h('thead', {}, h('tr', {}, ['Sender', 'Server', 'Status', ''].map(t => h('th', {}, t)))),
+        h('tbody', {}, list.map(s => h('tr', {},
+          h('td', {}, h('b', {}, s.label), ' ', s.is_default ? h('span', { class: 'badge info' }, 'default') : null, h('div', { class: 'small dim' }, `${s.from_name ? s.from_name + ' ' : ''}<${s.from_email}>`)),
+          h('td', { class: 'small' }, s.mode === 'smtp' ? [`${s.host}:${s.port} ${s.secure ? 'SSL/TLS' : 'STARTTLS'}`, h('div', { class: 'dim' }, s.username)] : h('span', { class: 'badge warn' }, 'simulation')),
+          h('td', {}, !s.active ? h('span', { class: 'badge bad' }, 'disabled') : s.mode === 'simulate' ? h('span', { class: 'dim small' }, '—')
+            : s.last_error ? [h('span', { class: 'badge bad' }, 'error'), h('div', { class: 'small', style: 'color:var(--bad);max-width:300px' }, s.last_error)]
+            : s.verified_at ? h('span', { class: 'badge good' }, `✓ verified ${fmtTime(s.verified_at)}`) : h('span', { class: 'badge' }, 'not verified yet')),
+          h('td', { class: 'right nowrap' }, h('button', { class: 'btn sm', onclick: e => busy(e.target, async () => { e.target.textContent = 'Checking…'; const r = await api('POST', `/api/admin/senders/${s.id}/verify`); toast(r.message, !r.ok); draw(); }) }, 'Verify'), ' ',
+            h('button', { class: 'btn sm', onclick: () => sendTest(s, draw) }, 'Send test'), ' ', h('button', { class: 'btn sm', onclick: () => edit(s, draw) }, 'Edit'), ' ',
+            h('button', { class: 'btn sm danger', onclick: async () => { if (await confirmDialog('Delete sender?', `“${s.label}” — schedules that use it fall back to the default sender.`, 'Delete')) { await api('DELETE', `/api/admin/senders/${s.id}`).catch(fail); draw(); } } }, 'Delete'))))))) : null,
+      h('div', { class: 'dash-grid' },
+        h('div', { class: 'card' }, h('h2', {}, 'How sending works'), h('div', { class: 'small stack' },
+          h('div', {}, 'When a report’s schedule fires, the report is refreshed and emailed as a PDF through the sender chosen on the schedule (or the default sender). Each person with an account receives the report with ', h('b', {}, 'their own data access'), '; other addresses receive the owner’s view.'),
+          h('div', {}, h('b', {}, 'Verify'), ' connects and signs in without sending. ', h('b', {}, 'Send test'), ' sends a real message to the addresses you enter.'),
+          h('div', {}, h('b', {}, 'Statuses: '), h('i', {}, 'sent'), ' = accepted by the mail server (SMTP cannot confirm inbox delivery) · ', h('i', {}, 'failed'), ' = refused, with the server’s reason · ', h('i', {}, 'simulated'), ' = recorded only.'))),
+        h('div', { class: 'card' }, h('h2', {}, 'If emails do not arrive'), h('div', { class: 'small stack' },
+          h('div', {}, '☐ Check the recipient’s spam folder, and the Email log below for the server’s reason.'),
+          h('div', {}, '☐ Most providers need an ', h('b', {}, 'app password'), ' when two-factor sign-in is on for the mailbox.'),
+          h('div', {}, '☐ The From address should be the mailbox you sign in with (or an alias it is allowed to send as).'),
+          h('div', {}, '☐ Publish SPF and DKIM for your sending domain so messages are not treated as spam.')))),
+      h('h2', { style: 'margin:8px 0 0' }, 'Email log'),
+      log.length ? h('div', { class: 'tbl-wrap', style: 'max-height:360px' }, h('table', { class: 'tbl' },
+        h('thead', {}, h('tr', {}, ['When', 'To', 'Subject', 'For', 'Sender', 'Status'].map(t => h('th', {}, t)))),
+        h('tbody', {}, log.map(m => h('tr', {}, h('td', { class: 'nowrap' }, fmtTime(m.at)), h('td', {}, m.to), h('td', { class: 'clip' }, m.subject), h('td', { class: 'small' }, m.context), h('td', { class: 'small' }, m.sender),
+          h('td', {}, h('span', { class: 'badge ' + STATUS[m.status] }, m.status), m.error ? h('div', { class: 'small', style: 'color:var(--bad);max-width:280px' }, m.error) : null))))))
+        : h('div', { class: 'empty small' }, 'No emails have been sent yet.')));
   }
   draw().catch(fail);
 }

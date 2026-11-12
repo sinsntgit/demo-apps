@@ -41,7 +41,9 @@ answers a few questions about the sample data (add it as a *Self-hosted* model, 
 | **Summary** | Explains the result by its shape (trend, ranking, two-way breakdown, pivot, listing): leaders and shares, highs and lows, change over the period, concentration. Averages, rates and prices are never totalled. Computed on the server. |
 | **Output** | Chart (bar, horizontal, stacked, line, area, pie, doughnut, scatter, big numbers) with selectable axes, extra measure and split-by. IDs, codes and years are treated as categories, never summed; two measures on different scales get a panel each; sortable table; locally computed summary. Export **PDF report**, CSV, Excel, chart PNG. |
 | **Follow-ups & history** | Suggested follow-up questions; conversations keep context (earlier questions + SQL); chats and results are saved, searchable, renamable and grouped by date. |
-| **Reports** | Build a report from results of any number of chats (chart, table, summary each optional) plus headings, text, header, footer and page numbers. Stores queries, not data: refreshed live for whoever opens it. Live text placeholders. PDF export. Share with users or roles (view / edit). Schedule daily / weekdays / weekly / monthly in your time zone; each run saves a dated PDF and can email it. |
+| **Reports** | Drag-and-drop designer: place results from any number of chats (chart, table, summary each optional), headings, text, dividers and page breaks; set widths (full, ⅔, ½, ⅓) to put objects side by side; header, footer and page numbers. Stores queries, not data: refreshed live for whoever opens it. Live text placeholders. PDF export with the same layout. Share with user groups, roles or people (view / edit). Schedule daily / weekdays / weekly / monthly and email the PDF to groups, any number of people and outside addresses — each account holder receives a copy rendered with their own data access. |
+| **Email senders** | Admin → Email senders: one or more mailboxes with provider presets (Titan / GoDaddy, Google, Microsoft 365, Zoho, any SMTP), Verify, Send test, simulation mode, default sender, and an email log. |
+| **User groups** | Admin → User groups: named lists of users for sharing and emailing reports. |
 | **Data access & filters** | Admin → Data access: enable / disable a data model, open it to all or to selected users, and add row-level filters (`region = 'North'`, `rep_email = {user_email}`) per user, per role or for everyone. Filters are applied by the server to every query — model-written, hand-edited or in a report. |
 | **Help** | Built-in Help page for users, stewards and administrators with screenshots, search and print (`static/help/help.html`). |
 | **Security** | TOTP two-factor authentication with recovery codes (optional or enforced org-wide), bcrypt passwords with policy, account lockout, session revocation, roles, per-data-model access, CSRF protection, security headers, full audit log. |
@@ -120,8 +122,8 @@ T2S_TEST_PG=user:password@host:5432/dbname python -m pytest
 - Put it behind HTTPS (reverse proxy) and set `T2S_COOKIE_SECURE=1`.
 - Rate limiting and the query thread pool are per process; run one app process per container, scale with
   containers and a shared PostgreSQL metadata store.
-- Tables are created automatically at start-up; there is no migration tool yet, so back up the metadata
-  database before upgrading.
-- Scheduled reports run in a background thread of the app process; email needs your SMTP server entered under
-  Admin → Settings. Email delivery was tested against a local test mail server, not a real provider.
+- Scheduled reports run in a background thread of the app process; email needs a sender under
+  Admin → Email senders. Email delivery was tested against a local test mail server, not a real provider.
+- On start-up the app adds any columns a newer version introduced to existing tables (and creates new
+  tables), so an existing data folder keeps working after an update. Back it up first all the same.
 - Not included: SSO (SAML / OIDC).

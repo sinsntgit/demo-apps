@@ -17,9 +17,35 @@ log = logging.getLogger("text2sql")
 STATIC = config.BASE_DIR / "static"
 
 
+def upgrade_schema():
+    """Lightweight upgrade step: add columns that newer versions introduced to existing tables,
+    and carry settings forward. New tables are handled by create_all."""
+    from sqlalchemy import inspect, text
+    insp = inspect(engine)
+    with engine.begin() as con:
+        for table in Base.metadata.sorted_tables:
+            have = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name not in have:
+                    ddl = f'ALTER TABLE {table.name} ADD COLUMN {col.name} {col.type.compile(engine.dialect)}'
+                    con.execute(text(ddl))
+                    log.info("Schema upgrade: %s", ddl)
+    with SessionLocal() as db:      # the single SMTP setting of earlier versions becomes an email sender
+        from .deps import get_settings
+        from .models import EmailSender
+        cfg = get_settings(db)
+        if cfg.get("smtp_host") and cfg.get("smtp_from") and not db.scalar(select(EmailSender.id).limit(1)):
+            db.add(EmailSender(label="Default sender", from_email=cfg["smtp_from"], host=cfg["smtp_host"],
+                               port=int(cfg.get("smtp_port") or 587), secure=cfg.get("smtp_security") == "ssl",
+                               username=cfg.get("smtp_user") or "", password_enc=cfg.get("smtp_password") or "",
+                               is_default=True))
+            db.commit()
+
+
 def bootstrap():
     """Create tables; on first run add the admin user and a ready-to-try sample data model."""
     Base.metadata.create_all(engine)
+    upgrade_schema()
     with SessionLocal() as db:
         if db.scalar(select(User.id).limit(1)):
             return

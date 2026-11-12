@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from .. import mailer, reporting
 from ..db import get_db, now
-from ..deps import audit, current_user, get_settings
-from ..models import ROLES, QueryRun, Report, ReportShare, ReportSnapshot, User
+from ..deps import audit, current_user
+from ..models import ROLES, EmailSender, QueryRun, Report, ReportShare, ReportSnapshot, User, UserGroup, UserGroupMember
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -34,7 +34,10 @@ class ScheduleIn(BaseModel):
     weekday: int = 0                # Monday = 0
     monthday: int = 1
     tz: str = "UTC"
-    recipients: list[str] = []
+    recipients: list[str] = []      # any other email addresses
+    user_ids: list[int] = []        # people with an account: each gets the report with their own data access
+    group_ids: list[int] = []       # every member of these groups
+    sender_id: int | None = None    # which email sender to send from (default sender if blank)
 
 
 class SharesIn(BaseModel):
@@ -72,9 +75,9 @@ def _full(db, user, r: Report) -> dict:
            "components": [{k: v for k, v in c.items() if k != "sql"} for c in r.components or []]}
     if reporting.is_owner(user, r):
         out["schedule"] = r.schedule or ScheduleIn().model_dump()
-        out["shares"] = [{"scope": s.scope, "user_id": s.user_id, "role": s.role, "can_edit": s.can_edit}
+        out["shares"] = [{"scope": s.scope, "user_id": s.user_id, "role": s.role, "group_id": s.group_id, "can_edit": s.can_edit}
                          for s in db.scalars(select(ReportShare).where(ReportShare.report_id == r.id))]
-        out["email_ready"] = mailer.configured(get_settings(db))
+        out["email_ready"] = mailer.configured(db)
     return out
 
 
@@ -87,10 +90,19 @@ def list_reports(user: User = Depends(current_user), db: Session = Depends(get_d
 
 @router.get("/people")
 def people(user: User = Depends(current_user), db: Session = Depends(get_db)):
-    """Minimal directory for the sharing picker."""
-    return {"roles": list(ROLES), "users": [{"id": u.id, "name": u.name or u.email, "email": u.email, "role": u.role}
-                                            for u in db.scalars(select(User).where(User.is_active).order_by(User.email))
-                                            if u.id != user.id]}
+    """Directory for the sharing and scheduling pickers: people, groups and email senders."""
+    counts: dict = {}
+    for m in db.scalars(select(UserGroupMember)):
+        counts[m.group_id] = counts.get(m.group_id, 0) + 1
+    return {"roles": list(ROLES),
+            "users": [{"id": u.id, "name": u.name or u.email, "email": u.email, "role": u.role, "me": u.id == user.id}
+                      for u in db.scalars(select(User).where(User.is_active).order_by(User.email))],
+            "groups": [{"id": g.id, "name": g.name, "description": g.description, "members": counts.get(g.id, 0)}
+                       for g in db.scalars(select(UserGroup).order_by(UserGroup.name))],
+            "senders": [{"id": x.id, "label": f"{x.label} <{x.from_email}>", "is_default": x.is_default,
+                         "simulated": x.mode == "simulate"}
+                        for x in db.scalars(select(EmailSender).where(EmailSender.active)
+                                            .order_by(EmailSender.is_default.desc(), EmailSender.label))]}
 
 
 @router.post("")
@@ -192,15 +204,19 @@ def set_schedule(report_id: int, body: ScheduleIn, request: Request, user: User 
     bad = [x for x in recipients if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", x)]
     if bad:
         raise HTTPException(400, f"Not a valid email address: {bad[0]}")
-    if len(recipients) > 30:
-        raise HTTPException(400, "At most 30 recipients.")
-    r.schedule = {**body.model_dump(), "recipients": recipients, "weekday": body.weekday % 7,
-                  "monthday": min(max(body.monthday, 1), 28)}
+    user_ids = [u for u in dict.fromkeys(body.user_ids) if db.get(User, u)]
+    group_ids = [g for g in dict.fromkeys(body.group_ids) if db.get(UserGroup, g)]
+    r.schedule = {**body.model_dump(), "recipients": recipients, "user_ids": user_ids, "group_ids": group_ids,
+                  "weekday": body.weekday % 7, "monthday": min(max(body.monthday, 1), 28)}
+    people_, extra = reporting.recipients(db, r)
+    if len(people_) + len(extra) > 200:
+        raise HTTPException(400, "At most 200 recipients in total.")
     r.next_run_at = reporting.next_run(r.schedule)
     audit(db, request, user, "report.schedule_changed", r.title,
-          f"{body.frequency} {body.time} {body.tz}; {len(recipients)} recipient(s)" if body.enabled else "off")
+          f"{body.frequency} {body.time} {body.tz}; {len(people_)} people + {len(extra)} other address(es)" if body.enabled else "off")
     db.commit()
-    return {"schedule": r.schedule, "next_run_at": r.next_run_at.isoformat() if r.next_run_at else None}
+    return {"schedule": r.schedule, "next_run_at": r.next_run_at.isoformat() if r.next_run_at else None,
+            "recipient_count": len(people_) + len(extra)}
 
 
 @router.put("/{report_id}/shares")
@@ -212,6 +228,9 @@ def set_shares(report_id: int, body: SharesIn, request: Request, user: User = De
     for s in body.shares[:200]:
         if s.get("scope") == "role" and s.get("role") in ROLES:
             db.add(ReportShare(report_id=r.id, scope="role", role=s["role"], can_edit=bool(s.get("can_edit"))))
+            n += 1
+        elif s.get("scope") == "group" and db.get(UserGroup, int(s.get("group_id") or 0)):
+            db.add(ReportShare(report_id=r.id, scope="group", group_id=int(s["group_id"]), can_edit=bool(s.get("can_edit"))))
             n += 1
         elif s.get("scope") == "user" and db.get(User, int(s.get("user_id") or 0)):
             db.add(ReportShare(report_id=r.id, scope="user", user_id=int(s["user_id"]), can_edit=bool(s.get("can_edit"))))
