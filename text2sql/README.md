@@ -12,7 +12,7 @@ straight to the browser.
 ```bash
 cd text2sql
 pip install -r requirements.txt -r requirements-drivers.txt
-uvicorn app.main:app --port 8000
+python -m uvicorn app.main:app --port 8000
 ```
 
 Open http://localhost:8000. The first-run admin password is printed in the server log (you must change it
