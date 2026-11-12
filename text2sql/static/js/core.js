@@ -1,5 +1,5 @@
 // Shared helpers: DOM builder, API client, modal, toast, formatting.
-export const state = { me: null, onAuthLost: null };
+export const state = { me: null, onAuthLost: null, onForbidden: null };
 
 export function h(tag, attrs, ...kids) {
   const el = document.createElement(tag);
@@ -32,6 +32,7 @@ export async function api(method, path, body) {
   let res;
   try { res = await fetch(path, opts); } catch { throw new Error('Cannot reach the server. Check your connection.'); }
   if (res.status === 401 && !path.startsWith('/api/auth/') && state.onAuthLost) { state.onAuthLost(); throw new Error('Please sign in again.'); }
+  if (res.status === 403 && !path.startsWith('/api/auth/')) state.onForbidden?.();
   const data = res.headers.get('content-type')?.includes('json') ? await res.json() : await res.text();
   if (!res.ok) {
     let msg = data?.detail ?? 'Request failed';

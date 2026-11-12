@@ -31,6 +31,25 @@ async function boot() {
 }
 state.onAuthLost = () => { if (state.me) { state.me = null; boot(); } };
 
+// The sign-in cookie is shared by every tab of the browser. If someone else signs in from another tab,
+// or an administrator changes this person's role, the menu on screen would be out of date - so the
+// identity is re-checked on every navigation, whenever the tab regains focus, and after a 403.
+let checking = false;
+async function recheck() {
+  if (!state.me || checking) return false;
+  checking = true;
+  try {
+    const me = await api('GET', '/api/auth/me');
+    const changed = me.id !== state.me.id || me.role !== state.me.role || me.scope !== state.me.scope || me.requirements.length !== state.me.requirements.length;
+    if (changed) { document.querySelectorAll('.overlay').forEach(o => o.remove()); await boot(); }
+    else state.me = me;
+    return changed;
+  } catch { state.me = null; await boot(); return true; } finally { checking = false; }
+}
+state.onForbidden = () => { recheck(); };
+document.addEventListener('visibilitychange', () => { if (!document.hidden) recheck(); });
+window.addEventListener('focus', () => { recheck(); });
+
 function shell() {
   const main = h('div', { class: 'main' });
   const nav = h('nav', { class: 'nav' }, h('div', { class: 'brand' }, h('i', {}, '▮▮'), state.me.app_name),
@@ -41,7 +60,8 @@ function shell() {
   fill(app, h('div', { class: 'shell' }, nav, main));
 
   let token = 0;
-  async function route() {
+  async function route(fresh) {
+    if (!fresh && await recheck()) return;          // signed-in user or role changed: the whole shell was rebuilt
     const [, path = 'ask', arg] = location.hash.split('/');
     const r = ROUTES.find(x => x.path === path && allowed(x)) || ROUTES[0];
     nav.querySelectorAll('a').forEach(a => a.classList.toggle('on', a.dataset.path === r.path));
@@ -54,6 +74,6 @@ function shell() {
     // chat keeps its own URL in sync with replaceState; only re-render on real navigation
     route();
   };
-  route();
+  route(true);
 }
 boot();
