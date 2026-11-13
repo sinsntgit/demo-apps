@@ -10,8 +10,8 @@ import { listFields, mergeCustom } from './customfields.js';
 const displayCustom = (d, r) => { const v = r.custom?.[d.key]; if (v == null) return ''; if (d.type === 'lookup') return r.custom_labels?.[d.key] ?? ''; if (d.type === 'checkbox') return v ? 'yes' : 'no'; return Array.isArray(v) ? v.join('; ') : v; };
 import { segmentFields, SEGMENT_OPS, parseFilter, resolveSegment } from './segments.js';
 import {
-  MERGE_TAGS, renderMessage, sendTest, launchCampaign, validateForLaunch, campaignStats, outboxLog, resolveSender, isSimulated,
-} from './campaigns.js';
+  MERGE_TAGS, renderMessage, sendTest, launchCampaign, validateForLaunch, campaignStats, outboxLog, resolveSender, isSimulated, trackingPlan } from './campaigns.js';
+import { lintCampaign, addressReach } from './deliverability.js';
 import { notify, EVENTS } from './notifications.js';
 import { aiConfigured, aiModel } from './ai.js';
 import { getTheme, getSetting } from './settings.js';
@@ -313,6 +313,7 @@ function campaignInput(b, existing) {
     if (out.sender_id && !get('SELECT id FROM senders WHERE id=?', out.sender_id)) throw bad('Sender not found');
   }
   if ('body_html' in b) out.body_html = String(b.body_html ?? '');
+  if ('track' in b) out.track = b.track === false || b.track === 0 || b.track === '0' ? 0 : 1;
   if ('segment_id' in b) {
     out.segment_id = b.segment_id ? Number(b.segment_id) : null;
     if (out.segment_id && !get('SELECT id FROM segments WHERE id=?', out.segment_id)) throw bad('Segment not found');
@@ -359,7 +360,8 @@ POST('/api/campaigns/:id/duplicate', ({ params, user }) => {
 });
 POST('/api/campaigns/preview', ({ body }) => {
   const sample = { first_name: 'Alex', last_name: 'Morgan', email: 'alex@example.com', title: 'VP Operations', account_name: 'Northwind Traders' };
-  return renderMessage({ subject: String(body.subject || ''), body_html: String(body.body_html || '') }, sample, null);
+  const c = { subject: String(body.subject || ''), body_html: String(body.body_html || ''), sender_id: body.sender_id ? Number(body.sender_id) : null, track: body.track === false ? 0 : 1 };
+  return { ...renderMessage(c, sample, null), warnings: lintCampaign(c), tracking: trackingPlan(c), reach: addressReach() };
 });
 POST('/api/campaigns/:id/test', async ({ params, body, user }) => {
   const c = campaignById(params.id);

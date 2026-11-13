@@ -57,6 +57,9 @@ async function editor(root, c) {
       <label>Campaign name<input name="name" value="${c.name}" required maxlength="150"></label>
       <label>Send from<select name="sender_id"><option value="">Default sender${store.meta.senders.find((x) => x.is_default) ? ` (${store.meta.senders.find((x) => x.is_default).from_email})` : ''}</option>${store.meta.senders.filter((x) => x.active).map((x) => html`<option value="${x.id}" ${c.sender_id === x.id ? raw('selected') : ''}>${x.label} &lt;${x.from_email}&gt;${x.mode === 'simulate' ? ' — simulation' : ''}</option>`)}</select></label>
       <div id="senderwarn"></div>
+      <label class="check"><input type="checkbox" name="track" ${c.track === 0 ? '' : raw('checked')}> Track opens and clicks</label>
+      <div class="small muted" style="margin:-6px 0 10px">Adds an invisible image and routes links through the CRM, so it needs an internet address. Turning it off makes emails look more personal.</div>
+      <div id="trackwarn"></div>
       <label>Audience segment<select name="segment_id"><option value="">Choose a segment…</option>${segments.map((s) => html`<option value="${s.id}" ${c.segment_id === s.id ? raw('selected') : ''}>${s.name} (${s.size} emailable)</option>`)}</select></label>
       <div id="audience" class="small muted" style="margin:-4px 0 12px"></div>
       ${aiPanel()}
@@ -66,13 +69,22 @@ async function editor(root, c) {
       <label>Email content (HTML)<textarea name="body_html" rows="14" spellcheck="false">${c.body_html}</textarea></label>
       <p class="small muted">Links are click-tracked automatically, an open pixel is added, and an unsubscribe footer is appended unless you include <code>{{unsubscribe_url}}</code>. Use <code>{{first_name|there}}</code> for fallbacks.</p>
     </form></div></div>
-    <div class="card"><div class="hd"><h2>Live preview</h2><span class="grow"></span><span class="small muted" id="subjprev"></span></div><div class="bd"><iframe class="preview" sandbox="" title="Email preview"></iframe></div></div></div>`);
+    <div><div class="card"><div class="hd"><h2>Live preview</h2><span class="grow"></span><span class="small muted" id="subjprev"></span></div><div class="bd"><iframe class="preview" sandbox="" title="Email preview"></iframe></div></div>
+    <div class="card mt"><div class="hd"><h2>Inbox check</h2><span class="grow"></span><span class="small muted">spam &amp; Promotions signals</span></div><div class="bd small" id="lint"></div></div></div></div>`);
   const form = $('#cform', root); form.addEventListener('submit', (e) => e.preventDefault());
   const frame = $('iframe', root);
-  const val = () => ({ name: form.name.value, sender_id: form.sender_id.value || null, segment_id: form.segment_id.value || null, subject: form.subject.value, body_html: form.body_html.value });
+  const val = () => ({ name: form.name.value, sender_id: form.sender_id.value || null, segment_id: form.segment_id.value || null, subject: form.subject.value, body_html: form.body_html.value, track: form.track.checked });
+  let lastPrev = null;
+  const showLint = (p) => {
+    const icon = { high: '🔴', medium: '🟠', tip: '💡' };
+    setHtml($('#lint', root), p.warnings.length ? html`<div style="display:grid;gap:6px">${p.warnings.map((w) => html`<div>${icon[w.level]} ${w.text}</div>`)}</div>` : html`<div>✅ No obvious spam signals in the content.</div>`);
+    $('#lint', root).insertAdjacentHTML('beforeend', '<p class="muted" style="margin:10px 0 0">Content is only part of it: your domain\'s SPF, DKIM and DMARC matter most — use <b>Check deliverability</b> on the Email senders page.</p>');
+    setHtml($('#trackwarn', root), form.track.checked && !p.tracking.tracked ? html`<div class="banner small"><b>Opens and clicks will not be tracked.</b> ${p.reach.reason} Links in the email will go straight to your website, and people unsubscribe by replying. ${allow('settings.manage') ? html`Set the internet address under <a href="#/settings">Settings → Email delivery</a>.` : ''}</div>` : '');
+  };
   const refreshPreview = debounce(async () => {
-    try { const p = await api('POST', '/campaigns/preview', { subject: form.subject.value, body_html: form.body_html.value }); frame.srcdoc = p.html; $('#subjprev', root).textContent = 'Subject: ' + p.subject; } catch (e) { fail(e); }
+    try { const p = await api('POST', '/campaigns/preview', { subject: form.subject.value, body_html: form.body_html.value, sender_id: form.sender_id.value || null, track: form.track.checked }); lastPrev = p; frame.srcdoc = p.html; $('#subjprev', root).textContent = 'Subject: ' + p.subject; showLint(p); } catch (e) { fail(e); }
   }, 350);
+  form.track.addEventListener('change', () => refreshPreview());
   const refreshAudience = async () => {
     const seg = segments.find((s) => String(s.id) === form.segment_id.value); const el = $('#audience', root);
     if (!seg) { el.textContent = ''; return; }
@@ -123,7 +135,9 @@ async function editor(root, c) {
       modal({ title: 'Send campaign now', submitLabel: `Send to ${p.emailable}`, body: html`
         <p>“<b>${form.subject.value || c.name}</b>” to <b>${p.emailable}</b> contacts in “${seg.name}”. This cannot be undone.</p>
         <label>Send from (email address)<select name="sender_id" required>${active.map((x) => html`<option value="${x.id}" ${x === pick ? raw('selected') : ''}>${x.from_name ? `${x.from_name} ` : ''}&lt;${x.from_email}&gt; — ${x.label}${x.mode === 'simulate' && !/simulat/i.test(x.label) ? ' (simulation)' : ''}</option>`)}</select></label>
-        <div id="sentinfo" class="small"></div>`,
+        <div id="sentinfo" class="small"></div>
+        ${lastPrev && form.track.checked && !lastPrev.tracking.tracked ? html`<div class="banner small" style="margin-top:8px">Opens and clicks will <b>not</b> be tracked: the CRM's address is not reachable from the internet.</div>` : ''}
+        ${lastPrev?.warnings.some((w) => w.level === 'high') ? html`<div class="banner bad small" style="margin-top:8px">The Inbox check found ${lastPrev.warnings.filter((w) => w.level === 'high').length} serious spam signal(s) in this email. Consider fixing them first.</div>` : ''}`,
         onOpen: (f) => {
           const info = () => { const x = active.find((y) => String(y.id) === f.sender_id.value);
             setHtml($('#sentinfo', f), !x || x.mode === 'simulate' ? html`<div class="banner small"><b>Simulation:</b> nobody will actually receive this email.</div>`
@@ -151,6 +165,7 @@ async function report(root, c) {
       <div class="muted" style="margin:-10px 0 16px">Subject: <b>${c.subject}</b> · Audience: ${c.segment_name || 'deleted segment'} · From: ${c.sender_label ? `${c.sender_label} <${c.sender_email}>` : 'default sender'} · ${c.sent_at ? 'Sent ' + fmtDateTime(c.sent_at) : 'Sending…'}</div>
       ${c.simulated ? html`<div class="banner"><b>This was a simulation.</b> No email was actually sent — the statuses below are simulated. Configure a real sender under <a href="#/senders">Email senders</a>.</div>` : ''}
       ${c.note ? html`<div class="banner">${c.note}</div>` : ''}
+      ${c.tracked === 0 ? html`<div class="banner small"><b>Opens and clicks were not tracked for this campaign.</b> ${c.tracking_note || ''}</div>` : ''}
       ${c.copies_saved || c.copies_failed ? html`<div class="small muted" style="margin:-6px 0 12px">📁 Copies saved in the Sent folder of ${c.sender_email}: <b>${c.copies_saved}</b>${c.copies_failed ? html` · <span style="color:var(--bad)">${c.copies_failed} not saved — ${c.copy_error}</span>` : ''}</div>` : ''}
       ${s.failed ? html`<div class="banner bad"><b>${s.failed} email${s.failed === 1 ? '' : 's'} failed.</b> ${s.failures.map((f) => html`<div class="small">${f.n}× ${f.error}</div>`)}</div>` : ''}
       <div class="pill-row" style="margin-bottom:12px"><span class="badge queued">Queued ${s.queued}</span><span class="badge sent">Sent ${s.sent}</span><span class="badge failed">Failed ${s.failed}</span><span class="badge opened">Opened ${s.opened}</span><span class="badge clicked">Clicked ${s.clicked}</span><span class="badge unsubscribed">Unsubscribed ${s.unsubscribed}</span></div>

@@ -37,6 +37,7 @@ button{background:#4f46e5;color:#fff;border:0;border-radius:8px;padding:10px 20p
 
 async function handlePublic(req, res, url) {
   let m;
+  if (url.pathname === '/t/ping') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); return res.end(page('Reachable', '<h1>✅ Ovantaa CRM is reachable</h1><p>If you opened this from a phone on mobile data (not office Wi-Fi), people who receive your emails can reach the CRM too — opens, clicks and unsubscribes will be recorded.</p>')); }
   if ((m = url.pathname.match(/^\/t\/o\/([\w-]+)\.gif$/))) {
     recordEvent(m[1], 'open');
     res.writeHead(200, { 'Content-Type': 'image/gif', 'Cache-Control': 'no-store, max-age=0', 'Content-Length': PIXEL.length });

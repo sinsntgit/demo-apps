@@ -3,6 +3,7 @@ import { all, get, run, tx, audit } from './db.js';
 import { encryptSecret } from './auth.js';
 import { sentLast24h, getSender, forgetTransport, verifySender, sendLogged } from './mailer.js';
 import { forgetImap, checkImap } from './imap.js';
+import { checkDomain } from './deliverability.js';
 import { EVENTS, parseEmails, testRule } from './notifications.js';
 import { aiConfigured, aiModel, generateEmail } from './ai.js';
 import { getTheme, saveTheme, setSecretSetting, setSetting, getSetting } from './settings.js';
@@ -92,6 +93,7 @@ POST('/api/senders/:id/verify', async ({ params, user }) => {
   audit(user, 'verify', 'senders', s.id, r.ok ? 'ok' : 'failed');
   return r;
 });
+POST('/api/senders/:id/deliverability', async ({ params }) => checkDomain(senderById(params.id)));
 POST('/api/senders/:id/test', async ({ params, body, user }) => {
   const s = senderById(params.id); const to = oneLine(body.to || user.email);
   if (!EMAIL_RE.test(to)) throw bad('Enter a valid recipient email');

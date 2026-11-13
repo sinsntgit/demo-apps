@@ -160,6 +160,13 @@ BEGIN SELECT RAISE(ABORT, 'Issued invoices cannot be changed. Issue a credit or 
       for (const [c, ddl] of [['copies_saved', 'INTEGER NOT NULL DEFAULT 0'], ['copies_failed', 'INTEGER NOT NULL DEFAULT 0'], ['copy_error', 'TEXT']]) if (!hasColumn(db, 'campaigns', c)) db.exec(`ALTER TABLE campaigns ADD COLUMN ${c} ${ddl}`);
     },
   },
+  {
+    version: 12, name: 'campaign_tracking_choice',
+    up(db) {
+      // track = the user's choice; tracked = what actually happened at send time (NULL for campaigns sent before this version)
+      for (const [c, ddl] of [['track', 'INTEGER NOT NULL DEFAULT 1'], ['tracked', 'INTEGER'], ['tracking_note', 'TEXT']]) if (!hasColumn(db, 'campaigns', c)) db.exec(`ALTER TABLE campaigns ADD COLUMN ${c} ${ddl}`);
+    },
+  },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 

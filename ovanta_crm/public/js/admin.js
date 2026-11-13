@@ -127,7 +127,7 @@ export async function settings(root) {
       <div class="card"><div class="hd"><h2>Email delivery</h2></div><div class="bd">
         <p>Sending is configured per sender mailbox under <a href="#/senders"><b>Email senders</b></a> (Google, Microsoft 365, Zoho or any SMTP server) — add one entry per address you send from. Notification emails are configured under <a href="#/notifications"><b>Notifications</b></a>.</p>
         ${admin ? html`<form id="baseurl" style="margin-top:10px"><label>Public address of this CRM <span class="muted small">(used in every emailed link: invitations, tasks, invoices, tracking)</span><input name="base_url" value="${m_baseUrl()}" placeholder="http://crm-server:3000"></label>
-          <div style="display:flex;gap:8px;align-items:center"><button class="btn">Save address</button><span class="small muted" id="baseurl-note">${/\/\/(localhost|127\.)/.test(m_baseUrl()) ? '⚠️ “localhost” links only work on the computer running the CRM — enter the address your colleagues open.' : ''}</span></div></form>`
+          <div style="display:flex;gap:8px;align-items:center"><button class="btn">Save address</button><span class="small muted" id="baseurl-note">${/\/\/(localhost|127\.)/.test(m_baseUrl()) ? '' : html`To test, open <a href="${m_baseUrl()}/t/ping" target="_blank" rel="noopener">${m_baseUrl()}/t/ping</a> on a phone using mobile data. `}${/\/\/(localhost|127\.)/.test(m_baseUrl()) ? '⚠️ “localhost” links only work on the computer running the CRM — enter the address your colleagues open.' : ''}</span></div></form>`
           : html`<p class="muted small">Links in emails use <span class="mono">${m_baseUrl()}</span>.</p>`}</div></div></div>
     <div class="mt" id="fxcard"></div>
     <div class="mt" id="seccard"></div>

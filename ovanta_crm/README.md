@@ -88,6 +88,14 @@ Menu **Billing**: *Invoices · Receivables · E-invoicing readiness · Billing s
 
 Custom values appear on the record's detail page (grouped by your sections), in list columns and filters, on deal cards, in **CSV export and import** (contacts; columns are matched by field name), and as **conditions in campaign segments** (contact and account fields). They are validated on the server — required fields, option lists, number ranges, dates, emails, links and record links — whichever way a record is saved. Limits: 100 custom fields per record type, 200 options per list. Tasks and invoices have no custom fields yet.
 
+## Opens, clicks & landing in the inbox
+
+* **Why opens/clicks may show 0** — the open image and tracked links point at the CRM's *Public address*. Recipients' mail apps must reach it **from the internet**. With `localhost`, a LAN IP or a PC name, nothing can be recorded — so campaigns are now sent **without** tracking in that case (links go straight to your site; unsubscribe works by replying, with a `mailto:` List-Unsubscribe header), and the editor, send dialog and report say so. Make the CRM reachable over **https** (Cloudflare Tunnel, or hosting) and set that address in *Settings → Email delivery*. Test by opening `<address>/t/ping` on a phone on mobile data. `ALLOW_PRIVATE_TRACKING=1` keeps tracking for internal-only audiences on your network.
+* Opens are approximate: Outlook blocks images by default (undercounts), Apple Mail preloads them (overcounts). Clicks are the reliable number.
+* **Track opens and clicks** can be turned off per campaign — plain links look more personal.
+* **Inbox check** (campaign editor) flags spam/Promotions signals: capitals and `!!!` in the subject, spammy words, link shorteners, image-heavy emails, many links, no personalisation, newsletter-style layouts.
+* **Check deliverability** (Email senders) reads your domain's MX, **SPF**, **DKIM** and **DMARC** from public DNS and gives the exact record to add, plus the tracking address and the sending service.
+
 ## Choosing the mailbox & copies in your Sent folder
 
 * **Send from** — every campaign sends from one mailbox (*Email senders*). Pick it in the editor, and again in the **Send now** dialog, which shows exactly which address will be used.

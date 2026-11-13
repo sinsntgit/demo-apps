@@ -7,6 +7,7 @@ import { bad } from './http.js';
 import { runReminders } from './receivables.js';
 import { maybeDailyBackup } from './backup.js';
 import { sendMail, getSender, defaultSender, sentLast24h } from './mailer.js';
+import { addressReach } from './deliverability.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -25,21 +26,34 @@ const plainMerge = (t, vars) => String(t).replace(/\{\{\s*(\w+)\s*(?:\|\s*([^}]*
 
 export const signUrl = (token, url) => hmac(`${token}|${url}`).slice(0, 22);
 
-export function contactVars(c, token) {
+/** Can recipients reach our tracking/unsubscribe links? (ALLOW_PRIVATE_TRACKING=1 for internal-only audiences on the same network.) */
+export const webLinksWork = () => addressReach().public || process.env.ALLOW_PRIVATE_TRACKING === '1';
+/** Unsubscribe by email — used when the CRM is not reachable from the internet. */
+export const unsubMailto = (sender) => `mailto:${encodeURIComponent(sender?.reply_to || sender?.from_email || config.defaultFromEmail).replace(/%40/g, '@')}?subject=Unsubscribe`;
+/** Whether a campaign's emails get tracked links and an open pixel, and why not. */
+export function trackingPlan(c) {
+  if (c.track === 0) return { tracked: false, note: 'Open and click tracking was turned off for this campaign.' };
+  if (!webLinksWork()) return { tracked: false, note: `${addressReach().reason} Set an internet address under Settings → Email delivery to track opens and clicks.` };
+  return { tracked: true, note: null };
+}
+
+export function contactVars(c, token, unsubscribe) {
   return {
     first_name: c.first_name || '', last_name: c.last_name || '',
     full_name: [c.first_name, c.last_name].filter(Boolean).join(' '),
     email: c.email || '', company: c.account_name || '', title: c.title || '',
-    unsubscribe_url: token ? `${config.baseUrl}/u/${token}` : `${config.baseUrl}/u/preview`,
+    unsubscribe_url: unsubscribe || (token ? `${config.baseUrl}/u/${token}` : `${config.baseUrl}/u/preview`),
   };
 }
 
 /** Render a message. When token is given, links are tracked and an open pixel is added. */
 export function renderMessage(campaign, contact, token) {
-  const vars = contactVars(contact, token);
+  const web = webLinksWork();
+  const track = !!token && (campaign.tracked != null ? !!campaign.tracked : trackingPlan(campaign).tracked);
+  const vars = contactVars(contact, token, web ? null : unsubMailto(resolveSender(campaign)));
   let htmlBody = mergeTags(campaign.body_html, vars);
   const subject = plainMerge(campaign.subject, vars);
-  if (token) {
+  if (track) {
     htmlBody = htmlBody.replace(/href\s*=\s*"(https?:\/\/[^"]+)"/gi, (m, url) => {
       const raw = url.replace(/&amp;/g, '&');
       if (raw.startsWith(`${config.baseUrl}/u/`)) return m;
@@ -47,11 +61,12 @@ export function renderMessage(campaign, contact, token) {
     });
   }
   const hasUnsub = /\{\{\s*unsubscribe_url/.test(campaign.body_html);
-  const footer = hasUnsub ? '' : `<p style="font-size:12px;color:#6b7280;margin-top:32px;border-top:1px solid #e5e7eb;padding-top:12px">${esc(config.companyAddress)}<br>You received this because you are in our contact list. <a href="${vars.unsubscribe_url}">Unsubscribe</a></p>`;
-  const pixel = token ? `<img src="${config.baseUrl}/t/o/${token}.gif" width="1" height="1" alt="" style="display:none">` : '';
+  const footer = hasUnsub ? '' : `<p style="font-size:12px;color:#6b7280;margin-top:32px;border-top:1px solid #e5e7eb;padding-top:12px">${esc(config.companyAddress)}<br>You received this because you are in our contact list. ${web ? `<a href="${vars.unsubscribe_url}">Unsubscribe</a>` : `To stop receiving these emails, <a href="${vars.unsubscribe_url}">reply with “Unsubscribe”</a>.`}</p>`;
+  // a 1×1 image that mail apps load with the message; not display:none — some apps skip hidden images
+  const pixel = track ? `<img src="${config.baseUrl}/t/o/${token}.gif" width="1" height="1" alt="" border="0" style="height:1px!important;width:1px!important;border:0;margin:0;padding:0">` : '';
   const html = `<!doctype html><html><body style="font-family:Arial,Helvetica,sans-serif;color:#111827;line-height:1.5;max-width:640px;margin:0 auto;padding:16px">${htmlBody}${footer}${pixel}</body></html>`;
   const text = htmlBody.replace(/<(br|\/p|\/div|\/h\d|\/li)\s*\/?>/gi, '\n').replace(/<a [^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/gi, '$2 ($1)').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\n{3,}/g, '\n\n').trim() + `\n\nUnsubscribe: ${vars.unsubscribe_url}`;
-  return { subject, html, text };
+  return { subject, html, text, unsubscribe: vars.unsubscribe_url, tracked: track };
 }
 
 // ---- Sender resolution & sending -------------------------------------------
@@ -101,10 +116,11 @@ export function launchCampaign(id) {
     for (const ct of contacts) {
       run('INSERT INTO campaign_recipients (campaign_id,contact_id,email,token,sender_id) VALUES (?,?,?,?,?)', id, ct.id, ct.email, crypto.randomBytes(12).toString('base64url'), sender?.id ?? null);
     }
-    run("UPDATE campaigns SET status='sending', sender_id=?, simulated=?, note=NULL WHERE id=?", sender?.id ?? null, isSimulated(sender) ? 1 : 0, id);
+    const plan = trackingPlan(c);
+    run("UPDATE campaigns SET status='sending', sender_id=?, simulated=?, note=NULL, tracked=?, tracking_note=? WHERE id=?", sender?.id ?? null, isSimulated(sender) ? 1 : 0, plan.tracked ? 1 : 0, plan.note, id);
   });
   processCampaign(id);
-  return { recipients: contacts.length, simulated: isSimulated(sender), sender: sender?.label || null };
+  return { recipients: contacts.length, simulated: isSimulated(sender), sender: sender?.label || null, tracked: trackingPlan(c).tracked };
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -131,7 +147,8 @@ export function processCampaign(id) {
           try {
             const m = renderMessage(c, { ...r, email: r.email }, r.token);
             const res = await sendMail(sender, { to: r.email, subject: m.subject, html: m.html, text: m.text, campaign_id: id, copyToSent: true,
-              headers: { 'List-Unsubscribe': `<${config.baseUrl}/u/${r.token}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } });
+              headers: m.unsubscribe.startsWith('mailto:') ? { 'List-Unsubscribe': `<${m.unsubscribe}>` }
+                : { 'List-Unsubscribe': `<${config.baseUrl}/u/${r.token}>, <${unsubMailto(sender)}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } });
             run("UPDATE campaign_recipients SET status='sent', sent_at=?, message_id=?, response=?, error=NULL WHERE id=?", nowIso(), res.messageId, res.response, r.id);
             if (res.sent_copy === 'saved') run('UPDATE campaigns SET copies_saved=copies_saved+1 WHERE id=?', id);
             else if (res.sent_copy === 'failed') run('UPDATE campaigns SET copies_failed=copies_failed+1, copy_error=? WHERE id=?', res.copy_error, id);

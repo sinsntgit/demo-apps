@@ -213,6 +213,16 @@
 <li><b>Send now</b> or <b>Schedule…</b> (needs the Send permission). The <b>Send now</b> dialog asks which email address to send from, and says whether a copy will appear in that mailbox’s Sent folder. The audience is frozen when sending starts.</li>
 <li>Emails go out one by one through the chosen sender, respecting its 24-hour limit and pause. If the limit is reached the campaign pauses and continues automatically.</li>
 </ol>
+<h3>Getting opens and clicks recorded</h3>
+<p>Opens and clicks are recorded when the recipient's mail app loads a tiny image from the CRM or a link passes through it. That only works if the CRM can be reached <b>from the internet</b> at the <b>Public address</b> (Settings → Email delivery). With <code>localhost</code>, an office IP like <code>192.168.x.x</code> or a computer name, the CRM sends the campaign <b>without tracking</b>: links go straight to your website and people unsubscribe by replying. The editor shows a warning when this applies.</p>
+<p>To track, make the CRM reachable over <b>https</b> (for example with a Cloudflare Tunnel, or by hosting it) and enter that address. To test, open <code>&lt;your address&gt;/t/ping</code> on a phone using mobile data. Open counts are approximate (Outlook blocks images; Apple Mail preloads them); clicks are reliable. Untick <b>Track opens and clicks</b> for emails that should look completely personal.</p>
+<h3>Staying out of Spam and Promotions</h3>
+<ul>
+<li><b>Fix your domain first:</b> on <b>Email senders</b>, click <b>Check deliverability</b>. It checks SPF, DKIM and DMARC for your domain and tells you exactly which record to add at your DNS host (GoDaddy: Domain → DNS). Missing DKIM or DMARC is the most common reason for Spam.</li>
+<li><b>Write like a person:</b> the <b>Inbox check</b> panel next to the preview flags capitals, “!!!”, words such as “free” or “guarantee”, link shorteners, image-heavy or newsletter-style layouts, and too many links. Personal, plain emails with one or two links and the person's name are the ones Gmail puts in Primary.</li>
+<li><b>Promotions is not Spam.</b> Gmail sorts any marketing-style email there, whatever you do; only plain one-to-one style emails reliably land in Primary.</li>
+<li><b>Volume:</b> start slowly (20–50 a day from a new address), only email people who know you, and remove addresses that bounce. For regular large campaigns, use a bulk email service (Brevo, Amazon SES, Mailgun) on a subdomain rather than your personal mailbox.</li>
+</ul>
 <h3>4. Results</h3>
 <p>Each recipient shows <i>sent</i>, <i>failed</i> (with the server's reason), <i>opened</i>, <i>clicked</i> and <i>unsubscribed</i>. Every email gets an unsubscribe link automatically. Open and click tracking need <code>BASE_URL</code> to be the CRM's public address. Open counts are approximate (some mail apps block images).</p>
 </section>

@@ -342,7 +342,10 @@ await page.selectOption('.modal #preset', 'google'); if (await page.isChecked('.
 if (await page.locator('.modal input[name=imap_host]').isVisible()) errors.push('IMAP fields should hide when save to Sent is off');
 await page.selectOption('.modal #preset', 'titan'); await shot('sender-sent-copies'); await page.keyboard.press('Escape');
 const campId = await page.evaluate(async () => { const segs = await (await fetch('/api/segments')).json(); const r = await fetch('/api/campaigns', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Sender pick', subject: 'Hi', body_html: '<p>Hi</p>', segment_id: segs[0].id }) }); return (await r.json()).id; });
-await page.goto(`${base}/#/campaigns/${campId}`); await page.waitForSelector('button[data-act=send]'); await page.click('button[data-act=send]');
+await page.goto(`${base}/#/campaigns/${campId}`); await page.waitForSelector('button[data-act=send]');
+await page.fill('#cform input[name=subject]', 'FREE OFFER!!!'); await page.waitForSelector('#lint :text("CAPITAL")', { timeout: 5000 }).catch(() => errors.push('inbox check did not flag a capitalised subject'));
+if (!(await page.locator('#trackwarn .banner').count())) errors.push('no warning that opens/clicks cannot be tracked on a localhost address');
+await page.locator('#lint').scrollIntoViewIfNeeded(); await shot('campaign-inbox-check'); await page.fill('#cform input[name=subject]', 'Hi'); await page.click('button[data-act=send]');
 await page.waitForSelector('.modal select[name=sender_id]', { timeout: 8000 }).catch(() => errors.push('send dialog has no sender choice'));
 if ((await page.locator('.modal select[name=sender_id] option').count()) < 1) errors.push('no senders to choose from'); await shot('campaign-send-from');
 await page.keyboard.press('Escape');
