@@ -2,6 +2,7 @@ import { get, all, run } from './db.js';
 import { config } from './config.js';
 import { decryptSecret } from './auth.js';
 import dns from 'node:dns/promises';
+import { appendSent } from './imap.js';
 
 /** Recent simulated messages (shown in the UI when a sender is in simulation mode). */
 export const outboxLog = [];
@@ -67,11 +68,13 @@ export async function sendMail(sender, msg) {
 
   if (sender?.mode === 'smtp') {
     const t = await transportFor(sender);
-    try {
-      const info = await t.sendMail(base);
+    {
+      const info = await t.sendMail(base).catch((e) => { throw new Error(explainSmtpError(e, sender)); });
       if (info.rejected?.length) throw new Error(`Recipient rejected by server: ${info.rejected.join(', ')}`);
-      return { status: 'sent', messageId: info.messageId, response: String(info.response || '').slice(0, 300) };
-    } catch (e) { throw new Error(explainSmtpError(e, sender)); }
+      const out = { status: 'sent', messageId: info.messageId, response: String(info.response || '').slice(0, 300) };
+      if (msg.copyToSent && sender.save_sent && sender.imap_host) Object.assign(out, await saveSentCopy(sender, base, info));
+      return out;
+    }
   }
   if (!sender && config.mailTransport === 'webhook') {
     if (!config.mailWebhookUrl) throw new Error('MAIL_WEBHOOK_URL is not configured');
@@ -85,6 +88,22 @@ export async function sendMail(sender, msg) {
   outboxLog.unshift({ at: new Date().toISOString(), to: msg.to, subject: base.subject, from, campaign_id: msg.campaign_id ?? null });
   if (outboxLog.length > 200) outboxLog.length = 200;
   return { status: 'simulated', messageId: null, response: 'simulated (nothing was sent)' };
+}
+
+let composer;
+/** The same message (same Message-ID) as raw MIME, appended to the mailbox's Sent folder. Never throws: the email already went out. */
+async function saveSentCopy(sender, base, info) {
+  try {
+    const nm = await loadNodemailer(); composer ||= nm.createTransport({ streamTransport: true, buffer: true, newline: 'windows' });
+    const { message } = await composer.sendMail({ ...base, messageId: info.messageId, date: new Date() });
+    const folder = await appendSent(sender, message);
+    if (sender.copy_error) { run('UPDATE senders SET copy_error=NULL WHERE id=?', sender.id); sender.copy_error = null; }
+    return { sent_copy: 'saved', sent_folder: folder };
+  } catch (e) {
+    const err = `Saving a copy in Sent failed: ${e.message}`.slice(0, 300);
+    run('UPDATE senders SET copy_error=? WHERE id=?', err, sender.id); sender.copy_error = err;
+    return { sent_copy: 'failed', copy_error: err };
+  }
 }
 
 /** Turn low-level SMTP errors into guidance an admin can act on. `sender` lets the hint match the provider. */
@@ -115,11 +134,11 @@ export async function verifySender(sender) {
 }
 
 /** Send a one-off system email (notifications, tests) and record it in the email log. */
-export async function sendLogged({ sender, to, cc, subject, html, text, kind, rule_id = null, event = null, headers, attachments }) {
-  let status, error = null, messageId = null, response = null;
-  try { const r = await sendMail(sender, { to, cc, subject, html, text, headers, attachments }); status = r.status; messageId = r.messageId; response = r.response; }
+export async function sendLogged({ sender, to, cc, subject, html, text, kind, rule_id = null, event = null, headers, attachments, copyToSent = false }) {
+  let status, error = null, messageId = null, response = null, copy = {};
+  try { const r = await sendMail(sender, { to, cc, subject, html, text, headers, attachments, copyToSent }); status = r.status; messageId = r.messageId; response = r.response; copy = { sent_copy: r.sent_copy, sent_folder: r.sent_folder, copy_error: r.copy_error }; }
   catch (e) { status = 'failed'; error = e.message; }
   run('INSERT INTO email_log (kind,to_email,subject,sender_id,status,error,message_id,response,rule_id,event) VALUES (?,?,?,?,?,?,?,?,?,?)',
     kind, to, String(subject).slice(0, 250), sender?.id ?? null, status, error, messageId, response, rule_id, event);
-  return { status, error };
+  return { status, error, ...copy };
 }

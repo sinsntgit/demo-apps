@@ -2,6 +2,7 @@ import { GET, POST, PUT, DELETE, HttpError, bad, notFound } from './http.js';
 import { all, get, run, tx, audit } from './db.js';
 import { encryptSecret } from './auth.js';
 import { sentLast24h, getSender, forgetTransport, verifySender, sendLogged } from './mailer.js';
+import { forgetImap, checkImap } from './imap.js';
 import { EVENTS, parseEmails, testRule } from './notifications.js';
 import { aiConfigured, aiModel, generateEmail } from './ai.js';
 import { getTheme, saveTheme, setSecretSetting, setSetting, getSetting } from './settings.js';
@@ -21,6 +22,7 @@ const pub = (s) => ({
   id: s.id, label: s.label, from_name: s.from_name, from_email: s.from_email, reply_to: s.reply_to, mode: s.mode, host: s.host, port: s.port,
   secure: !!s.secure, username: s.username, has_password: !!s.password_enc, daily_limit: s.daily_limit, delay_ms: s.delay_ms, active: !!s.active,
   is_default: !!s.is_default, last_verified_at: s.last_verified_at, last_error: s.last_error, sent_24h: sentLast24h(s.id),
+  save_sent: !!s.save_sent, imap_host: s.imap_host, imap_port: s.imap_port, sent_folder: s.sent_folder, copy_error: s.copy_error,
 });
 const senderById = (id) => { const s = getSender(id); if (!s) throw notFound('Sender not found'); return s; };
 function senderInput(b, existing) {
@@ -42,7 +44,15 @@ function senderInput(b, existing) {
     host: mode === 'smtp' ? oneLine(b.host) : null, port, secure: b.secure ? 1 : 0, username: oneLine(b.username) || null,
     daily_limit: daily, delay_ms: delay, active: b.active === false ? 0 : 1,
     password_enc: String(b.password || '').trim() ? encryptSecret(String(b.password).trim()) : existing?.password_enc ?? null,
+    ...imapInput(b, mode),
   };
+}
+function imapInput(b, mode) {
+  const save_sent = mode === 'smtp' && !!b.save_sent ? 1 : 0, imap_host = oneLine(b.imap_host).toLowerCase() || null, imap_port = Number(b.imap_port) || 993;
+  if (save_sent && !imap_host) throw bad('Enter the IMAP server to save copies in the Sent folder (e.g. imap.secureserver.net)');
+  if (imap_host && !/^[a-z0-9.-]+$/.test(imap_host)) throw bad('IMAP server is not a valid host name');
+  if (imap_port < 1 || imap_port > 65535) throw bad('IMAP port must be between 1 and 65535');
+  return { save_sent, imap_host, imap_port, sent_folder: oneLine(b.sent_folder).slice(0, 120) || null };
 }
 const setDefault = (id) => { run('UPDATE senders SET is_default=0'); run('UPDATE senders SET is_default=1 WHERE id=?', id); };
 
@@ -58,8 +68,8 @@ POST('/api/senders', ({ body, user }) => {
 });
 PUT('/api/senders/:id', ({ params, body, user }) => {
   const s = senderById(params.id); const d = senderInput(body, s);
-  run(`UPDATE senders SET ${Object.keys(d).map((k) => `${k}=?`).join(',')}, last_error=NULL WHERE id=?`, ...Object.values(d), s.id);
-  forgetTransport(s.id);
+  run(`UPDATE senders SET ${Object.keys(d).map((k) => `${k}=?`).join(',')}, last_error=NULL, copy_error=NULL WHERE id=?`, ...Object.values(d), s.id);
+  forgetTransport(s.id); forgetImap(s.id);
   if (body.is_default) setDefault(s.id);
   audit(user, 'update', 'senders', s.id, d.from_email);
   return pub(senderById(s.id));
@@ -68,12 +78,16 @@ DELETE('/api/senders/:id', ({ params, user }) => {
   const s = senderById(params.id);
   const inUse = get("SELECT COUNT(*) n FROM campaigns WHERE sender_id=? AND status IN ('scheduled','sending')", s.id).n;
   if (inUse) throw bad('This sender is used by a scheduled or sending campaign');
-  forgetTransport(s.id); run('DELETE FROM senders WHERE id=?', s.id);
+  forgetTransport(s.id); forgetImap(s.id); run('DELETE FROM senders WHERE id=?', s.id);
   audit(user, 'delete', 'senders', s.id, s.from_email);
   return { ok: true };
 });
 POST('/api/senders/:id/verify', async ({ params, user }) => {
   const s = senderById(params.id); const r = await verifySender(s);
+  if (r.ok && s.mode === 'smtp' && s.save_sent) {
+    try { const folder = await checkImap(s); r.note = `Sending works, and copies will be saved in the "${folder}" folder.`; r.sent_folder = folder; run('UPDATE senders SET copy_error=NULL WHERE id=?', s.id); }
+    catch (e) { r.ok = false; r.error = `Sending works, but saving copies in Sent does not: ${e.message}`; }
+  }
   run("UPDATE senders SET last_verified_at=CASE WHEN ? THEN datetime('now') ELSE last_verified_at END, last_error=? WHERE id=?", r.ok ? 1 : 0, r.ok ? null : r.error, s.id);
   audit(user, 'verify', 'senders', s.id, r.ok ? 'ok' : 'failed');
   return r;
@@ -81,11 +95,11 @@ POST('/api/senders/:id/verify', async ({ params, user }) => {
 POST('/api/senders/:id/test', async ({ params, body, user }) => {
   const s = senderById(params.id); const to = oneLine(body.to || user.email);
   if (!EMAIL_RE.test(to)) throw bad('Enter a valid recipient email');
-  const r = await sendLogged({ sender: s, to, subject: 'Ovantaa CRM test email', kind: 'test',
+  const r = await sendLogged({ sender: s, to, subject: 'Ovantaa CRM test email', kind: 'test', copyToSent: true,
     html: `<p>This is a test message from <b>Ovantaa CRM</b> sent through the sender <b>${s.label.replace(/</g, '&lt;')}</b> (${s.from_email}).</p><p>If you can read this, the sender is configured correctly.</p>`,
     text: `This is a test message from Ovantaa CRM sent through ${s.label} (${s.from_email}).` });
   if (r.status === 'failed') throw bad(r.error);
-  return { ok: true, simulated: r.status === 'simulated', to };
+  return { ok: true, simulated: r.status === 'simulated', to, sent_copy: r.sent_copy, sent_folder: r.sent_folder, copy_error: r.copy_error };
 });
 
 // ---------- Email log ----------

@@ -88,6 +88,14 @@ Menu **Billing**: *Invoices · Receivables · E-invoicing readiness · Billing s
 
 Custom values appear on the record's detail page (grouped by your sections), in list columns and filters, on deal cards, in **CSV export and import** (contacts; columns are matched by field name), and as **conditions in campaign segments** (contact and account fields). They are validated on the server — required fields, option lists, number ranges, dates, emails, links and record links — whichever way a record is saved. Limits: 100 custom fields per record type, 200 options per list. Tasks and invoices have no custom fields yet.
 
+## Choosing the mailbox & copies in your Sent folder
+
+* **Send from** — every campaign sends from one mailbox (*Email senders*). Pick it in the editor, and again in the **Send now** dialog, which shows exactly which address will be used.
+* **Copies in Sent** — sending by SMTP does not put anything in your mailbox's Sent folder. Edit the sender and tick **Save a copy … in this mailbox's Sent folder**: after each email goes out, the same message (same Message-ID) is added to Sent over IMAP with the same username and password. Applies to campaign, invoice, receipt and reminder emails (not task or system notifications). Presets fill the IMAP server: GoDaddy/Titan `imap.secureserver.net`, Titan `imap.titan.email`, Zoho `imap.zoho.in`/`.com`, port 993. The folder marked *Sent* is found automatically, or type its name.
+* **Gmail and Microsoft 365** file SMTP mail in Sent themselves — leave the option off there to avoid duplicates.
+* **Verify** checks the IMAP login and shows the folder. If saving a copy fails the email is still sent; the error shows on the sender and on the campaign report (*Copies saved in Sent: n*).
+* Large campaigns add one message per recipient to your mailbox — watch the mailbox storage quota.
+
 ## Inviting users & forgotten passwords
 
 * **Invite by email** — *Team & roles → + Invite user*: name, email, role. The person gets an **Accept invitation** email, chooses their own password and is signed in. Links work once, expire in 7 days and only a hash is stored. Pending users show *invited · pending* with **Resend invite**; the dialog after inviting also shows the link with **Copy link** (for WhatsApp/chat). Untick *Email an invitation link* to set a password yourself.

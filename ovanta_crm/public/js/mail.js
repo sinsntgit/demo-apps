@@ -6,17 +6,17 @@ const page = (title, actions = '') => html`<div class="topbar"><h1>${title}</h1>
 
 const PRESETS = {
   google: { label: 'Google (Gmail / Workspace)', host: 'smtp.gmail.com', port: 587, secure: false, daily: 500,
-    help: 'Use the full email address as username and a 16-character App Password (Google Account → Security → 2-Step Verification → App passwords). Regular passwords are rejected. Gmail allows roughly 500 messages/day (about 2,000 on Google Workspace); the From address must be this account or a verified "Send mail as" alias.' },
+    imap: 'imap.gmail.com', saveSent: false, sentNote: 'Gmail already files emails sent through smtp.gmail.com in Sent — leave this off to avoid duplicates.', help: 'Use the full email address as username and a 16-character App Password (Google Account → Security → 2-Step Verification → App passwords). Regular passwords are rejected. Gmail allows roughly 500 messages/day (about 2,000 on Google Workspace); the From address must be this account or a verified "Send mail as" alias.' },
   microsoft: { label: 'Microsoft 365 / Outlook', host: 'smtp.office365.com', port: 587, secure: false, daily: 1000,
-    help: 'SMTP AUTH must be enabled for the mailbox by your Microsoft 365 admin. Microsoft is phasing out Basic-auth SMTP (disabled by default for existing tenants from the end of December 2026), so for Microsoft mailboxes prefer a transactional relay long-term.' },
+    imap: 'outlook.office365.com', saveSent: false, sentNote: 'Microsoft 365 normally files SMTP mail in Sent Items itself — turn this on only if the emails do not appear there.', help: 'SMTP AUTH must be enabled for the mailbox by your Microsoft 365 admin. Microsoft is phasing out Basic-auth SMTP (disabled by default for existing tenants from the end of December 2026), so for Microsoft mailboxes prefer a transactional relay long-term.' },
   titan: { label: 'Titan Mail / GoDaddy Professional Email', host: 'smtpout.secureserver.net', port: 465, secure: true, daily: 250,
-    help: 'Server smtpout.secureserver.net, port 465 with SSL/TLS on (or port 587 with SSL/TLS off). Username is the full email address and the password is your normal mailbox password. GoDaddy plans have a daily sending limit (often 250 recipients/day) — check yours before sending large campaigns.' },
+    imap: 'imap.secureserver.net', saveSent: true, sentNote: 'GoDaddy does not file SMTP mail in Sent — turn this on to see campaign emails in your Sent folder.', help: 'Server smtpout.secureserver.net, port 465 with SSL/TLS on (or port 587 with SSL/TLS off). Username is the full email address and the password is your normal mailbox password. GoDaddy plans have a daily sending limit (often 250 recipients/day) — check yours before sending large campaigns.' },
   titan_direct: { label: 'Titan Mail (Hostinger / BigRock / other hosts)', host: 'smtp.titan.email', port: 465, secure: true, daily: 300,
-    help: 'For Titan mailboxes not bought through GoDaddy. Username is the full email address and the password is your normal mailbox password. EU-region accounts use smtp0101.titan.email. If 465 fails, try port 587 with SSL/TLS off.' },
+    imap: 'imap.titan.email', saveSent: true, sentNote: 'Titan does not file SMTP mail in Sent — turn this on to see campaign emails in your Sent folder.', help: 'For Titan mailboxes not bought through GoDaddy. Username is the full email address and the password is your normal mailbox password. EU-region accounts use smtp0101.titan.email. If 465 fails, try port 587 with SSL/TLS off.' },
   zoho_in: { label: 'Zoho Mail (India data centre)', host: 'smtp.zoho.in', port: 465, secure: true, daily: 500,
-    help: 'Use the full address as username. With two-factor auth on, create an application-specific password in Zoho Accounts → Security. Accounts in other regions use smtp.zoho.com / .eu / .com.au.' },
-  zoho: { label: 'Zoho Mail (global)', host: 'smtp.zoho.com', port: 465, secure: true, daily: 500, help: 'Use the full address as username; use an app-specific password if two-factor auth is on.' },
-  custom: { label: 'Other SMTP server', host: '', port: 587, secure: false, daily: 500, help: 'Port 587 uses STARTTLS (leave SSL/TLS off); port 465 uses implicit SSL/TLS (turn it on). Transactional providers such as Amazon SES, SendGrid, Postmark or Brevo are recommended for large campaigns.' },
+    imap: 'imap.zoho.in', saveSent: true, sentNote: 'Zoho does not file SMTP mail in Sent by default — turn this on to see them there. IMAP access must be enabled in Zoho Mail settings.', help: 'Use the full address as username. With two-factor auth on, create an application-specific password in Zoho Accounts → Security. Accounts in other regions use smtp.zoho.com / .eu / .com.au.' },
+  zoho: { label: 'Zoho Mail (global)', host: 'smtp.zoho.com', port: 465, secure: true, daily: 500, imap: 'imap.zoho.com', saveSent: true, sentNote: 'Zoho does not file SMTP mail in Sent by default — turn this on to see them there. IMAP access must be enabled in Zoho Mail settings.', help: 'Use the full address as username; use an app-specific password if two-factor auth is on.' },
+  custom: { label: 'Other SMTP server', host: '', port: 587, secure: false, daily: 500, imap: '', saveSent: false, sentNote: 'Most mail servers do not file SMTP mail in Sent. Turn this on and enter the IMAP server (usually imap.yourprovider.com, port 993).', help: 'Port 587 uses STARTTLS (leave SSL/TLS off); port 465 uses implicit SSL/TLS (turn it on). Transactional providers such as Amazon SES, SendGrid, Postmark or Brevo are recommended for large campaigns.' },
 };
 
 function senderModal(s, done) {
@@ -31,19 +31,27 @@ function senderModal(s, done) {
         <div class="row">${field({ name: 'host', label: 'SMTP host', placeholder: 'smtp.gmail.com' }, v)}${field({ name: 'port', label: 'Port', type: 'number', min: 1, max: 65535 }, v)}</div>
         ${field({ name: 'secure', label: 'Use SSL/TLS from the start (port 465). Leave off for port 587 (STARTTLS).', type: 'checkbox' }, v)}
         <div class="row">${field({ name: 'username', label: 'SMTP username', placeholder: 'usually the full email address', }, v)}<label>Password / app password<input type="password" name="password" autocomplete="new-password" placeholder="${s?.has_password ? '•••••••• (leave blank to keep the saved one)' : ''}"><span class="small" style="font-weight:400"><input type="checkbox" id="showpw" style="vertical-align:middle"> Show password</span></label></div></div>
+        <fieldset style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:6px 0 12px"><legend class="small" style="padding:0 6px"><b>Copies in your Sent folder</b></legend>
+          ${field({ name: 'save_sent', label: 'Save a copy of each campaign, invoice and reminder email in this mailbox’s Sent folder (uses IMAP with the same username and password)', type: 'checkbox' }, v)}
+          <div id="sentnote" class="small muted" style="margin:-4px 0 8px"></div>
+          <div class="row" id="imapbox">${field({ name: 'imap_host', label: 'IMAP server', placeholder: 'imap.secureserver.net' }, v)}${field({ name: 'imap_port', label: 'IMAP port (993 = SSL/TLS)', type: 'number', min: 1, max: 65535 }, { imap_port: v.imap_port || 993 })}</div>
+          <div id="imapbox2">${field({ name: 'sent_folder', label: 'Sent folder name (leave blank — found automatically)', placeholder: 'e.g. Sent or Sent Items' }, v)}</div></fieldset>
       <div class="row">${field({ name: 'daily_limit', label: 'Max emails per rolling 24h', type: 'number', min: 1 }, v)}${field({ name: 'delay_ms', label: 'Pause between emails (ms)', type: 'number', min: 0, max: 60000 }, v)}</div>
       ${field({ name: 'active', label: 'Active', type: 'checkbox' }, v)}${field({ name: 'is_default', label: 'Use as the default sender', type: 'checkbox' }, { is_default: s?.is_default })}
       <p class="small muted">Passwords are encrypted at rest and never shown again. Gmail and Yahoo expect SPF, DKIM and DMARC records for your sending domain — see the checklist on the senders page.</p>`,
     onOpen: (form) => {
       const sync = () => { $('#smtpbox', form).hidden = form.mode.value !== 'smtp'; };
-      const preset = (apply) => { const p = PRESETS[$('#preset', form).value]; setHtml($('#phelp', form), html`${p.help}`); if (apply) { form.host.value = p.host; form.port.value = p.port; form.secure.checked = p.secure; form.daily_limit.value = p.daily; } };
+      const syncSent = () => { for (const id of ['#imapbox', '#imapbox2']) $(id, form).style.display = form.save_sent.checked ? '' : 'none'; };
+      const preset = (apply) => { const p = PRESETS[$('#preset', form).value]; setHtml($('#phelp', form), html`${p.help}`); $('#sentnote', form).textContent = p.sentNote;
+        if (apply) { form.host.value = p.host; form.port.value = p.port; form.secure.checked = p.secure; form.daily_limit.value = p.daily; form.imap_host.value = p.imap; form.imap_port.value = 993; form.save_sent.checked = p.saveSent; syncSent(); } };
+      form.save_sent.addEventListener('change', () => { if (form.save_sent.checked && !form.imap_host.value) form.imap_host.value = PRESETS[$('#preset', form).value].imap || ''; syncSent(); });
       $('#showpw', form).addEventListener('change', (e) => { form.password.type = e.target.checked ? 'text' : 'password'; });
       form.mode.addEventListener('change', sync); $('#preset', form).addEventListener('change', () => preset(true));
       form.from_email.addEventListener('blur', () => { if (!form.username.value) form.username.value = form.from_email.value; });
-      sync(); preset(!s);
+      sync(); preset(!s); syncSent();
     },
     onSubmit: async (f) => {
-      const b = { ...Object.fromEntries(['label', 'from_name', 'from_email', 'reply_to', 'mode', 'host', 'port', 'username', 'password', 'daily_limit', 'delay_ms'].map((k) => [k, f[k].value])), secure: f.secure.checked, active: f.active.checked, is_default: f.is_default.checked };
+      const b = { ...Object.fromEntries(['label', 'from_name', 'from_email', 'reply_to', 'mode', 'host', 'port', 'username', 'password', 'daily_limit', 'delay_ms', 'imap_host', 'imap_port', 'sent_folder'].map((k) => [k, f[k].value])), secure: f.secure.checked, save_sent: f.save_sent.checked, active: f.active.checked, is_default: f.is_default.checked };
       s ? await api('PUT', `/senders/${s.id}`, b) : await api('POST', '/senders', b);
       store.meta = await api('GET', '/meta'); toast('Sender saved', 'ok'); done();
     } });
@@ -56,7 +64,7 @@ export async function senders(root) {
       ${list.every((s) => s.mode === 'simulate') ? html`<div class="banner"><b>No real sending is configured yet.</b> ${list.length ? 'Your senders are in simulation mode.' : 'Add a sender'} — campaigns will be recorded as sent but <b>no email leaves the server</b> until you add a sender with real SMTP details.</div>` : ''}
       <div class="card">${list.length ? html`<div class="tablewrap"><table><thead><tr><th>Sender</th><th>Server</th><th>Status</th><th>Last 24h</th><th></th></tr></thead><tbody>
         ${list.map((s) => html`<tr><td><b>${s.label}</b> ${s.is_default ? html`<span class="badge">default</span>` : ''}<div class="small muted">${s.from_name ? `${s.from_name} ` : ''}&lt;${s.from_email}&gt;</div></td>
-          <td class="small">${s.mode === 'smtp' ? html`${s.host}:${s.port} ${s.secure ? 'SSL/TLS' : 'STARTTLS'}<div class="muted">${s.username || ''}</div>` : html`<span class="badge simulated">simulation</span>`}</td>
+          <td class="small">${s.mode === 'smtp' ? html`${s.host}:${s.port} ${s.secure ? 'SSL/TLS' : 'STARTTLS'}<div class="muted">${s.username || ''}</div>${s.save_sent ? html`<div class="muted">📁 copies → Sent (${s.imap_host})</div>` : ''}${s.copy_error ? html`<div style="color:var(--bad);max-width:280px">${s.copy_error}</div>` : ''}` : html`<span class="badge simulated">simulation</span>`}</td>
           <td>${!s.active ? badge('disabled') : s.mode === 'simulate' ? html`<span class="muted small">—</span>` : s.last_error ? html`<span class="badge failed">error</span><div class="small" style="color:var(--bad);max-width:280px">${s.last_error}</div>` : s.last_verified_at ? html`<span class="badge sent">verified</span><div class="small muted">${ago(s.last_verified_at)}</div>` : html`<span class="badge draft">not verified</span>`}</td>
           <td>${s.sent_24h} / ${s.daily_limit}<div class="ring"><i style="width:${Math.min(100, (s.sent_24h / s.daily_limit) * 100)}%"></i></div></td>
           <td class="nowrap">${admin ? html`<button class="btn sm" data-act="verify" data-id="${s.id}">Verify</button> <button class="btn sm" data-act="test" data-id="${s.id}">Send test</button> <button class="btn sm" data-act="edit" data-id="${s.id}">Edit</button> <button class="btn sm danger" data-act="del" data-id="${s.id}" aria-label="Delete">✕</button>` : ''}</td></tr>`)}</tbody></table></div>` : html`<div class="empty">No senders yet. Add one for each address you send from.</div>`}</div>
@@ -75,7 +83,7 @@ export async function senders(root) {
       del: async (el) => { if (await confirmBox(`Delete sender "${byId(el).label}"? Campaigns using it fall back to the default sender.`, 'Delete')) { await api('DELETE', `/senders/${el.dataset.id}`); draw(); } },
       verify: async (el) => { el.disabled = true; el.textContent = 'Checking…'; try { const r = await api('POST', `/senders/${el.dataset.id}/verify`); toast(r.ok ? (r.note || 'Connection and login OK') : r.error, r.ok ? 'ok' : 'bad'); } finally { draw(); } },
       test: (el) => modal({ title: 'Send test email', submitLabel: 'Send', body: field({ name: 'to', label: 'Send a test to', type: 'email', required: true, default: store.user.email }),
-        onSubmit: async (f) => { const r = await api('POST', `/senders/${el.dataset.id}/test`, { to: f.to.value }); toast(r.simulated ? `Simulated — nothing was actually sent to ${r.to}` : `Test email sent to ${r.to}`, r.simulated ? '' : 'ok'); draw(); } }),
+        onSubmit: async (f) => { const r = await api('POST', `/senders/${el.dataset.id}/test`, { to: f.to.value }); toast(r.simulated ? `Simulated — nothing was actually sent to ${r.to}` : `Test email sent to ${r.to}${r.sent_copy === 'saved' ? ` — a copy is in your “${r.sent_folder}” folder` : ''}`, r.simulated ? '' : 'ok'); if (r.copy_error) toast(r.copy_error, 'bad'); draw(); } }),
     });
   };
   await draw();

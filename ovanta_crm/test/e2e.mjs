@@ -334,6 +334,19 @@ await page.click('.help-body section#start a[href="#/help/security"]'); await pa
 await page.click('.help-body section#tasks figure img'); await page.waitForSelector('.modal img'); await page.keyboard.press('Escape');
 await page.click('a[data-nav=help]'); await page.waitForSelector('.help-body'); await shot('help');
 for (const id of await page.evaluate(() => [...document.querySelectorAll('.help-body a[href^="#/help/"]')].map((a) => a.getAttribute('href').slice(7)))) if (!(await page.locator(`.help-body section#${id}`).count())) errors.push('broken help link #/help/' + id);
+// ===== Campaign: choose the mailbox at send time; sender keeps copies in Sent =====
+await page.goto(`${base}/#/senders`); await page.waitForSelector('button[data-act=new]'); await page.click('button[data-act=new]');
+await page.selectOption('.modal #preset', 'titan');
+if ((await page.inputValue('.modal input[name=imap_host]')) !== 'imap.secureserver.net' || !(await page.isChecked('.modal input[name=save_sent]'))) errors.push('Titan preset should fill IMAP and tick save to Sent');
+await page.selectOption('.modal #preset', 'google'); if (await page.isChecked('.modal input[name=save_sent]')) errors.push('Gmail preset should leave save to Sent off');
+if (await page.locator('.modal input[name=imap_host]').isVisible()) errors.push('IMAP fields should hide when save to Sent is off');
+await page.selectOption('.modal #preset', 'titan'); await shot('sender-sent-copies'); await page.keyboard.press('Escape');
+const campId = await page.evaluate(async () => { const segs = await (await fetch('/api/segments')).json(); const r = await fetch('/api/campaigns', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Sender pick', subject: 'Hi', body_html: '<p>Hi</p>', segment_id: segs[0].id }) }); return (await r.json()).id; });
+await page.goto(`${base}/#/campaigns/${campId}`); await page.waitForSelector('button[data-act=send]'); await page.click('button[data-act=send]');
+await page.waitForSelector('.modal select[name=sender_id]', { timeout: 8000 }).catch(() => errors.push('send dialog has no sender choice'));
+if ((await page.locator('.modal select[name=sender_id] option').count()) < 1) errors.push('no senders to choose from'); await shot('campaign-send-from');
+await page.keyboard.press('Escape');
+
 // ===== Inviting a user by email =====
 await page.goto(`${base}/#/team`); await page.waitForSelector('button[data-act=new]'); await page.click('button[data-act=new]');
 await page.fill('.modal input[name=name]', 'Janvi Rao'); await page.fill('.modal input[name=email]', 'janvi@syncsense.in');

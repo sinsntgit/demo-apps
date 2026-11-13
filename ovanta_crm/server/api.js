@@ -69,7 +69,7 @@ GET('/api/meta', () => ({
   industries: all("SELECT DISTINCT industry v FROM accounts WHERE industry IS NOT NULL ORDER BY 1").map((r) => r.v),
   sources: all("SELECT DISTINCT source v FROM contacts WHERE source IS NOT NULL ORDER BY 1").map((r) => r.v),
   mailTransport: config.mailTransport, baseUrl: config.baseUrl, baseUrlFromEnv: !!process.env.BASE_URL, defaults: { fromName: config.defaultFromName, fromEmail: config.defaultFromEmail },
-  senders: all('SELECT id,label,from_email,mode,active,is_default FROM senders ORDER BY is_default DESC, label'),
+  senders: all('SELECT id,label,from_name,from_email,mode,active,is_default,host,save_sent,copy_error FROM senders ORDER BY is_default DESC, label'),
   events: EVENTS, ai: { configured: aiConfigured(), model: aiModel() }, theme: getTheme(),
 }));
 GET('/api/lookup', ({ query, user }) => {

@@ -67,7 +67,7 @@ export const isSimulated = (sender) => (sender ? sender.mode === 'simulate' : co
 export async function sendTest(campaign, to, sampleContact) {
   const m = renderMessage(campaign, sampleContact, null);
   const sender = resolveSender(campaign);
-  const r = await sendMail(sender, { to, subject: `[TEST] ${m.subject}`, html: m.html, text: m.text, campaign_id: campaign.id });
+  const r = await sendMail(sender, { to, subject: `[TEST] ${m.subject}`, html: m.html, text: m.text, campaign_id: campaign.id, copyToSent: true });
   return { ...r, sender };
 }
 
@@ -130,9 +130,11 @@ export function processCampaign(id) {
           if (still && !still.subscribed) { run("UPDATE campaign_recipients SET status='failed', error='Unsubscribed before send' WHERE id=?", r.id); continue; }
           try {
             const m = renderMessage(c, { ...r, email: r.email }, r.token);
-            const res = await sendMail(sender, { to: r.email, subject: m.subject, html: m.html, text: m.text, campaign_id: id,
+            const res = await sendMail(sender, { to: r.email, subject: m.subject, html: m.html, text: m.text, campaign_id: id, copyToSent: true,
               headers: { 'List-Unsubscribe': `<${config.baseUrl}/u/${r.token}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } });
             run("UPDATE campaign_recipients SET status='sent', sent_at=?, message_id=?, response=?, error=NULL WHERE id=?", nowIso(), res.messageId, res.response, r.id);
+            if (res.sent_copy === 'saved') run('UPDATE campaigns SET copies_saved=copies_saved+1 WHERE id=?', id);
+            else if (res.sent_copy === 'failed') run('UPDATE campaigns SET copies_failed=copies_failed+1, copy_error=? WHERE id=?', res.copy_error, id);
           } catch (e) {
             run("UPDATE campaign_recipients SET status='failed', error=? WHERE id=?", String(e.message).slice(0, 400), r.id);
           }

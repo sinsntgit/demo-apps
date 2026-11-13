@@ -118,11 +118,24 @@ async function editor(root, c) {
       await save(true);
       if (!form.segment_id.value) throw new Error('Choose an audience segment first');
       const seg = segments.find((s) => String(s.id) === form.segment_id.value); const p = await api('POST', '/segments/preview', { filter: seg.filter });
-      const sd = store.meta.senders.find((x) => String(x.id) === form.sender_id.value) || store.meta.senders.find((x) => x.is_default);
-      const via = !sd || sd.mode === 'simulate' ? 'SIMULATION MODE — nobody will actually receive this email' : `from ${sd.from_name || ''} <${sd.from_email}>`;
-      if (await confirmBox(`Send "${form.subject.value || c.name}" to ${p.emailable} contacts in "${seg.name}" now, ${via}? This cannot be undone.`, `Send to ${p.emailable}`, false)) {
-        const r = await api('POST', `/campaigns/${c.id}/launch`); toast(r.simulated ? `Simulated send to ${r.recipients} recipients (no real email)` : `Sending to ${r.recipients} recipients…`, 'ok'); campaignDetail(root, c.id);
-      }
+      const active = store.meta.senders.filter((x) => x.active);
+      const pick = (form.sender_id.value && active.find((x) => String(x.id) === form.sender_id.value)) || active.find((x) => x.is_default) || active[0];
+      modal({ title: 'Send campaign now', submitLabel: `Send to ${p.emailable}`, body: html`
+        <p>“<b>${form.subject.value || c.name}</b>” to <b>${p.emailable}</b> contacts in “${seg.name}”. This cannot be undone.</p>
+        <label>Send from (email address)<select name="sender_id" required>${active.map((x) => html`<option value="${x.id}" ${x === pick ? raw('selected') : ''}>${x.from_name ? `${x.from_name} ` : ''}&lt;${x.from_email}&gt; — ${x.label}${x.mode === 'simulate' && !/simulat/i.test(x.label) ? ' (simulation)' : ''}</option>`)}</select></label>
+        <div id="sentinfo" class="small"></div>`,
+        onOpen: (f) => {
+          const info = () => { const x = active.find((y) => String(y.id) === f.sender_id.value);
+            setHtml($('#sentinfo', f), !x || x.mode === 'simulate' ? html`<div class="banner small"><b>Simulation:</b> nobody will actually receive this email.</div>`
+              : x.save_sent ? html`<div class="muted">📁 A copy of every email will be saved in the Sent folder of ${x.from_email}.${x.copy_error ? html`<div style="color:var(--bad)">Last attempt failed: ${x.copy_error}</div>` : ''}</div>`
+              : /gmail|google|office365|outlook/.test(x.host || '') ? html`<div class="muted">📁 ${/gmail|google/.test(x.host) ? 'Gmail' : 'Microsoft 365'} files these emails in your Sent folder automatically.</div>`
+              : html`<div class="muted">These emails will <b>not</b> appear in your mailbox’s Sent folder. ${allow('senders.manage') ? html`To change that, edit the sender under <a href="#/senders">Email senders</a> and tick “Save a copy… in Sent”.` : 'An admin can turn this on under Email senders.'}</div>`); };
+          f.sender_id.addEventListener('change', info); info();
+        },
+        onSubmit: async (f) => {
+          form.sender_id.value = f.sender_id.value; await save(true);
+          const r = await api('POST', `/campaigns/${c.id}/launch`); toast(r.simulated ? `Simulated send to ${r.recipients} recipients (no real email)` : `Sending to ${r.recipients} recipients from ${r.sender}…`, 'ok'); setTimeout(() => campaignDetail(root, c.id), 50);
+        } });
     },
   });
 }
@@ -138,6 +151,7 @@ async function report(root, c) {
       <div class="muted" style="margin:-10px 0 16px">Subject: <b>${c.subject}</b> · Audience: ${c.segment_name || 'deleted segment'} · From: ${c.sender_label ? `${c.sender_label} <${c.sender_email}>` : 'default sender'} · ${c.sent_at ? 'Sent ' + fmtDateTime(c.sent_at) : 'Sending…'}</div>
       ${c.simulated ? html`<div class="banner"><b>This was a simulation.</b> No email was actually sent — the statuses below are simulated. Configure a real sender under <a href="#/senders">Email senders</a>.</div>` : ''}
       ${c.note ? html`<div class="banner">${c.note}</div>` : ''}
+      ${c.copies_saved || c.copies_failed ? html`<div class="small muted" style="margin:-6px 0 12px">📁 Copies saved in the Sent folder of ${c.sender_email}: <b>${c.copies_saved}</b>${c.copies_failed ? html` · <span style="color:var(--bad)">${c.copies_failed} not saved — ${c.copy_error}</span>` : ''}</div>` : ''}
       ${s.failed ? html`<div class="banner bad"><b>${s.failed} email${s.failed === 1 ? '' : 's'} failed.</b> ${s.failures.map((f) => html`<div class="small">${f.n}× ${f.error}</div>`)}</div>` : ''}
       <div class="pill-row" style="margin-bottom:12px"><span class="badge queued">Queued ${s.queued}</span><span class="badge sent">Sent ${s.sent}</span><span class="badge failed">Failed ${s.failed}</span><span class="badge opened">Opened ${s.opened}</span><span class="badge clicked">Clicked ${s.clicked}</span><span class="badge unsubscribed">Unsubscribed ${s.unsubscribed}</span></div>
       ${c.status === 'sending' ? html`<div class="card kpi" style="border-color:var(--warn)">Sending in progress — ${s.sent + s.failed} of ${s.total} processed. <a href="#/campaigns/${c.id}" data-act="refresh">Refresh</a></div>` : ''}

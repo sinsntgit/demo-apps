@@ -152,7 +152,7 @@ export async function sendInvoiceEmail(inv, { to, cc, subject, message, attach =
     ${attach ? '<p style="font-size:12px;color:#6b7280">The invoice is attached — open it in your browser and use Print → Save as PDF to keep a copy.</p>' : ''}</div>`;
   const attachments = attach ? [{ filename: `${String(inv.number).replace(/[^\w.-]+/g, '_')}.html`, content: await renderInvoiceHtml(inv, { portal: false, standalone: true }), contentType: 'text/html; charset=utf-8' }] : [];
   const sender = senderFor(company);
-  const r = await sendLogged({ sender, to: toList.join(', '), cc: ccList.length ? ccList.join(', ') : undefined, subject: subj, html, text: `${msg}\n\n${rows.map(([k, v]) => `${k}: ${v}`).join('\n')}${inv.portal_token ? `\n\nView online: ${portalUrl(inv)}` : ''}${bank}`, kind: 'invoice', event: `invoice:${inv.number}`, attachments });
+  const r = await sendLogged({ sender, to: toList.join(', '), cc: ccList.length ? ccList.join(', ') : undefined, subject: subj, html, text: `${msg}\n\n${rows.map(([k, v]) => `${k}: ${v}`).join('\n')}${inv.portal_token ? `\n\nView online: ${portalUrl(inv)}` : ''}${bank}`, kind: 'invoice', event: `invoice:${inv.number}`, attachments, copyToSent: true });
   if (r.status !== 'failed') run('UPDATE invoices SET emailed_at=?, email_count=email_count+1 WHERE id=?', nowIso(), inv.id);
   logEvent(inv.id, r.status === 'failed' ? 'email_failed' : 'emailed', `${r.status === 'simulated' ? '(simulated) ' : ''}to ${toList.join(', ')}${ccList.length ? ` cc ${ccList.join(', ')}` : ''}${r.error ? ` — ${r.error}` : ''}`, user);
   return { status: r.status, error: r.error, to: toList, cc: ccList, via: sender ? `${sender.label} (${sender.from_email})` : 'no sender', simulated: !sender || sender.mode !== 'smtp' };
@@ -165,7 +165,7 @@ export async function sendPaymentReceipt(inv, amount, user) {
   const text = `Dear ${inv.buyer_name || 'customer'},\n\nThank you — we have received your payment of ${money(amount, inv.currency)} for invoice ${inv.number}.\n${bal > 0 ? `Remaining balance: ${money(bal, inv.currency)}.` : 'The invoice is now fully paid.'}\n\n${sj.seller_name || company.seller_name}`;
   const html = `<div style="font-family:Arial,sans-serif;max-width:560px;white-space:pre-line;line-height:1.55">${esc(text)}</div>${inv.portal_token ? button(portalUrl(inv), 'View invoice') : ''}`;
   const sender = senderFor(company);
-  const r = await sendLogged({ sender, to: inv.buyer_email, subject: `Payment received — ${inv.number}`, html, text, kind: 'receipt', event: `invoice:${inv.number}` });
+  const r = await sendLogged({ sender, to: inv.buyer_email, subject: `Payment received — ${inv.number}`, html, text, kind: 'receipt', event: `invoice:${inv.number}`, copyToSent: true });
   logEvent(inv.id, r.status === 'failed' ? 'receipt_failed' : 'receipt_sent', `${r.status === 'simulated' ? '(simulated) ' : ''}to ${inv.buyer_email}${r.error ? ` — ${r.error}` : ''}`, user);
   return { status: r.status, detail: r.error || `to ${inv.buyer_email}` };
 }
@@ -201,7 +201,7 @@ export async function sendReminder(inv, channel, { kind = 'manual', offset = nul
     else {
       const sender = senderFor(company);
       const html = `<div style="font-family:Arial,sans-serif;max-width:560px;white-space:pre-line;line-height:1.55">${esc(msg.text).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>')}</div>${inv.portal_token ? button(portalUrl(inv), 'View invoice & pay') : ''}`;
-      const r = await sendLogged({ sender, to: inv.buyer_email, subject: msg.subject, html, text: msg.text, kind: 'reminder', event: `invoice:${inv.number}` });
+      const r = await sendLogged({ sender, to: inv.buyer_email, subject: msg.subject, html, text: msg.text, kind: 'reminder', event: `invoice:${inv.number}`, copyToSent: true });
       status = r.status === 'failed' ? 'failed' : r.status === 'simulated' ? 'simulated' : 'sent'; detail = r.error || (r.status === 'simulated' ? 'Simulation sender: nothing was delivered.' : `Sent to ${inv.buyer_email}`);
     }
   } else if (channel === 'whatsapp' || channel === 'sms') {

@@ -210,7 +210,7 @@
 <h3>3. Test and send</h3>
 <ol>
 <li><b>Send test</b> to yourself first.</li>
-<li><b>Send now</b> or <b>Schedule…</b> (needs the Send permission). The audience is frozen when sending starts.</li>
+<li><b>Send now</b> or <b>Schedule…</b> (needs the Send permission). The <b>Send now</b> dialog asks which email address to send from, and says whether a copy will appear in that mailbox’s Sent folder. The audience is frozen when sending starts.</li>
 <li>Emails go out one by one through the chosen sender, respecting its 24-hour limit and pause. If the limit is reached the campaign pauses and continues automatically.</li>
 </ol>
 <h3>4. Results</h3>
@@ -236,6 +236,9 @@
 <tr><td>Microsoft 365 / Outlook</td><td><code>smtp.office365.com</code> 587</td><td>Your administrator must enable SMTP AUTH for the mailbox.</td></tr>
 <tr><td>Zoho Mail</td><td><code>smtp.zoho.in</code> (India) / <code>smtp.zoho.com</code> 465</td><td>An app-specific password if two-factor is on.</td></tr>
 </table>
+<h3>Seeing sent emails in your mailbox's Sent folder</h3>
+<p>Emails sent through SMTP do not appear in your Sent folder by themselves (Gmail and Microsoft 365 are exceptions — they file them automatically). To keep a copy, edit the sender and tick <b>Save a copy … in this mailbox’s Sent folder</b>. The presets fill the IMAP server (GoDaddy/Titan: <code>imap.secureserver.net</code>, Titan elsewhere: <code>imap.titan.email</code>, Zoho: <code>imap.zoho.in</code>; port 993); it signs in with the same username and password. The folder marked <i>Sent</i> is found automatically — type its name only if your copies should go elsewhere.</p>
+<p>Copies are kept for campaign, invoice, receipt and reminder emails and for <b>Send test</b>. <b>Verify</b> checks the IMAP sign-in and names the folder. If saving a copy fails, the email is still sent and the reason is shown on the sender and in the campaign report. Each recipient adds one message to your mailbox, so keep an eye on its storage for big campaigns.</p>
 <h3>Which sender is used</h3>
 <ul>
 <li>Campaigns: the sender chosen on the campaign.</li>

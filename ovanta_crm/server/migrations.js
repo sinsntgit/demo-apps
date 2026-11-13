@@ -153,6 +153,13 @@ BEGIN SELECT RAISE(ABORT, 'Issued invoices cannot be changed. Issue a credit or 
       for (const [c, ddl] of [['invite_pending', 'INTEGER NOT NULL DEFAULT 0'], ['invited_at', 'TEXT']]) if (!hasColumn(db, 'users', c)) db.exec(`ALTER TABLE users ADD COLUMN ${c} ${ddl}`);
     },
   },
+  {
+    version: 11, name: 'save_copies_in_sent_folder',
+    up(db) {
+      for (const [c, ddl] of [['save_sent', 'INTEGER NOT NULL DEFAULT 0'], ['imap_host', 'TEXT'], ['imap_port', 'INTEGER NOT NULL DEFAULT 993'], ['sent_folder', 'TEXT'], ['copy_error', 'TEXT']]) if (!hasColumn(db, 'senders', c)) db.exec(`ALTER TABLE senders ADD COLUMN ${c} ${ddl}`);
+      for (const [c, ddl] of [['copies_saved', 'INTEGER NOT NULL DEFAULT 0'], ['copies_failed', 'INTEGER NOT NULL DEFAULT 0'], ['copy_error', 'TEXT']]) if (!hasColumn(db, 'campaigns', c)) db.exec(`ALTER TABLE campaigns ADD COLUMN ${c} ${ddl}`);
+    },
+  },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 
