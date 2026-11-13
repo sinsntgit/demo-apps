@@ -86,7 +86,7 @@ export async function senders(root) {
         try {
           const r = await api('POST', `/senders/${el.dataset.id}/deliverability`); const icon = { ok: '✅', warn: '⚠️', bad: '❌' };
           modal({ title: `Deliverability · ${r.domain}`, wide: true, hideFooter: true, body: html`
-            <p class="small muted" style="margin-top:0">Read from public DNS just now${r.provider ? ` · mail sent through ${r.provider}` : ''}. Changes at your DNS host can take up to a few hours to show.</p>
+            <p class="small muted" style="margin-top:0">Read from public DNS just now${r.via ? ` via ${r.via}` : ''}${r.provider ? ` · mail sent through ${r.provider}` : ''}. Changes at your DNS host can take up to a few hours to show.</p>
             <div style="display:grid;gap:10px">${r.items.map((i) => html`<div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px"><b>${icon[i.status]} ${i.label}</b><div class="small mono" style="word-break:break-all;margin-top:4px">${i.detail}</div>${i.fix ? html`<div class="small" style="margin-top:6px"><b>Fix:</b> ${i.fix}</div>` : ''}</div>`)}</div>
             <div style="display:flex;justify-content:flex-end;margin-top:12px"><button type="button" class="btn primary" data-close>Done</button></div>` });
         } finally { el.disabled = false; el.textContent = t; }

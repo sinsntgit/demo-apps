@@ -59,7 +59,48 @@ const PROVIDERS = [
   { test: /zoho/, name: 'Zoho', spf: /zoho\.(com|in|eu)/, spfHint: 'include:zoho.in (or zoho.com)', selectors: ['zmail', 'zoho', 'default', 'mail'] },
 ];
 const FREEMAIL = /^(gmail|googlemail|yahoo|ymail|outlook|hotmail|live|msn|icloud|me|aol|rediffmail|proton|protonmail|zoho)\.[a-z.]+$/;
-const txt = async (name) => { try { return (await dns.resolveTxt(name)).map((r) => r.join('')); } catch { return []; } };
+
+/*
+ * Where DNS questions go. Browsers use the operating system's resolver, but TXT records (SPF, DKIM, DMARC) need a direct
+ * DNS query, which some Windows setups refuse (ECONNREFUSED — routers, VPNs, security software). So we try, in order:
+ * this computer's DNS servers, public DNS (1.1.1.1 / 8.8.8.8), then DNS-over-HTTPS — plain https, which works wherever a browser does.
+ */
+const nf = () => Object.assign(new Error('not found'), { code: 'ENOTFOUND' });
+const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error('timed out'), { code: 'ETIMEOUT' })), ms).unref?.())]);
+function resolverBackend(name, r) { return { name, mx: (d) => r.resolveMx(d), txt: (d) => r.resolveTxt(d), cname: (d) => r.resolveCname(d) }; }
+function publicUdp() { const r = new dns.Resolver({ timeout: 2500, tries: 1 }); r.setServers(['1.1.1.1', '8.8.8.8']); return resolverBackend('public DNS (1.1.1.1 / 8.8.8.8)', r); }
+const TYPES = { MX: 15, TXT: 16, CNAME: 5 };
+/** DNS-over-HTTPS JSON API (Cloudflare and Google use the same format). */
+export function dohBackend(name, url, fetchFn = (...a) => fetch(...a)) {
+  const q = async (domain, type) => {
+    const r = await fetchFn(`${url}?name=${encodeURIComponent(domain)}&type=${type}`, { headers: { accept: 'application/dns-json' }, signal: AbortSignal.timeout(6000) });
+    if (!r.ok) throw Object.assign(new Error(`HTTP ${r.status}`), { code: 'EDOH' });
+    const j = await r.json();
+    if (j.Status === 3) throw nf(); if (j.Status !== 0) throw Object.assign(new Error(`DNS status ${j.Status}`), { code: 'ESERVFAIL' });
+    const ans = (j.Answer || []).filter((a) => a.type === TYPES[type]).map((a) => String(a.data));
+    if (!ans.length) throw nf();
+    return ans;
+  };
+  return {
+    name,
+    mx: async (d) => (await q(d, 'MX')).map((x) => { const [pr, ex] = x.split(/\s+/); return { priority: Number(pr), exchange: String(ex || '').replace(/\.$/, '') }; }),
+    // TXT data arrives quoted, long records split into several quoted chunks: "v=spf1 ..." "more"
+    txt: async (d) => (await q(d, 'TXT')).map((x) => { const parts = [...x.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((m) => m[1].replace(/\\(.)/g, '$1')); return parts.length ? parts : [x]; }),
+    cname: async (d) => (await q(d, 'CNAME')).map((x) => x.replace(/\.$/, '')),
+  };
+}
+/** The order tried; tests replace it. */
+export const dnsBackends = {
+  list: () => [resolverBackend('this computer’s DNS', dns), publicUdp(), dohBackend('DNS over HTTPS (Cloudflare)', 'https://cloudflare-dns.com/dns-query'), dohBackend('DNS over HTTPS (Google)', 'https://dns.google/resolve')],
+};
+/** The first backend that can answer a known question (gmail.com has MX records), with the errors of those that could not. */
+async function pickDns() {
+  const errors = [];
+  for (const b of dnsBackends.list()) {
+    try { const m = await withTimeout(b.mx('gmail.com'), 7000); if (m.length) return { b, errors }; } catch (e) { errors.push(`${b.name}: ${e.code || e.message}`); }
+  }
+  return { b: null, errors };
+}
 
 /** Check the sender's domain in public DNS. Each item: { key, label, status: 'ok'|'warn'|'bad', detail, fix }. */
 export async function checkDomain(sender) {
@@ -69,12 +110,12 @@ export async function checkDomain(sender) {
   const item = (key, label, status, detail, fix = null) => items.push({ key, label, status, detail, fix });
   if (!domain) return { domain, items: [{ key: 'domain', label: 'From address', status: 'bad', detail: 'No domain in the From address.' }] };
   if (FREEMAIL.test(domain)) return { domain, provider: prov?.name || null, items: [{ key: 'domain', label: 'Sending from a free mailbox', status: 'warn', detail: `${domain} belongs to the email provider, so you cannot add SPF, DKIM or DMARC for it. Gmail and Yahoo limit and filter bulk mail sent from free addresses.`, fix: 'Send campaigns from an address on your own domain (e.g. you@syncsense.in), where you control those records.' }] };
-  // make sure public DNS is reachable from here before reporting anything as missing
-  try { await dns.resolveMx('gmail.com'); } catch (e) {
-    return { domain, provider: prov?.name || null, items: [{ key: 'dns', label: 'DNS lookup', status: 'warn', detail: `This computer could not look up public DNS (${e.code || e.message}), so the records could not be checked.`, fix: `Check from any computer with internet access at mxtoolbox.com (SPF, DKIM, DMARC lookups for ${domain}), or try again later.` }] };
-  }
+  // find a way to ask DNS that works from this computer before reporting anything as missing
+  const { b: D, errors } = await pickDns();
+  if (!D) return { domain, provider: prov?.name || null, items: [{ key: 'dns', label: 'DNS lookup', status: 'warn', detail: `DNS records could not be looked up from this computer (${errors.join(' · ')}).`, fix: `A firewall or proxy may block the CRM (Node.js) from the internet. Check ${domain} at mxtoolbox.com (SPF, DKIM, DMARC lookups) meanwhile.` }] };
+  const txt = async (name) => { try { return (await withTimeout(D.txt(name), 7000)).map((r) => r.join('')); } catch { return []; } };
 
-  let mx = []; try { mx = await dns.resolveMx(domain); } catch { /* none */ }
+  let mx = []; try { mx = await withTimeout(D.mx(domain), 7000); } catch { /* none */ }
   if (mx.length) item('mx', 'MX (can receive replies)', 'ok', mx.sort((a, b) => a.priority - b.priority).slice(0, 2).map((m) => m.exchange).join(', '));
   else item('mx', 'MX (can receive replies)', 'bad', `No MX record for ${domain}, or DNS could not be reached from this computer.`, 'Your domain must be able to receive email — check the MX records at your DNS host.');
 
@@ -89,7 +130,7 @@ export async function checkDomain(sender) {
   for (const s of selectors) {
     const recs = await txt(`${s}._domainkey.${domain}`);
     if (recs.some((r) => /v=DKIM1|k=rsa|p=/i.test(r))) { dkim = s; break; }
-    try { const c = await dns.resolveCname(`${s}._domainkey.${domain}`); if (c.length) { dkim = s; break; } } catch { /* none */ }
+    try { const c = await withTimeout(D.cname(`${s}._domainkey.${domain}`), 7000); if (c.length) { dkim = s; break; } } catch { /* none */ }
   }
   if (dkim) item('dkim', 'DKIM (signature)', 'ok', `Found the key “${dkim}._domainkey.${domain}”.`);
   else item('dkim', 'DKIM (signature)', 'warn', 'No DKIM key found under the usual names. It may exist under another name, but if DKIM is off, Gmail and Yahoo treat bulk mail as suspicious.',
@@ -107,5 +148,5 @@ export async function checkDomain(sender) {
     item('tracking', 'Tracking & unsubscribe address', same ? 'ok' : 'warn', `${config.baseUrl}${same ? '' : ` — a different domain from ${domain}`}`, same ? null : `Links on a domain that matches the sender (e.g. crm.${domain}) look more trustworthy than a tunnel or hosting domain.`);
   }
   if (prov && ['GoDaddy', 'Titan'].includes(prov.name)) item('volume', 'Sending service', 'warn', `${prov.name} mailboxes are made for person-to-person email. Bulk campaigns from them share IP reputation with other customers and have low daily limits.`, 'For regular campaigns above a few hundred emails, send through a bulk email service (Brevo, Amazon SES, Mailgun, Postmark) on a subdomain such as news.' + domain + '.');
-  return { domain, provider: prov?.name || null, items };
+  return { domain, provider: prov?.name || null, items, via: D.name };
 }

@@ -13,7 +13,7 @@ delete process.env.BASE_URL;
 const { server } = await import('../server/index.js');
 const { seedIfEmpty } = await import('../server/seed.js');
 const { config } = await import('../server/config.js');
-const { addressReach, lintCampaign, checkDomain } = await import('../server/deliverability.js');
+const { addressReach, lintCampaign, checkDomain, dnsBackends, dohBackend } = await import('../server/deliverability.js');
 let base, admin, senderId, segId;
 before(async () => {
   seedIfEmpty(); await new Promise((r) => server.listen(0, r)); base = `http://localhost:${server.address().port}`; admin = await login('admin@ovantaa.com', 'Ovantaa@123');
@@ -88,9 +88,29 @@ test('domain check reads SPF, DKIM and DMARC from DNS and says how to fix what i
     assert.equal(by.dkim.status, 'ok'); assert.match(by.dkim.detail, /titan1/);
     assert.equal(by.dmarc.status, 'bad'); assert.match(by.dmarc.fix, /v=DMARC1; p=none/);
     assert.equal(by.volume.status, 'warn');
-    dns.resolveMx = async () => { throw Object.assign(new Error('x'), { code: 'ECONNREFUSED' }); };
-    const offline = await checkDomain({ from_email: 'santosh@syncsense.in', host: 'smtpout.secureserver.net' });
-    assert.equal(offline.items.length, 1); assert.equal(offline.items[0].key, 'dns', 'no false "missing" results when DNS is unreachable');
+    assert.equal(r.via, 'this computer’s DNS');
+    const realList = dnsBackends.list;
+    const refused = (name) => ({ name, mx: async () => { throw Object.assign(new Error('x'), { code: 'ECONNREFUSED' }); }, txt: async () => { throw new Error('x'); }, cname: async () => { throw new Error('x'); } });
+    try {
+      // Windows refusing direct DNS queries: the check falls back to DNS-over-HTTPS (same JSON as Cloudflare/Google)
+      const doh = { 'syncsense.in/MX': [{ type: 15, data: '0 mx.secureserver.net.' }], 'gmail.com/MX': [{ type: 15, data: '5 gmail-smtp-in.l.google.com.' }],
+        'syncsense.in/TXT': [{ type: 16, data: '"v=spf1 include:secureserver.net " "-all"' }], '_dmarc.syncsense.in/TXT': [{ type: 16, data: '"v=DMARC1; p=none"' }],
+        'selector1._domainkey.syncsense.in/CNAME': [{ type: 5, data: 'selector1-syncsense-in._domainkey.x.onmicrosoft.com.' }] };
+      const urls = [];
+      const fakeFetch = async (u) => { urls.push(u); const q = new URL(u); const ans = doh[`${q.searchParams.get('name')}/${q.searchParams.get('type')}`];
+        return { ok: true, json: async () => (ans ? { Status: 0, Answer: ans } : { Status: 3 }) }; };
+      dnsBackends.list = () => [refused('this computer’s DNS'), refused('public DNS'), dohBackend('DNS over HTTPS (test)', 'https://doh.test/q', fakeFetch)];
+      const viaDoh = await checkDomain({ from_email: 'santosh@syncsense.in', host: 'smtpout.secureserver.net' });
+      const d = Object.fromEntries(viaDoh.items.map((i) => [i.key, i]));
+      assert.equal(viaDoh.via, 'DNS over HTTPS (test)'); assert.ok(urls[0].includes('accept') === false && urls[0].startsWith('https://doh.test/q?name=gmail.com&type=MX'));
+      assert.equal(d.mx.status, 'ok'); assert.equal(d.mx.detail, 'mx.secureserver.net');
+      assert.equal(d.spf.status, 'ok'); assert.equal(d.spf.detail, 'v=spf1 include:secureserver.net -all', 'split TXT chunks are joined');
+      assert.equal(d.dkim.status, 'ok'); assert.match(d.dkim.detail, /selector1/); assert.equal(d.dmarc.status, 'ok');
+      // nothing works at all: say so instead of reporting records as missing
+      dnsBackends.list = () => [refused('this computer’s DNS'), refused('public DNS')];
+      const offline = await checkDomain({ from_email: 'santosh@syncsense.in', host: 'smtpout.secureserver.net' });
+      assert.equal(offline.items.length, 1); assert.equal(offline.items[0].key, 'dns', 'no false "missing" results when DNS is unreachable'); assert.match(offline.items[0].detail, /ECONNREFUSED/);
+    } finally { dnsBackends.list = realList; }
     const free = await checkDomain({ from_email: 'me@gmail.com', host: 'smtp.gmail.com' }); assert.match(free.items[0].detail, /cannot add SPF/);
     const api = await call(admin, 'POST', `/api/senders/${senderId}/deliverability`); assert.equal(api.status, 200); assert.equal(api.body.domain, 'syncsense.in');
   } finally { Object.assign(dns, { resolveMx: orig.mx, resolveTxt: orig.txt, resolveCname: orig.cname }); }
