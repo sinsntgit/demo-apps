@@ -109,6 +109,10 @@ Custom values appear on the record's detail page (grouped by your sections), in 
 * Task and notification emails use your **default sender if it is a real mailbox**, otherwise the first active real (SMTP) sender — never the built-in *Demo sender (simulation)* when a real one exists. Adding your first real sender also makes it the default. After each action the app tells you who is being emailed and from which address; if only the simulation sender exists, the Tasks page shows a warning and nothing is claimed as sent. A delivery failure (wrong password, server down…) appears on the task's timeline with the server's message, and every task email is in *Notifications → Email log*.
 * People with own-scope roles also see tasks they assigned to others.
 
+## Help inside the app
+
+**Help** (bottom of the menu) is a complete user guide with screenshots: getting started, every screen, setting up email senders and invoicing, administration, installation, backups and troubleshooting. It has a contents list, search and print / save as PDF, and the **?** button on every page opens the matching section. The guide is `public/help/help.html`; the screenshots in `public/help/img` are regenerated from a demo copy of the app with `npm run help:shots` (developers; needs Playwright).
+
 ## Invoicing for any country (India GST, UK, USA, MEA, Thailand…)
 
 **Billing settings → Invoicing mode** switches the rules (existing invoices keep the rules they were created under):

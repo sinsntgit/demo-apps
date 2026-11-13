@@ -1,6 +1,6 @@
 {
   "name": "ovantaa-crm",
-  "version": "1.20.0",
+  "version": "1.21.0",
   "description": "Ovantaa CRM - enterprise CRM with campaign management. Node 22.5+; one runtime dependency (nodemailer).",
   "type": "module",
   "private": true,
@@ -15,7 +15,8 @@
     "e2e": "node --no-warnings test/e2e.mjs",
     "smtp-test": "node --no-warnings scripts/smtp-test.mjs",
     "backup": "node --no-warnings scripts/backup.mjs",
-    "restore": "node --no-warnings scripts/restore.mjs"
+    "restore": "node --no-warnings scripts/restore.mjs",
+    "help:shots": "node --no-warnings scripts/help-screenshots.mjs"
   },
   "license": "UNLICENSED",
   "dependencies": {

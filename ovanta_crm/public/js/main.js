@@ -10,6 +10,7 @@ import { loadCustomization } from './forms.js';
 import { forcedSetup } from './security.js';
 import * as rec from './records.js';
 import { aiSearch } from './search.js';
+import { helpView, helpLink } from './help.js';
 import { startLive, stopLive, leaveAll } from './live.js';
 
 const app = $('#app');
@@ -18,7 +19,8 @@ const NAV = [
   ['Workspace', [['search', 'AI search', 'search'], ['dashboard', 'Dashboard', 'home'], ['contacts', 'Contacts', 'users'], ['accounts', 'Accounts', 'building'], ['deals', 'Deals', 'deal'], ['tasks', 'Tasks', 'task'], ['duplicates', 'Duplicates', 'users', 'contacts.merge']]],
   ['Billing', [['invoices', 'Invoices', 'invoice'], ['receivables', 'Receivables', 'wallet', 'receivables.view'], ['readiness', 'E-invoicing readiness', 'shield', 'readiness.view'], ['billing-settings', 'Billing settings', 'cog', 'billing_settings.view']]],
   ['Marketing', [['campaigns', 'Campaigns', 'mail'], ['segments', 'Segments', 'seg'], ['templates', 'Templates', 'tpl'], ['senders', 'Email senders', 'send', 'senders.view']]],
-  ['Admin', [['customize', 'Customisation', 'tpl', 'customization.manage'], ['notifications', 'Notifications', 'bell', 'notifications.view'], ['team', 'Team & roles', 'team', 'users.view'], ['settings', 'Settings', 'cog']]],
+  ['Admin', [['customize', 'Customisation', 'tpl', 'customization.manage'], ['notifications', 'Notifications', 'bell', 'notifications.view'], ['team', 'Team & roles', 'team', 'users.view'], ['settings', 'Settings', 'cog']]],,
+  ['Support', [['help', 'Help', 'help']]]
 ];
 
 const ROUTES = [
@@ -30,7 +32,7 @@ const ROUTES = [
   [/^invoices$/, (r) => inv.invoiceList(r, () => bill.importInvoices(() => { location.hash = '#/readiness'; }))], [/^invoices\/new$/, (r) => inv.invoiceEditor(r, null)], [/^invoices\/(\d+)\/edit$/, (r, id) => inv.invoiceEditor(r, id)], [/^invoices\/(\d+)$/, (r, id) => inv.invoiceDetail(r, id)],
   [/^receivables$/, (r) => bill.receivables(r)], [/^readiness$/, (r) => bill.readiness(r, (done) => bill.importInvoices(done))], [/^billing-settings$/, (r) => bill.billingSettings(r)],
   [/^senders$/, (r) => mail.senders(r)], [/^notifications$/, (r) => mail.notifications(r)],
-  [/^duplicates$/, (r) => rec.duplicates(r)], [/^search$/, (r) => aiSearch(r)], [/^customize$/, (r) => cust.customize(r)], [/^team$/, (r) => admin.team(r)], [/^settings$/, (r) => admin.settings(r)],
+  [/^duplicates$/, (r) => rec.duplicates(r)], [/^search$/, (r) => aiSearch(r)], [/^customize$/, (r) => cust.customize(r)], [/^team$/, (r) => admin.team(r)], [/^settings$/, (r) => admin.settings(r)], [/^help(?:\/([\w-]+))?$/, (r, id) => helpView(r, id)],
 ];
 
 function loginView(msg = '') {
@@ -68,7 +70,7 @@ function shell() {
   setHtml(app, html`<div class="shell"><aside class="side" id="side"><div class="brand"><span class="logo"><i></i></span>Ovantaa CRM</div>
     <nav class="nav" aria-label="Main">${NAV.map(([group, items]) => html`<h4>${group}</h4>${items.filter((i) => !i[3] || allow(i[3])).map(([k, l, ic]) => html`<a href="#/${k}" data-nav="${k}">${icon(ic)}${l}</a>`)}`)}</nav>
     <div class="me"><span class="avatar">${initials(store.user.name)}</span><div class="who"><b>${store.user.name}</b><span>${store.user.role_label || store.user.role} · v${store.meta.version || '?'}</span></div><button class="btn sm" data-act="logout" title="Sign out">Sign out</button></div></aside>
-    <main class="main"><button class="btn menu-btn" data-act="menu" style="margin-bottom:12px" aria-label="Open menu">☰ Menu</button><div id="view"></div></main></div>`);
+    <a class="help-fab" href="#/help" id="helpfab" title="Help for this page" aria-label="Help for this page">?</a><main class="main"><button class="btn menu-btn" data-act="menu" style="margin-bottom:12px" aria-label="Open menu">☰ Menu</button><div id="view"></div></main></div>`);
   api('GET', '/tasks-summary').then((s) => { const n = (s.to_me_open || 0) + (s.by_me_issues || 0); const a = $('a[data-nav=tasks]'); if (a && n) a.insertAdjacentHTML('beforeend', `<span class="badge plain" style="margin-left:auto" title="Open tasks assigned to you, plus issues on tasks you assigned">${n}</span>`); }).catch(() => {});
   on($('.shell'), { menu: () => $('#side').classList.toggle('open'), logout: async () => { leaveAll(); stopLive(); await api('POST', '/auth/logout'); store.user = null; location.hash = '#/login'; loginView(); } });
 }
@@ -82,6 +84,7 @@ async function route() {
   const id = ++renderId;
   $$('[data-nav]').forEach((a) => a.classList.toggle('active', path === a.dataset.nav || path.startsWith(a.dataset.nav + '/')));
   $('#side')?.classList.remove('open');
+  const fab = $('#helpfab'); if (fab) { fab.href = helpLink(path); fab.hidden = path.startsWith('help'); }
   document.querySelectorAll('.overlay').forEach((o) => (o.__close ? o.__close() : o.remove())); // a dialog belongs to the page it was opened on
   leaveAll();
   for (const [re, fn] of ROUTES) {

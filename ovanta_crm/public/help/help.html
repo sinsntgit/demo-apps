@@ -1,0 +1,482 @@
+<section id="start" data-title="Getting started">
+<h2>Getting started</h2>
+<p>Ovantaa CRM keeps your customers, deals, tasks, email campaigns and invoices in one place. It runs on one computer or server in your company; everyone else uses it from a web browser.</p>
+<figure><img src="/help/img/dashboard.jpg" alt="The dashboard with KPI cards, pipeline by stage and revenue"><figcaption>The dashboard — your starting point after signing in.</figcaption></figure>
+<h3>Signing in</h3>
+<p>Open the address your administrator gave you (for example <code>http://crm-server:3000</code>) and sign in with your email and password. If your company requires two-factor sign-in you are asked for a 6-digit code from your authenticator app, or taken through setting one up the first time — see <a href="#/help/security">Security &amp; two-factor sign-in</a>.</p>
+<figure><img src="/help/img/login.jpg" alt="The sign-in page"><figcaption>The sign-in page.</figcaption></figure>
+<h3>Finding your way around</h3>
+<table>
+<tr><th>Menu group</th><th>What is in it</th></tr>
+<tr><td><b>Workspace</b></td><td><a href="#/help/search">AI search</a>, <a href="#/help/dashboard">Dashboard</a>, <a href="#/help/contacts">Contacts</a>, <a href="#/help/accounts">Accounts</a>, <a href="#/help/deals">Deals</a>, <a href="#/help/tasks">Tasks</a>, <a href="#/help/duplicates">Duplicates</a></td></tr>
+<tr><td><b>Billing</b></td><td><a href="#/help/invoices">Invoices</a>, <a href="#/help/receivables">Receivables</a>, E-invoicing readiness, <a href="#/help/invoicing">Billing settings</a></td></tr>
+<tr><td><b>Marketing</b></td><td><a href="#/help/campaigns">Campaigns, Segments, Templates</a>, <a href="#/help/senders">Email senders</a></td></tr>
+<tr><td><b>Admin</b></td><td><a href="#/help/customize">Customisation</a>, <a href="#/help/notifications">Notifications</a>, <a href="#/help/team">Team &amp; roles</a>, <a href="#/help/settings">Settings</a></td></tr>
+</table>
+<ul>
+<li>You only see the menu items your role allows.</li>
+<li>Press <kbd>Ctrl</kbd>+<kbd>K</kbd> anywhere to open <a href="#/help/search">AI search</a>.</li>
+<li>The <b>?</b> button at the bottom right of every page opens the help for that page.</li>
+<li>The number next to <b>Tasks</b> counts your open tasks plus issues waiting for you.</li>
+<li>Under your name (bottom left) you see your role and the app version, e.g. <i>Administrator · v1.20.0</i>.</li>
+</ul>
+<h3>Who can do what (built-in roles)</h3>
+<table>
+<tr><th>Role</th><th>Can do</th></tr>
+<tr><td><b>Administrator</b></td><td>Everything, including users, roles, settings, customisation, backups, data management and deleting attached files.</td></tr>
+<tr><td><b>Manager</b></td><td>All sales, marketing and billing work: send campaigns, issue invoices, record payments, email invoices and reminders. No user, settings or data administration.</td></tr>
+<tr><td><b>Sales rep</b></td><td>Create and edit contacts, accounts, deals and tasks; draft invoices and campaigns. Can delete only their own records. Cannot send campaigns or issue invoices.</td></tr>
+</table>
+<p>Administrators can create their own roles — see <a href="#/help/team">Team, roles &amp; permissions</a>.</p>
+<h3>Light and dark mode</h3>
+<p><b>Settings → Appearance → My display mode</b> lets you choose light, dark or “match my device” for your own browser.</p>
+</section>
+
+<section id="dashboard" data-title="Dashboard">
+<h2>Dashboard</h2>
+<p>The dashboard shows how the business is doing at a glance:</p>
+<ul>
+<li><b>Contacts, accounts, open pipeline</b> (value of open deals and the probability-weighted forecast), <b>closed won</b> and <b>win rate</b>, and <b>open / overdue tasks</b>.</li>
+<li><b>Won revenue</b> for the last six months, <b>pipeline by stage</b>, <b>top open deals</b>, <b>tasks due</b>, the <b>leaderboard</b>, recent activity and recent campaigns.</li>
+<li>If you use <a href="#/help/currencies">two currencies</a>, totals are shown in both.</li>
+</ul>
+<p>People whose role only lets them see their own records see a dashboard of their own records.</p>
+</section>
+
+<section id="search" data-title="AI search">
+<h2>AI search</h2>
+<p>Ask in plain words and get the matching deals, contacts, accounts, files, campaigns and segments — including your custom fields. Open it from the menu or with <kbd>Ctrl</kbd>+<kbd>K</kbd>.</p>
+<figure><img src="/help/img/ai-search.jpg" alt="AI search results for open deals over 50,000"><figcaption>The chips above the results show how your question was understood.</figcaption></figure>
+<h3>Questions that work well</h3>
+<ul>
+<li>“Open deals over 50,000 closing this quarter”</li>
+<li>“Proposal PDFs uploaded in the last 30 days”</li>
+<li>“My deals stuck in negotiation”</li>
+<li>“Customers in Riyadh with no phone number”</li>
+<li>“Accounts with more than 3 open deals”</li>
+<li>“Partner deals with margin above 10%” (custom fields work too)</li>
+<li>“Everything about Acme”</li>
+</ul>
+<p>Click a file in the results to open it in the <a href="#/help/files">viewer</a>; click anything else to open the record.</p>
+<h3>AI or keyword</h3>
+<p>AI search needs an Anthropic API key (<a href="#/help/settings">Settings → AI assistant</a>). Without one — or if the AI is unreachable — it falls back to a <b>keyword</b> search across everything; you can also pick <i>Keyword</i> yourself. See <a href="#/help/privacy">What the AI sees</a>: only your question and field names are sent, never your records.</p>
+</section>
+
+<section id="contacts" data-title="Contacts">
+<h2>Contacts</h2>
+<p>People you sell to or work with. A contact usually belongs to an <a href="#/help/accounts">account</a> (their company).</p>
+<figure><img src="/help/img/contacts.jpg" alt="The contacts list with filters and bulk actions"><figcaption>Search, filter by status, source or owner, sort by clicking a column heading, and tick rows for bulk actions.</figcaption></figure>
+<h3>Everyday tasks</h3>
+<table>
+<tr><th>To…</th><th>Do this</th></tr>
+<tr><td>Add a contact</td><td><b>+ New contact</b>. Fields follow the layout your administrator set up (<a href="#/help/customize">custom fields</a>).</td></tr>
+<tr><td>Change many at once</td><td>Tick the rows → set status, owner or tags, or delete.</td></tr>
+<tr><td>Export</td><td><b>Export CSV</b> (needs the Export permission). Custom fields are included.</td></tr>
+<tr><td>See everything about a person</td><td>Click their name: details, activity timeline (notes, calls, meetings), deals, tasks, campaign history and files.</td></tr>
+<tr><td>Log a call or note</td><td>On the contact page, pick the type, type the note and click <b>Log</b>.</td></tr>
+</table>
+<figure><img src="/help/img/contact-detail.jpg" alt="A contact page with details, timeline, deals and the Convert lead button"><figcaption>A contact page.</figcaption></figure>
+<h3>Importing contacts</h3>
+<p><b>Import CSV</b> accepts CSV, TSV, TXT and Excel (.xlsx) files up to 5,000 rows. Columns are matched automatically (you can change the mapping), and you choose whether existing contacts (matched by email) are updated or skipped. Download the sample template if you are unsure of the layout. Old <code>.xls</code> files: save them as .xlsx or CSV first.</p>
+<figure><img src="/help/img/contact-import.jpg" alt="The contact import dialog"><figcaption>Drop a file or click to choose one.</figcaption></figure>
+<h3>Converting a lead</h3>
+<p>When a lead is ready to buy, open it and click <b>Convert lead</b>. In one step you can link it to an existing account or create a new one (accounts whose website matches the person's email domain are suggested), open a deal, and mark the contact <i>Qualified</i> or <i>Customer</i>. The contact then shows <b>Converted ✓</b> and links to the deal.</p>
+<figure><img src="/help/img/convert-lead.jpg" alt="The Convert lead dialog"><figcaption>Converting a lead creates the account and the deal together.</figcaption></figure>
+</section>
+
+<section id="accounts" data-title="Accounts">
+<h2>Accounts</h2>
+<p>Companies you sell to. An account page shows its contacts, deals, won value, activity, invoices and files.</p>
+<figure><img src="/help/img/accounts.jpg" alt="The accounts list"><figcaption>The accounts list.</figcaption></figure>
+<ul>
+<li>For invoicing, fill in the <b>billing email</b>, address, <b>State / province</b> (used as the GST place of supply in India) and the customer's tax ID (VAT number, GSTIN, TRN…).</li>
+<li>Missing or invalid customer details are listed on <a href="#/help/receivables">E-invoicing readiness</a>.</li>
+</ul>
+</section>
+
+<section id="duplicates" data-title="Duplicates &amp; merge">
+<h2>Duplicates and merging</h2>
+<p><b>Duplicates</b> lists contacts with the same email or name and accounts with the same name or VAT number.</p>
+<figure><img src="/help/img/duplicates.jpg" alt="The duplicates page"><figcaption>Choose the record to keep, then merge.</figcaption></figure>
+<ol>
+<li>Pick the record to <b>keep</b> in each group.</li>
+<li>Click <b>Merge into the kept record</b>.</li>
+</ol>
+<p>Deals, tasks, notes, invoices, files and campaign history move to the kept record; its empty fields are filled from the others; tags are combined; an unsubscribed contact stays unsubscribed. <b>Merging cannot be undone.</b> It needs the <i>Merge duplicates</i> permission.</p>
+</section>
+
+<section id="deals" data-title="Deals &amp; pipeline">
+<h2>Deals and the pipeline</h2>
+<p>A deal is a sales opportunity moving through stages: Prospecting → Qualification → Proposal → Negotiation → Closed Won / Closed Lost.</p>
+<figure><img src="/help/img/deals-board.jpg" alt="The deals board with one column per stage"><figcaption>The board: drag a card to another column to change its stage.</figcaption></figure>
+<h3>Creating a deal</h3>
+<p><b>+ New deal</b>. The form is the layout your administrator saved; custom fields may appear or hide depending on other answers (for example <i>Partner margin</i> only for <i>Partner</i> deals).</p>
+<figure><img src="/help/img/deal-form.jpg" alt="The new deal form with custom fields"><figcaption>The deal form with custom fields.</figcaption></figure>
+<h3>Changing stage</h3>
+<p>Drag the card on the board, or click <b>Change stage</b> on the deal page. Add a comment (why it moved) and, optionally, attach files to the new stage's folder — for example the signed proposal.</p>
+<figure><img src="/help/img/stage-change.jpg" alt="The Move deal dialog with comment and file upload"><figcaption>Moving a deal: comment and files are saved with the move.</figcaption></figure>
+<h3>Stage history</h3>
+<p>Every move is kept permanently: from → to, when, who moved it, who owned the deal then, its value, the comment, and how long it spent in the previous stage. The files of each stage are linked under it. Open it on the deal page or with <b>🕘 History</b> on any card.</p>
+<figure><img src="/help/img/stage-history.jpg" alt="The stage history timeline with comments and stage files"><figcaption>Stage history.</figcaption></figure>
+<h3>List view</h3>
+<p>Click <b>List</b> to see deals as a table you can sort and filter, including custom fields shown in lists and the amount in your <a href="#/help/currencies">second currency</a>.</p>
+<figure><img src="/help/img/deals-list.jpg" alt="The deals list"><figcaption>The list view.</figcaption></figure>
+<figure><img src="/help/img/deal-detail.jpg" alt="A deal page"><figcaption>A deal page: amount in both currencies, stage history, activity, details, tasks and files.</figcaption></figure>
+</section>
+
+<section id="currencies" data-title="Two currencies on deals">
+<h2>Two currencies on deals</h2>
+<p>Deals are entered in <b>Currency 1</b> and also shown in <b>Currency 2</b>, converted with a rate per year. Set it up in <b>Settings → Deal currencies</b> (administrators).</p>
+<figure><img src="/help/img/currencies.jpg" alt="Deal currencies settings with yearly rates and change history"><figcaption>One rate per year, with a change history.</figcaption></figure>
+<ol>
+<li>Choose Currency 1 (what amounts are typed in) and Currency 2, then <b>Save currencies</b>.</li>
+<li><b>+ Add year</b> and enter how many units of Currency 2 one unit of Currency 1 is worth, e.g. <i>2026: 1 USD = 84.20 INR</i>.</li>
+</ol>
+<h3>Which year's rate a deal uses</h3>
+<ul>
+<li><b>Open deals:</b> the year of the expected close date, or of the created date if there is no close date.</li>
+<li><b>Won or lost deals:</b> the year they were closed.</li>
+<li>No rate for that year → the latest earlier year is used, and the deal page says so. No rate at all → not converted.</li>
+</ul>
+<p>Amounts are converted live: correcting a year's rate updates every deal of that year. Every change is in the change history. Both currencies appear on the deal page, the deals list, board cards and totals, the dashboard and AI search. Invoices are not affected — they have their own currency.</p>
+</section>
+
+<section id="files" data-title="Files, stage folders &amp; viewer">
+<h2>Files, stage folders and the viewer</h2>
+<p>Every contact, account, deal, task and invoice has a <b>Files</b> card. Add up to 20 files at a time by dragging them onto the card or with <b>+ Add files</b> (25 MB each by default). Programs and scripts (.exe, .js, .bat…) are refused.</p>
+<figure><img src="/help/img/deal-files.jpg" alt="A deal's Files card with one folder per stage"><figcaption>On deals, files are kept in one folder per stage.</figcaption></figure>
+<h3>Stage folders on deals</h3>
+<ul>
+<li>New files go into the current stage's folder unless you choose another in “to …”.</li>
+<li>Move a file to another folder with the drop-down on its row.</li>
+<li>Files are stored the same way on disk: <code>data/files/deals/&lt;deal id&gt;/&lt;stage&gt;/</code>.</li>
+</ul>
+<h3>Viewing files</h3>
+<p>Click a file to view it without downloading: PDFs, images, video and audio, text and CSV, and a preview of Excel (.xlsx, first sheet) and Word (.docx, text). The arrows step through the record's files; <b>Copy link</b> copies an in-app link (people still sign in).</p>
+<figure><img src="/help/img/file-viewer.jpg" alt="The file viewer showing a CSV as a table"><figcaption>The viewer.</figcaption></figure>
+<p><b>Office viewer ↗</b> opens PowerPoint and other Office files in Microsoft's online viewer using a link that works for one hour. It only works when the CRM is reachable from the internet (<code>BASE_URL</code> set to its public https address) and it sends that file to Microsoft, so it is only used when you click it.</p>
+<h3>Deleting files</h3>
+<p>Only <b>administrators</b> can delete files. Everyone else can view, upload, download and move them. Deleting a whole record (for example a deal) also removes its files.</p>
+</section>
+
+<section id="tasks" data-title="Tasks &amp; assignments">
+<h2>Tasks and assignments</h2>
+<p>Tasks are assigned to people in your team. The assignee is emailed the task and its due date; issues and completion are emailed back to the person who assigned it.</p>
+<figure><img src="/help/img/tasks.jpg" alt="The tasks page with Assigned to me / Assigned by me tabs"><figcaption>Tabs: <b>Assigned to me</b>, <b>Assigned by me</b> (issues highlighted in red) and <b>All tasks</b>.</figcaption></figure>
+<h3>Assigning a task</h3>
+<p><b>+ New task</b> (or <b>+ Task</b> on a contact or deal) → choose <b>Assign to</b>, the due date, priority, details and an optional message. When you save, a message tells you who is being emailed and from which address.</p>
+<figure><img src="/help/img/task-form.jpg" alt="The new task form with Assign to and a message"><figcaption>Assigning a task to a colleague.</figcaption></figure>
+<h3>Working on a task</h3>
+<p>Click a task to open it. What you can do depends on whether you are the assignee or the person who assigned it:</p>
+<figure><img src="/help/img/task-panel.jpg" alt="An open task with an issue on its timeline"><figcaption>An open task: actions, timeline and files.</figcaption></figure>
+<table>
+<tr><th>Who</th><th>Action</th><th>Who is emailed</th></tr>
+<tr><td>Assignee</td><td><b>Mark complete</b> (optional note and files)</td><td>The assigner</td></tr>
+<tr><td>Assignee</td><td><b>Raise an issue</b> (description required, files optional)</td><td>The assigner</td></tr>
+<tr><td>Either</td><td><b>Reply</b></td><td>The other person</td></tr>
+<tr><td>Assigner</td><td><b>Resolve &amp; send back / reassign</b> — same or another person, new due date, note, files</td><td>The new assignee (and the previous one if it moved)</td></tr>
+<tr><td>Either</td><td><b>Reopen</b> a completed task; edit due date, title, priority…</td><td>The other person (the email lists what changed)</td></tr>
+</table>
+<ul>
+<li>Every step is on the task's timeline. A delivery problem shows as <b>✉️ Email failed</b> with the mail server's message.</li>
+<li>You are never emailed about your own changes. Tick <b>Email me a copy of my own changes</b> at the top of the Tasks page if you want them.</li>
+<li>Tasks are only assigned to team members; contacts and deals are just “related to”.</li>
+<li>If task emails are not arriving, see <a href="#/help/trouble">Troubleshooting</a>.</li>
+</ul>
+</section>
+
+<section id="together" data-title="Working together on the same record">
+<h2>Working together on the same record</h2>
+<p>Several people can safely work on the same contact, account, deal or task.</p>
+<ul>
+<li><b>See who else is there.</b> Record pages show “👁 Liam is viewing” or “✏️ Liam is editing”.</li>
+<li><b>Edits merge.</b> An edit form only saves the fields you changed. If Liam changes a deal's amount while you change its close date, both are kept.</li>
+<li><b>Same field? You choose.</b> If someone else changed the same field after you opened the form, nothing is overwritten: you see <i>Was / Their value / Your value</i> for each such field. Pick one and click <b>Save</b> again.</li>
+<li><b>Pages refresh themselves</b> when someone else saves — but never while you have a dialog open.</li>
+</ul>
+<figure><img src="/help/img/presence.jpg" alt="A deal page showing that another user is editing it"><figcaption>Someone else is editing this deal.</figcaption></figure>
+<figure><img src="/help/img/conflict.jpg" alt="The conflict chooser in an edit form"><figcaption>Both of you changed the amount: choose which value to keep.</figcaption></figure>
+</section>
+
+<section id="campaigns" data-title="Campaigns, segments &amp; templates">
+<h2>Campaigns, segments and templates</h2>
+<figure><img src="/help/img/campaigns.jpg" alt="The campaigns list"><figcaption>Campaigns with their delivery and engagement figures.</figcaption></figure>
+<h3>1. Choose who receives it — segments</h3>
+<p><b>Segments → + New segment</b>: combine rules such as status, source, tags, owner, account fields and custom fields (all rules, or any rule). The preview shows how many contacts match. Unsubscribed contacts are always excluded.</p>
+<figure><img src="/help/img/segment-builder.jpg" alt="The segment builder"><figcaption>The segment builder.</figcaption></figure>
+<h3>2. Write it</h3>
+<p><b>Campaigns → + New campaign</b>. Pick the sender, segment, subject and content (or start from a <b>template</b>). Personalise with merge tags such as <code>{{first_name|there}}</code> (“there” is used when the first name is empty), <code>{{company}}</code>, <code>{{title}}</code>. <b>✨ Write with Claude</b> drafts or rewrites the email from a short brief.</p>
+<figure><img src="/help/img/campaign-editor.jpg" alt="The campaign editor"><figcaption>The editor with live preview.</figcaption></figure>
+<h3>3. Test and send</h3>
+<ol>
+<li><b>Send test</b> to yourself first.</li>
+<li><b>Send now</b> or <b>Schedule…</b> (needs the Send permission). The audience is frozen when sending starts.</li>
+<li>Emails go out one by one through the chosen sender, respecting its 24-hour limit and pause. If the limit is reached the campaign pauses and continues automatically.</li>
+</ol>
+<h3>4. Results</h3>
+<p>Each recipient shows <i>sent</i>, <i>failed</i> (with the server's reason), <i>opened</i>, <i>clicked</i> and <i>unsubscribed</i>. Every email gets an unsubscribe link automatically. Open and click tracking need <code>BASE_URL</code> to be the CRM's public address. Open counts are approximate (some mail apps block images).</p>
+</section>
+
+<section id="senders" data-title="Email senders" data-role="Administrators">
+<h2>Email senders</h2>
+<p>Every email the CRM sends — campaigns, task emails, notifications, invoices, receipts, reminders — goes out through an <b>email sender</b>: one of your mailboxes. <b>Out of the box only a “Demo sender (simulation)” exists, which sends nothing.</b></p>
+<figure><img src="/help/img/senders.jpg" alt="The email senders list"><figcaption>One sender per mailbox you send from.</figcaption></figure>
+<h3>Adding a sender</h3>
+<ol>
+<li><b>Email senders → + Add sender</b>.</li>
+<li>Pick the <b>provider preset</b>, enter the from name and address, the username (usually the full email address) and the password.</li>
+<li><b>Save</b>, then <b>Verify</b> (checks the login) and <b>Send test</b>.</li>
+</ol>
+<figure><img src="/help/img/sender-form.jpg" alt="The add sender form with provider presets"><figcaption>Provider presets fill in the server and port.</figcaption></figure>
+<table>
+<tr><th>Provider</th><th>Server / port</th><th>Password to use</th></tr>
+<tr><td>Gmail / Google Workspace</td><td><code>smtp.gmail.com</code> 587 (SSL off) or 465 (SSL on)</td><td>A 16-letter <b>App Password</b> (Google Account → Security → 2-Step Verification → App passwords). Your normal password is always rejected. A Workspace administrator may have to allow App Passwords.</td></tr>
+<tr><td>Titan Mail / GoDaddy Professional Email</td><td><code>smtpout.secureserver.net</code> 465 (SSL on), or 587 (SSL off)</td><td>The normal mailbox password.</td></tr>
+<tr><td>Titan Mail (Hostinger, BigRock…)</td><td><code>smtp.titan.email</code> 465 (SSL on)</td><td>The normal mailbox password.</td></tr>
+<tr><td>Microsoft 365 / Outlook</td><td><code>smtp.office365.com</code> 587</td><td>Your administrator must enable SMTP AUTH for the mailbox.</td></tr>
+<tr><td>Zoho Mail</td><td><code>smtp.zoho.in</code> (India) / <code>smtp.zoho.com</code> 465</td><td>An app-specific password if two-factor is on.</td></tr>
+</table>
+<h3>Which sender is used</h3>
+<ul>
+<li>Campaigns: the sender chosen on the campaign.</li>
+<li>Invoices and reminders: the one chosen in <a href="#/help/invoicing">Billing settings</a>, otherwise the default.</li>
+<li>Tasks and notifications: the <b>default</b> sender if it is a real mailbox, otherwise the first active real one — never the simulation sender when a real one exists. The first real sender you add becomes the default.</li>
+</ul>
+<h3>Limits and good practice</h3>
+<ul>
+<li>Each sender has a <b>24-hour limit</b> and a <b>pause between emails</b>. Mailboxes are not built for bulk mail: Gmail allows about 500/day, GoDaddy often 250. For large campaigns use a transactional provider (Amazon SES, SendGrid, Brevo…).</li>
+<li>Publish SPF, DKIM and DMARC for your domain (the checklist on the page explains them).</li>
+<li>Passwords are stored encrypted. Keep <code>data/.secret</code> with your backups — without it saved passwords must be re-entered.</li>
+</ul>
+<p>Sender problems (535, ESOCKET, timeouts): see <a href="#/help/trouble">Troubleshooting</a>.</p>
+</section>
+
+<section id="notifications" data-title="Notifications &amp; email log" data-role="Administrators">
+<h2>Notifications and the email log</h2>
+<p><b>Notifications → Rules</b> email people when something happens: a contact is added, updated, imported or deleted; an account is created; a deal is created, updated, changes stage, is won, lost or deleted.</p>
+<figure><img src="/help/img/notifications.jpg" alt="Notification rules"><figcaption>Notification rules.</figcaption></figure>
+<ul>
+<li>Recipients can be chosen users, the record's owner and/or any email addresses.</li>
+<li>Optional filters: minimum deal amount, particular stages.</li>
+<li><b>Send me a test</b> checks a rule without waiting for a real event.</li>
+</ul>
+<h3>Email log</h3>
+<p>The <b>Email log</b> tab lists every notification, task, invoice, receipt, reminder and test email with its status: <i>sent</i> (accepted by the mail server), <i>failed</i> (with the reason) or <i>simulated</i> (nothing was sent — only the simulation sender was available). This is the first place to look when someone says they did not get an email.</p>
+<figure><img src="/help/img/email-log.jpg" alt="The email log"><figcaption>The email log.</figcaption></figure>
+</section>
+
+<section id="invoicing" data-title="Invoicing setup (Billing settings)" data-role="Administrators">
+<h2>Invoicing setup — Billing settings</h2>
+<p>Choose the country rules your invoices follow, then fill in your business profile and payment details. Until the profile is complete a red banner lists what is missing and invoices cannot be issued.</p>
+<figure><img src="/help/img/billing-settings.jpg" alt="Billing settings with India GST selected"><figcaption>Billing settings in India GST mode.</figcaption></figure>
+<h3>Invoicing mode</h3>
+<table>
+<tr><th>Mode</th><th>What you get</th></tr>
+<tr><td><b>Saudi Arabia — ZATCA</b></td><td>Bilingual tax invoices, 15-digit VAT checks, building/district/postal checks, QR code, hash chain, XML, and optional submission to ZATCA through a certified provider.</td></tr>
+<tr><td><b>United Arab Emirates — VAT</b></td><td>TRN checks, 5 % VAT, AED, bilingual.</td></tr>
+<tr><td><b>India — GST</b></td><td>GSTIN check, your state and the customer's state decide <b>CGST + SGST</b> (same state) or <b>IGST</b> (another state); exports; HSN/SAC per line; PAN; amount in words; Indian number grouping (1,00,000.00); bank account, IFSC and UPI.</td></tr>
+<tr><td><b>Any other country</b></td><td>Pick a country (UK, USA, Thailand, Singapore, Australia, Bahrain, Oman, Qatar, Kuwait, Egypt, Jordan, Germany, France, Netherlands, Ireland, Canada, South Africa, Kenya, Nigeria, Japan, or <i>Other</i>). Currency, tax name, default rate, tax-ID label, invoice title and bank-code label are filled in — all editable. Not tax-registered? Untick it.</td></tr>
+</table>
+<p>Switching mode applies to <b>new</b> invoices; existing invoices keep the rules they were made under.</p>
+<h3>The other settings</h3>
+<ul>
+<li><b>Numbering:</b> prefixes for invoices, credit notes and debit notes. Numbers are sequential, with no gaps, never reused. (GST invoice numbers may be at most 16 characters.)</li>
+<li><b>Defaults:</b> currency, payment terms (days), default tax rate.</li>
+<li><b>Payment details:</b> bank, account name and number, IBAN, bank code (IFSC, sort code, routing number…), SWIFT, UPI. Shown on invoices, emails, reminders and the payment page.</li>
+<li><b>Automatic payment reminders:</b> switch on, choose the sender, and set the schedule — days relative to the due date (negative = before) and channels (email, WhatsApp, SMS), then “repeat every N days”. Optionally create a collection task for overdue invoices.</li>
+<li><b>WhatsApp / SMS gateway</b> (optional). Without one, WhatsApp reminders become a ready-made WhatsApp message your team sends with one click.</li>
+<li><b>E-invoicing provider</b> (KSA/UAE only): connect a certified provider for clearance/reporting.</li>
+</ul>
+</section>
+
+<section id="invoices" data-title="Creating &amp; issuing invoices">
+<h2>Creating and issuing invoices</h2>
+<figure><img src="/help/img/invoices.jpg" alt="The invoices list"><figcaption>The invoices list: filter by status (open, overdue, paid…), search by number or customer.</figcaption></figure>
+<h3>Creating an invoice</h3>
+<ol>
+<li><b>+ New invoice</b> and choose the <b>customer</b>; their details (address, state, tax ID, billing email) are filled in.</li>
+<li>Add the <b>lines</b>: description, HSN/SAC (India), quantity, unit price, discount and tax treatment (standard, zero-rated/export, exempt, out of scope) with the rate.</li>
+<li>Check the <b>Compliance check</b> panel on the right: <i>Must fix</i> problems block issuing; <i>Check</i> items are warnings.</li>
+<li><b>Save draft</b> to finish later, or <b>Save &amp; issue</b>.</li>
+</ol>
+<figure><img src="/help/img/invoice-editor.jpg" alt="The invoice editor with GST lines and totals"><figcaption>The editor shows totals (with CGST/SGST or IGST in India) and the compliance check as you type.</figcaption></figure>
+<h3>Issuing</h3>
+<p>Issuing gives the invoice its number and locks it: <b>issued invoices can never be edited or deleted</b>. To correct one, create a <b>Credit note</b> (to reduce or cancel it — it starts as a copy you can reduce) or a <b>Debit note</b> (to add charges). Both need a reason and reference the original invoice.</p>
+<p>Right after issuing you are offered to <a href="#/help/invoice-email">email the invoice</a> to the customer.</p>
+<figure><img src="/help/img/invoice-print.jpg" alt="A printed GST tax invoice"><figcaption>The printed invoice (Print / PDF). Saudi invoices are bilingual with a QR code; Indian invoices show GSTIN, place of supply, HSN/SAC, CGST/SGST or IGST and the amount in words.</figcaption></figure>
+</section>
+
+<section id="invoice-email" data-title="Emailing invoices, payments &amp; reminders">
+<h2>Emailing invoices, recording payments and reminders</h2>
+<figure><img src="/help/img/invoice-detail.jpg" alt="An issued invoice with Email invoice, Record payment and Send reminder buttons"><figcaption>An issued invoice.</figcaption></figure>
+<h3>Emailing the invoice</h3>
+<p><b>✉️ Email invoice</b> opens a pre-filled email: To (the customer's billing email), Cc, subject and message. The email contains a summary, a <b>View invoice &amp; pay</b> button to the customer payment page, your payment details, and the invoice attached as a printable page (the customer opens it in any browser and can use Print → Save as PDF). The invoice then shows <i>✉️ emailed</i>, and the email is in the email log. Needs the <i>Email &amp; remind</i> permission.</p>
+<figure><img src="/help/img/invoice-email.jpg" alt="The email invoice dialog"><figcaption>Emailing an invoice.</figcaption></figure>
+<h3>Recording payments</h3>
+<p><b>Record payment</b>: amount (part or all of the balance), date, method, bank reference. The status becomes <i>Partially paid</i> or <i>Paid</i> automatically. Tick <b>Email a payment receipt</b> to send the customer a “Payment received — thank you” email with the remaining balance.</p>
+<figure><img src="/help/img/invoice-payment.jpg" alt="The record payment dialog"><figcaption>Recording a payment.</figcaption></figure>
+<ul>
+<li><b>Reverse</b> a payment recorded by mistake or that bounced (a reason is required). The balance and status are restored and the audit trail keeps both entries.</li>
+<li>Tick <b>Bank reconciled</b> once the payment is matched with your bank statement.</li>
+<li>Customers can also tell you they have paid from the payment page: you <b>Confirm received</b> or mark it <b>Not received</b>.</li>
+</ul>
+<h3>Reminders</h3>
+<p><b>Send reminder</b> any time by email, or WhatsApp (opens a ready-made message with the right country code). <a href="#/help/invoicing">Automatic reminders</a> follow the schedule in Billing settings; each invoice has a switch to <b>pause or resume</b> them. Reminders include the amount, due date, a pay button and your payment details — in English outside Saudi Arabia and the UAE.</p>
+<figure><img src="/help/img/invoice-reminder.jpg" alt="The send reminder dialog"><figcaption>Sending a reminder.</figcaption></figure>
+</section>
+
+<section id="receivables" data-title="Receivables, readiness &amp; import">
+<h2>Receivables, readiness and importing invoices</h2>
+<h3>Receivables</h3>
+<p>Outstanding and overdue amounts, ageing buckets (not yet due, 1–30, 31–60, 61–90, 90+ days), customers who owe the most, billed versus collected by month, days-sales-outstanding and an 8-week cash-in forecast.</p>
+<figure><img src="/help/img/receivables.jpg" alt="The receivables page"><figcaption>Receivables.</figcaption></figure>
+<h3>E-invoicing readiness</h3>
+<p>One list of everything that would stop invoices being issued or accepted: incomplete business profile, customers with missing or invalid tax IDs or addresses, draft invoices with errors, submission problems (KSA/UAE), unreconciled payments, payment notices waiting for confirmation, and tamper checks on the invoice chain. Each item links to where you fix it.</p>
+<figure><img src="/help/img/readiness.jpg" alt="The readiness page"><figcaption>E-invoicing readiness.</figcaption></figure>
+<h3>Importing invoices</h3>
+<p><b>Invoices → Import from accounting system</b> loads invoices exported from Zoho Books, QuickBooks, Xero or a spreadsheet, maps the columns and checks them against your chosen rules.</p>
+</section>
+
+<section id="customize" data-title="Customisation: fields &amp; layouts" data-role="Administrators">
+<h2>Customisation: your own fields and form layouts</h2>
+<p><b>Customisation</b> (permission: <i>Customisation</i>). Choose <b>Deals, Accounts or Contacts</b>.</p>
+<figure><img src="/help/img/customize.jpg" alt="Custom fields for deals"><figcaption>Custom fields.</figcaption></figure>
+<h3>Adding fields</h3>
+<p><b>+ Add field</b>: single-line text, comment (multi-line), number, percentage, amount, date, <b>dropdown</b> (type the list of options), multi-select, checkbox, email, phone, web link, or <b>link to another record</b> (e.g. a <i>Partner</i> that points to an account). Each field can be required, have help text and a default, be shown as a list column, be filterable and searchable.</p>
+<p><b>Show only when…</b> hides a field unless another field has certain values — e.g. show <i>Partner margin</i> only when <i>Deal type = Partner</i>. Hidden fields are not required and keep any saved value.</p>
+<h3>Arranging the form</h3>
+<p>Group fields into named <b>sections</b> (one or two columns), <b>drag</b> them (or use ↑ ↓), hide optional standard fields, <b>Preview form</b>, and <b>Save layout</b> — everyone then sees that form. <i>Reset to default</i> undoes it.</p>
+<figure><img src="/help/img/layout-editor.jpg" alt="The form layout editor"><figcaption>The form layout editor.</figcaption></figure>
+<h3>Removing fields</h3>
+<p><b>Archive</b> hides a field everywhere but keeps its data (restore any time). Deleting permanently removes its values from every record. A field's type never changes after creation. Renaming a dropdown option renames it on every record.</p>
+</section>
+
+<section id="team" data-title="Team, roles &amp; permissions" data-role="Administrators">
+<h2>Team, roles and permissions</h2>
+<figure><img src="/help/img/team.jpg" alt="The users list"><figcaption>Users.</figcaption></figure>
+<h3>Users</h3>
+<p><b>Team &amp; roles → Users → + New user</b>: name, <b>real email address</b> (task and notification emails go there), role and an initial password (at least 8 characters with letters and numbers). Edit a user to change their role, reset their password or deactivate them. <b>Reset 2FA</b> helps someone who lost their phone. There is always at least one active administrator, and you cannot change your own role.</p>
+<h3>Roles</h3>
+<p>Besides the three built-in roles you can create your own (or duplicate one). For each area — contacts, accounts, deals, tasks, invoices, campaigns, files… — choose what the role may do. For contacts, accounts, deals, tasks and invoices you choose the <b>scope</b>: <i>own</i> (records they own; for tasks also tasks they assigned) or <i>all</i>.</p>
+<figure><img src="/help/img/roles.jpg" alt="The roles tab"><figcaption>Roles.</figcaption></figure>
+<ul>
+<li>Changes apply immediately, even to people already signed in.</li>
+<li>You can only grant permissions you hold yourself.</li>
+<li>The Administrator role always has everything. Deleting attached files is reserved for administrators.</li>
+<li>The <b>Audit log</b> tab records sign-ins, changes, exports, deletions and settings changes.</li>
+</ul>
+</section>
+
+<section id="security" data-title="Security &amp; two-factor sign-in">
+<h2>Security and two-factor sign-in</h2>
+<figure><img src="/help/img/security.jpg" alt="The security card in Settings"><figcaption>Settings → Security.</figcaption></figure>
+<h3>Turning on two-factor sign-in</h3>
+<ol>
+<li>Install an authenticator app (Google Authenticator, Microsoft Authenticator, Authy, 1Password…).</li>
+<li><b>Settings → Security → Set up</b>, scan the QR code (or type the key), enter the 6-digit code and click <b>Turn on</b>.</li>
+<li><b>Save the 10 recovery codes</b> — each lets you sign in once if you lose your phone. They are shown only once.</li>
+</ol>
+<p>Administrators can <b>require</b> two-factor for administrators or everyone (<i>Company policy</i>); people who have not set it up are taken through it at their next sign-in.</p>
+<h3>Signed-in devices</h3>
+<p>The same card lists where you are signed in; sign out any device or all others. Signing out, changing your password, a 2FA reset or deactivation ends sessions immediately. Sessions also end after 8 hours without activity.</p>
+<h3>Changing your password</h3>
+<p><b>Settings → My account</b>. Changing it signs out your other devices.</p>
+</section>
+
+<section id="settings" data-title="Settings, AI, backups &amp; data" data-role="Administrators (some parts for everyone)">
+<h2>Settings, AI, backups and data management</h2>
+<figure><img src="/help/img/settings.jpg" alt="The settings page"><figcaption>Settings.</figcaption></figure>
+<table>
+<tr><th>Card</th><th>What it does</th></tr>
+<tr><td><b>My account</b></td><td>Change your password.</td></tr>
+<tr><td><b>Appearance</b></td><td>Your own light/dark mode; administrators set the company colours (presets or custom) for everyone.</td></tr>
+<tr><td><b>AI assistant (Claude)</b></td><td>Enter an Anthropic API key and model. Powers <i>Write with Claude</i> in campaigns and <a href="#/help/search">AI search</a>.</td></tr>
+<tr><td><b>Deal currencies</b></td><td>See <a href="#/help/currencies">Two currencies on deals</a>.</td></tr>
+<tr><td><b>Security</b></td><td>See <a href="#/help/security">Security</a>.</td></tr>
+<tr><td><b>Backups</b></td><td>A verified backup is taken automatically every day (the newest 14 are kept) and before every upgrade. Create one now or download one.</td></tr>
+<tr><td><b>Data management</b></td><td>Delete everything of one kind (contacts, deals, campaigns, email log…). Shows the count and side effects first and asks you to type DELETE. Permanent; recorded in the audit log.</td></tr>
+</table>
+</section>
+
+<section id="privacy" data-title="What the AI sees">
+<h2>What the AI sees</h2>
+<ul>
+<li><b>AI search:</b> Claude receives your question, today's date, user names and the <i>names</i> of the searchable fields — never your records. It replies with a search plan; the CRM checks every field and condition and runs the search itself, with your permissions.</li>
+<li><b>Write with Claude (campaigns):</b> only the brief you type and, for rewrites, the email content being rewritten. Never contact records.</li>
+<li>Without an API key no AI is used at all; AI search becomes keyword search.</li>
+</ul>
+</section>
+
+<section id="install" data-title="Installation &amp; operations" data-role="Technical">
+<h2>Installation and operations</h2>
+<h3>Requirements</h3>
+<ul>
+<li><b>Node.js 22.5 or newer</b> (<code>node -v</code>). Nothing else: the database (SQLite) is built in.</li>
+<li>One computer or server that stays on while people work. Everyone else only needs a browser.</li>
+</ul>
+<h3>Install and start</h3>
+<pre>cd D:\ovanta_crm
+npm install        # once, and again after every upgrade
+npm start          # opens on http://localhost:3000</pre>
+<p>The first line in the window shows the version, e.g. <code>Ovantaa CRM v1.20.0 running at …</code>. Colleagues on the same network open <code>http://&lt;computer-name&gt;:3000</code>. To use another port: PowerShell <code>$env:PORT=3001; npm start</code>.</p>
+<p>The first start creates <code>data/ovantaa.db</code> with demo data and the accounts <code>admin@ovantaa.com</code>, <code>maya@ovantaa.com</code>, <code>liam@ovantaa.com</code> (password <code>Ovantaa@123</code>). <b>Change these passwords</b> and give users their real email addresses. For a clean start set <code>ADMIN_EMAIL</code>, <code>ADMIN_PASSWORD</code> and <code>SEED_DEMO=0</code> before the first start.</p>
+<h3>Upgrading</h3>
+<ol>
+<li>Stop the server (<kbd>Ctrl</kbd>+<kbd>C</kbd> in its window).</li>
+<li>Copy the new files <b>over</b> the existing folder. Do not delete the <code>data</code> folder. (If the download unpacks into its own <code>ovanta_crm</code> folder, copy that folder's <i>contents</i> across.)</li>
+<li><code>npm install</code>, then <code>npm start</code>. The database is upgraded automatically; a restore point is saved first.</li>
+<li>Press <kbd>Ctrl</kbd>+<kbd>F5</kbd> in the browser. Check the version under your name.</li>
+</ol>
+<h3>Backups and restore</h3>
+<ul>
+<li>Back up the whole <code>data</code> folder: the database, <code>backups/</code>, <code>files/</code> (attachments) and <code>.secret</code> (decrypts saved passwords and API keys).</li>
+<li><code>npm run backup</code> takes a verified backup now.</li>
+<li>Restore: stop the server, then <code>npm run restore</code> (lists backups) and <code>npm run restore -- data/backups/&lt;file&gt;.db --yes</code>. The current database is copied aside first.</li>
+<li>Copy backups to OneDrive or Google Drive if you like — but do not run the live database from a synced cloud folder.</li>
+</ul>
+<h3>Configuration (environment variables)</h3>
+<table>
+<tr><th>Variable</th><th>Purpose</th></tr>
+<tr><td><code>PORT</code></td><td>Port (default 3000).</td></tr>
+<tr><td><code>BASE_URL</code></td><td>The CRM's public address. Needed for email links (tasks, invoices, unsubscribe, tracking) and the Office viewer.</td></tr>
+<tr><td><code>SECURE_COOKIES=1</code></td><td>When served over HTTPS.</td></tr>
+<tr><td><code>ANTHROPIC_API_KEY</code>, <code>ANTHROPIC_MODEL</code></td><td>AI features (can also be set in Settings).</td></tr>
+<tr><td><code>SMTP_FORCE_IPV4=1</code>, <code>SMTP_TIMEOUT_MS</code></td><td>Mail-server connection workarounds (see Troubleshooting).</td></tr>
+<tr><td><code>FILES_DIR</code>, <code>MAX_UPLOAD_MB</code></td><td>Where attachments are kept; maximum file size (25).</td></tr>
+<tr><td><code>BACKUP_DIR</code>, <code>BACKUP_KEEP</code>, <code>BACKUP_DAILY=0</code></td><td>Backup folder, how many to keep (14), turn daily backups off.</td></tr>
+<tr><td><code>ADMIN_EMAIL</code>, <code>ADMIN_PASSWORD</code>, <code>SEED_DEMO=0</code></td><td>First administrator and an empty start.</td></tr>
+</table>
+<h3>Regenerating these help screenshots</h3>
+<p><code>npm run help:shots</code> (developers; needs Playwright) photographs a private demo copy of the app and replaces the images in <code>public/help/img</code>.</p>
+</section>
+
+<section id="trouble" data-title="Troubleshooting" data-role="Everyone">
+<h2>Troubleshooting</h2>
+<table>
+<tr><th>Problem</th><th>Cause and fix</th></tr>
+<tr><td><code>listen EADDRINUSE … 3000</code> / “Port 3000 is already in use”</td><td>An older copy is still running. Close its window or run <code>Stop-Process -Name node</code>, then <code>npm start</code> again — or start on another port.</td></tr>
+<tr><td>A new feature is missing after an upgrade</td><td>The old version is still running, or the files went into a nested <code>ovanta_crm\ovanta_crm</code> folder. Check the version under your name and in the server window.</td></tr>
+<tr><td>“Authentication failed (535)” for a sender</td><td>The mail server rejected the login. Gmail needs an App Password; Titan/GoDaddy need the mailbox password and the right server (<code>smtpout.secureserver.net</code> for GoDaddy). Check the login in webmail, then wait an hour if there were many failed attempts.</td></tr>
+<tr><td>“Cannot reach the mail server (ESOCKET)” / greeting timeout</td><td>Wrong port/SSL pair (465 = SSL on, 587 = SSL off), a firewall or antivirus “email scanning”, or an IPv6 problem — start with <code>$env:SMTP_FORCE_IPV4="1"; npm start</code>. <code>npm run smtp-test -- --host … --user …</code> shows the exact error.</td></tr>
+<tr><td>Task or notification emails do not arrive</td><td>On the Tasks page: a yellow warning means only the simulation sender exists — add a real sender. Otherwise click <b>Send me a test task email</b>. Remember you are not emailed about your own changes (tick “Email me a copy…”), and users need real email addresses. Then check <b>Notifications → Email log</b> and the recipient's spam folder.</td></tr>
+<tr><td>Invoice cannot be issued</td><td>The compliance check lists what must be fixed — often the business profile (Billing settings) or the customer's tax ID/state. Make sure the right <a href="#/help/invoicing">invoicing mode</a> is selected.</td></tr>
+<tr><td>Office viewer does not open the file</td><td>The CRM must be reachable from the internet with <code>BASE_URL</code> set to its https address. Download the file instead.</td></tr>
+<tr><td>AI search says it used keyword search</td><td>No API key, or the AI was unreachable. Add the key in Settings → AI assistant.</td></tr>
+<tr><td>“Two-factor set-up is required”</td><td>Your company requires 2FA: complete the set-up shown. Lost your phone? Use a recovery code, or ask an administrator to <b>Reset 2FA</b>.</td></tr>
+<tr><td>Someone else's change “disappeared”</td><td>It did not — see <a href="#/help/together">Working together</a>. If you both changed the same field you were asked which value to keep; every change is also in the audit log.</td></tr>
+</table>
+</section>
+
+<section id="faq" data-title="FAQ">
+<h2>Frequently asked questions</h2>
+<h3>Where is my data kept?</h3>
+<p>In the <code>data</code> folder on the computer running the CRM: one database file, attachments in <code>data/files</code>, backups in <code>data/backups</code>.</p>
+<h3>Can I undo a deletion?</h3>
+<p>Not from the screen. Restore a backup (Installation → Backups and restore) — note this restores everything to that moment.</p>
+<h3>Why can't I edit an issued invoice?</h3>
+<p>Tax rules require issued invoices to stay unchanged. Use a credit note to reduce or cancel it, or a debit note to add charges.</p>
+<h3>Can customers see anything?</h3>
+<p>Only the invoice payment page (the link in invoice emails and reminders), which shows that one invoice and lets them say they have paid. Customers never sign in.</p>
+<h3>Can I print or save this help?</h3>
+<p>Yes — <b>🖨 Print / save as PDF</b> in the contents panel.</p>
+</section>

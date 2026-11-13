@@ -316,6 +316,24 @@ await page.waitForSelector('button[data-act=unpay]'); await shot('invoice-paid')
 await page.waitForSelector('.toast:has-text("Payment reversed")', { timeout: 5000 }).catch(() => errors.push('payment reversal failed'));
 await page.waitForSelector('input[data-pause]'); await page.uncheck('input[data-pause]'); await page.waitForSelector('.toast:has-text("paused")', { timeout: 5000 }).catch(() => errors.push('pausing reminders failed'));
 await page.evaluate(() => fetch('/api/billing/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jurisdiction: 'KSA' }) }));
+// ===== Help =====
+await page.goto(`${base}/#/tasks`); await page.waitForSelector('#helpfab');
+if ((await page.getAttribute('#helpfab', 'href')) !== '#/help/tasks') errors.push('? button does not point at the tasks help');
+await page.click('#helpfab'); await page.waitForSelector('.help-body section#tasks');
+await page.waitForFunction(() => location.hash === '#/help/tasks' && document.querySelector('.help-toc a.on')?.dataset.id === 'tasks', null, { timeout: 5000 }).catch(() => errors.push('help did not open at the tasks section'));
+const imgOk = await page.evaluate(async () => { const img = document.querySelector('#tasks figure img'); img.scrollIntoView(); await new Promise((r) => setTimeout(r, 600)); return img.complete && img.naturalWidth > 100; });
+if (!imgOk) errors.push('help screenshots do not load');
+const helpImgs = await page.evaluate(() => [...document.querySelectorAll('.help-body img')].map((i) => i.getAttribute('src')));
+for (const src of helpImgs) { const r = await page.request.get(base + src); if (r.status() !== 200 || !String(r.headers()['content-type']).startsWith('image/')) errors.push(`help image missing: ${src}`); }
+if (helpImgs.length < 40) errors.push('expected the help to show the screenshots, found ' + helpImgs.length);
+await page.click('.help-toc a[data-id=invoicing]'); await page.waitForFunction(() => location.hash === '#/help/invoicing');
+await page.fill('#help-q', 'GSTIN'); await page.waitForFunction(() => [...document.querySelectorAll('.help-body section')].filter((s) => !s.hidden).length < 10);
+if (await page.locator('.help-body section#campaigns').isVisible()) errors.push('help search did not filter');
+await page.fill('#help-q', 'zzqqxx'); await page.waitForSelector('#help-none:not([hidden])'); await page.fill('#help-q', '');
+await page.click('.help-body section#start a[href="#/help/security"]'); await page.waitForFunction(() => location.hash === '#/help/security').catch(() => errors.push('links between help sections do not work'));
+await page.click('.help-body section#tasks figure img'); await page.waitForSelector('.modal img'); await page.keyboard.press('Escape');
+await page.click('a[data-nav=help]'); await page.waitForSelector('.help-body'); await shot('help');
+for (const id of await page.evaluate(() => [...document.querySelectorAll('.help-body a[href^="#/help/"]')].map((a) => a.getAttribute('href').slice(7)))) if (!(await page.locator(`.help-body section#${id}`).count())) errors.push('broken help link #/help/' + id);
 // segment builder + deal drag/drop
 await page.click('a[data-nav=segments]'); await page.click('text=+ New segment'); await page.fill('.modal input[name=name]', 'E2E seg');
 await page.waitForSelector('#segprev b'); await page.click('.modal button[type=submit]'); await page.waitForSelector('td:has-text("E2E seg")');
