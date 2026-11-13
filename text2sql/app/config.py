@@ -48,6 +48,8 @@ DEFAULT_SETTINGS = {
     "store_results": True,         # keep result snapshots in chat history
     "lockout_attempts": 5,
     "lockout_minutes": 15,
+    "predictive_enabled": True,    # forecasts, predictions, segmentation, anomaly detection
+    "analysis_max_rows": 50000,    # rows a predictive question may pull from the source
     # outgoing email, for scheduled reports
     "smtp_host": "",
     "smtp_port": 587,

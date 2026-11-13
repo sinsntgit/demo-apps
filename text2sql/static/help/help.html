@@ -117,6 +117,87 @@
 <p>Move the mouse over any bar, point or slice to see its exact value.</p>
 </section>
 
+<section id="predictive" data-title="Predictive questions">
+<h2>Predictive questions: forecasts, predictions, segments, drivers, anomalies</h2>
+<p>AskData can go beyond “what happened” and run a statistical model on your data: project a figure forward, predict an outcome, group similar customers, show what drives a result, or point out what is unusual.</p>
+<h3>Turning it on</h3>
+<p>Tick <b>🔮 Use predictive capability</b> at the top of the Ask page before asking. It is <b>off by default</b> and remembered between visits.</p>
+<figure><img src="/static/help/img/predictive-toggle.png" alt="The Ask bar with the Use predictive capability tick box ticked"><figcaption>Tick the box to allow predictive analysis for your questions.</figcaption></figure>
+<ul>
+<li><b>Unticked:</b> every question gets an ordinary answer, however it is worded.</li>
+<li><b>Ticked:</b> a predictive analysis runs <i>when the question calls for one</i>. Ordinary questions are still answered the ordinary way.</li>
+</ul>
+<h3>What you can ask</h3>
+<table>
+<tr><th>Kind</th><th>Example questions</th><th>What you get</th></tr>
+<tr><td><b>Forecast</b></td><td>“Forecast revenue for the next 6 months” · “Project weekly orders to year end”</td><td>The figure projected forward with a likely range, and an accuracy check on recent history.</td></tr>
+<tr><td><b>Prediction</b></td><td>“Which customers are likely to churn?” · “Predict order value from customer and product attributes”</td><td>A prediction for every row (including those with no outcome yet), how often it is right, and what influences it.</td></tr>
+<tr><td><b>Key drivers</b></td><td>“What drives order value?” · “Which factors explain late deliveries?”</td><td>The inputs ranked by how much they matter, with the direction of the effect.</td></tr>
+<tr><td><b>Segmentation</b></td><td>“Segment our customers” · “Group products into 4 clusters by sales behaviour”</td><td>Groups of similar items, a profile of each, and which group every item belongs to.</td></tr>
+<tr><td><b>Anomalies</b></td><td>“Any unusual days in revenue?” · “Show unusual orders”</td><td>The periods or rows that stand out, and by how much.</td></tr>
+</table>
+<h3>What happens when you ask</h3>
+<ol>
+<li>The AI model writes the SQL that gathers the <b>data needed for the analysis</b> (for a forecast, the history by month; for a prediction, one row per customer with the outcome and the attributes) and names the method and the columns to use. That is all it does — it never sees the data and writes no analysis code.</li>
+<li>AskData runs the SQL on your database, with the usual read-only guard, data filters and masking.</li>
+<li>The AskData server prepares the data (feature engineering), fits the model, checks how good it is, and produces the charts, tables and explanation. Nothing is sent anywhere.</li>
+</ol>
+<h3>Reading the output</h3>
+<figure><img src="/static/help/img/predictive-forecast.png" alt="A forecast answer with key figures, explanation and a chart of history, forecast and likely range"><figcaption>A forecast: key figures, a plain-language explanation, and the chart.</figcaption></figure>
+<p>Every predictive answer has five parts. Use the <b>Show:</b> tick boxes above it to hide or show each one; your choice is remembered for that answer and used in the PDF.</p>
+<table>
+<tr><th>Part</th><th>Contents</th></tr>
+<tr><td><b>Explanation</b></td><td>The key figures as tiles, then what was found in plain words: the result, the method used and why, how accurate it is, which inputs were used and which were left out (and why).</td></tr>
+<tr><td><b>Charts</b></td><td>History with forecast and likely range; importance of each input; segments on a map; actual against predicted; unusual points marked.</td></tr>
+<tr><td><b>Results</b></td><td>The answer as a table: forecast values, a prediction per row, the segment of each row, the unusual rows. Sortable, and exportable as CSV from <b>⬇ Export</b>.</td></tr>
+<tr><td><b>Statistics</b></td><td>The supporting figures: accuracy check, models compared, quality by outcome, confusion matrix, importance with its spread, segment profiles.</td></tr>
+<tr><td><b>Code</b></td><td>The Python that produced the result — see below.</td></tr>
+</table>
+<p>Amber notes at the top are warnings worth reading: too little history, an incomplete latest period, a result that is “too good” (an input probably contains the answer), or gaps that were filled in.</p>
+<p>Below the predictive output, <b>Data used</b> shows the rows the SQL returned (the first 1,000 on screen; the analysis used all of them).</p>
+<h3>The code that ran</h3>
+<p>The <b>Code</b> part shows the exact Python script that was executed on the server for this answer, from the rows returned by the SQL to the final figures: data preparation, feature engineering, the models tried, the accuracy check and the final fit. Press <b>Copy</b> to take it away; with the SQL above it, a data scientist can reproduce the result.</p>
+<figure><img src="/static/help/img/predictive-code.png" alt="The code panel showing the Python script with comments for each step"><figcaption>The script that produced the answer, feature engineering included.</figcaption></figure>
+<p>The script is one of AskData's own tested routines with your column names and settings filled in. It is not written by the AI model.</p>
+<h3>Changing the settings</h3>
+<ul>
+<li><b>Forecast:</b> change <b>Periods ahead</b> and press <b>Update</b>.</li>
+<li><b>Segmentation:</b> choose the number of <b>Segments</b> (or <i>Automatic</i>) and press <b>Update</b>.</li>
+<li>For anything else — different inputs, a different period, another grain — say so in a follow-up question, or use <b>Edit SQL</b>: the analysis re-runs on whatever the SQL returns.</li>
+</ul>
+<h3>How each method works</h3>
+<table>
+<tr><th>Kind</th><th>Method</th><th>How to judge it</th></tr>
+<tr><td>Forecast</td><td>Three methods are tried — Holt-Winters exponential smoothing (trend and seasonality), exponential smoothing of the recent level, and a naive “repeat the last value / cycle”. The most recent periods are hidden, each method forecasts them, and the closest is used. Seasonality is used only with two full cycles of history (24 months for monthly data). Quantities that are never negative are not forecast below zero.</td><td><i>Typical error</i> on the hidden periods, and <i>vs naive guess</i>: below 1 means the model beats simply repeating the past. If the naive guess wins, the series has no pattern to exploit — treat the forecast as a rough guide.</td></tr>
+<tr><td>Prediction of a category</td><td>Logistic regression and a random forest are both trained; each is scored on rows it has not seen (5-fold cross-validation) and the better one is kept.</td><td><i>Accuracy</i> against the <i>Baseline</i> (always guessing the commonest outcome). <i>Balanced accuracy</i> and <i>ROC AUC</i> show whether it can tell outcomes apart; 50% / 0.5 is a coin toss.</td></tr>
+<tr><td>Prediction of a number</td><td>Ridge regression and a random forest, compared the same way.</td><td><i>R²</i> (share of variation explained) and <i>typical error</i> against the error of always guessing the average.</td></tr>
+<tr><td>Key drivers</td><td>The prediction model above, then each input is shuffled in turn on held-back rows: the more the result suffers, the more that input matters (permutation importance).</td><td>Importance is association, not proof of cause. Direction is given where it is clear.</td></tr>
+<tr><td>Segmentation</td><td>K-means clustering on standardised inputs. With <i>Automatic</i>, 2 to 8 segments are tried and the most distinct split is kept.</td><td><i>Separation</i> (silhouette score): above 0.5 is strong, below 0.25 means the groups overlap.</td></tr>
+<tr><td>Anomalies over time</td><td>Each period is compared with the median of its neighbours; it is flagged when more than 3.5 robust standard deviations away.</td><td rowspan="2">Unusual does not mean wrong — check flagged items against what you know.</td></tr>
+<tr><td>Anomalous rows</td><td>An isolation forest scores how easily each row is separated from the rest; at most the top 5% are flagged.</td></tr>
+</table>
+<p><b>Feature engineering applied automatically:</b> numbers are filled in where missing (median) and put on a common scale; text and category columns become one indicator per value, with rare values grouped; dates become year, month and weekday; time series are placed on a regular grid with gaps filled by straight line. Identifiers, free text, masked columns and columns with a single value are left out, and the explanation lists them.</p>
+<figure><img src="/static/help/img/predictive-segments.png" alt="A segmentation answer with segment tiles, a 2-D map of the segments and their sizes"><figcaption>Segmentation.</figcaption></figure>
+<figure><img src="/static/help/img/predictive-classification.png" alt="A classification answer with importance chart and actual versus predicted outcomes"><figcaption>Prediction of an outcome, with what drives it.</figcaption></figure>
+<figure><img src="/static/help/img/predictive-anomaly.png" alt="An anomaly answer with unusual days marked on the revenue line"><figcaption>Unusual days marked on the series.</figcaption></figure>
+<h3>Getting good results</h3>
+<ul>
+<li><b>Give it history.</b> A forecast needs at least 6 periods and is far better with two years or more. A prediction needs at least 30 rows with a known outcome; hundreds are better.</li>
+<li><b>Leave out the unfinished period.</b> “…up to last month” avoids a half-complete month dragging a forecast down.</li>
+<li><b>For predictions, ask for inputs known beforehand.</b> A column filled in only after the outcome (a cancellation reason, a closing date) makes the result look perfect and be useless; AskData warns when it sees this.</li>
+<li><b>Be specific about the outcome and the item:</b> “predict whether an order is returned, per order, from channel, region and order value”.</li>
+<li>If the message says the data is unsuitable, the query's data is still shown — adjust the question or the SQL and try again.</li>
+<li><b>Confirm good answers.</b> Pressing <b>✓ Correct</b> saves the SQL together with the chosen method, so similar questions get the same treatment.</li>
+</ul>
+<h3>Limits</h3>
+<ul>
+<li>A predictive question may read up to 50,000 rows (an administrator can change this). Models are fitted on at most 20,000 rows, sampled at random when there are more; result tables keep the first 2,000 rows.</li>
+<li>These are sound general-purpose methods, not a substitute for a specialist model built for one decision. Use the accuracy figures to decide how far to trust a result.</li>
+<li>Data filters and masked columns apply: you can only model the data you are allowed to see.</li>
+<li>In a <a href="#/help/reports">report</a>, a predictive answer is re-fitted on fresh data each time the report is opened or sent.</li>
+</ul>
+</section>
+
 <section id="table" data-title="Table, summary &amp; export">
 <h2>Table, summary and export</h2>
 <h3>Table</h3>
@@ -197,7 +278,7 @@
 <p>The objects you can place:</p>
 <table>
 <tr><th>Object</th><th>What it is</th></tr>
-<tr><td>Result from a chat</td><td>One answered question. Give it a title, tick whether to show the <b>Summary</b>, <b>Chart</b> and <b>Table</b>, and set how many table rows to show. Open <b>Chart settings and preview</b> to choose the chart type and columns with the usual <a href="#/help/charts">chart controls</a>.</td></tr>
+<tr><td>Result from a chat</td><td>One answered question. For a <a href="#/help/predictive">predictive</a> answer, tick <b>Predictive output</b> and choose which of its parts to show. Give it a title, tick whether to show the <b>Summary</b>, <b>Chart</b> and <b>Table</b>, and set how many table rows to show. Open <b>Chart settings and preview</b> to choose the chart type and columns with the usual <a href="#/help/charts">chart controls</a>.</td></tr>
 <tr><td>Heading</td><td>A large or small heading.</td></tr>
 <tr><td>Text</td><td>Your own commentary. Leave a blank line between paragraphs.</td></tr>
 <tr><td>Divider line, Page break</td><td>A line across the page; or start a new page in the PDF. These are always full width.</td></tr>
@@ -289,7 +370,7 @@
 <tr><td>
 <ul><li>Your question</li><li>Table and column names, data types, keys and comments</li><li>Approved training notes, examples and document passages</li><li>Earlier questions and SQL in the same chat</li></ul>
 </td><td>
-<ul><li>Query results — no rows, no totals, no charts</li><li>Summaries (they are computed on the AskData server)</li><li>Database passwords or connection details</li><li>Literal values from database error messages</li></ul>
+<ul><li>Query results — no rows, no totals, no charts</li><li>Anything from a predictive analysis: the model is fitted on the AskData server; the AI model only names the method and columns</li><li>Summaries (they are computed on the AskData server)</li><li>Database passwords or connection details</li><li>Literal values from database error messages</li></ul>
 </td></tr>
 </table>
 <p><b>One optional exception</b>, off by default and set per data model by an administrator: the distinct values of specific named columns (for example the list of order statuses) can be included to help the model write correct filters. Data models with this turned on show a badge “sample values shared with model” on the Data models page.</p>
@@ -559,6 +640,8 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 <tr><td>Maximum rows returned</td><td>1,000</td><td>Rows fetched per query. Larger values slow the browser.</td></tr>
 <tr><td>Query timeout</td><td>60 s</td><td>Longer queries are cancelled.</td></tr>
 <tr><td>Automatic SQL repair attempts</td><td>2</td><td>How many times the model may retry after a database error. 0 switches repair off.</td></tr>
+<tr><td>Allow predictive questions</td><td>On</td><td>Master switch for forecasts, predictions, segmentation, key drivers and anomalies. Users still opt in per question with <i>Use predictive capability</i>. See <a href="#/help/predictive">Predictive questions</a>.</td></tr>
+<tr><td>Rows a predictive question may read</td><td>50,000</td><td>Models need history, so predictive questions use this larger limit instead of <i>Maximum rows returned</i>.</td></tr>
 <tr><td>Keep result snapshots in chat history</td><td>On</td><td>Off = results are never stored by AskData; users re-run to see them again.</td></tr>
 <tr><td>When an analyst confirms or corrects SQL</td><td>Approval first</td><td>Whether analyst feedback trains the model straight away or waits in the review queue.</td></tr>
 <tr><td>Web address of this app</td><td>blank</td><td>Used for the “open the live report” link in report emails.</td></tr>
@@ -669,6 +752,9 @@ docker compose up --build</pre>
 <tr><td>A scheduled report did not run</td><td>The server was not running at that time (it runs on the next start), the schedule is switched off, or the owner's account is disabled.</td></tr>
 <tr><td>“This SQL … cannot be checked against your data filters”</td><td>The query uses syntax the server cannot analyse, so it is refused rather than run unfiltered. Rephrase the question or simplify the SQL.</td></tr>
 <tr><td>Two people see different numbers in the same report</td><td>Expected when data filters apply: each person sees only their rows. Look for the 🔒 badge.</td></tr>
+<tr><td>I asked for a forecast but got an ordinary answer</td><td>Tick <b>🔮 Use predictive capability</b> on the Ask page and ask again. If it is ticked, an administrator may have switched predictive questions off in Settings, or the question was not recognised as predictive — say “forecast”, “predict”, “segment”, “what drives” or “unusual”.</td></tr>
+<tr><td>“The predictive analysis could not be run”</td><td>The message says why: too few periods or rows, a column the query did not return, an outcome with one value. The data is still shown; rephrase or use Edit SQL.</td></tr>
+<tr><td>“The statistics libraries are not installed”</td><td>Run <code>pip install -r requirements.txt</code> in the same Python that runs the server, then restart.</td></tr>
 <tr><td>“You are asking questions too quickly”</td><td>The per-minute limit was reached. Wait a minute, or raise it in Settings.</td></tr>
 <tr><td>The menu or name on screen belongs to someone else</td><td>A sign-in is shared by all tabs and windows of one browser. If a second person signs in from another tab, every tab becomes that person. The menu corrects itself as soon as you click anything or return to the tab; the server never allows more than the signed-in person's role in any case. To use two accounts at once, use a private window or a different browser.</td></tr>
 <tr><td>Signed out unexpectedly</td><td>The session expired, your password was changed or reset, or your account was disabled.</td></tr>

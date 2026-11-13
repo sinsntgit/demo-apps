@@ -13,6 +13,7 @@ export async function chatView(root, convId) {
   let modelId = Number(prefs.get('model')) || models[0]?.id;
   if (!models.some(m => m.id === modelId)) modelId = models[0]?.id;
   let review = prefs.get('review') === '1';
+  let predictive = prefs.get('predictive') === '1';
   let sending = false;
 
   const list = h('div', { class: 'list' });
@@ -23,6 +24,7 @@ export async function chatView(root, convId) {
   const sendBtn = h('button', { class: 'btn primary', onclick: () => ask(input.value) }, 'Ask');
   const connSel = select(active.map(c => [c.id, `${c.name}  ·  ${c.db_label}`]), connId, v => { connId = Number(v); prefs.set('conn', v); if (conv && conv.connection_id !== connId) newChat(); else welcome(); });
   const modelSel = select(models.map(m => [m.id, m.name]), modelId, v => { modelId = Number(v); prefs.set('model', v); });
+  const predictChk = h('input', { type: 'checkbox', checked: predictive, onchange: e => { predictive = e.target.checked; prefs.set('predictive', predictive ? '1' : '0'); } });
   const reviewChk = h('input', { type: 'checkbox', checked: review, onchange: e => { review = e.target.checked; prefs.set('review', review ? '1' : '0'); } });
 
   function groupOf(iso) {
@@ -105,11 +107,11 @@ export async function chatView(root, convId) {
     sending = true; sendBtn.disabled = true; input.value = ''; input.style.height = '';
     if (!conv) fill(inner);
     const pending = h('div', {}, h('div', { class: 'q' }, h('div', {}, question)),
-      h('div', { class: 'card' }, h('span', { class: 'spinner' }), review ? '  Writing SQL…' : '  Writing SQL and running it on your database…'));
+      h('div', { class: 'card' }, h('span', { class: 'spinner' }), review ? '  Writing SQL…' : predictive ? '  Writing SQL, running it on your database and, if the question calls for it, fitting a model…' : '  Writing SQL and running it on your database…'));
     inner.append(pending);
     thread.scrollTop = thread.scrollHeight;
     try {
-      const out = await api('POST', '/api/chat/ask', { connection_id: connId, model_id: modelId, conversation_id: conv?.id, question, review_first: review });
+      const out = await api('POST', '/api/chat/ask', { connection_id: connId, model_id: modelId, conversation_id: conv?.id, question, review_first: review, predictive });
       if (!conv) { conv = { ...out.conversation, connection_id: connId }; history.replaceState(null, '', `#/ask/${conv.id}`); }
       const name = active.find(c => c.id === connId)?.name || '';
       const existing = convs.find(c => c.id === conv.id);
@@ -131,7 +133,9 @@ export async function chatView(root, convId) {
     h('div', { class: 'convs' }, h('div', { style: 'padding:10px' }, h('button', { class: 'btn', style: 'width:100%;justify-content:center', onclick: newChat }, '＋ New chat'), h('div', { style: 'margin-top:8px' }, filter)), list),
     h('div', { class: 'thread-col' },
       h('div', { class: 'ask-bar' }, h('label', {}, 'Data model', connSel), h('label', {}, 'AI model', modelSel),
-        h('label', { class: 'check', style: 'flex-direction:row;font-size:13px;color:var(--text-2);margin-top:14px' }, reviewChk, 'Review SQL before running')),
+        h('label', { class: 'check', style: 'flex-direction:row;font-size:13px;color:var(--text-2);margin-top:14px' }, reviewChk, 'Review SQL before running'),
+        h('label', { class: 'check', title: 'When ticked, questions that ask for a forecast, a prediction, segments, key drivers or anomalies also run a statistical model on the data. Other questions are answered as usual.', style: 'flex-direction:row;font-size:13px;color:var(--text-2);margin-top:14px' }, predictChk, '🔮 Use predictive capability'),
+        h('a', { class: 'small', href: '#/help/predictive', target: '_blank', rel: 'noopener', style: 'margin-top:14px' }, '?')),
       thread,
       h('div', { class: 'composer' }, h('div', { class: 'box' }, input, sendBtn),
         h('div', { class: 'privacy-note' }, '🔒 The AI model only sees your question and the schema & training notes. Query results stay between this server and your database.')))));

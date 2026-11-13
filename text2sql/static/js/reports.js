@@ -1,6 +1,6 @@
 // Custom reports: build from results of several chats, refresh live on open, schedule, share.
 import { h, fill, api, busy, fail, toast, modal, field, check, select, confirmDialog, fmtTime, fmtNum, ago, state } from './core.js';
-import { chartBlock, summaryBlock } from './results.js';
+import { chartBlock, summaryBlock, analysisBlock } from './results.js';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const uid = () => Math.random().toString(36).slice(2, 12);
@@ -39,6 +39,7 @@ async function openReport(root, id) {
     if (c.status !== 'ok') { box.append(h('div', { class: 'banner ' + (c.status === 'no_access' ? 'warn' : 'bad') }, c.message || 'This result could not be refreshed.')); return box; }
     box.append(h('div', { class: 'row wrap small dim', style: 'margin-bottom:8px' }, h('span', {}, `🗄 ${c.data_model}`), h('span', {}, `${fmtNum(c.row_count)} rows${c.truncated ? ' (row limit reached)' : ''}`),
       c.filtered ? h('span', { class: 'badge warn', title: 'An administrator has limited which rows you can see' }, '🔒 your data filters applied') : null));
+    if (c.analysis) { const a = analysisBlock(c.analysis, { hidden: new Set(c.hide || []) }); blocks.push(a); box.append(h('div', { class: 'rep-analysis' }, a.el), h('h3', { class: 'rep-h3' }, 'Data used')); }
     if (c.show_summary) box.append(summaryBlock(c, { table: false }));
     if (c.show_chart && c.rows.length) {
       const cfg = c.chart = { ...(c.chart || {}) };
@@ -123,7 +124,10 @@ async function openReport(root, id) {
       const rows = h('input', { type: 'number', min: 1, max: 500, value: c.table_rows || 25, class: 'inline', style: 'width:72px', oninput: e => { c.table_rows = Number(e.target.value) || 25; } });
       const out = h('div', { class: 'stack' }, h('input', { type: 'text', value: c.title || '', placeholder: 'Title shown in the report', 'aria-label': 'Title shown in the report', oninput: e => { c.title = e.target.value; } }),
         h('div', { class: 'row wrap' }, check('Summary', c.show_summary !== false, v => { c.show_summary = v; }), check('Chart', c.show_chart !== false, v => { c.show_chart = v; draw(); }),
-          check('Table', c.show_table !== false, v => { c.show_table = v; }), h('label', { class: 'row small' }, 'rows', rows)));
+          check('Table', c.show_table !== false, v => { c.show_table = v; }), h('label', { class: 'row small' }, 'rows', rows)),
+        !c.analysis ? null : h('div', { class: 'row wrap small' }, check(`🔮 Predictive output (${c.analysis.type || c.analysis.spec?.type})`, c.show_analysis !== false, v => { c.show_analysis = v; }),
+          h('span', { class: 'dim' }, 'show:'), [['explain', 'Explanation'], ['chart', 'Charts'], ['table', 'Results'], ['stats', 'Statistics'], ['code', 'Code']].map(([k, l]) =>
+            check(l, !(c.hide || []).includes(k), v => { c.hide = v ? (c.hide || []).filter(x => x !== k) : [...(c.hide || []), k]; }))));
       const d = data[c.id];
       if (c.show_chart !== false) {
         if (d?.status === 'ok' && d.rows.length) {

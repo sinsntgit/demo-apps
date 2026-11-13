@@ -15,6 +15,27 @@ REQUESTS: list[dict] = []
 REVENUE = "ROUND(SUM(oi.quantity * oi.unit_price * (1 - oi.discount)), 2)"
 JOIN = "FROM order_items oi JOIN orders o ON o.order_id = oi.order_id"
 
+ORDERS = ("SELECT o.order_id, o.status, o.channel, c.segment, c.region, COUNT(*) AS items, SUM(oi.quantity) AS units, "
+          "MAX(oi.unit_price) AS top_price, ROUND(SUM(oi.quantity * oi.unit_price * (1 - oi.discount)), 2) AS order_value "
+          "FROM orders o JOIN order_items oi ON oi.order_id = o.order_id JOIN customers c ON c.customer_id = o.customer_id "
+          "GROUP BY o.order_id, o.status, o.channel, c.segment, c.region")
+# Predictive questions: SQL for the input data set + which analysis to run on it.
+PREDICTIVE = [
+    ("forecast", f"SELECT CAST(date_trunc('month', o.order_date) AS DATE) AS month, {REVENUE} AS revenue {JOIN} "
+                 "WHERE o.status = 'completed' AND o.order_date < DATE '2025-10-01' GROUP BY 1 ORDER BY 1",
+     {"type": "forecast", "date": "month", "target": "revenue", "horizon": 6}),
+    ("segment", f"SELECT c.customer_id, c.segment AS customer_type, c.region, COUNT(DISTINCT o.order_id) AS orders, {REVENUE} AS revenue, "
+                f"ROUND(AVG(oi.discount), 3) AS avg_discount {JOIN} JOIN customers c ON c.customer_id = o.customer_id "
+                "WHERE o.status = 'completed' GROUP BY 1, 2, 3", {"type": "clustering", "id": "customer_id", "k": None}),
+    ("likely", ORDERS, {"type": "classification", "target": "status", "id": "order_id"}),
+    ("predict order value", ORDERS, {"type": "regression", "target": "order_value", "id": "order_id"}),
+    ("drives", ORDERS, {"type": "drivers", "target": "order_value"}),
+    ("unusual days", f"SELECT CAST(o.order_date AS DATE) AS day, {REVENUE} AS revenue {JOIN} GROUP BY 1 ORDER BY 1",
+     {"type": "anomaly", "date": "day", "target": "revenue"}),
+    ("unusual orders", ORDERS, {"type": "anomaly", "id": "order_id"}),
+    ("bad analysis", "SELECT status, COUNT(*) AS orders FROM orders GROUP BY 1", {"type": "forecast", "date": "nope", "target": "orders"}),
+]
+
 RULES = [
     ("weather", None),
     ("delete", "DELETE FROM orders"),
@@ -49,6 +70,10 @@ def answer(system: str, user: str) -> dict:
         sql = "SELECT status, COUNT(*) AS orders FROM orders GROUP BY status" if repairing \
             else "SELECT no_such_column FROM orders"
         return {"sql": sql, "explanation": "Counts orders by status.", "followups": ["Which status is most common?"]}
+    for key, sql, analysis in PREDICTIVE:
+        if key in question:
+            return {"sql": sql, "explanation": f"Prepares the data for a {analysis['type']} analysis.", "analysis": analysis,
+                    "followups": ["What drives order value?", "Segment our customers", "Any unusual days?"]}
     for key, sql in RULES:
         if key in question:
             if sql is None:

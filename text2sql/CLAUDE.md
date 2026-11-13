@@ -62,6 +62,11 @@ These are the product's promises. A change that weakens one is wrong even if the
 7. **No build step for the front end.** Plain ES modules, vendored libraries in `static/vendor/`, a
    strict CSP (`script-src 'self'`; no inline scripts, no CDN). The app must work offline/air-gapped.
 8. **Every state-changing admin/security action is audited** (`deps.audit`).
+9. **No model-written code is ever executed.** Predictive analysis (`app/predict.py`) runs the app's own
+   script templates. The AI model contributes only a method name and column names (`clean_spec`), which are
+   checked against the real result columns and inserted with `repr()`. Never interpolate model or user text
+   into a script any other way, and never add an "AI writes Python" path without a real sandbox and the
+   owner's explicit decision (they chose built-in methods).
 
 ---
 
@@ -86,6 +91,7 @@ Python 3.11+ · FastAPI · SQLAlchemy 2 (metadata store: SQLite by default, Post
 | `retrieval.py` | Local BM25 over training items; document chunking. No embeddings API. |
 | `llm.py` | Providers: `anthropic` (official SDK), `openai`, `openai_compatible`. Tolerant JSON answer parser. |
 | `engine.py` | The pipeline: `build_prompt` → `generate` → `execute` (guard → filters → run → mask → summarise, with auto-repair) and `run_sql` (same for stored SQL, used by reports). |
+| `predict.py` | Predictive analysis: script templates (forecast, classify, regress, cluster, anomaly), feature selection, `run(spec, columns, rows)` → narrative, metrics, plot specs, tables, stats, warnings and the exact code that ran. |
 | `summarize.py` | Shape-aware summary (single / trend / ranking / cross / pivot / listing / values) and default chart suggestion. Measures vs dimensions; additive vs averaged. |
 | `docparse.py` | Text extraction from uploaded training documents. |
 | `mailer.py` | Email senders: connect/verify/send, simulation mode, email log. |
@@ -101,6 +107,11 @@ POST /api/chat/ask
                     on DB error: scrub_error -> ask model to repair (max N) -> retry
                     summarize.summarize + suggest_chart -> stored on QueryRun
 ```
+Predictive questions (only when the user ticked "Use predictive capability" *and* the admin setting allows):
+the model also returns `analysis: {type, columns…}`; `execute` then reads up to `analysis_max_rows`, calls
+`engine.analyse` → `predict.run`, and stores `{spec, result|error}` in `QueryRun.analysis`. The data table
+still shows/stores at most `max_rows`. A failed analysis never fails the answer.
+
 `QueryRun` is at once the chat message, the audit record and the dashboard row. `run_dto` recomputes
 the summary on read so old chats benefit from summary improvements.
 
@@ -132,7 +143,9 @@ Chart rules (deliberate — do not "simplify" them away): identifiers/codes/year
 never summed; averages/rates/prices are **averaged**, never totalled; **never a second Y axis** — two
 measures >20× apart get one panel each; at most 8 series, fixed colour order, the tail folds into
 "Other"; charts aggregate rows that share an X value and say so. The browser (`results.js`) and the
-server (`reporting.chart_panels`) implement the same logic — **change both**.
+server (`reporting.chart_panels`) implement the same logic — **change both**. Predictive plots are a neutral
+spec (`kind`, `labels`, `datasets` with a `role`) drawn by `results.js::plotConfig` in the browser and
+`reporting.draw_plot` in PDFs — again, change both.
 
 ---
 
@@ -175,7 +188,7 @@ Design defaults that have served well:
 ```bash
 python -m pytest -q                       # API-level tests, a few seconds
 tests/e2e/run.sh                          # browser suites against a fresh instance (see file header)
-tests/e2e/run.sh reports                  # one suite: features | reports | groups | session
+tests/e2e/run.sh reports                  # one suite: features | reports | groups | predictive | session
 T2S_TEST_PG=user:pw@host:5432/db python -m pytest tests/test_postgres.py   # live Postgres, optional
 ```
 
@@ -261,7 +274,17 @@ No filler, no internal identifiers, no claiming more than the checks showed.
     explicitly. Use exact current model IDs; never invent date-suffixed ones.
 16. **Windows.** Tell the owner to start with `py -3.14 -m uvicorn …` (stale `uvicorn.exe` launchers
     exist on their PATH) and that installing into a shared Python can disturb other packages.
-17. **Big one-line edits to dense JS** are where syntax slips happen. Edit in small, anchored
+17. **A chart can exist and still be blank.** The predictive charts were once destroyed by an unrelated
+    repaint (`cleanup()` shared between two blocks) while every "canvas exists" check passed. The e2e suite
+    now reads pixels (`drawn()` in `tests/e2e/predictive.js`). Assert that something was *drawn*.
+18. **Statistics on real data misbehave.** First versions forecast a negative count, flagged 71% of rows
+    as anomalies and reused a column name. Run every method on the sample data and *read the numbers*
+    (see `test_engine_rules`); prefer honest messages ("no better than a naive guess") over a confident chart.
+19. **The suite asks many questions as one user**; `conftest.py` raises the per-minute limit. A sudden
+    wave of 429s in tests is that limit.
+20. **Element screenshots of a scrolling area are clipped** to what is visible; enlarge the viewport first
+    (`shotRun` in `tests/e2e/predictive.js`). Help images for tall answers are crops of those captures.
+21. **Big one-line edits to dense JS** are where syntax slips happen. Edit in small, anchored
     replacements, and syntax-check after each file.
 
 ---
@@ -275,7 +298,10 @@ No filler, no internal identifiers, no claiming more than the checks showed.
   path as Postgres, own drivers).
 - **Not** run against the real services: Anthropic / OpenAI APIs (stand-in servers only), a real
   SMTP provider, Docker image and compose file, Python 3.14 (developed on 3.13).
-- Not built: SSO, scheduled data refresh of file models, report free-form (pixel) positioning,
+- Predictive analysis is verified on the sample data with a stand-in model only: whether a real model
+  reliably returns a good `analysis` spec and input data set is unmeasured. Statistical methods are
+  general-purpose (Holt-Winters / naive, logistic + random forest, ridge, k-means, isolation forest).
+- Not built: free-form AI-written analysis code (deliberately), per-series forecasts in one question, SSO, scheduled data refresh of file models, report free-form (pixel) positioning,
   group selection in the Data models page's "Access" dialog (groups are set under Admin → Data access).
 
 ---

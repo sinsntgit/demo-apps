@@ -10,7 +10,10 @@ import re
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import connectors, llm, retrieval, rowfilter, security, sqlguard, summarize
+import concurrent.futures
+import json
+
+from . import connectors, llm, predict, retrieval, rowfilter, security, sqlguard, summarize
 from .models import Connection, LLMModel, QueryRun, TrainingItem
 
 MAX_FULL_SCHEMA_TABLES = 40
@@ -27,8 +30,20 @@ Rules:
 - You never see the data. Do not guess literal values that are not in the schema notes, documentation or examples; if a filter value is unknown, match case-insensitively or ask.
 - If the question cannot be answered from this schema, or is too ambiguous to answer responsibly, do not write SQL; ask one short clarifying question instead.
 
+{predictive}
 Reply with a single JSON object and nothing else:
-{{"sql": "<the query, or empty string>", "explanation": "<one or two sentences on how the query answers the question>", "followups": ["<3 natural next questions a business user might ask of this same data>"], "clarification": "<question for the user, only when sql is empty>"}}"""
+{{"sql": "<the query, or empty string>", "explanation": "<one or two sentences on how the query answers the question>", "followups": ["<3 natural next questions a business user might ask of this same data>"], "clarification": "<question for the user, only when sql is empty>"{analysis_key}}}"""
+
+PREDICTIVE = """
+Predictive questions
+When - and only when - the question asks to forecast or project something, predict or classify an outcome, explain what drives something, segment / cluster / group similar items, or find anomalies / outliers, also return an "analysis" object. The platform runs the statistics itself on the rows your SQL returns; you only choose the method and name the columns. For these questions the SQL must return the *input data set* for the analysis - not a finished answer - with every relevant history row and no row limit:
+- Forecast: {{"type": "forecast", "date": "<period column>", "target": "<measure>", "horizon": <periods ahead the user asked for, or null>}}. SQL: one row per period (the grain the question implies; month if unstated), all available history, ordered by period.
+- Predict a category: {{"type": "classification", "target": "<outcome column>", "id": "<row identifier or null>"}}. Predict a number: same with "type": "regression". SQL: one row per item (customer, order, product...) with the outcome and the attributes that might explain it and are known before the outcome happens. Leave the outcome NULL for items whose outcome is not yet known.
+- What drives X: {{"type": "drivers", "target": "<X>"}}. SQL as for prediction.
+- Segments / clusters: {{"type": "clustering", "id": "<row identifier>", "k": <number of segments if the user gave one, else null>}}. SQL: one row per item with descriptive numeric and categorical columns.
+- Anomalies: unusual periods -> {{"type": "anomaly", "date": "<period column>", "target": "<measure>"}} with one row per period; unusual items -> {{"type": "anomaly", "id": "<row identifier>"}} with one row per item.
+Column names inside "analysis" must be exactly the aliases your SQL returns. Add "features": [...] only to restrict the inputs to specific columns. For every other question "analysis" must be null.
+"""
 
 
 def scrub_error(msg: str) -> str:
@@ -44,7 +59,8 @@ def _approved(db: Session, conn_id: int, kind: str) -> list[TrainingItem]:
         TrainingItem.connection_id == conn_id, TrainingItem.kind == kind, TrainingItem.status == "approved")))
 
 
-def build_prompt(db: Session, conn: Connection, question: str, history: list[QueryRun], max_rows: int):
+def build_prompt(db: Session, conn: Connection, question: str, history: list[QueryRun], max_rows: int,
+                 predictive: bool = True):
     """Returns (system, user, context_summary)."""
     tables = (conn.schema_json or {}).get("tables", [])
     pairs = _approved(db, conn.id, "sql_pair")
@@ -86,7 +102,8 @@ def build_prompt(db: Session, conn: Connection, question: str, history: list[Que
         parts += [f"### {d.title or d.document_name or 'Note'}\n{d.content}" for d in doc_hits]
     if ex:
         parts.append("\n## Verified example queries")
-        parts += [f"Question: {p.question}\nSQL:\n{p.sql}" for p in ex]
+        parts += [f"Question: {p.question}\nSQL:\n{p.sql}" + (f"\nAnalysis: {p.content}" if p.content.strip().startswith("{") else "")
+                  for p in ex]
     stable = "\n\n".join(parts)
 
     tail = []
@@ -96,7 +113,9 @@ def build_prompt(db: Session, conn: Connection, question: str, history: list[Que
             tail.append(f"Question: {h.question}\nSQL:\n{h.final_sql or h.generated_sql}")
     tail.append(f"## Question\n{question}")
 
-    system = SYSTEM.format(dialect=connectors.DIALECT_NAME[conn.db_type], max_rows=max_rows) + "\n\n" + stable
+    system = SYSTEM.format(dialect=connectors.DIALECT_NAME[conn.db_type], max_rows=max_rows,
+                           predictive=PREDICTIVE.format() if predictive else "",
+                           analysis_key=', "analysis": <object as described above, or null>' if predictive else "") + "\n\n" + stable
     context = {"tables": [connectors.table_fqn(t) for t, _ in chosen], "examples": [p.id for p in ex],
                "docs": [d.id for d in doc_hits], "history_turns": min(len(history), 3)}
     return system, "\n\n".join(tail), context
@@ -115,15 +134,21 @@ def _mask(conn: Connection, checked, res: dict):
         res["columns"][i].pop("additive", None)
 
 
-def run_sql(db: Session, conn: Connection, sql: str, cfg: dict, user) -> dict:
+def run_sql(db: Session, conn: Connection, sql: str, cfg: dict, user, spec: dict | None = None) -> dict:
     """Guard, apply the user's data filters, run and mask. Used for stored SQL (reports).
+    With `spec`, also runs that predictive analysis on the fresh rows.
     Raises sqlguard.SQLBlocked / connectors.ConnectorError."""
     checked = sqlguard.check(sql, conn.db_type)
     to_run, applied = rowfilter.apply(checked, rowfilter.applicable(db, user, conn), conn.db_type, user)
-    res = connectors.run_query(conn, security.decrypt_json(conn.config_enc), to_run, cfg["max_rows"], cfg["query_timeout_s"])
+    cap = cfg["analysis_max_rows"] if spec else cfg["max_rows"]
+    res = connectors.run_query(conn, security.decrypt_json(conn.config_enc), to_run, cap, cfg["query_timeout_s"])
     _mask(conn, checked, res)
     res["filters"] = applied
     res["summary"] = summarize.summarize(res["columns"], res["rows"], res["truncated"])
+    res["row_count"] = len(res["rows"])
+    if spec:
+        res["analysis"] = {"spec": spec, **analyse(spec, res["columns"], res["rows"])}
+        res["rows"] = res["rows"][:cfg["max_rows"]]
     return res
 
 
@@ -139,7 +164,7 @@ def _call(run: QueryRun, model: LLMModel, system: str, user: str) -> dict:
 
 def generate(db: Session, run: QueryRun, conn: Connection, model: LLMModel, history: list[QueryRun], cfg: dict):
     """Ask the model for SQL; fills run.generated_sql / status. Does not execute."""
-    system, user, context = build_prompt(db, conn, run.question, history, cfg["max_rows"])
+    system, user, context = build_prompt(db, conn, run.question, history, cfg["max_rows"], cfg["predictive_enabled"])
     run.context = context
     try:
         ans = _call(run, model, system, user)
@@ -152,6 +177,8 @@ def generate(db: Session, run: QueryRun, conn: Connection, model: LLMModel, hist
         run.explanation = ans["clarification"] or "I could not write a query for that. Could you rephrase the question?"
         return None
     run.generated_sql = run.final_sql = sqlguard._strip(ans["sql"])
+    spec = predict.clean_spec(ans.get("analysis")) if cfg["predictive_enabled"] else None
+    run.analysis = {"spec": spec} if spec else None
     run.status = "pending_review"
     return system, user
 
@@ -164,12 +191,14 @@ def execute(db: Session, run: QueryRun, conn: Connection, cfg: dict, model: LLMM
     repairs_left = cfg["max_repair_attempts"] if (model and prompt and not run.edited) else 0
     filters = rowfilter.applicable(db, user, conn) if user is not None else []
     applied: list[int] = []
+    spec = (run.analysis or {}).get("spec")
+    cap = cfg["analysis_max_rows"] if spec else cfg["max_rows"]       # predictive questions need the history
     while True:
         problem = None
         try:
             checked = sqlguard.check(run.final_sql, conn.db_type)
             to_run, applied = rowfilter.apply(checked, filters, conn.db_type, user)
-            res = connectors.run_query(conn, conn_cfg, to_run, cfg["max_rows"], cfg["query_timeout_s"])
+            res = connectors.run_query(conn, conn_cfg, to_run, cap, cfg["query_timeout_s"])
         except sqlguard.SQLBlocked as e:
             problem, status = str(e), "blocked"
         except connectors.ConnectorError as e:
@@ -203,5 +232,30 @@ def execute(db: Session, run: QueryRun, conn: Connection, cfg: dict, model: LLMM
     run.summary = summarize.summarize(res["columns"], res["rows"], res["truncated"])
     if not run.chart:
         run.chart = summarize.suggest_chart(res["columns"], res["rows"])
-    run.result_rows = res["rows"] if cfg["store_results"] else None
+    shown = res["rows"][:cfg["max_rows"]]                   # the data table shows (and stores) at most max_rows
+    run._live_rows = shown                                  # for this response, even when nothing is stored
+    run.result_rows = shown if cfg["store_results"] else None
+    if spec:
+        outcome = analyse(spec, res["columns"], res["rows"])
+        run._live_analysis = {"spec": spec, **outcome}
+        run.analysis = run._live_analysis if cfg["store_results"] else {"spec": spec}
     return res["rows"]
+
+
+_analysis_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="analysis")
+
+
+def analyse(spec: dict, columns: list, rows: list, timeout_s: int = 180) -> dict:
+    """Run a predictive analysis on already-fetched rows. Returns {"result": ...} or {"error": "..."}.
+    Runs on the server only - nothing here is sent to the language model."""
+    future = _analysis_pool.submit(predict.run, spec, columns, rows)
+    try:
+        result = future.result(timeout=timeout_s)
+        json.dumps(result)                                  # must be storable
+        return {"result": result}
+    except predict.AnalysisError as e:
+        return {"error": str(e)}
+    except concurrent.futures.TimeoutError:
+        return {"error": "The analysis took too long and was stopped. Ask for less data (a shorter period or fewer columns)."}
+    except Exception as e:                                  # never let statistics break the answer itself
+        return {"error": f"The analysis failed unexpectedly ({type(e).__name__})."}

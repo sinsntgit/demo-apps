@@ -144,6 +144,7 @@ class QueryRun(Base):
     db_ms: Mapped[int] = mapped_column(Integer, default=0)
     attempts: Mapped[int] = mapped_column(Integer, default=0)      # model calls incl. repairs
     context: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # what was sent to the model
+    analysis: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # predictive: {"spec", "result" | "error"}
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
     conversation: Mapped[Conversation] = relationship(back_populates="runs")
 

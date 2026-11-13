@@ -212,7 +212,7 @@ def test_model(model_id: int, _: User = Depends(admin_only), db: Session = Depen
 # ---- settings ----------------------------------------------------------------------
 _LIMITS = {"max_rows": (1, 50000), "query_timeout_s": (5, 900), "rate_limit_per_min": (1, 600),
            "session_hours": (1, 168), "max_repair_attempts": (0, 5), "lockout_attempts": (3, 20),
-           "lockout_minutes": (1, 1440), "smtp_port": (1, 65535)}
+           "lockout_minutes": (1, 1440), "smtp_port": (1, 65535), "analysis_max_rows": (100, 500000)}
 
 
 def _public_settings(db: Session) -> dict:

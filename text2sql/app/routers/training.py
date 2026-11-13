@@ -35,15 +35,18 @@ def norm_question(q: str) -> str:
     return re.sub(r"\W+", " ", q.lower()).strip()
 
 
-def upsert_pair(db: Session, conn, question: str, sql: str, source: str, status: str, user_id) -> TrainingItem:
-    """One pair per (data model, question): a newer answer replaces the older one."""
+def upsert_pair(db: Session, conn, question: str, sql: str, source: str, status: str, user_id,
+                analysis: dict | None = None) -> TrainingItem:
+    """One pair per (data model, question): a newer answer replaces the older one.
+    For predictive questions the chosen method + columns are kept with the example (in `content`)."""
     key = norm_question(question)
+    extra = json.dumps(analysis) if analysis else ""
     for p in db.scalars(select(TrainingItem).where(TrainingItem.connection_id == conn.id,
                                                    TrainingItem.kind == "sql_pair")):
         if norm_question(p.question) == key:
-            p.sql, p.source, p.status, p.updated_at = sql, source, status, now()
+            p.sql, p.source, p.status, p.updated_at, p.content = sql, source, status, now(), extra
             return p
-    item = TrainingItem(connection_id=conn.id, kind="sql_pair", question=question.strip(), sql=sql,
+    item = TrainingItem(connection_id=conn.id, kind="sql_pair", question=question.strip(), sql=sql, content=extra,
                         source=source, status=status, created_by=user_id)
     db.add(item)
     return item

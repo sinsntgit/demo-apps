@@ -19,6 +19,9 @@ xlrd>=2.0
 fpdf2>=2.8
 matplotlib>=3.8
 tzdata>=2024.1
+# Predictive analysis (forecasts, predictions, segmentation, anomalies) - runs on the server
+scikit-learn>=1.5
+statsmodels>=0.14
 # Training documents
 pypdf>=4.2
 python-docx>=1.1

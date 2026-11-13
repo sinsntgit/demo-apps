@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from .. import engine, security, sqlguard, summarize
+from .. import engine, predict, security, sqlguard, summarize
 from ..db import get_db, now
 from ..deps import audit, current_user, get_connection, get_settings
 from ..models import Connection, Conversation, LLMModel, QueryRun, User
@@ -21,6 +21,7 @@ class AskIn(BaseModel):
     conversation_id: int | None = None
     question: str
     review_first: bool = False
+    predictive: bool = False        # "Use predictive capability": forecasts, predictions, segments, anomalies
 
 
 class ExecIn(BaseModel):
@@ -38,14 +39,17 @@ class TitleIn(BaseModel):
 
 def run_dto(r: QueryRun, rows: bool = True) -> dict:
     summary, columns = r.summary, r.columns or []
-    if rows and r.result_rows is not None and r.status == "success":
+    stored = r.result_rows if r.result_rows is not None else getattr(r, "_live_rows", None)
+    analysis = getattr(r, "_live_analysis", None) or r.analysis
+    if rows and r.result_rows is not None and r.status == "success" and len(r.result_rows) == r.row_count:
         # recomputed on read, so saved answers always get the current summary logic
         columns = summarize.enrich([dict(c) for c in columns])
         summary = summarize.summarize(columns, r.result_rows, r.truncated)
     return {"id": r.id, "conversation_id": r.conversation_id, "question": r.question,
             "generated_sql": r.generated_sql, "final_sql": r.final_sql, "edited": r.edited,
             "explanation": r.explanation, "status": r.status, "error": r.error, "row_count": r.row_count,
-            "truncated": r.truncated, "columns": columns, "rows": (r.result_rows if rows else None),
+            "truncated": r.truncated, "columns": columns, "rows": (stored if rows else None),
+            "analysis": analysis if rows else ({"spec": analysis.get("spec")} if analysis else None),
             "rows_stored": r.result_rows is not None, "summary": summary, "chart": r.chart,
             "followups": r.followups or [], "feedback": r.feedback, "feedback_note": r.feedback_note,
             "model_label": r.model_label, "input_tokens": r.input_tokens, "output_tokens": r.output_tokens,
@@ -111,7 +115,9 @@ def ask(body: AskIn, request: Request, user: User = Depends(current_user), db: S
                    model_label=model.name, question=question, attempts=0, input_tokens=0, output_tokens=0,
                    llm_ms=0, cost=0.0)
     db.add(run)
-    prompt = engine.generate(db, run, conn, model, history, cfg)
+    # predictive analysis is used only when the user ticked it for this question and an admin allows it
+    prompt = engine.generate(db, run, conn, model, history,
+                             {**cfg, "predictive_enabled": bool(cfg["predictive_enabled"] and body.predictive)})
     if prompt and not body.review_first:
         engine.execute(db, run, conn, cfg, model, prompt, user=user)
     conv.updated_at = now()
@@ -142,6 +148,33 @@ def execute(run_id: int, body: ExecIn, request: Request, user: User = Depends(cu
     return run_dto(run)
 
 
+class AnalysisIn(BaseModel):
+    horizon: int | None = None
+    k: int | None = None
+
+
+@router.post("/chat/runs/{run_id}/analysis")
+def rerun_analysis(run_id: int, body: AnalysisIn, request: Request, user: User = Depends(current_user),
+                   db: Session = Depends(get_db)):
+    """Re-run a predictive answer with a different horizon / number of segments (data is fetched afresh)."""
+    run = _own_run(db, user, run_id)
+    conn = get_connection(db, user, run.connection_id)
+    spec = dict((run.analysis or {}).get("spec") or {})
+    if not spec:
+        raise HTTPException(400, "This answer has no predictive analysis.")
+    if body.horizon is not None:
+        spec["horizon"] = body.horizon
+    if body.k is not None:
+        spec["k"] = body.k
+    elif "k" in body.model_fields_set:
+        spec.pop("k", None)                     # back to automatic
+    run.analysis = {"spec": predict.clean_spec(spec)}
+    engine.execute(db, run, conn, get_settings(db), user=user)
+    audit(db, request, user, "query.analysis_rerun", conn.name, f"run #{run.id} {spec.get('type')}")
+    db.commit()
+    return run_dto(run)
+
+
 @router.post("/chat/runs/{run_id}/feedback")
 def feedback(run_id: int, body: FeedbackIn, request: Request, user: User = Depends(current_user),
              db: Session = Depends(get_db)):
@@ -160,7 +193,8 @@ def feedback(run_id: int, body: FeedbackIn, request: Request, user: User = Depen
     run.feedback = "corrected" if run.edited else "correct"
     trusted = user.role in ("admin", "steward") or get_settings(db)["feedback_mode"] == "instant"
     status = "approved" if trusted else "pending"
-    upsert_pair(db, conn, run.question, run.final_sql, "correction" if run.edited else "confirmed", status, user.id)
+    upsert_pair(db, conn, run.question, run.final_sql, "correction" if run.edited else "confirmed", status, user.id,
+                analysis=(run.analysis or {}).get("spec"))
     audit(db, request, user, "query.feedback", conn.name, f"run #{run.id} {run.feedback} -> training {status}")
     db.commit()
     return {"run": run_dto(run, rows=False), "training": status}
@@ -169,7 +203,7 @@ def feedback(run_id: int, body: FeedbackIn, request: Request, user: User = Depen
 @router.put("/chat/runs/{run_id}/chart")
 def save_chart(run_id: int, chart: dict, user: User = Depends(current_user), db: Session = Depends(get_db)):
     run = _own_run(db, user, run_id)
-    run.chart = {k: chart.get(k) for k in ("type", "x", "y", "series", "stacked", "horizontal", "view") if k in chart}
+    run.chart = {k: chart.get(k) for k in ("type", "x", "y", "series", "stacked", "horizontal", "view", "hide") if k in chart}
     db.commit()
     return {"ok": True}
 

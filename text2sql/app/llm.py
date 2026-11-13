@@ -109,7 +109,7 @@ def _openai(model, key, system, user) -> LLMResult:
 
 
 def parse_answer(text: str) -> dict:
-    """Tolerant parse of the model's JSON answer -> {sql, explanation, followups, clarification}."""
+    """Tolerant parse of the model's JSON answer -> {sql, explanation, followups, clarification, analysis}."""
     text = (text or "").strip()
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.S).strip()   # some local models
     candidates = [text]
@@ -129,10 +129,11 @@ def parse_answer(text: str) -> dict:
             return {"sql": (obj.get("sql") or "").strip(),
                     "explanation": str(obj.get("explanation") or "").strip(),
                     "followups": [str(x).strip() for x in fu if str(x).strip()][:4] if isinstance(fu, list) else [],
-                    "clarification": str(obj.get("clarification") or "").strip()}
+                    "clarification": str(obj.get("clarification") or "").strip(),
+                    "analysis": obj.get("analysis") if isinstance(obj.get("analysis"), dict) else None}
     m = re.search(r"```(?:sql)?\s*(.+?)```", text, re.S | re.I)
     if m:
-        return {"sql": m.group(1).strip(), "explanation": "", "followups": [], "clarification": ""}
+        return {"sql": m.group(1).strip(), "explanation": "", "followups": [], "clarification": "", "analysis": None}
     if re.match(r"\s*(select|with)\b", text, re.I):
-        return {"sql": text, "explanation": "", "followups": [], "clarification": ""}
-    return {"sql": "", "explanation": "", "followups": [], "clarification": text[:1000]}
+        return {"sql": text, "explanation": "", "followups": [], "clarification": "", "analysis": None}
+    return {"sql": "", "explanation": "", "followups": [], "clarification": text[:1000], "analysis": None}

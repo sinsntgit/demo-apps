@@ -75,7 +75,9 @@ def result_component(run: QueryRun) -> dict:
     return {"id": uuid.uuid4().hex[:10], "type": "result", "run_id": run.id, "connection_id": run.connection_id,
             "sql": run.final_sql, "question": run.question, "title": run.question[:200],
             "show_chart": True, "show_table": True, "show_summary": True, "table_rows": 25,
-            "chart": dict(run.chart or {})}
+            "chart": {k: v for k, v in (run.chart or {}).items() if k != "hide"},
+            # predictive answers carry their method + columns, so the model is re-fitted on fresh data each time
+            "analysis": (run.analysis or {}).get("spec"), "show_analysis": True, "hide": list((run.chart or {}).get("hide") or [])}
 
 
 def _width(c) -> int:
@@ -150,6 +152,8 @@ def clean_components(db, user, incoming: list, existing: list) -> list:
                 title=str(c.get("title") or base["title"])[:200],
                 show_chart=bool(c.get("show_chart", True)), show_table=bool(c.get("show_table", True)),
                 show_summary=bool(c.get("show_summary", True)), width=_width(c),
+                show_analysis=bool(c.get("show_analysis", True)),
+                hide=[k for k in (c.get("hide") or []) if k in ("explain", "chart", "table", "stats", "code")],
                 table_rows=min(max(int(c.get("table_rows") or 25), 1), 500),
                 chart={k: chart.get(k) for k in ("type", "x", "y", "series") if k in chart})
             out.append(base)
@@ -198,8 +202,10 @@ def render(db, report: Report, viewer: User) -> dict:
             c.update(status="no_access", message="You do not have access to the data model this result comes from.")
         else:
             try:
-                res = engine.run_sql(db, conn, next(x["sql"] for x in report.components if x["id"] == c["id"]), cfg, viewer)
-                c.update(status="ok", columns=res["columns"], rows=res["rows"], row_count=len(res["rows"]),
+                spec = c.get("analysis") if c.get("show_analysis", True) and cfg["predictive_enabled"] else None
+                res = engine.run_sql(db, conn, next(x["sql"] for x in report.components if x["id"] == c["id"]), cfg, viewer, spec)
+                c.update(status="ok", columns=res["columns"], rows=res["rows"], row_count=res["row_count"],
+                         analysis=res.get("analysis"),
                          truncated=res["truncated"], summary=res["summary"], filtered=bool(res["filters"]),
                          data_model=conn.name)
             except sqlguard.SQLBlocked as e:
@@ -293,6 +299,84 @@ def _compact(v, _pos=None) -> str:
     if a >= 1e4:
         return f"{v / 1e3:.0f}K"
     return f"{v:,.0f}" if float(v).is_integer() else f"{v:,.2f}"
+
+
+def draw_plot(plot: dict) -> bytes:
+    """A plot produced by the predictive engine (line with range / bars / scatter) as PNG bytes."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.ticker import FuncFormatter
+
+    kind, grey = plot["kind"], "#55544e"
+    fig, ax = plt.subplots(figsize=(9, 3.9), dpi=130)
+    nan = lambda vs: [float("nan") if v is None else v for v in vs]      # noqa: E731
+    if kind == "line":
+        labels = plot["labels"]
+        pos = list(range(len(labels)))
+        by = {d["role"]: d for d in plot["datasets"]}
+        if "upper" in by and "lower" in by:
+            ax.fill_between(pos, nan(by["lower"]["data"]), nan(by["upper"]["data"]), color=PALETTE[1], alpha=0.18,
+                            label=by["upper"]["label"], linewidth=0)
+        for d in plot["datasets"]:
+            if d["role"] == "actual":
+                ax.plot(pos, nan(d["data"]), color=PALETTE[0], linewidth=2, label=d["label"])
+            elif d["role"] == "forecast":
+                ax.plot(pos, nan(d["data"]), color=PALETTE[1], linewidth=2, linestyle="--", label=d["label"])
+            elif d["role"] == "flag":
+                ax.scatter(pos, nan(d["data"]), color=PALETTE[7], s=42, zorder=3, label=d["label"])
+        step = max(1, len(pos) // 22)
+        ax.set_xticks(pos[::step], labels[::step], rotation=40, ha="right")
+        ax.yaxis.set_major_formatter(FuncFormatter(_compact))
+        ax.grid(axis="y", color="#e9e8e3", linewidth=0.8)
+        ax.legend(frameon=False, fontsize=9, loc="upper left")
+    elif kind == "scatter":
+        n = 0
+        for d in plot["datasets"]:
+            xs, ys = zip(*d["points"]) if d["points"] else ((), ())
+            if d["role"] == "forecast":
+                ax.plot(xs, ys, color=grey, linestyle="--", linewidth=1.2, label=d["label"])
+            else:
+                ax.scatter(xs, ys, s=22, alpha=0.8, color=PALETTE[7] if d["role"] == "flag" else PALETTE[n % 8], label=d["label"][:40])
+                n += d["role"] != "flag"
+        ax.xaxis.set_major_formatter(FuncFormatter(_compact))
+        ax.yaxis.set_major_formatter(FuncFormatter(_compact))
+        ax.grid(color="#e9e8e3", linewidth=0.8)
+        ax.legend(frameon=False, fontsize=8, loc="best")
+    else:
+        labels, sets = [str(lbl)[:44] for lbl in plot["labels"]], plot["datasets"]
+        pos = list(range(len(labels)))
+        w = 0.74 / max(len(sets), 1)
+        for i, d in enumerate(sets):
+            off = [p - 0.37 + w * (i + 0.5) for p in pos]
+            color = PALETTE[7] if d["role"] == "flag" else PALETTE[i]
+            if kind == "hbar":
+                ax.barh(off, [v or 0 for v in d["data"]], height=w * 0.9, color=color, label=d["label"])
+            else:
+                ax.bar(off, [v or 0 for v in d["data"]], width=w * 0.9, color=color, label=d["label"])
+        if kind == "hbar":
+            ax.set_yticks(pos, labels)
+            ax.invert_yaxis()
+            ax.xaxis.set_major_formatter(FuncFormatter(_compact))
+            ax.grid(axis="x", color="#e9e8e3", linewidth=0.8)
+        else:
+            ax.set_xticks(pos, labels, rotation=30 if len(pos) > 5 else 0, ha="right" if len(pos) > 5 else "center")
+            ax.yaxis.set_major_formatter(FuncFormatter(_compact))
+            ax.grid(axis="y", color="#e9e8e3", linewidth=0.8)
+        if len(sets) > 1:
+            ax.legend(frameon=False, fontsize=9)
+    ax.set_xlabel(plot.get("x_title", ""), color=grey)
+    ax.set_ylabel(plot.get("y_title", ""), color=grey)
+    ax.set_axisbelow(True)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_color("#cfcec8")
+    ax.tick_params(colors=grey, labelsize=9)
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    return buf.getvalue()
 
 
 def draw_panel(panel: dict, tall: bool = True, narrow: bool = False) -> bytes:
@@ -454,6 +538,8 @@ def build_pdf(rendered: dict) -> bytes:
         h = text_h(c.get("title") or "", 12, w) + 2
         if c.get("status") != "ok":
             return h + 10
+        if (c.get("analysis") or {}).get("result"):
+            return 10_000                       # predictive output is long: always give it the full width
         if c.get("show_summary", True):
             h += text_h(c["summary"]["headline"], 10, w) + sum(text_h("•  " + b, 9.5, w) for b in c["summary"]["bullets"][:8]) + 2
         if c.get("show_chart", True):
@@ -483,6 +569,57 @@ def build_pdf(rendered: dict) -> bytes:
             if c.get("status") != "ok":
                 para_at(x, w, c.get("message") or "This result is not available.", 9.5, "", 170, 4)
                 return
+            pa = c.get("analysis") or {}
+            hide = set(c.get("hide") or [])
+            if pa.get("error"):
+                para_at(x, w, "The predictive analysis could not be run: " + pa["error"], 9.5, "", 150, 3)
+            elif pa.get("result"):
+                r = pa["result"]
+                para_at(x, w, f"{r['title']} — {r['method']}", 10.5, "B", 30, 1.5)
+                for note in r.get("warnings") or []:
+                    para_at(x, w, "Note: " + note, 9, "", 130, 1)
+                if "explain" not in hide:
+                    para_at(x, w, "   |   ".join(f"{m['label']}: {m['value']}" for m in r["metrics"]), 9.5, "B", 50, 1.5)
+                    for bullet in r["narrative"]:
+                        para_at(x, w, "•  " + bullet, 9.5, "", 60, 1)
+                    pdf.ln(2)
+                if "chart" not in hide:
+                    for plot in r["plots"]:
+                        h = w * 0.45
+                        if not narrow and pdf.get_y() + h + 8 > pdf.h - 18:
+                            pdf.add_page()
+                        para_at(x, w, plot["title"], 9.5, "B", 60, 0.5)
+                        pdf.image(io.BytesIO(draw_plot(plot)), x=x, y=pdf.get_y(), w=w, h=h, keep_aspect_ratio=True)
+                        pdf.set_y(pdf.get_y() + h + 3)
+                for key, group in (("table", r["tables"]), ("stats", r["stats"])):
+                    if key in hide:
+                        continue
+                    for t in group:
+                        cols = t["columns"][:9 if not narrow else max(2, int(w // 22))]
+                        para_at(x, w, t["title"] + (f" (first 25 of {t['row_count']:,} rows)" if t["row_count"] > 25 else ""), 9.5, "B", 60, 0.5)
+                        pdf.set_font("dv", "", 7.5)
+                        pdf.set_text_color(40)
+                        pdf.set_draw_color(225)
+                        saved = pdf.l_margin
+                        pdf.set_left_margin(x)
+                        pdf.set_x(x)
+                        with pdf.table(headings_style=FontFace(emphasis="BOLD", color=255, fill_color=(42, 120, 214)), line_height=5,
+                                       cell_fill_color=(246, 246, 244), cell_fill_mode="ROWS", width=w, align="LEFT",
+                                       text_align=["RIGHT" if k["type"] == "number" else "LEFT" for k in cols],
+                                       borders_layout="HORIZONTAL_LINES") as table:
+                            table.row([k["name"][:28] for k in cols])
+                            for row in t["rows"][:25]:
+                                table.row([_fmt_cell(v, cols[i]["type"] == "number")[:60] for i, v in enumerate(row[:len(cols)])])
+                        pdf.set_left_margin(saved)
+                        pdf.ln(3)
+                if "code" not in hide:
+                    para_at(x, w, "Code that produced this (Python)", 9.5, "B", 60, 0.5)
+                    pdf.set_font("dvm", "", 6.3)
+                    pdf.set_text_color(60)
+                    pdf.set_x(x)
+                    pdf.multi_cell(w, 3.1, r["code"], new_x=XPos.LEFT, new_y=YPos.NEXT, align="L")
+                    pdf.ln(3)
+                para_at(x, w, "Data used", 10.5, "B", 30, 1.5)
             if c.get("show_summary", True):
                 para_at(x, w, c["summary"]["headline"], 10, "", 40, 1.5)
                 for bullet in c["summary"]["bullets"][:8]:

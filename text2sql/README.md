@@ -38,6 +38,7 @@ answers a few questions about the sample data (add it as a *Self-hosted* model, 
 | **Model choice** | Admins register models (Anthropic Claude, OpenAI, self-hosted OpenAI-compatible such as Ollama / vLLM); users choose one per question. Keys are encrypted at rest. |
 | **Answers** | Shows the generated SQL and a one-line explanation. Optional *review SQL before running*. Auto-repair when the database rejects the SQL. Clarifying question when the request is ambiguous. |
 | **Confirm / correct** | *Correct* turns the answer into a verified example. *Edit SQL* → run → *save my correction* teaches the model the right query. *Incorrect* flags it with a note. Analyst feedback can go through a steward approval queue (admin setting). |
+| **Predictive** | Opt-in per question (“Use predictive capability”): forecasting, classification / regression, key drivers, segmentation and anomaly detection. The AI model only names the method and columns; the server runs its own tested scikit-learn / statsmodels routines on the query result and shows key figures, charts, result tables, statistical output and the exact Python that ran (feature engineering included). Each part can be shown or hidden. Works in reports and PDFs. |
 | **Summary** | Explains the result by its shape (trend, ranking, two-way breakdown, pivot, listing): leaders and shares, highs and lows, change over the period, concentration. Averages, rates and prices are never totalled. Computed on the server. |
 | **Output** | Chart (bar, horizontal, stacked, line, area, pie, doughnut, scatter, big numbers) with selectable axes, extra measure and split-by. IDs, codes and years are treated as categories, never summed; two measures on different scales get a panel each; sortable table; locally computed summary. Export **PDF report**, CSV, Excel, chart PNG. |
 | **Follow-ups & history** | Suggested follow-up questions; conversations keep context (earlier questions + SQL); chats and results are saved, searchable, renamable and grouped by date. |
@@ -61,7 +62,7 @@ Roles: **analyst** (ask, own history) · **data steward** (plus training, review
 - earlier questions and SQL from the same conversation
 - the new question
 
-Never included: query results, row counts, summaries or chart data. Summaries and chart suggestions are
+Never included: query results, row counts, summaries, chart data or anything from a predictive analysis. Summaries and chart suggestions are
 computed on the server (`app/summarize.py`). When a query fails, the database error is scrubbed of literal
 values before the model is asked to fix it. A test (`tests/test_platform.py`) records every request the
 model receives and asserts that result values are absent.
@@ -117,7 +118,8 @@ T2S_TEST_PG=user:password@host:5432/dbname python -m pytest
   with their own drivers and dialect-aware SQL checks, but **have not been run against live servers** —
   test each connection in your environment.
 - The Claude and OpenAI integrations were exercised against local stand-in servers that speak the same
-  API, not against the real services.
+  API, not against the real services. In particular, how well a real model recognises a predictive
+  question and prepares the right data set for it has not been measured.
 
 ## Production notes
 

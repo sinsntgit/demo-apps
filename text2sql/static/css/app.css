@@ -144,6 +144,7 @@ table.tbl { border-collapse: collapse; width: 100%; font-size: 13px; }
 .sec-head h3 { margin: 0; }
 pre.sql { margin: 0; background: var(--code-bg); border-radius: 9px; padding: 11px 13px; overflow: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; max-height: 340px; }
 pre.sql .kw { color: var(--kw); font-weight: 600; } pre.sql .str { color: var(--str); } pre.sql .num { color: var(--num); } pre.sql .cmt { color: var(--cmt); font-style: italic; }
+pre.code-py { white-space: pre; max-height: 460px; font-size: 12px; }
 textarea.sql-edit { font-family: var(--mono); font-size: 12.5px; min-height: 150px; background: var(--code-bg); }
 .feedback { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
 .chart-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 10px; }

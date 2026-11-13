@@ -1,5 +1,5 @@
 // One answered question: SQL review + feedback, chart / table / summary views, exports.
-import { h, fill, prettySQL, api, busy, toast, fail, select, fmtNum, fmtCompact, highlightSQL, download, theme, modal, state } from './core.js';
+import { h, fill, prettySQL, api, busy, toast, fail, select, check, fmtNum, fmtCompact, highlightSQL, download, theme, modal, state } from './core.js';
 
 // Categorical palette (fixed order, colour-blind-safe adjacent pairs) for light / dark surfaces.
 const PALETTE = {
@@ -169,7 +169,32 @@ function exportPDF(run, cfg) {
     (run.summary.bullets || []).forEach(b => para('-  ' + b, 10, 'normal', 40, 'helvetica', 2));
     y += 8;
   }
-  if (cfg.type !== 'kpi') {
+  const pa = run.analysis?.result, hide = new Set(cfg.hide || []);
+  if (pa) {
+    para(`${pa.title} — ${pa.method}`, 12, 'bold');
+    if (!hide.has('explain')) { para(pa.metrics.map(m => `${m.label}: ${m.value}`).join('   |   '), 9.5, 'bold', 40); pa.narrative.forEach(b => para('-  ' + b, 9.5, 'normal', 40, 'helvetica', 2)); }
+    (pa.warnings || []).forEach(w => para('Note: ' + w, 9, 'italic', 120, 'helvetica', 2));
+    y += 6;
+    if (!hide.has('chart')) for (const plot of pa.plots) {
+      const hgt = (W - 2 * M) * 620 / 1400;
+      if (y + hgt + 20 > 790) { doc.addPage(); y = 48; }
+      para(plot.title, 10, 'bold', 40, 'helvetica', 2);
+      doc.addImage(plotImage(plot), 'JPEG', M, y, W - 2 * M, hgt); y += hgt + 14;
+    }
+    const pdfTable = t => {
+      if (y > 700) { doc.addPage(); y = 48; }
+      para(t.title + (t.row_count > 60 ? ` (first 60 of ${t.row_count} rows)` : ''), 10, 'bold', 40, 'helvetica', 2);
+      doc.autoTable({ startY: y, margin: { left: M, right: M }, styles: { fontSize: 7.5, cellPadding: 2.5, overflow: 'linebreak' }, headStyles: { fillColor: [42, 120, 214] },
+        head: [t.columns.map(c => c.name)], body: t.rows.slice(0, 60).map(r => r.map(v => v == null ? '' : typeof v === 'number' ? fmtNum(v) : String(v).slice(0, 80))) });
+      y = doc.lastAutoTable.finalY + 16;
+    };
+    if (!hide.has('table')) pa.tables.forEach(pdfTable);
+    if (!hide.has('stats')) pa.stats.forEach(pdfTable);
+    if (!hide.has('code')) { if (y > 640) { doc.addPage(); y = 48; } para('Code that produced this (Python)', 10, 'bold', 40, 'helvetica', 2); para(pa.code, 7, 'normal', 50, 'courier', 10); }
+    if (y > 680) { doc.addPage(); y = 48; }
+    para('Data used', 12, 'bold');
+  }
+  if (cfg.type !== 'kpi' && !pa) {
     const panels = chartPanels(run, cfg);
     for (const panel of panels) {
       const img = chartImage(run, panel, 'image/jpeg');
@@ -305,6 +330,111 @@ export function chartBlock(run, cfg, { controls = true, onChange } = {}) {
   return { el, destroy, repaint: paint };
 }
 
+/** Chart.js config for a plot produced by the predictive engine (line / bar / hbar / scatter). */
+export function plotConfig(plot, mode) {
+  const colors = PALETTE[mode], ink = INK[mode];
+  const FLAG = colors[7], FORE = colors[1];
+  const kind = plot.kind;
+  const axis = (title, numeric) => ({
+    title: { display: !!title, text: title, color: ink.text, font: { size: 11 } }, grid: { color: numeric ? ink.grid : 'transparent' }, border: { color: ink.grid },
+    ticks: { color: ink.text, maxRotation: 45, autoSkip: true, callback(v) { return numeric ? (Math.abs(v) >= 1e4 ? fmtCompact(v) : Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 })) : String(this.getLabelForValue(v)).slice(0, 44); } },
+  });
+  let datasets, scales, type = 'line', legendFilter = () => true;
+  if (kind === 'line') {
+    datasets = plot.datasets.map(d => d.role === 'actual' ? { label: d.label, data: d.data, borderColor: colors[0], backgroundColor: colors[0], borderWidth: 2, pointRadius: plot.labels.length > 60 ? 0 : 2.5, tension: 0.2, spanGaps: true }
+      : d.role === 'forecast' ? { label: d.label, data: d.data, borderColor: FORE, backgroundColor: FORE, borderWidth: 2, borderDash: [6, 4], pointRadius: plot.labels.length > 60 ? 0 : 2.5, tension: 0.2, spanGaps: true }
+      : d.role === 'flag' ? { label: d.label, data: d.data, showLine: false, borderColor: FLAG, backgroundColor: FLAG, pointRadius: 6, pointStyle: 'circle', pointHoverRadius: 8 }
+      : { label: d.label, data: d.data, borderColor: 'transparent', backgroundColor: FORE + '2e', pointRadius: 0, tension: 0.2, fill: d.role === 'upper' ? '+1' : false, spanGaps: true });
+    legendFilter = item => plot.datasets[item.datasetIndex].role !== 'lower';
+    scales = { x: axis(plot.x_title, false), y: axis(plot.y_title, true) };
+  } else if (kind === 'scatter') {
+    type = 'scatter'; let n = 0;
+    datasets = plot.datasets.map(d => d.role === 'forecast' ? { label: d.label, data: d.points.map(p => ({ x: p[0], y: p[1] })), showLine: true, borderColor: ink.text, borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0 }
+      : { label: d.label, data: d.points.map(p => ({ x: p[0], y: p[1] })), backgroundColor: (d.role === 'flag' ? FLAG : colors[n++ % 8]) + 'cc', pointRadius: d.role === 'flag' ? 6 : 3.5, pointHoverRadius: 7 });
+    scales = { x: { ...axis(plot.x_title, true), type: 'linear' }, y: axis(plot.y_title, true) };
+  } else {
+    type = 'bar'; const horizontal = kind === 'hbar';
+    datasets = plot.datasets.map((d, i) => ({ label: d.label, data: d.data, backgroundColor: d.role === 'flag' ? FLAG : colors[i], borderRadius: 4, maxBarThickness: 40 }));
+    scales = { [horizontal ? 'y' : 'x']: axis(horizontal ? plot.y_title : plot.x_title, false), [horizontal ? 'x' : 'y']: { ...axis(horizontal ? plot.x_title : plot.y_title, true), beginAtZero: true } };
+  }
+  return { type, data: { labels: plot.labels, datasets }, options: {
+    responsive: true, maintainAspectRatio: false, indexAxis: kind === 'hbar' ? 'y' : 'x', scales, interaction: { mode: kind === 'line' ? 'index' : 'nearest', intersect: kind !== 'line' },
+    plugins: { legend: { display: plot.datasets.length > 1, position: 'bottom', labels: { color: ink.text, boxWidth: 12, boxHeight: 12, filter: legendFilter } },
+      tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${kind === 'scatter' ? `(${fmtNum(c.parsed.x)}, ${fmtNum(c.parsed.y)})` : fmtNum(kind === 'hbar' ? c.parsed.x : c.parsed.y)}` } } } } };
+}
+
+/** A predictive plot as an image on a white background (for PDF export). */
+function plotImage(plot) {
+  const conf = plotConfig(plot, 'light');
+  const canvas = h('canvas', { width: 1400, height: 620 });
+  conf.options.responsive = false; conf.options.animation = false; conf.options.devicePixelRatio = 1;
+  conf.plugins = [{ id: 'bg', beforeDraw(c) { c.ctx.save(); c.ctx.fillStyle = '#fff'; c.ctx.fillRect(0, 0, c.width, c.height); c.ctx.restore(); } }];
+  for (const sc of Object.values(conf.options.scales || {})) { sc.ticks.font = { size: 20 }; sc.title.font = { size: 20 }; }
+  conf.options.plugins.legend.labels.font = { size: 20 };
+  const chart = new Chart(canvas, conf);
+  const url = canvas.toDataURL('image/jpeg', 0.92);
+  chart.destroy();
+  return url;
+}
+
+const PARTS = [['explain', 'Explanation'], ['chart', 'Charts'], ['table', 'Results'], ['stats', 'Statistics'], ['code', 'Code']];
+const ICON = { forecast: '📈', classification: '🎯', regression: '🎯', drivers: '🧭', clustering: '🧩', anomaly: '🚩' };
+
+/**
+ * The predictive output of an answer: explanation, charts, result tables, statistical output and the code
+ * that ran - each of which the user can show or hide.
+ * opts: { hidden: Set, onHide(set), controls: {rerun(body)} | null }.  Returns { el, destroy() }.
+ */
+export function analysisBlock(analysis, opts = {}) {
+  const el = h('div', {});
+  let charts = [];
+  const destroy = () => { charts.forEach(c => c.destroy()); charts = []; };
+  const hidden = opts.hidden || new Set();
+  const r = analysis.result;
+  function paint() {
+    destroy(); fill(el);
+    if (analysis.error) return el.append(h('div', { class: 'banner warn' }, h('b', {}, 'The predictive analysis could not be run. '), analysis.error, ' The data returned by the query is shown below.'));
+    if (!r) return el.append(h('div', { class: 'banner info' }, 'The predictive output of this answer was not kept in history. ', opts.controls ? h('button', { class: 'btn sm', onclick: e => busy(e.target, () => opts.controls.rerun({})) }, 'Run again') : ''));
+    const show = k => !hidden.has(k);
+    const toggles = h('div', { class: 'row wrap small', style: 'margin:0 0 10px;gap:12px' }, h('span', { class: 'dim' }, 'Show:'), PARTS.map(([k, l]) =>
+      check(l, show(k), v => { v ? hidden.delete(k) : hidden.add(k); opts.onHide?.(hidden); paint(); })));
+    const head = h('div', { class: 'sec-head' }, h('h3', {}, `${ICON[r.type] || '🔮'} ${r.title}`), h('span', { class: 'badge info' }, r.method),
+      h('span', { class: 'small dim' }, `${fmtNum(r.rows_used)} rows analysed on the server`), h('span', { class: 'spacer' }));
+    if (opts.controls) {
+      if (r.type === 'forecast') {
+        const n = h('input', { type: 'number', min: 1, max: 120, value: r.params.horizon, class: 'inline', style: 'width:70px', 'aria-label': 'Periods ahead' });
+        head.append(h('label', { class: 'row small' }, 'Periods ahead', n), h('button', { class: 'btn sm', onclick: e => busy(e.target, () => opts.controls.rerun({ horizon: Number(n.value) || r.params.horizon })) }, 'Update'));
+      } else if (r.type === 'clustering') {
+        const k = select([['', 'Automatic'], ...[2, 3, 4, 5, 6, 7, 8].map(v => [v, `${v} segments`])], analysis.spec?.k || '', null, { class: 'inline', 'aria-label': 'Number of segments' });
+        head.append(h('label', { class: 'row small' }, 'Segments', k), h('button', { class: 'btn sm', onclick: e => busy(e.target, () => opts.controls.rerun({ k: k.value ? Number(k.value) : null })) }, 'Update'));
+      }
+    }
+    el.append(head, toggles);
+    (r.warnings || []).forEach(w => el.append(h('div', { class: 'banner warn', style: 'margin-bottom:8px' }, '⚠ ', w)));
+    if (show('explain')) el.append(h('div', { class: 'kpis', style: 'margin-bottom:10px' }, r.metrics.map(m => h('div', { class: 'kpi' }, h('div', { class: 'l' }, m.label), h('div', { class: 'v' }, m.value), h('div', { class: 's' }, m.hint || '')))),
+      h('ul', { class: 'bul', style: 'margin-bottom:12px' }, r.narrative.map(t => h('li', {}, t))));
+    if (show('chart')) for (const plot of r.plots) {
+      const canvas = h('canvas', { role: 'img', 'aria-label': plot.title });
+      el.append(h('h3', { style: 'margin:14px 0 4px' }, plot.title), h('div', { class: 'chart-box', style: plot.kind === 'hbar' ? `height:${Math.max(180, 60 + 26 * plot.labels.length)}px` : '' }, canvas));
+      charts.push(new Chart(canvas, plotConfig(plot, theme())));
+    }
+    const tables = (list, key) => { if (show(key)) for (const t of list) el.append(h('h3', { style: 'margin:16px 0 6px' }, t.title, t.row_count > t.rows.length ? h('span', { class: 'small dim' }, `  first ${fmtNum(t.rows.length)} of ${fmtNum(t.row_count)} rows`) : null), dataTable(t)); };
+    tables(r.tables, 'table'); tables(r.stats, 'stats');
+    if (show('code')) el.append(h('div', { class: 'sec-head', style: 'margin:16px 0 6px' }, h('h3', {}, 'Code that produced this'), h('span', { class: 'small dim' }, 'Python — run on the AskData server on the rows returned by the SQL above; includes the feature engineering'), h('span', { class: 'spacer' }),
+      h('button', { class: 'btn sm ghost', onclick: () => navigator.clipboard?.writeText(r.code).then(() => toast('Code copied')) }, 'Copy')), h('pre', { class: 'sql code-py', html: highlightPy(r.code) }));
+  }
+  paint();
+  return { el, destroy, repaint: paint };
+}
+
+const PY_KW = /\b(import|from|as|def|return|for|in|if|elif|else|lambda|and|or|not|None|True|False|is)\b/g;
+function highlightPy(code) {
+  return String(code).split(/(#[^\n]*|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*')/g).map((part, i) => {
+    if (i % 2) return `<span class="${part.startsWith('#') ? 'cmt' : 'str'}">${part.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))}</span>`;
+    return part.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])).replace(PY_KW, m => `<span class="kw">${m}</span>`);
+  }).join('');
+}
+
 /** Pick one of the user's reports (or start a new one) and append this result to it. */
 async function addToReport(run) {
   const reports = (await api('GET', '/api/reports').catch(() => [])).filter(r => r.can_edit);
@@ -324,8 +454,8 @@ async function addToReport(run) {
  */
 export function runCard(run, ctx = {}) {
   const root = h('div', {});
-  let block = null, editing = false;
-  const cleanup = () => { block?.destroy(); block = null; };
+  let block = null, ablock = null, editing = false;
+  const cleanup = () => { block?.destroy(); block = null; ablock?.destroy(); ablock = null; };
   const refresh = updated => { Object.assign(run, updated); ctx.onChange?.(run); draw(); };
 
   function sqlSection() {
@@ -407,7 +537,7 @@ export function runCard(run, ctx = {}) {
     const all = [...run.columns.filter(c => !isMeasure(c)), ...run.columns.filter(isMeasure)].map(c => c.name);   // dimensions first
     const measureOpts = [...nums, [COUNT, 'Count of rows']];
     const canChart = run.rows.length > 0 && run.columns.length > 0;
-    let view = cfg.view || (canChart && cfg.type !== 'table' ? 'chart' : 'table');
+    let view = cfg.view || (run.analysis ? 'table' : canChart && cfg.type !== 'table' ? 'chart' : 'table');
     if (view === 'chart' && !canChart) view = 'table';
     const body = h('div', {});
     const save = () => { if (!ctx.readonly) api('PUT', `/api/chat/runs/${run.id}/chart`, cfg).catch(() => {}); };
@@ -416,7 +546,8 @@ export function runCard(run, ctx = {}) {
     const exportMenu = h('div', { class: 'menu' });
     const pop = h('div', { class: 'pop hidden' },
       h('button', { onclick: () => { exportPDF(run, cfg.type === 'table' ? { ...cfg, type: 'kpi' } : cfg); } }, 'PDF report'),
-      h('button', { onclick: () => download(`query-${run.id}.csv`, csvOf(run), 'text/csv') }, 'CSV'),
+      h('button', { onclick: () => download(`query-${run.id}.csv`, csvOf(run), 'text/csv') }, run.analysis ? 'Data used (CSV)' : 'CSV'),
+      ...(run.analysis?.result?.tables || []).map(t => h('button', { onclick: () => download(`query-${run.id}-${t.key}.csv`, csvOf(t), 'text/csv') }, `${t.title} (CSV)`)),
       h('button', { onclick: () => { location.href = `/api/chat/runs/${run.id}/export.xlsx`; } }, 'Excel (.xlsx)'),
       ctx.readonly ? null : h('button', { onclick: () => addToReport(run) }, '＋ Add to a report…'),
       canChart ? h('button', { onclick: () => { const imgs = cfg.type === 'table' || cfg.type === 'kpi' ? [] : chartPanels(run, cfg).map(p => chartImage(run, p)).filter(Boolean); if (!imgs.length) return toast('Open the Chart view and choose a chart first', true); imgs.forEach((img, i) => fetch(img).then(r => r.blob()).then(b => download(`query-${run.id}${imgs.length > 1 ? '-' + (i + 1) : ''}.png`, b))); } }, 'Chart image (PNG)') : null);
@@ -424,12 +555,12 @@ export function runCard(run, ctx = {}) {
     exportMenu.append(h('button', { class: 'btn sm', onclick: e => { e.stopPropagation(); pop.classList.toggle('hidden'); } }, '⬇ Export'), pop);
 
     const viewBtns = h('div', { class: 'row' });
-    sec.append(h('div', { class: 'sec-head' }, h('h3', {}, 'Result'),
-      h('span', { class: 'small dim' }, `${run.row_count.toLocaleString()} row${run.row_count === 1 ? '' : 's'}${run.truncated ? ' (row limit reached)' : ''}`),
+    sec.append(h('div', { class: 'sec-head' }, h('h3', {}, run.analysis ? 'Data used' : 'Result'),
+      h('span', { class: 'small dim' }, `${run.row_count.toLocaleString()} row${run.row_count === 1 ? '' : 's'}${run.truncated ? ' (row limit reached)' : ''}${run.rows.length < run.row_count ? ` · first ${run.rows.length.toLocaleString()} shown here` : ''}`),
       h('span', { class: 'spacer' }), viewBtns, exportMenu), body);
 
     function paint() {
-      cleanup();
+      block?.destroy(); block = null;          // only the data chart: the predictive panel above keeps its charts
       fill(viewBtns, ...[['chart', 'Chart'], ['table', 'Table'], ['summary', 'Summary']].filter(v => v[0] !== 'chart' || canChart)
         .map(([v, l]) => h('button', { class: 'btn sm' + (view === v ? ' active' : ''), onclick: () => setView(v) }, l)));
       fill(body);
@@ -454,6 +585,13 @@ export function runCard(run, ctx = {}) {
       card.append(h('div', { class: 'sec' }, h('div', { class: 'banner bad' }, run.error || 'Something went wrong.')));
     } else {
       card.append(sqlSection());
+      if (run.status === 'success' && run.analysis) {
+        const cfg = run.chart = run.chart || {};
+        ablock = analysisBlock(run.analysis, { hidden: new Set(cfg.hide || []),
+          onHide: set => { cfg.hide = [...set]; if (!ctx.readonly) api('PUT', `/api/chat/runs/${run.id}/chart`, cfg).catch(() => {}); },
+          controls: ctx.readonly ? null : { rerun: async body => refresh(await api('POST', `/api/chat/runs/${run.id}/analysis`, body)) } });
+        card.append(h('div', { class: 'sec' }, ablock.el));
+      }
       resultSec = run.status === 'success' ? resultSection() : null;
       if (resultSec) card.append(resultSec);
     }
@@ -463,7 +601,7 @@ export function runCard(run, ctx = {}) {
     }
     fill(root, h('div', { class: 'q' }, h('div', {}, run.question)), card);
   }
-  const onTheme = () => { if (!root.isConnected) return window.removeEventListener('themechange', onTheme); resultSec?._repaint?.(); };
+  const onTheme = () => { if (!root.isConnected) return window.removeEventListener('themechange', onTheme); resultSec?._repaint?.(); ablock?.repaint(); };
   window.addEventListener('themechange', onTheme);
   draw();
   return root;
