@@ -48,7 +48,7 @@ export async function team(root) {
     const [users, roleData, log] = await Promise.all([api('GET', '/users'), api('GET', '/roles'), tab === 'audit' && canAudit ? api('GET', '/audit') : []]);
     const roles = roleData.roles; const cat = roleData.catalogue;
     const usersView = html`<div class="card"><div class="tablewrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>2FA</th><th>Joined</th><th></th></tr></thead><tbody>
-      ${users.map((u) => html`<tr><td><b>${u.name}</b></td><td>${u.email}</td><td><span class="badge">${u.role_label}</span></td><td>${u.active ? badge('active') : badge('disabled')}</td><td>${u.twofa ? badge('on') : html`<span class="muted small">off</span>`}</td><td>${fmtDate(u.created_at)}</td><td>${canManage ? html`<button class="btn sm" data-act="edit" data-id="${u.id}">Edit</button>${u.twofa ? html` <button class="btn sm" data-act="reset2fa" data-id="${u.id}" title="Lost phone? Switch off their two-factor so they can set it up again">Reset 2FA</button>` : ''}` : ''}</td></tr>`)}</tbody></table></div></div>`;
+      ${users.map((u) => html`<tr><td><b>${u.name}</b></td><td>${u.email}</td><td><span class="badge">${u.role_label}</span></td><td>${!u.active ? badge('disabled') : u.invite_pending ? html`<span class="badge proposal plain" title="Invited ${fmtDateTime(u.invited_at)} — has not chosen a password yet">invited · pending</span>` : badge('active')}</td><td>${u.twofa ? badge('on') : html`<span class="muted small">off</span>`}</td><td>${fmtDate(u.created_at)}</td><td>${canManage ? html`<button class="btn sm" data-act="edit" data-id="${u.id}">Edit</button>${u.active && u.invite_pending ? html` <button class="btn sm" data-act="reinvite" data-id="${u.id}">Resend invite</button>` : ''}${u.twofa ? html` <button class="btn sm" data-act="reset2fa" data-id="${u.id}" title="Lost phone? Switch off their two-factor so they can set it up again">Reset 2FA</button>` : ''}` : ''}</td></tr>`)}</tbody></table></div></div>`;
     const rolesView = html`<p class="muted">A role decides what a person can see and do. Built-in roles are a starting point; create your own for assistants, accountants, read-only auditors and so on. Changes apply immediately, even to people who are logged in.</p>
       <div class="card"><div class="tablewrap"><table><thead><tr><th>Role</th><th>What it allows</th><th>People</th><th></th></tr></thead><tbody>
       ${roles.map((r) => html`<tr><td><b>${r.label}</b> ${r.is_system ? html`<span class="badge b-grey">built-in</span>` : ''}<div class="small muted">${r.description || ''}</div></td><td class="small">${permSummary(r.permissions)}</td><td>${r.user_count}</td>
@@ -59,17 +59,21 @@ export async function team(root) {
       <div class="tabs"><button class="${tab === 'users' ? 'on' : ''}" data-act="tab" data-t="users">Users</button><button class="${tab === 'roles' ? 'on' : ''}" data-act="tab" data-t="roles">Roles & permissions</button>${canAudit ? html`<button class="${tab === 'audit' ? 'on' : ''}" data-act="tab" data-t="audit">Audit log</button>` : ''}</div>
       ${tab === 'users' ? usersView : tab === 'roles' ? rolesView : auditView}`);
     const open = (u) => modal({ title: u ? `Edit ${u.name}` : 'Invite user',
+      onOpen: (f) => { if (u) return; const sync = () => { const inv = f.send_invite.checked; f.password.required = !inv; f.password.closest('label').style.display = inv ? 'none' : ''; }; f.send_invite.addEventListener('change', sync); sync(); },
       body: html`${field({ name: 'name', label: 'Full name', required: true }, u || {})}${u ? '' : field({ name: 'email', label: 'Email', type: 'email', required: true })}${field({ name: 'role_id', label: 'Role', type: 'select', options: roles.map((r) => [r.id, `${r.label}${r.is_system ? '' : ' (custom)'}`]), blank: false }, u || { role_id: roles.find((r) => r.name === 'rep')?.id })}
-        ${u ? field({ name: 'active', label: 'Account active', type: 'checkbox' }, u) : ''}${field({ name: 'password', label: u ? 'Reset password (leave blank to keep)' : 'Initial password', type: 'password', required: !u, placeholder: 'min 8 chars, letters & numbers' })}`,
+        ${u ? field({ name: 'active', label: 'Account active', type: 'checkbox' }, u) : html`<label class="check"><input type="checkbox" name="send_invite" checked> Email an invitation link — they choose their own password</label>`}${field({ name: 'password', label: u ? 'Reset password (leave blank to keep)' : 'Initial password', type: 'password', required: !u, placeholder: 'min 8 chars, letters & numbers' })}`,
       onSubmit: async (f) => {
         const v = { name: f.name.value, role_id: f.role_id.value, password: f.password.value || undefined };
-        if (u) { v.active = f.active.checked; await api('PUT', `/users/${u.id}`, v); } else await api('POST', '/users', { ...v, email: f.email.value });
-        store.meta = await api('GET', '/meta'); toast('User saved', 'ok'); draw();
+        if (u) { v.active = f.active.checked; await api('PUT', `/users/${u.id}`, v); store.meta = await api('GET', '/meta'); toast('User saved', 'ok'); draw(); return; }
+        const r = await api('POST', '/users', { ...v, email: f.email.value, send_invite: f.send_invite.checked, password: f.send_invite.checked ? undefined : v.password });
+        store.meta = await api('GET', '/meta'); draw();
+        if (r.invite) setTimeout(() => inviteResult(r.invite), 50); else toast('User added — give them their password', 'ok');
       } });
     const byId = (el, list) => list.find((x) => String(x.id) === el.dataset.id);
     on(root, {
       tab: (el) => { tab = el.dataset.t; sessionStorage.setItem('teamTab', tab); draw(); },
       new: () => open(null), edit: (el) => open(byId(el, users)),
+      reinvite: async (el) => { const r = await api('POST', `/users/${el.dataset.id}/invite`); inviteResult(r); draw(); },
       reset2fa: async (el) => { const u = byId(el, users); if (await confirmBox(`Reset two-factor for ${u.name}? They will be signed out everywhere and can set it up again at their next sign-in.`, 'Reset')) { await api('POST', `/users/${u.id}/reset-2fa`); toast('Two-factor reset', 'ok'); draw(); } },
       rnew: () => roleModal(null, cat, roles, draw), redit: (el) => roleModal(byId(el, roles), cat, roles, draw),
       rdup: async (el) => { await api('POST', `/roles/${el.dataset.id}/duplicate`); toast('Role duplicated', 'ok'); draw(); },
@@ -77,6 +81,19 @@ export async function team(root) {
     });
   };
   await draw();
+}
+
+/** After inviting: say whether the email went out, and always offer the link to copy (e.g. to send by WhatsApp). */
+function inviteResult(r) {
+  const ok = r.status === 'sent';
+  modal({ title: ok ? 'Invitation sent' : 'Invitation not emailed', hideFooter: true, body: html`
+    ${ok ? html`<p>✅ Emailed to <b>${r.to}</b> from ${r.via}. The link works once and expires in ${r.expires_in}.</p>`
+      : r.simulated ? html`<div class="banner bad small">Not emailed: there is no real email sender yet, only the simulation one. Add your mailbox under <a href="#/senders">Email senders</a>, or send the link below yourself.</div>`
+      : html`<div class="banner bad small">The email could not be sent: ${r.error}</div>`}
+    ${r.base_url_local ? html`<div class="banner small" style="margin-top:8px"><b>Note:</b> the link points to <span class="mono">${r.base_url}</span>, which only works on the computer running the CRM. Enter the address your colleagues use (e.g. <span class="mono">http://crm-server:3000</span>) under <a href="#/settings">Settings → Email delivery → Public address</a>, then click <b>Resend invite</b>.</div>` : ''}
+    <label style="margin-top:10px">Invitation link (you can also send it by WhatsApp or chat)<input readonly value="${r.link}" class="mono" onclick="this.select()"></label>
+    <div style="display:flex;gap:8px;margin-top:8px"><button type="button" class="btn" data-copy="${r.link}">Copy link</button><span class="grow"></span><button type="button" class="btn primary" data-close>Done</button></div>`,
+    onOpen: (f) => f.querySelector('[data-copy]').addEventListener('click', async (e) => { try { await navigator.clipboard.writeText(e.target.dataset.copy); toast('Link copied', 'ok'); } catch { f.querySelector('input[readonly]').select(); } }) });
 }
 
 export async function settings(root) {
@@ -109,7 +126,9 @@ export async function settings(root) {
 
       <div class="card"><div class="hd"><h2>Email delivery</h2></div><div class="bd">
         <p>Sending is configured per sender mailbox under <a href="#/senders"><b>Email senders</b></a> (Google, Microsoft 365, Zoho or any SMTP server) — add one entry per address you send from. Notification emails are configured under <a href="#/notifications"><b>Notifications</b></a>.</p>
-        <p class="muted small">Tracking links use <span class="mono">${m_baseUrl()}</span>. Set the <span class="mono">BASE_URL</span> environment variable to your public address so opens, clicks and unsubscribes reach this server.</p></div></div></div>
+        ${admin ? html`<form id="baseurl" style="margin-top:10px"><label>Public address of this CRM <span class="muted small">(used in every emailed link: invitations, tasks, invoices, tracking)</span><input name="base_url" value="${m_baseUrl()}" placeholder="http://crm-server:3000"></label>
+          <div style="display:flex;gap:8px;align-items:center"><button class="btn">Save address</button><span class="small muted" id="baseurl-note">${/\/\/(localhost|127\.)/.test(m_baseUrl()) ? '⚠️ “localhost” links only work on the computer running the CRM — enter the address your colleagues open.' : ''}</span></div></form>`
+          : html`<p class="muted small">Links in emails use <span class="mono">${m_baseUrl()}</span>.</p>`}</div></div></div>
     <div class="mt" id="fxcard"></div>
     <div class="mt" id="seccard"></div>
     ${canBackup ? html`<div class="card mt"><div class="hd"><h2>Backups</h2><span class="muted small">an automatic backup is taken daily · before every upgrade a restore point is saved</span><span class="grow"></span><button class="btn sm" data-act="mkbackup">Create backup now</button><a class="btn sm primary" href="/api/admin/backup">Download backup</a></div>
@@ -119,6 +138,7 @@ export async function settings(root) {
     ${outbox.length ? html`<div class="card mt"><div class="hd"><h2>Recent simulated mail</h2><span class="muted small">emails handled by simulation senders since server start — nothing was delivered</span></div><div class="tablewrap" style="max-height:320px;overflow:auto"><table><tbody>${outbox.map((o) => html`<tr><td class="small muted nowrap">${ago(o.at)}</td><td>${o.to}</td><td>${o.subject}</td></tr>`)}</tbody></table></div></div>` : ''}`);
   function m_baseUrl() { return store.meta.baseUrl; }
   securityCard($('#seccard', root), { admin }).catch(fail);
+  $('#baseurl', root)?.addEventListener('submit', async (e) => { e.preventDefault(); try { const r = await api('PUT', '/settings/base-url', { base_url: e.currentTarget.base_url.value }); store.meta.baseUrl = r.base_url; toast(`Links will use ${r.base_url}`, 'ok'); settings(root); } catch (x) { fail(x); } });
   currencyCard($('#fxcard', root), { admin }).catch(fail);
   $('#pw', root).addEventListener('submit', async (e) => {
     e.preventDefault(); const f = e.currentTarget;

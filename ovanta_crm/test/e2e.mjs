@@ -101,7 +101,7 @@ if (!(await page.textContent('.modal')).includes('2 with errors')) errors.push('
 await page.click('a[data-nav=team]'); await page.click('button[data-t=roles]'); await page.waitForSelector('text=Roles & permissions'); await page.click('text=+ New role');
 await page.fill('.modal input[name=name]', 'E2E Seller'); await page.selectOption('.modal select[name=p__contacts__view]', 'own'); await page.selectOption('.modal select[name=p__contacts__edit]', 'own');
 await page.check('.modal input[name=p__contacts__create]'); await page.selectOption('.modal select[name=p__deals__view]', 'all'); await page.click('.modal button[type=submit]'); await page.waitForSelector('td:has-text("E2E Seller")'); await shot('roles');
-await page.click('button[data-t=users]'); await page.click('text=+ Invite user'); await page.fill('.modal input[name=name]', 'E2E Seller User'); await page.fill('.modal input[name=email]', 'e2eseller@example.com'); await page.fill('.modal input[name=password]', 'Seller@12345');
+await page.click('button[data-t=users]'); await page.click('text=+ Invite user'); await page.fill('.modal input[name=name]', 'E2E Seller User'); await page.fill('.modal input[name=email]', 'e2eseller@example.com'); await page.uncheck('.modal input[name=send_invite]'); await page.fill('.modal input[name=password]', 'Seller@12345');
 await page.selectOption('.modal select[name=role_id]', { label: 'E2E Seller (custom)' }); await page.click('.modal button[type=submit]'); await page.waitForSelector('td:has-text("e2eseller@example.com")');
 const ctx2 = await browser.newContext({ viewport: { width: 1360, height: 900 } }); const p2 = await ctx2.newPage();
 await p2.goto(base); await p2.fill('input[name=email]', 'e2eseller@example.com'); await p2.fill('input[name=password]', 'Seller@12345'); await p2.click('button.primary'); await p2.waitForSelector('.kpi');
@@ -334,6 +334,26 @@ await page.click('.help-body section#start a[href="#/help/security"]'); await pa
 await page.click('.help-body section#tasks figure img'); await page.waitForSelector('.modal img'); await page.keyboard.press('Escape');
 await page.click('a[data-nav=help]'); await page.waitForSelector('.help-body'); await shot('help');
 for (const id of await page.evaluate(() => [...document.querySelectorAll('.help-body a[href^="#/help/"]')].map((a) => a.getAttribute('href').slice(7)))) if (!(await page.locator(`.help-body section#${id}`).count())) errors.push('broken help link #/help/' + id);
+// ===== Inviting a user by email =====
+await page.goto(`${base}/#/team`); await page.waitForSelector('button[data-act=new]'); await page.click('button[data-act=new]');
+await page.fill('.modal input[name=name]', 'Janvi Rao'); await page.fill('.modal input[name=email]', 'janvi@syncsense.in');
+if (await page.locator('.modal input[name=password]').isVisible()) errors.push('password field should be hidden when inviting by email'); await shot('invite-user');
+await page.click('.modal button[type=submit]'); await page.waitForSelector('.modal input[readonly]', { timeout: 8000 }).catch(() => errors.push('invite result dialog missing'));
+await shot('invite-result'); const inviteLink = await page.inputValue('.modal input[readonly]'); await page.keyboard.press('Escape');
+await page.waitForSelector('td:has-text("invited · pending")', { timeout: 5000 }).catch(() => errors.push('pending invite not shown in the users list'));
+if (!(await page.locator('button[data-act=reinvite]').count())) errors.push('no Resend invite button');
+const ctx8 = await browser.newContext({ viewport: { width: 1360, height: 900 } }); const p8 = await ctx8.newPage(); p8.on('pageerror', (e) => errors.push('pageerror(invite): ' + e.message));
+await p8.goto(base + '/' + inviteLink.slice(inviteLink.indexOf('#/invite/'))); await p8.waitForSelector('#al', { timeout: 8000 }).catch(() => errors.push('invitation page did not open'));
+if (!(await p8.textContent('body')).includes('Welcome, Janvi Rao')) errors.push('invitation page does not greet the person');
+await p8.fill('#al input[name=pw]', 'Welcome2026'); await p8.fill('#al input[name=pw2]', 'Welcome2027'); await p8.click('#al button'); await p8.waitForSelector('#al .err:not([hidden])');
+await p8.fill('#al input[name=pw2]', 'Welcome2026'); await p8.screenshot({ path: `${process.env.SHOTS || '/tmp'}/invite-accept.png` }); await p8.click('#al button');
+await p8.waitForSelector('.kpi', { timeout: 8000 }).catch(() => errors.push('accepting the invitation did not sign in'));
+if (p8.url().includes('/invite/')) errors.push('used invitation token left in the address bar');
+await ctx8.close(); const ctx10 = await browser.newContext(); const p10 = await ctx10.newPage();
+await p10.goto(base + '/' + inviteLink.slice(inviteLink.indexOf('#/invite/'))); await p10.waitForSelector('#login .err:not([hidden])', { timeout: 8000 }).catch(() => errors.push('a used invitation link should show an error')); await ctx10.close();
+await page.reload(); await page.waitForSelector('td:has-text("Janvi Rao")'); if ((await page.locator('tr:has-text("Janvi Rao") td:has-text("pending")').count())) errors.push('invite still pending after acceptance');
+const ctx9 = await browser.newContext(); const p9 = await ctx9.newPage(); await p9.goto(base); await p9.click('#forgot'); await p9.fill('#fp input[name=email]', 'janvi@syncsense.in'); await p9.click('#fp button');
+await p9.waitForSelector('#fp .ok-note:not([hidden])', { timeout: 8000 }).catch(() => errors.push('forgot password gave no answer')); await ctx9.close();
 // segment builder + deal drag/drop
 await page.click('a[data-nav=segments]'); await page.click('text=+ New segment'); await page.fill('.modal input[name=name]', 'E2E seg');
 await page.waitForSelector('#segprev b'); await page.click('.modal button[type=submit]'); await page.waitForSelector('td:has-text("E2E seg")');

@@ -12,7 +12,7 @@ export class ApiError extends Error { constructor(m, status, data) { super(m); t
 export async function api(method, path, body) {
   const r = await fetch('/api' + path, { method, headers: body !== undefined ? { 'Content-Type': 'application/json' } : {}, body: body !== undefined ? JSON.stringify(body) : undefined });
   let data = null; try { data = await r.json(); } catch {}
-  if (r.status === 401 && !path.startsWith('/auth/login') && !path.startsWith('/auth/2fa')) { store.user = null; location.hash = '#/login'; window.dispatchEvent(new Event('ovantaa:logout')); }
+  if (r.status === 401 && !path.startsWith('/auth/login') && !path.startsWith('/auth/2fa') && !/^\/(invite|reset)\//.test(path)) { store.user = null; location.hash = '#/login'; window.dispatchEvent(new Event('ovantaa:logout')); }
   if (!r.ok) throw new ApiError(data?.error || `Request failed (${r.status})`, r.status, data);
   return data;
 }

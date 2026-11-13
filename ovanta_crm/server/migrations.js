@@ -144,6 +144,15 @@ WHEN OLD.status <> 'draft' AND (
 BEGIN SELECT RAISE(ABORT, 'Issued invoices cannot be changed. Issue a credit or debit note instead.'); END`);
     },
   },
+  {
+    version: 10, name: 'user_invitations_and_password_reset',
+    up(db) {
+      db.exec(`CREATE TABLE IF NOT EXISTS user_tokens (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, kind TEXT NOT NULL CHECK (kind IN ('invite','reset')),
+        token_hash TEXT NOT NULL UNIQUE, expires_at TEXT NOT NULL, used_at TEXT, created_by INTEGER, created_at TEXT NOT NULL DEFAULT (datetime('now')))`);
+      db.exec('CREATE INDEX IF NOT EXISTS idx_user_tokens_user ON user_tokens(user_id, kind)');
+      for (const [c, ddl] of [['invite_pending', 'INTEGER NOT NULL DEFAULT 0'], ['invited_at', 'TEXT']]) if (!hasColumn(db, 'users', c)) db.exec(`ALTER TABLE users ADD COLUMN ${c} ${ddl}`);
+    },
+  },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 

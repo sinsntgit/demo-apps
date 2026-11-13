@@ -36,6 +36,7 @@ export const ROUTE_PERMS = {
   'GET /api/tasks/:id/activity': 'tasks.view', 'POST /api/tasks/:id/status': 'tasks.view', 'POST /api/tasks/:id/comment': 'tasks.view', 'POST /api/tasks/:id/assign': 'tasks.edit',
   'PUT /api/currency': 'settings.manage', 'PUT /api/currency/rates/:year': 'settings.manage', 'DELETE /api/currency/rates/:year': 'settings.manage',
   'POST /api/invoices/:id/email': 'invoices.remind', 'PUT /api/invoices/:id/reminders': 'invoices.remind', 'DELETE /api/payments/:id': 'invoices.payment',
+  'POST /api/users/:id/invite': 'users.manage', 'GET /api/settings/base-url': 'settings.manage', 'PUT /api/settings/base-url': 'settings.manage',
   'GET /api/receivables': 'receivables.view', 'GET /api/readiness': 'readiness.view',
 };
 /** Routes that only need a valid login (they expose no restricted data). */

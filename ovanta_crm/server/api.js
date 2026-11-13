@@ -16,6 +16,8 @@ import { notify, EVENTS } from './notifications.js';
 import { aiConfigured, aiModel } from './ai.js';
 import { getTheme, getSetting } from './settings.js';
 import { setStatus } from './tasks.js';
+import { sendAccessLink } from './invites.js';
+import crypto from 'node:crypto';
 import { currencyMeta } from './currency.js';
 import { getBilling } from './invoicing.js';
 
@@ -54,7 +56,7 @@ POST('/api/auth/password', ({ user, body }) => {
   revokeUserSessions(user.id, user.session_id);
   return { ok: true };
 });
-function checkPassword(p) {
+export function checkPassword(p) {
   if (typeof p !== 'string' || p.length < 8) throw bad('Password must be at least 8 characters');
   if (!/[a-zA-Z]/.test(p) || !/\d/.test(p)) throw bad('Password must contain letters and numbers');
 }
@@ -66,7 +68,7 @@ GET('/api/meta', () => ({
   segmentOps: SEGMENT_OPS, users: all('SELECT id,name,role FROM users WHERE active=1 ORDER BY name'),
   industries: all("SELECT DISTINCT industry v FROM accounts WHERE industry IS NOT NULL ORDER BY 1").map((r) => r.v),
   sources: all("SELECT DISTINCT source v FROM contacts WHERE source IS NOT NULL ORDER BY 1").map((r) => r.v),
-  mailTransport: config.mailTransport, baseUrl: config.baseUrl, defaults: { fromName: config.defaultFromName, fromEmail: config.defaultFromEmail },
+  mailTransport: config.mailTransport, baseUrl: config.baseUrl, baseUrlFromEnv: !!process.env.BASE_URL, defaults: { fromName: config.defaultFromName, fromEmail: config.defaultFromEmail },
   senders: all('SELECT id,label,from_email,mode,active,is_default FROM senders ORDER BY is_default DESC, label'),
   events: EVENTS, ai: { configured: aiConfigured(), model: aiModel() }, theme: getTheme(),
 }));
@@ -402,7 +404,7 @@ GET('/api/campaigns/:id/recipients', ({ params, query }) => {
 });
 
 // ---------- Users & roles ----------
-const USER_SELECT = `SELECT u.id, u.name, u.email, u.active, u.totp_enabled AS twofa, u.created_at, u.role_id, COALESCE(r.name, u.role) AS role, COALESCE(r.label, u.role) AS role_label
+const USER_SELECT = `SELECT u.id, u.name, u.email, u.active, u.totp_enabled AS twofa, u.invite_pending, u.invited_at, u.created_at, u.role_id, COALESCE(r.name, u.role) AS role, COALESCE(r.label, u.role) AS role_label
   FROM users u LEFT JOIN roles r ON r.id = u.role_id`;
 GET('/api/users', () => all(`${USER_SELECT} ORDER BY u.name`));
 function resolveRole(body, fallback) {
@@ -412,14 +414,18 @@ function resolveRole(body, fallback) {
 }
 const baseRole = (r) => (r.is_system ? r.name : 'rep'); // legacy users.role column: system roles keep their name, custom roles store the neutral base
 const activeAdmins = (exceptId) => get("SELECT COUNT(*) n FROM users u JOIN roles r ON r.id=u.role_id WHERE r.name='admin' AND r.is_system=1 AND u.active=1 AND u.id<>?", exceptId ?? -1).n;
-POST('/api/users', ({ body, user }) => {
+POST('/api/users', async ({ body, user }) => {
   const name = String(body.name || '').trim(), email = String(body.email || '').trim().toLowerCase();
   if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw bad('Name and a valid email are required');
   const role = resolveRole(body);
-  checkPassword(body.password);
-  const id = Number(run('INSERT INTO users (name,email,password_hash,role,role_id) VALUES (?,?,?,?,?)', name, email, hashPassword(body.password), baseRole(role), role.id).lastInsertRowid);
-  audit(user, 'create', 'users', id, `${email} as ${role.name}`);
-  return get(`${USER_SELECT} WHERE u.id=?`, id);
+  // invite by email (they choose their own password), or set an initial password yourself
+  const invite = body.send_invite !== undefined ? !!body.send_invite : !body.password;
+  if (!invite || body.password) checkPassword(body.password);
+  const pw = body.password || crypto.randomBytes(24).toString('base64url'); // unusable until the invitation is accepted
+  const id = Number(run('INSERT INTO users (name,email,password_hash,role,role_id,invite_pending) VALUES (?,?,?,?,?,?)', name, email, hashPassword(pw), baseRole(role), role.id, invite && !body.password ? 1 : 0).lastInsertRowid);
+  audit(user, 'create', 'users', id, `${email} as ${role.name}${invite ? ' (invited)' : ''}`);
+  const out = get(`${USER_SELECT} WHERE u.id=?`, id);
+  return invite ? { ...out, invite: await sendAccessLink(out, 'invite', user) } : out;
 });
 PUT('/api/users/:id', ({ params, body, user }) => {
   const u = get(`${USER_SELECT} WHERE u.id=?`, params.id);

@@ -356,6 +356,14 @@
 <figure><img src="/help/img/team.jpg" alt="The users list"><figcaption>Users.</figcaption></figure>
 <h3>Users</h3>
 <p><b>Team &amp; roles → Users → + New user</b>: name, <b>real email address</b> (task and notification emails go there), role and an initial password (at least 8 characters with letters and numbers). Edit a user to change their role, reset their password or deactivate them. <b>Reset 2FA</b> helps someone who lost their phone. There is always at least one active administrator, and you cannot change your own role.</p>
+<h3>Inviting people by email</h3>
+<p><b>Team &amp; roles → Users → + Invite user</b>: enter the person's name, <b>real email</b> and role, and leave <b>Email an invitation link</b> ticked. They receive an email with an <b>Accept invitation</b> button, choose their own password and are signed in. The link works once and expires after 7 days. Until they accept, the list shows <i>invited · pending</i> and a <b>Resend invite</b> button (resending cancels the older link).</p>
+<p>After inviting, a dialog tells you whether the email went out and always shows the link with <b>Copy link</b>, so you can also send it by WhatsApp or chat. Untick the box to set a password yourself instead.</p>
+<p><b>Two things must be set for invitation emails to work:</b></p>
+<ol><li>A real email sender under <b>Email senders</b> (not only the simulation one) — otherwise the dialog says <i>Not emailed</i>.</li>
+<li>The <b>public address</b> under <b>Settings → Email delivery</b> — the address your colleagues type to open the CRM, e.g. <span class="mono">http://crm-server:3000</span> or <span class="mono">http://192.168.1.20:3000</span>. If it says <span class="mono">localhost</span>, links only work on the computer running the CRM.</li></ol>
+<h3>Forgot password</h3>
+<p>On the sign-in page, <b>Forgot password?</b> emails a reset link (valid 2 hours, works once). Saving a new password signs the person out everywhere else; people with two-factor sign-in still enter their code.</p>
 <h3>Roles</h3>
 <p>Besides the three built-in roles you can create your own (or duplicate one). For each area — contacts, accounts, deals, tasks, invoices, campaigns, files… — choose what the role may do. For contacts, accounts, deals, tasks and invoices you choose the <b>scope</b>: <i>own</i> (records they own; for tasks also tasks they assigned) or <i>all</i>.</p>
 <figure><img src="/help/img/roles.jpg" alt="The roles tab"><figcaption>Roles.</figcaption></figure>

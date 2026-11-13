@@ -88,6 +88,12 @@ Menu **Billing**: *Invoices · Receivables · E-invoicing readiness · Billing s
 
 Custom values appear on the record's detail page (grouped by your sections), in list columns and filters, on deal cards, in **CSV export and import** (contacts; columns are matched by field name), and as **conditions in campaign segments** (contact and account fields). They are validated on the server — required fields, option lists, number ranges, dates, emails, links and record links — whichever way a record is saved. Limits: 100 custom fields per record type, 200 options per list. Tasks and invoices have no custom fields yet.
 
+## Inviting users & forgotten passwords
+
+* **Invite by email** — *Team & roles → + Invite user*: name, email, role. The person gets an **Accept invitation** email, chooses their own password and is signed in. Links work once, expire in 7 days and only a hash is stored. Pending users show *invited · pending* with **Resend invite**; the dialog after inviting also shows the link with **Copy link** (for WhatsApp/chat). Untick *Email an invitation link* to set a password yourself.
+* **Forgot password?** on the sign-in page emails a 2-hour reset link; other sessions are signed out; 2FA is still required.
+* **Needed for the emails to arrive and work:** a real sender under *Email senders*, and the **public address** in *Settings → Email delivery* (e.g. `http://crm-server:3000`) — with `localhost`, links only open on the server PC. `BASE_URL`, if set, overrides the setting.
+
 ## Lead conversion, duplicates, attachments & two-factor sign-in
 
 * **Convert a lead** — on a contact page, **Convert lead**: link or create the account (the dialog suggests accounts whose website matches the person's email domain), optionally open a deal in the same step (including any custom fields your admin made required), and mark the contact *Qualified* or *Customer*. All-or-nothing; the contact keeps a permanent link to the deal and shows **Converted ✓**.
@@ -186,7 +192,7 @@ See [`docs/ROADMAP-CRITICAL-GAPS.md`](docs/ROADMAP-CRITICAL-GAPS.md). Done: foun
 * **Themes** — *Settings → Appearance*: company accent and sidebar colours (presets or custom, live preview, saved for everyone including the login page) plus light/dark/auto; each user can override light/dark for their own browser.
 
 ## Configuration (environment variables)
-`PORT` (3000) · `DB_PATH` · `BASE_URL` (**public address, needed for tracking links and unsubscribe**) · `SESSION_SECRET` · `SECURE_COOKIES=1` (behind HTTPS) · `FILES_DIR`, `MAX_UPLOAD_MB` (attachments) · `COMPANY_ADDRESS` (email footer) · `SEND_BATCH_SIZE` · `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` · `SMTP_TLS_INSECURE=1` (only for internal relays with self-signed certificates) · `SEED_BILLING_DEMO=0` (skip demo invoices) · `SMTP_FORCE_IPV4=1` (connect to mail servers over IPv4 only) · `SMTP_TIMEOUT_MS` (default 60000) · `BACKUP_DIR`, `BACKUP_KEEP` (14), `BACKUP_DAILY=0`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `SEED_DEMO` · legacy `MAIL_TRANSPORT=webhook` + `MAIL_WEBHOOK_URL`/`MAIL_WEBHOOK_TOKEN` (used only when no sender exists).
+`PORT` (3000) · `DB_PATH` · `BASE_URL` (**public address used in emailed links** — or set it in *Settings → Email delivery*; the variable wins when both exist) · `SESSION_SECRET` · `SECURE_COOKIES=1` (behind HTTPS) · `FILES_DIR`, `MAX_UPLOAD_MB` (attachments) · `COMPANY_ADDRESS` (email footer) · `SEND_BATCH_SIZE` · `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` · `SMTP_TLS_INSECURE=1` (only for internal relays with self-signed certificates) · `SEED_BILLING_DEMO=0` (skip demo invoices) · `SMTP_FORCE_IPV4=1` (connect to mail servers over IPv4 only) · `SMTP_TIMEOUT_MS` (default 60000) · `BACKUP_DIR`, `BACKUP_KEEP` (14), `BACKUP_DAILY=0`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `SEED_DEMO` · legacy `MAIL_TRANSPORT=webhook` + `MAIL_WEBHOOK_URL`/`MAIL_WEBHOOK_TOKEN` (used only when no sender exists).
 
 ## Tests
 ```bash

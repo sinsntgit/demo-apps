@@ -41,11 +41,53 @@ function loginView(msg = '') {
     <div class="err" ${msg ? '' : raw('hidden')}>${msg}</div>
     <label>Email<input type="email" name="email" required autocomplete="username" autofocus></label>
     <label>Password<input type="password" name="password" required autocomplete="current-password"></label>
-    <button class="btn primary" style="width:100%;justify-content:center">Sign in</button></form></div>`);
+    <button class="btn primary" style="width:100%;justify-content:center">Sign in</button>
+    <p class="small" style="text-align:center;margin-bottom:0"><a href="#" id="forgot">Forgot password?</a></p></form></div>`);
+  $('#forgot').addEventListener('click', (e) => { e.preventDefault(); forgotView($('#login').email.value); });
   $('#login').addEventListener('submit', async (e) => {
     e.preventDefault(); const f = e.currentTarget;
     try { const r = await api('POST', '/auth/login', { email: f.email.value, password: f.password.value }); if (r.needs_2fa) return twofaStep(r.challenge); store.user = r.user; await boot(); }
     catch (x) { const el = $('.err', f); el.textContent = x.message; el.hidden = false; }
+  });
+}
+
+function forgotView(email = '') {
+  setHtml(app, html`<div class="login"><form class="box" id="fp"><div class="brand"><span class="logo"><i></i></span>Ovantaa CRM</div>
+    <h2 style="margin-bottom:4px">Reset your password</h2><p class="muted" style="margin-top:0">Enter your sign-in email and we will send you a link to choose a new password.</p>
+    <div class="err" hidden></div><div class="ok-note" hidden style="background:#dcfce7;color:#14532d;padding:10px 12px;border-radius:8px;margin-bottom:10px"></div>
+    <label>Email<input type="email" name="email" required value="${email}" autocomplete="username" autofocus></label>
+    <button class="btn primary" style="width:100%;justify-content:center">Send reset link</button>
+    <p class="small" style="text-align:center"><a href="#" id="back">Back to sign in</a></p></form></div>`);
+  $('#back').addEventListener('click', (e) => { e.preventDefault(); loginView(); });
+  $('#fp').addEventListener('submit', async (e) => {
+    e.preventDefault(); const f = e.currentTarget;
+    try { const r = await api('POST', '/auth/forgot', { email: f.email.value }); const n = $('.ok-note', f); n.textContent = r.message; n.hidden = false; $('.err', f).hidden = true; }
+    catch (x) { const el = $('.err', f); el.textContent = x.message; el.hidden = false; }
+  });
+}
+
+/** The page behind an invitation or password-reset link: choose a password, then you are signed in. */
+async function accessLinkView(kind, token) {
+  const invite = kind === 'invite';
+  let info; try { info = await api('GET', `/${kind}/${token}`); }
+  catch (x) { history.replaceState(null, '', '#/login'); return loginView(x.message); }
+  setHtml(app, html`<div class="login"><form class="box" id="al"><div class="brand"><span class="logo"><i></i></span>Ovantaa CRM</div>
+    <h2 style="margin-bottom:4px">${invite ? `Welcome, ${info.name}` : 'Choose a new password'}</h2>
+    <p class="muted" style="margin-top:0">${invite ? html`Choose a password to finish setting up your account. You will sign in with <b>${info.email}</b>.` : html`For <b>${info.email}</b>.`}</p>
+    <div class="err" hidden></div>
+    <label>New password<input type="password" name="pw" required minlength="8" autocomplete="new-password" autofocus></label>
+    <label>Repeat password<input type="password" name="pw2" required minlength="8" autocomplete="new-password"></label>
+    <p class="small muted" style="margin-top:-4px">At least 8 characters, with letters and numbers.</p>
+    <button class="btn primary" style="width:100%;justify-content:center">${invite ? 'Set password & sign in' : 'Save password & sign in'}</button></form></div>`);
+  $('#al').addEventListener('submit', async (e) => {
+    e.preventDefault(); const f = e.currentTarget; const err = $('.err', f);
+    if (f.pw.value !== f.pw2.value) { err.textContent = 'The two passwords are not the same.'; err.hidden = false; return; }
+    try {
+      const r = await api('POST', `/${kind}/${token}`, { password: f.pw.value });
+      history.replaceState(null, '', '#/dashboard'); // the link is used up; keep it out of the address bar
+      if (r.login_required) return loginView('Password saved. Sign in with your new password.');
+      store.user = r.user; await boot();
+    } catch (x) { err.textContent = x.message; err.hidden = false; }
   });
 }
 
@@ -78,8 +120,9 @@ function shell() {
 let renderId = 0;
 async function route() {
   if (!store.user) return;
-  const path = (location.hash.replace(/^#\/?/, '') || 'dashboard').split('?')[0];
+  let path = (location.hash.replace(/^#\/?/, '') || 'dashboard').split('?')[0];
   if (path === 'login') { location.hash = '#/dashboard'; return; }
+  if (/^(invite|reset)\//.test(path)) { history.replaceState(null, '', '#/dashboard'); toast('You are already signed in. To use an invitation or reset link for another person, sign out first or open it in a private window.'); path = 'dashboard'; }
   const view = $('#view'); if (!view) return;
   const id = ++renderId;
   $$('[data-nav]').forEach((a) => a.classList.toggle('active', path === a.dataset.nav || path.startsWith(a.dataset.nav + '/')));
@@ -115,5 +158,7 @@ window.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.ke
 window.addEventListener('ovantaa:logout', () => loginView('Your session expired. Please sign in again.'));
 (async () => {
   try { applyTheme(await api('GET', '/theme')); } catch {}
+  const link = location.hash.match(/^#\/(invite|reset)\/([\w-]{20,})$/);
+  if (link) return accessLinkView(link[1], link[2]);
   try { const r = await api('GET', '/auth/me'); store.user = r.user; await boot(); } catch { loginView(); }
 })();
