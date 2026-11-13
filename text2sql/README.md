@@ -103,6 +103,8 @@ Everything else is under **Admin → Settings**.
 ```bash
 pip install -r requirements-dev.txt
 python -m pytest
+# browser checks against a fresh instance (needs Node + Playwright):
+tests/e2e/run.sh
 # include live-PostgreSQL checks:
 T2S_TEST_PG=user:password@host:5432/dbname python -m pytest
 ```
@@ -127,3 +129,8 @@ T2S_TEST_PG=user:password@host:5432/dbname python -m pytest
 - On start-up the app adds any columns a newer version introduced to existing tables (and creates new
   tables), so an existing data folder keeps working after an update. Back it up first all the same.
 - Not included: SSO (SAML / OIDC).
+
+## Working on the code
+
+[`CLAUDE.md`](CLAUDE.md) is the handoff guide for developers and AI coding agents: architecture, the rules the
+product must never break, how changes are verified, and known pitfalls.
