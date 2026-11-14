@@ -283,7 +283,8 @@ def merge(base: dict, patch: dict, max_classes: int = 250) -> tuple[dict, dict]:
                 out[key].append(y)
                 counts["added"] += key != "modules"
             else:
-                out[key][idx] = {**out[key][idx], **{k: v for k, v in y.items() if v not in ("", None, [])}}
+                given = set(x) | ({"label"} if "name" in x else set()) if isinstance(x, dict) else set(y)
+                out[key][idx] = {**out[key][idx], **{k: v for k, v in y.items() if k in given}}     # only what the caller supplied
                 counts["updated"] += key != "modules"
     return clean(out, max_classes), counts
 

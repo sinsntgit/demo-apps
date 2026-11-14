@@ -49,7 +49,15 @@ DEFAULT_SETTINGS = {
     "default_use_cases": 8,        # use cases generated with a new ontology
     "max_classes": 250,            # hard cap on classes in one ontology
     "base_namespace": "https://example.org/ontology/",   # prefix of the IRIs in OWL / Turtle exports
+    # appearance (Admin > Appearance)
+    "app_title": "",               # name shown in the menu, sign-in page and documents; blank = ONTO_APP_NAME
+    "accent": "blue",              # blue | teal | green | purple | orange | red | slate
+    "default_theme": "system",     # system | light | dark - used until a person picks their own
+    "login_message": "",           # a line shown on the sign-in page
+    "footer_text": "",             # added to the footer of PDF, PowerPoint and Excel exports (e.g. "Confidential")
 }
+ACCENTS = {"blue": ("#2a78d6", "#5a9cec"), "teal": ("#0e7c86", "#4fc3cc"), "green": ("#1a7f4b", "#58c58a"), "purple": ("#6b3fc4", "#b79cf2"),
+           "orange": ("#b3541e", "#f0a26b"), "red": ("#c0362c", "#f0827a"), "slate": ("#3d4a5c", "#a9b6c8")}
 
 # How many classes the builder aims for at each depth.
 DEPTHS = {"compact": (15, 25), "standard": (35, 55), "comprehensive": (70, 100)}

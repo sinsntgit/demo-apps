@@ -2,7 +2,7 @@
 import { h, fill, api, busy, field, state, toast } from './core.js';
 
 const shell = (...kids) => h('div', { class: 'auth' }, h('div', { class: 'card stack' },
-  h('div', { class: 'brand' }, h('i', {}, '▮▮'), state.me?.app_name || 'OntoStudio'), ...kids));
+  h('div', { class: 'brand' }, h('i', {}, '◈'), state.brand?.app_name || state.me?.app_name || 'OntoStudio'), ...kids));
 
 export function loginView(onDone) {
   const root = h('div', {});
@@ -19,7 +19,7 @@ export function loginView(onDone) {
         const r = await api('POST', '/api/auth/login', { email: email.value, password: pw.value });
         r.step === 'mfa' ? mfaStep() : onDone();
       } catch (ex) { show(ex); } finally { btn.disabled = false; }
-    } }, h('p', { class: 'muted' }, 'Sign in to design and test ontologies.'), err, field('Email', email), field('Password', pw), btn);
+    } }, h('p', { class: 'muted' }, 'Sign in to design and test ontologies.'), state.brand?.login_message ? h('div', { class: 'banner info' }, state.brand.login_message) : null, err, field('Email', email), field('Password', pw), btn);
     fill(root, shell(form));
     email.focus();
   }

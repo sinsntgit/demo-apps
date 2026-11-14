@@ -55,8 +55,21 @@ def _me(user: User, db: Session, scope: str) -> dict:
     settings = get_settings(db)
     return {"id": user.id, "email": user.email, "name": user.name, "role": user.role, "version": config.VERSION,
             "totp_enabled": user.totp_enabled, "recovery_codes_left": len(user.recovery_codes or []),
-            "requirements": _requirements(user, settings), "scope": scope, "app_name": config.APP_NAME,
+            "requirements": _requirements(user, settings), "scope": scope, "app_name": settings["app_title"] or config.APP_NAME,
             "enforce_2fa": settings["enforce_2fa"]}
+
+
+def branding(db: Session) -> dict:
+    s = get_settings(db)
+    light, dark = config.ACCENTS.get(s["accent"], config.ACCENTS["blue"])
+    return {"app_name": s["app_title"] or config.APP_NAME, "accent": s["accent"], "accent_light": light, "accent_dark": dark,
+            "default_theme": s["default_theme"], "login_message": s["login_message"]}
+
+
+@router.get("/branding")
+def get_branding(db: Session = Depends(get_db)):
+    """Public: the sign-in page needs the name and colours before anyone is signed in."""
+    return branding(db)
 
 
 @router.post("/login")

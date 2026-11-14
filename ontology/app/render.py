@@ -109,7 +109,7 @@ VERDICT = {"addressed": "Addressed", "partly": "Partly addressed", "not_addresse
 
 
 # ---- PDF ----------------------------------------------------------------------------------------
-def build_pdf(o, c: dict, tests: list) -> bytes:
+def build_pdf(o, c: dict, tests: list, foot: str = "") -> bytes:
     from fpdf import FPDF
     from fpdf.enums import XPos, YPos
     from fpdf.fonts import FontFace
@@ -123,7 +123,7 @@ def build_pdf(o, c: dict, tests: list) -> bytes:
 
         def footer(self):
             self.set_y(-12); self.set_font("dv", "", 8); self.set_text_color(138, 137, 130)
-            self.cell(0, 6, f"{config.APP_NAME}  ·  page {self.page_no()}", align="C")
+            self.cell(0, 6, "  ·  ".join(x for x in (config.APP_NAME, foot, f"page {self.page_no()}") if x), align="C")
 
     pdf = Doc(format="A4")
     pdf.set_margins(16, 14, 16); pdf.set_auto_page_break(True, 16)
@@ -134,24 +134,24 @@ def build_pdf(o, c: dict, tests: list) -> bytes:
 
     def h1(t):
         pdf.add_page(); pdf.set_font("dv", "B", 17); pdf.set_text_color(22, 22, 15)
-        pdf.multi_cell(0, 9, t, new_x=XPos.LMARGIN, new_y=YPos.NEXT); pdf.ln(2)
+        pdf.multi_cell(0, 9, t, align="L", new_x=XPos.LMARGIN, new_y=YPos.NEXT); pdf.ln(2)
 
     def h2(t):
         if pdf.get_y() > pdf.h - 45:
             pdf.add_page()
         pdf.ln(3); pdf.set_font("dv", "B", 12); pdf.set_text_color(22, 22, 15)
-        pdf.multi_cell(0, 7, t, new_x=XPos.LMARGIN, new_y=YPos.NEXT); pdf.ln(1)
+        pdf.multi_cell(0, 7, t, align="L", new_x=XPos.LMARGIN, new_y=YPos.NEXT); pdf.ln(1)
 
     def para(t, size=9.5, style="", color=(40, 40, 34), font="dv", lh=5):
         if not t:
             return
         pdf.set_font(font, style, size); pdf.set_text_color(*color)
-        pdf.multi_cell(0, lh, t, new_x=XPos.LMARGIN, new_y=YPos.NEXT); pdf.ln(1.5)
+        pdf.multi_cell(0, lh, t, align="L", new_x=XPos.LMARGIN, new_y=YPos.NEXT); pdf.ln(1.5)
 
     def bullets(items):
         pdf.set_font("dv", "", 9.5); pdf.set_text_color(40, 40, 34)
         for it in items:
-            pdf.set_x(18); pdf.multi_cell(width - 2, 5, "•  " + it, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            pdf.set_x(18); pdf.multi_cell(width - 2, 5, "•  " + it, align="L", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.ln(1.5)
 
     def table(head, rows, widths, size=7.8):
@@ -167,7 +167,7 @@ def build_pdf(o, c: dict, tests: list) -> bytes:
 
     def picture(spec, max_h=235):
         w, h = _size(spec)
-        mm_w = min(width, w * 0.2)                     # never blow a small diagram up to full width
+        mm_w = min(width, w * 0.24)                     # never blow a small diagram up to full width
         mm_h = mm_w * h / w
         if mm_h > max_h:
             mm_h, mm_w = max_h, max_h * w / h
@@ -183,7 +183,7 @@ def build_pdf(o, c: dict, tests: list) -> bytes:
     pdf.set_font("dv", "", 11); pdf.set_text_color(*[int(ACCENT[i:i + 2], 16) for i in (1, 3, 5)])
     pdf.cell(0, 7, "ONTOLOGY HANDBOOK", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_font("dv", "B", 26); pdf.set_text_color(22, 22, 15)
-    pdf.multi_cell(0, 12, c["meta"]["name"], new_x=XPos.LMARGIN, new_y=YPos.NEXT); pdf.ln(3)
+    pdf.multi_cell(0, 12, c["meta"]["name"], align="L", new_x=XPos.LMARGIN, new_y=YPos.NEXT); pdf.ln(3)
     para(f"Domain: {c['meta']['domain']}", 11)
     para(f"Version {o.version}  ·  {datetime.now():%d %B %Y}  ·  owner {o.owner_email or '-'}", 9.5, color=(107, 106, 99))
     pdf.ln(6)
@@ -301,7 +301,7 @@ def build_pdf(o, c: dict, tests: list) -> bytes:
 
 
 # ---- PowerPoint ---------------------------------------------------------------------------------
-def build_pptx(o, c: dict, tests: list) -> bytes:
+def build_pptx(o, c: dict, tests: list, foot: str = "") -> bytes:
     from pptx import Presentation
     from pptx.dml.color import RGBColor
     from pptx.util import Emu, Inches, Pt
@@ -331,7 +331,7 @@ def build_pptx(o, c: dict, tests: list) -> bytes:
         if kicker:
             text(s, 0.6, 0.35, 12, 0.3, kicker.upper(), 10, True, accent)
         text(s, 0.6, 0.6, 12.1, 0.8, title, 26, True)
-        text(s, 0.6, 7.05, 12.1, 0.3, f"{c['meta']['name']}  ·  v{o.version}  ·  {config.APP_NAME}", 9, color=muted)
+        text(s, 0.6, 7.05, 12.1, 0.3, "  ·  ".join(x for x in (c['meta']['name'], f"v{o.version}", config.APP_NAME, foot) if x), 9, color=muted)
         return s
 
     def picture(s, spec, x, y, w, h):
@@ -448,4 +448,128 @@ def build_pptx(o, c: dict, tests: list) -> bytes:
                                    "Run the remaining use cases through the test bed and close the gaps it reports.",
                                    "Verify standard alignments, then publish the OWL / Turtle export to the systems that will use it."], 11.5, bullet=True)
     buf = io.BytesIO(); prs.save(buf)
+    return buf.getvalue()
+
+
+# ---- Excel --------------------------------------------------------------------------------------
+def build_xlsx(o, c: dict, tests: list, foot: str = "") -> bytes:
+    """The ontology as a workbook a business reader can go through sheet by sheet: an explanation first,
+    then one sheet per kind of element, each with a filter row and a note saying how to read it."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    wb = Workbook()
+    ix, st, ex = onto.index(c), onto.stats(c), c["explanation"]
+    mods = {m["id"]: m["name"] for m in c["modules"]}
+    lab = lambda cid: ix["classes"][cid]["label"] if cid in ix["classes"] else (cid or "")  # noqa: E731
+    head_fill, head_font = PatternFill("solid", fgColor="1F4E79"), Font(bold=True, color="FFFFFF", size=11)
+    note_font, thin = Font(italic=True, color="6B6A63", size=10), Side(style="thin", color="D7D6D0")
+    wrap = Alignment(wrap_text=True, vertical="top")
+    CARD = {"0..1": "optional, at most one", "1": "exactly one (mandatory)", "0..*": "optional, any number", "1..*": "at least one (mandatory)"}
+
+    def sheet(title, note, head, rows, widths, first=False):
+        ws = wb.active if first else wb.create_sheet()
+        ws.title = title
+        ws.append([title]); ws["A1"].font = Font(bold=True, size=15, color="1F4E79")
+        ws.append([note]); ws["A2"].font = note_font; ws["A2"].alignment = Alignment(wrap_text=True, vertical="top")
+        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=max(len(head), 2)); ws.row_dimensions[2].height = 34
+        ws.append([])
+        ws.append(head)
+        for i, w in enumerate(widths):
+            ws.column_dimensions[get_column_letter(i + 1)].width = w
+            cell = ws.cell(row=4, column=i + 1); cell.fill, cell.font, cell.alignment = head_fill, head_font, Alignment(wrap_text=True, vertical="center")
+        for r in rows:
+            ws.append([("" if v is None else v) for v in r])
+        for row in ws.iter_rows(min_row=5, max_row=ws.max_row, max_col=len(head)):
+            for cell in row:
+                cell.alignment, cell.border = wrap, Border(bottom=thin)
+        ws.freeze_panes = "B5"
+        if rows:
+            ws.auto_filter.ref = f"A4:{get_column_letter(len(head))}{ws.max_row}"
+        if foot:
+            ws.oddFooter.center.text = foot
+        return ws
+
+    # 1 Overview: the explanation, readable top to bottom
+    ws = wb.active
+    ws.title = "Overview"
+    ws.column_dimensions["A"].width = 26; ws.column_dimensions["B"].width = 110
+    def line(k, v, bold=False, big=False):
+        if v in (None, "", []):
+            return
+        ws.append([k, v if not isinstance(v, list) else "\n".join("• " + str(x) for x in v)])
+        a, b = ws.cell(row=ws.max_row, column=1), ws.cell(row=ws.max_row, column=2)
+        a.font = Font(bold=True, color="1F4E79", size=13 if big else 11); a.alignment = Alignment(vertical="top", wrap_text=True)
+        b.font = Font(bold=bold, size=16 if big else 11); b.alignment = wrap
+    line("Ontology", c["meta"]["name"], True, True)
+    line("Domain", c["meta"]["domain"]); line("Version", f"{o.version}  ({datetime.now():%d %B %Y})"); line("Owner", o.owner_email)
+    line("Namespace", c["meta"]["namespace"]); line("Scope", c["meta"]["scope"])
+    ws.append([])
+    line("What it is", ex.get("summary")); line("Purpose", ex.get("purpose")); line("Covered", ex.get("scope_in")); line("Not covered", ex.get("scope_out"))
+    line("How to read the model", ex.get("how_to_read")); line("Standards approach", ex.get("standards_approach"))
+    for d in ex.get("design_decisions", []):
+        line("Design decision", f"{d['title']}\n{d['text']}")
+    ws.append([])
+    line("Size", f"{st['modules']} modules · {st['classes']} classes · {st['object_properties']} relationships · {st['data_properties']} attributes · "
+                 f"{st['individuals']} controlled values · {st['rules']} rules · {st['use_cases']} use cases · {st['standards']} standards")
+    line("Sheets in this workbook", ["Modules - the subject areas", "Classes - every kind of thing, with its definition and parent", "Relationships - links between classes",
+                                     "Attributes - values held about a class", "Controlled values - code lists and statuses", "Rules - business constraints",
+                                     "Standards - published ontologies it builds on", "Use cases - questions it answers", "Quality - automatic checks",
+                                     "Test results - use cases tested in the test bed"])
+    if foot:
+        line("Note", foot)
+
+    sheet("Modules", "Subject areas the classes are grouped into.", ["Module", "Classes", "What it holds"],
+          [[m["name"], sum(k["module"] == m["id"] for k in c["classes"]), ex.get("module_notes", {}).get(m["id"]) or m["description"]] for m in c["modules"]], (28, 10, 110))
+    def path(cid):
+        return " › ".join(lab(x) for x in reversed([cid] + onto.ancestors(ix, cid)))
+    sheet("Classes", "Every kind of thing the ontology describes. 'Kind of' is the parent class: a class inherits all relationships and attributes of its parent.",
+          ["Class", "Kind of (parent)", "Hierarchy path", "Module", "Definition", "Also called", "Aligned to standard", "Alignment", "Derived from", "Identifier"],
+          [[k["label"], lab(k["parent"]) if k["parent"] else "", path(k["id"]), mods.get(k["module"], ""), k["definition"], ", ".join(k["synonyms"]), k["aligned_to"],
+            k["alignment"], k.get("derived_from", ""), k["id"]] for k in sorted(c["classes"], key=lambda k: (mods.get(k["module"], ""), path(k["id"])))],
+          (26, 22, 40, 22, 70, 24, 24, 12, 22, 24))
+    obj = [p for p in c["properties"] if p["kind"] == "object"]
+    sheet("Relationships", "Links between two classes. Read each row as a sentence: <From class> <relationship> <To class>.",
+          ["From class", "Relationship", "To class", "How many", "Meaning", "Inverse", "Derived from", "Identifier"],
+          [[lab(p["domain"]), p["label"], lab(p["range"]), CARD.get(p["cardinality"], p["cardinality"]), p["definition"],
+            ix["props"][p["inverse"]]["label"] if p["inverse"] in ix["props"] else "", p.get("derived_from", ""), p["id"]] for p in sorted(obj, key=lambda p: lab(p["domain"]))],
+          (26, 26, 26, 26, 70, 22, 22, 24))
+    data = [p for p in c["properties"] if p["kind"] == "data"]
+    sheet("Attributes", "Values held about a class (names, dates, amounts...). Subclasses inherit the attributes of their parent.",
+          ["Class", "Attribute", "Type", "How many", "Meaning", "Derived from", "Identifier"],
+          [[lab(p["domain"]), p["label"], p["range"], CARD.get(p["cardinality"], p["cardinality"]), p["definition"], p.get("derived_from", ""), p["id"]]
+           for p in sorted(data, key=lambda p: lab(p["domain"]))], (26, 26, 14, 26, 70, 22, 24))
+    sheet("Controlled values", "Fixed lists of allowed values (statuses, types, reasons).", ["List (class)", "Value", "Meaning", "Identifier"],
+          [[lab(i["type"]), i["label"], i["definition"], i["id"]] for i in sorted(c["individuals"], key=lambda i: lab(i["type"]))], (28, 28, 80, 24))
+    sheet("Rules", "Business constraints and derivations the domain depends on.", ["#", "Rule", "Statement", "Kind", "Applies to"],
+          [[r["id"], r["label"], r["statement"], r["kind"], ", ".join(lab(x) for x in r["applies_to"])] for r in c["rules"]], (8, 28, 90, 14, 40))
+    sheet("Standards", "Published ontologies and industry standards this ontology builds on. Verify links and terms with the publisher before publishing.",
+          ["Standard", "Publisher", "Kind", "Relevance", "How it is used", "Terms reused or aligned", "Link", "Source"],
+          [[s["name"], s["publisher"], s["kind"], s["relevance"], s["how_used"], ", ".join(s["reused_terms"]), s["url"],
+            "Built-in catalogue" if s["in_catalogue"] else "Proposed by the AI model - verify"] for s in c["standards"]], (32, 26, 12, 11, 70, 50, 40, 26))
+    sheet("Use cases", "Questions the ontology can answer, and the classes and properties each one uses.",
+          ["#", "Use case", "Who asks", "Question", "Why it matters", "Classes used", "Properties used", "How it is answered", "SPARQL", "Example answer", "Origin"],
+          [[u["id"], u["title"], u["actor"], u["question"], u["description"], ", ".join(lab(x) for x in u["classes"]),
+            ", ".join(ix["props"][p]["label"] for p in u["properties"] if p in ix["props"]), "\n".join(f"{n + 1}. {x}" for n, x in enumerate(u["answer_path"])),
+            u["sparql"], u["sample_answer"], {"required": "Required by the owner", "generated": "Written by AI", "manual": "Added by hand", "testbed": "From the test bed"}.get(u["source"], u["source"])]
+           for u in c["use_cases"]], (8, 30, 20, 50, 50, 34, 34, 60, 60, 40, 20))
+    q = onto.quality(c)
+    sheet("Quality", f"Automatic checks for common modelling pitfalls. Quality score: {q['score']} / 100.", ["Severity", "Finding", "Count", "Where", "Advice"],
+          [[f["severity"], f["title"], f["count"], ", ".join(f["items"]), f["advice"]] for f in q["findings"]] or [["-", "No findings", 0, "", ""]], (11, 40, 9, 70, 70))
+    rows = []
+    for t in tests:
+        for x in t.result["requirements"]:
+            rows.append([t.result.get("title") or t.text[:80], t.text, t.version, round(t.score, 3), VERDICT.get(t.verdict, ""), x["text"], x["kind"], x["status"],
+                         ", ".join(m["id"] for m in x["mapped"]), x["check"] or x["note"]])
+    ws = sheet("Test results", "Use cases tested in the test bed, one row per requirement. Coverage is computed by the application; each cited element was verified to exist.",
+               ["Use case", "As entered", "Version", "Coverage", "Verdict", "Requirement", "Type", "Status", "Evidence in the ontology", "Note"],
+               rows or [["No use case has been tested yet", "", "", "", "", "", "", "", "", ""]], (30, 50, 9, 10, 18, 44, 13, 11, 34, 60))
+    colors = {"covered": "E2F4EA", "partial": "FBF0D6", "missing": "FBE6E3"}
+    for r in range(5, ws.max_row + 1):
+        ws.cell(row=r, column=4).number_format = "0%"
+        fill = colors.get(ws.cell(row=r, column=8).value)
+        if fill:
+            ws.cell(row=r, column=8).fill = PatternFill("solid", fgColor=fill)
+    buf = io.BytesIO(); wb.save(buf)
     return buf.getvalue()

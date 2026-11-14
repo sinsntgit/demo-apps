@@ -235,6 +235,14 @@ def save_settings(body: dict, request: Request, admin: User = Depends(admin_only
             lo, hi = _LIMITS[key]
             if not lo <= val <= hi:
                 raise HTTPException(400, f"{key} must be between {lo} and {hi}.")
+        elif key == "accent":
+            if val not in config.ACCENTS:
+                raise HTTPException(400, "Unknown accent colour.")
+        elif key == "default_theme":
+            if val not in ("system", "light", "dark"):
+                raise HTTPException(400, "Unknown theme.")
+        elif key in ("app_title", "login_message", "footer_text"):
+            val = " ".join(str(val or "").split())[:{"app_title": 40, "login_message": 300, "footer_text": 120}[key]]
         elif key == "base_namespace":
             val = str(val or "").strip()[:300]
             if not val.startswith(("http://", "https://")) or " " in val:

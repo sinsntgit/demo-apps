@@ -93,6 +93,29 @@ async def chat(request: Request):
             "usage": {"prompt_tokens": len(prompt) // 4, "completion_tokens": len(out) // 4}}
 
 
+@app.post("/v1/messages")
+async def messages(request: Request):
+    """Anthropic-shaped endpoint (streaming), so the Claude code path is exercised too."""
+    from fastapi.responses import StreamingResponse
+    body = await request.json()
+    REQUESTS.append(body)
+    out = answer(body["messages"][-1]["content"])
+    out = out if isinstance(out, str) else json.dumps(out)
+
+    def events():
+        def ev(name, data):
+            return f"event: {name}\ndata: {json.dumps({'type': name, **data})}\n\n"
+        yield ev("message_start", {"message": {"id": "msg_1", "type": "message", "role": "assistant", "model": body["model"], "content": [],
+                                               "stop_reason": None, "stop_sequence": None, "usage": {"input_tokens": 120, "output_tokens": 0}}})
+        yield ev("content_block_start", {"index": 0, "content_block": {"type": "text", "text": ""}})
+        for i in range(0, len(out), 400):
+            yield ev("content_block_delta", {"index": 0, "delta": {"type": "text_delta", "text": out[i:i + 400]}})
+        yield ev("content_block_stop", {"index": 0})
+        yield ev("message_delta", {"delta": {"stop_reason": "end_turn", "stop_sequence": None}, "usage": {"output_tokens": len(out) // 4}})
+        yield ev("message_stop", {})
+    return StreamingResponse(events(), media_type="text/event-stream")
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=8765, log_level="warning")

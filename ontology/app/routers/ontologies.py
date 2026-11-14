@@ -31,6 +31,78 @@ def _model(db: Session, model_id: int | None) -> LLMModel:
     return m
 
 
+# ---- AI usage --------------------------------------------------------------------------------
+@router.get("/usage")
+def usage(days: int = 30, user_id: int = 0, model: str = "", kind: str = "", user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """AI usage: jobs, model calls, tokens and estimated cost. Everyone sees their own; an administrator
+    sees every user and can filter. The restriction is applied here, not in the browser."""
+    from datetime import timedelta
+    days = max(1, min(days, 366))
+    since = now() - timedelta(days=days)
+    q = select(Job).where(Job.created_at >= since)
+    if user.role != "admin":
+        q = q.where(Job.user_id == user.id)
+    elif user_id:
+        q = q.where(Job.user_id == user_id)
+    rows = list(db.scalars(q.order_by(Job.id.desc())))
+    models_seen = sorted({j.model_label for j in rows if j.model_label})
+    kinds_seen = sorted({j.kind for j in rows})
+    if model:
+        rows = [j for j in rows if j.model_label == model]
+    if kind:
+        rows = [j for j in rows if j.kind == kind]
+
+    def agg(key):
+        out: dict = {}
+        for j in rows:
+            a = out.setdefault(key(j), {"jobs": 0, "calls": 0, "input_tokens": 0, "output_tokens": 0, "cost": 0.0, "failed": 0})
+            a["jobs"] += 1; a["calls"] += j.calls; a["input_tokens"] += j.input_tokens; a["output_tokens"] += j.output_tokens
+            a["cost"] += j.cost; a["failed"] += j.status == "error"
+        return [{"key": k, **{m: (round(v, 4) if m == "cost" else v) for m, v in a.items()}} for k, a in out.items()]
+
+    day = {d["key"]: d for d in agg(lambda j: j.created_at.date().isoformat())}
+    series = []
+    for i in range(days - 1, -1, -1):
+        d = (now() - timedelta(days=i)).date().isoformat()
+        series.append(day.get(d) or {"key": d, "jobs": 0, "calls": 0, "input_tokens": 0, "output_tokens": 0, "cost": 0.0, "failed": 0})
+    tot = agg(lambda j: "all")
+    done = [j for j in rows if j.finished_at]
+    out = {"days": days, "is_admin": user.role == "admin",
+           "totals": {**(tot[0] if tot else {"jobs": 0, "calls": 0, "input_tokens": 0, "output_tokens": 0, "cost": 0.0, "failed": 0}),
+                      "ontologies": len({j.ontology_id for j in rows}), "users": len({j.user_id for j in rows}),
+                      "avg_seconds": round(sum((j.finished_at - j.created_at).total_seconds() for j in done) / len(done), 1) if done else 0},
+           "by_day": series, "by_kind": sorted(agg(lambda j: j.kind), key=lambda x: -x["cost"]),
+           "by_model": sorted(agg(lambda j: j.model_label or "-"), key=lambda x: -x["cost"]),
+           "by_ontology": sorted(agg(lambda j: j.ontology_name or "-"), key=lambda x: -x["cost"])[:15],
+           "by_user": sorted(agg(lambda j: j.user_email or "-"), key=lambda x: -x["cost"]) if user.role == "admin" else [],
+           "models": models_seen, "kinds": kinds_seen,
+           "users": [{"id": u.id, "email": u.email} for u in db.scalars(select(User).order_by(User.email))] if user.role == "admin" else [],
+           "recent": [{"id": j.id, "at": j.created_at.isoformat(), "user": j.user_email, "kind": j.kind, "ontology": j.ontology_name, "ontology_id": j.ontology_id,
+                       "model": j.model_label, "status": j.status, "error": j.error, "calls": j.calls, "input_tokens": j.input_tokens,
+                       "output_tokens": j.output_tokens, "cost": round(j.cost, 4),
+                       "seconds": int((j.finished_at - j.created_at).total_seconds()) if j.finished_at else None} for j in rows[:100]]}
+    return out
+
+
+@router.get("/usage.csv")
+def usage_csv(days: int = 30, user_id: int = 0, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    import csv
+    import io
+    from datetime import timedelta
+    q = select(Job).where(Job.created_at >= now() - timedelta(days=max(1, min(days, 366))))
+    if user.role != "admin":
+        q = q.where(Job.user_id == user.id)
+    elif user_id:
+        q = q.where(Job.user_id == user_id)
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["time_utc", "user", "job", "ontology", "model", "status", "model_calls", "input_tokens", "output_tokens", "estimated_cost_usd", "seconds"])
+    for j in db.scalars(q.order_by(Job.id.desc())):
+        w.writerow([j.created_at.isoformat(), j.user_email, j.kind, j.ontology_name, j.model_label, j.status, j.calls, j.input_tokens,
+                    j.output_tokens, round(j.cost, 4), int((j.finished_at - j.created_at).total_seconds()) if j.finished_at else ""])
+    return Response(buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": 'attachment; filename="ai-usage.csv"'})
+
+
 # ---- library ---------------------------------------------------------------------------------
 def _summary(o: Ontology, lvl: str) -> dict:
     st = onto.stats(o.content) if o.content else {}
@@ -621,12 +693,14 @@ def export(oid: int, fmt: str, request: Request, version: int = 0, user: User = 
     c = _content(db, o, version)
     if fmt in exports.FORMATS:
         data, media, name = exports.export(c, fmt, version or o.version)
-    elif fmt in ("pdf", "pptx"):
+    elif fmt in ("pdf", "pptx", "xlsx"):
         if version and version != o.version:
-            raise HTTPException(400, "The handbook and the deck are produced for the current version only.")
+            raise HTTPException(400, "The handbook, the deck and the workbook are produced for the current version only.")
         tests = _tests(db, oid)
-        data = render.build_pdf(o, c, tests) if fmt == "pdf" else render.build_pptx(o, c, tests)
-        media = "application/pdf" if fmt == "pdf" else "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        foot = get_settings(db)["footer_text"]
+        data = {"pdf": render.build_pdf, "pptx": render.build_pptx, "xlsx": render.build_xlsx}[fmt](o, c, tests, foot)
+        media = {"pdf": "application/pdf", "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                 "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}[fmt]
         name = exports.filename(o.name, fmt)
     else:
         raise HTTPException(404, "Unknown format")

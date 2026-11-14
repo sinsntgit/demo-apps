@@ -299,3 +299,67 @@ def test_schema_upgrade_of_an_older_database():
     assert "material" not in {c["name"] for c in inspect(engine).get_columns("ontologies")}
     upgrade_schema()
     assert "material" in {c["name"] for c in inspect(engine).get_columns("ontologies")}
+
+
+def test_usage_is_per_user_and_admin_sees_all(built):
+    c, mid, oid, _ = built
+    ann = make_user(c, "usage-ann@test.local", "ontologist")
+    aid = ann.post("/api/ontologies", headers=H, json={"name": "Ann usage", "domain": "Retail"}).json()["id"]
+    wait_job(ann, ann.post(f"/api/ontologies/{aid}/build", headers=H, json={"model_id": mid, "use_cases": 0}).json()["id"])
+    mine = ann.get("/api/usage?days=7").json()
+    assert mine["totals"]["jobs"] == 1 and mine["totals"]["calls"] == 5 and mine["totals"]["cost"] > 0
+    assert mine["by_user"] == [] and mine["users"] == [] and not mine["is_admin"]
+    assert {j["user"] for j in mine["recent"]} == {"usage-ann@test.local"}
+    admin_id = next(u["id"] for u in c.get("/api/admin/users").json() if u["email"] == "admin@test.local")
+    # asking for somebody else's usage is ignored for a non-admin
+    assert ann.get(f"/api/usage?days=7&user_id={admin_id}").json()["totals"]["jobs"] == 1
+    assert "admin@test.local" not in ann.get("/api/usage.csv?days=7").text
+    everyone = c.get("/api/usage?days=7").json()
+    assert everyone["totals"]["jobs"] > 1 and {"usage-ann@test.local", "admin@test.local"} <= {u["key"] for u in everyone["by_user"]}
+    ann_id = next(u["id"] for u in everyone["users"] if u["email"] == "usage-ann@test.local")
+    only = c.get(f"/api/usage?days=7&user_id={ann_id}").json()
+    assert only["totals"]["jobs"] == 1 and len(only["by_day"]) == 7 and only["by_day"][-1]["jobs"] == 1
+    assert c.get(f"/api/usage?days=7&kind=test").json()["totals"]["jobs"] == sum(k["jobs"] for k in everyone["by_kind"] if k["key"] == "test")
+    ann.delete(f"/api/ontologies/{aid}", headers=H)
+    c.delete(f"/api/admin/users/{ann_id}", headers=H)
+
+
+def test_excel_workbook_and_appearance(built):
+    c, _, oid, _ = built
+    import openpyxl
+    assert c.put("/api/admin/settings", headers=H, json={"accent": "pink"}).status_code == 400
+    assert c.put("/api/admin/settings", headers=H, json={"accent": "teal", "app_title": "Acme Hub", "footer_text": "Confidential"}).status_code == 200
+    from fastapi.testclient import TestClient
+    from app.main import app
+    b = TestClient(app).get("/api/auth/branding").json()          # public: needed by the sign-in page
+    assert b["app_name"] == "Acme Hub" and b["accent_light"] == "#0e7c86"
+    r = c.get(f"/api/ontologies/{oid}/export/xlsx")
+    wb = openpyxl.load_workbook(io.BytesIO(r.content))
+    assert wb.sheetnames == ["Overview", "Modules", "Classes", "Relationships", "Attributes", "Controlled values", "Rules", "Standards",
+                             "Use cases", "Quality", "Test results"]
+    classes = [row[0].value for row in wb["Classes"].iter_rows(min_row=5)]
+    assert "Order" in classes and "Gift card" in classes
+    rel = [[x.value for x in row[:3]] for row in wb["Relationships"].iter_rows(min_row=5)]
+    assert ["Order", "placed by", "Customer"] in rel
+    assert any("Warranty" in str(row[0].value) for row in wb["Test results"].iter_rows(min_row=5))
+    assert wb["Classes"].oddFooter.center.text == "Confidential"
+    assert "What it is" in [row[0].value for row in wb["Overview"].iter_rows()]
+    c.put("/api/admin/settings", headers=H, json={"accent": "blue", "app_title": "", "footer_text": ""})
+
+
+def test_claude_code_path_against_a_stand_in(admin, fake_llm):
+    """The Anthropic SDK path (streaming, effort, token accounting) against an Anthropic-shaped stand-in server."""
+    from tests.conftest import FAKE_PORT
+    c, _ = admin
+    m = c.post("/api/admin/models", headers=H, json={"name": "Claude stand-in", "provider": "anthropic", "model_id": "claude-opus-5-5", "api_key": "sk-ant-test",
+                                                    "base_url": f"http://127.0.0.1:{FAKE_PORT}", "effort": "high", "price_in": 4, "price_out": 20}).json()
+    assert c.post(f"/api/admin/models/{m['id']}/test", headers=H).json()["ok"] is True
+    oid = c.post("/api/ontologies", headers=H, json={"name": "Via Claude path", "domain": "Retail"}).json()["id"]
+    n = len(fake_llm.REQUESTS)
+    j = wait_job(c, c.post(f"/api/ontologies/{oid}/build", headers=H, json={"model_id": m["id"], "use_cases": 2}).json()["id"])
+    assert j["status"] == "done", j
+    assert j["calls"] == 6 and j["input_tokens"] == 720 and j["output_tokens"] > 1000 and j["cost"] > 0
+    req = fake_llm.REQUESTS[n]
+    assert req["stream"] is True and req["output_config"] == {"effort": "high"} and req["max_tokens"] == 64000 and "temperature" not in req
+    c.delete(f"/api/ontologies/{oid}", headers=H)
+    c.delete(f"/api/admin/models/{m['id']}", headers=H)

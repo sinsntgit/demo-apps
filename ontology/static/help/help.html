@@ -1,0 +1,348 @@
+<section id="start" data-title="Getting started">
+<h2>Getting started</h2>
+<p>OntoStudio builds an <b>ontology</b> for any domain: a precise, shared description of the things a business deals with (its <i>classes</i>), how they relate (its <i>relationships</i>), what is recorded about them (their <i>attributes</i>) and the rules that hold. It researches the published industry standards for the domain, builds on them, explains the result in plain language, draws it, lists the questions it can answer, and lets you test whether it really covers a use case.</p>
+<h3>The flow in six steps</h3>
+<ol>
+<li><b>Create</b> an ontology: give a domain, your use cases and requirements, a database, or a folder of documents — any one of them is enough. See <a href="#/help/create">Creating an ontology</a>.</li>
+<li><b>Build</b> it with an AI model. This takes a few minutes and runs in the background.</li>
+<li><b>Read</b> the Overview and the Standards it was built on; look at the <a href="#/help/diagram">Diagram</a>.</li>
+<li><b>Adjust</b> it — by clicking on the diagram, in the tables, or by telling the AI what to change.</li>
+<li><b>Test</b> it: enter use cases in the <a href="#/help/testbed">Test bed</a>, run the <a href="#/help/quality">reasoner and the gap review</a>, close the gaps.</li>
+<li><b>Download</b> it as a handbook (PDF), a presentation (PowerPoint), a workbook (Excel) or as OWL / Turtle / JSON-LD / JSON for other systems. See <a href="#/help/downloads">Downloads</a>.</li>
+</ol>
+<figure><img src="/static/help/img/library.png" alt="The library with folders on the left and ontologies as cards"><figcaption>The library: folders on the left, ontologies as cards.</figcaption></figure>
+<p>A sample ontology, <b>Sample: Retail order management</b>, is installed with the application so that every screen can be tried before an AI model is set up.</p>
+<h3>Signing in</h3>
+<p>Sign in with the email and password your administrator gave you. A password set by an administrator is temporary: you are asked to choose your own straight away. Passwords need at least 10 characters with an upper-case letter, a lower-case letter and a digit. If your organisation requires two-factor authentication you are taken through setting it up first — see <a href="#/help/security">Account &amp; security</a>.</p>
+<h3>Who can do what</h3>
+<table>
+<tr><th>Role</th><th>Can do</th></tr>
+<tr><td><b>Viewer</b></td><td>Read the ontologies shared with them, download every format, run the test bed and the reasoner, see their own AI usage. Never changes an ontology.</td></tr>
+<tr><td><b>Ontologist</b></td><td>Everything a viewer can, plus: create folders and ontologies, build and refine with AI, edit on the diagram, add source material, import files. Edits their own ontologies and those in folders where they were given “Can edit”.</td></tr>
+<tr><td><b>Administrator</b></td><td>Everything, on every ontology and folder, plus: users, AI models, appearance, settings, everyone’s AI usage and the audit log.</td></tr>
+</table>
+<p>You only see the menu items and buttons your role and access allow. The same rules are enforced on the server.</p>
+</section>
+
+<section id="concepts" data-title="What an ontology is">
+<h2>What an ontology is — the words used here</h2>
+<table>
+<tr><th>Term</th><th>Meaning</th><th>Example</th></tr>
+<tr><td><b>Class</b></td><td>A kind of thing.</td><td>Order, Customer, Shipment</td></tr>
+<tr><td><b>Subclass</b> (“is a kind of”)</td><td>A more specific class. It inherits every relationship and attribute of its parent.</td><td>Store is a kind of Sales channel</td></tr>
+<tr><td><b>Module</b></td><td>A subject area that groups classes. Each module has its own colour in diagrams.</td><td>Parties, Product catalogue</td></tr>
+<tr><td><b>Relationship</b></td><td>A named link from one class to another. Read it as a sentence.</td><td>Order — placed by → Customer</td></tr>
+<tr><td><b>Inverse</b></td><td>The same link read the other way round.</td><td>places ↔ placed by</td></tr>
+<tr><td><b>Attribute</b></td><td>A value recorded about a class.</td><td>Order has order date (date and time)</td></tr>
+<tr><td><b>How many</b> (cardinality)</td><td>Whether the relationship or attribute is optional or mandatory, and whether there can be several.</td><td>“exactly one (mandatory)”</td></tr>
+<tr><td><b>Controlled value</b></td><td>One of a fixed list of allowed values.</td><td>Order status: Placed, Paid, Shipped…</td></tr>
+<tr><td><b>Rule</b></td><td>A business constraint or calculation in a plain sentence. A “never overlap” rule is also checked by the reasoner.</td><td>A shipment needs a paid order.</td></tr>
+<tr><td><b>Use case</b></td><td>A question or task the ontology must be able to answer (a “competency question”).</td><td>Which paid orders have not shipped?</td></tr>
+<tr><td><b>Standard / alignment</b></td><td>A published ontology or industry standard the model builds on; a class can be declared the same as, a kind of, or related to a published term.</td><td>Order = schema:Order</td></tr>
+</table>
+<p>The method follows standard practice in ontology engineering: reuse published vocabularies first, let the use cases decide what must be in the model, check it with a reasoner, and keep every version.</p>
+</section>
+
+<section id="create" data-title="Creating an ontology" data-role="Ontologist, Administrator">
+<h2>Creating an ontology</h2>
+<p>In the library press <b>＋ New ontology</b>. The wizard has four steps; only the name is mandatory, and you may give as little or as much as you have.</p>
+<figure><img src="/static/help/img/wizard-basics.png" alt="New ontology wizard, step 1"><figcaption>Step 1: name, domain, scope, size and folder.</figcaption></figure>
+<h3>1 · Basics</h3>
+<ul>
+<li><b>Domain</b> — what the ontology is about, in a few words. Leave it blank to let the AI infer it from your documents or database.</li>
+<li><b>Scope</b> — what to cover and what to leave out. The more precise, the better the result.</li>
+<li><b>Size</b> — Compact (about 15–25 classes), Standard (about 35–55) or Comprehensive (about 70–100; slower and costs more).</li>
+<li><b>Folder</b> — where it is kept; see <a href="#/help/folders">Folders &amp; access</a>.</li>
+</ul>
+<h3>2 · Use cases &amp; requirements</h3>
+<p>This is how you get a <b>custom ontology designed around your needs</b>.</p>
+<ul>
+<li><b>Use cases it must answer</b> — one per line, in your own words. Each becomes a <i>required use case</i>: the ontology is designed so that it can answer it, it is listed first under Use cases with the label “Required by the owner”, and you can test it with one click.</li>
+<li><b>Requirements</b> — anything it must satisfy: regulations, systems it must map to, naming rules, level of detail.</li>
+<li><b>Reference notes</b> — your own terms, glossary and abbreviations.</li>
+</ul>
+<figure><img src="/static/help/img/wizard-needs.png" alt="New ontology wizard, step 2"><figcaption>Step 2: the questions the ontology must be able to answer.</figcaption></figure>
+<h3>3 · Database &amp; documents</h3>
+<p>Optional. Ground the ontology in what you already have — see <a href="#/help/sources">Building from a database or documents</a>.</p>
+<h3>4 · Build</h3>
+<p>Choose the AI model and how many extra use cases the AI should write, then press <b>✨ Create and build with AI</b>. <b>Create empty</b> makes an ontology with nothing in it, to draw by hand on the diagram.</p>
+<h3>What happens during a build</h3>
+<ol>
+<li><b>Reading the source material</b> — database structure and documents.</li>
+<li><b>Researching industry standards</b> — candidates are picked from the built-in catalogue of 65 published ontologies and standards (schema.org, FIBO, HL7 FHIR, GS1, ISO 20022, SKOS, PROV-O and so on); the AI chooses those that fit, says how each is used, and may add others it knows.</li>
+<li><b>Designing the class hierarchy</b> on top of those standards.</li>
+<li><b>Adding relationships, attributes, controlled values and rules.</b></li>
+<li><b>Completeness review</b> — the draft is read critically against the scope and your use cases, and the gaps found are closed.</li>
+<li><b>Writing the explanation and the use cases.</b></li>
+</ol>
+<figure><img src="/static/help/img/building.png" alt="Progress of a build"><figcaption>Progress is shown at the top of the ontology. It runs on the server: you can keep working or close the page.</figcaption></figure>
+<p>If a build does not finish, the reason is shown and nothing is lost: press Build again, pick another model, or narrow the scope.</p>
+<h3>Importing an existing ontology file</h3>
+<p><b>⬆ Import file</b> in the library brings in an OWL (RDF/XML), Turtle, JSON-LD or N-Triples file — for example a published standard or a model from Protégé — or a JSON file exported from this application. It becomes a normal ontology that you can extend, test and export. Classes, the hierarchy, properties with their domain and range, labels, definitions and individuals are read; complex logical expressions are not.</p>
+</section>
+
+<section id="sources" data-title="From a database or documents" data-role="Ontologist, Administrator">
+<h2>Building from a database or documents</h2>
+<p>Source material can be given in the wizard (step 3) or later on the <b>Sources</b> tab of an ontology. It is read when the ontology is built: after adding or removing sources use <b>✨ AI › Rebuild from scratch</b>.</p>
+<figure><img src="/static/help/img/sources.png" alt="The Sources tab"><figcaption>The Sources tab lists what was read from each source.</figcaption></figure>
+<h3>Documents or a whole folder</h3>
+<ul>
+<li>Drop files or a folder onto the box, or use <b>Choose files</b> / <b>Choose a folder</b> (sub-folders are included).</li>
+<li>Supported: PDF, Word, PowerPoint, Excel, CSV, text, Markdown, HTML, JSON, XML, YAML, SQL / DDL scripts, SQLite database files. Up to 25 MB per file and 300 sources per ontology.</li>
+<li>The <b>text is extracted and kept; the original file is not stored</b>. For spreadsheets and CSV only the headings and the first rows are read, to show the structure.</li>
+<li>Scanned PDFs (pictures of pages) contain no text and are reported as not readable.</li>
+<li>A small set of documents is given to the AI in full. A large set is first <i>distilled</i> batch by batch into concepts, relationships, attributes, rules and questions, and the ontology is built from those findings. If the material is too large, the build log names the documents that were not read — nothing is dropped silently.</li>
+</ul>
+<h3>A database</h3>
+<p>Three ways, all of which read <b>only the structure</b> — tables, columns, types, keys and comments. <b>No rows are ever read.</b></p>
+<ol>
+<li><b>Upload a schema script</b> (<code>.sql</code> / <code>.ddl</code>) with the CREATE TABLE statements.</li>
+<li><b>Upload a SQLite file</b> (<code>.db</code>, <code>.sqlite</code>).</li>
+<li><b>Read a live database</b>: choose the type (PostgreSQL, MySQL / MariaDB, SQL Server, Oracle), host, database, user and password. The password is used for that one read and is not stored. A read-only user is enough. The driver for that kind of database must be installed on the server; if it is not, the message says which package the administrator has to install.</li>
+</ol>
+<p>The AI models the <b>business meaning, not the storage</b>: a table describing a thing or event becomes a class with a business name, a pure link table becomes a relationship, a lookup table becomes a list of controlled values, a foreign key becomes a relationship, and technical columns are left out. Each class and property keeps a <b>Derived from</b> note naming the table or column it came from, so the mapping back to the database is preserved (it is in the Excel and OWL downloads too).</p>
+</section>
+
+<section id="overview" data-title="Explanation &amp; standards">
+<h2>Reading the result: Overview and Standards</h2>
+<figure><img src="/static/help/img/overview.png" alt="The Overview tab"><figcaption>The Overview: size at a glance, then the explanation.</figcaption></figure>
+<p>The <b>Overview</b> tab is the complete explanation of the ontology: what it is, its purpose, what is and is not covered, a walkthrough of how to read the model, a paragraph per module, and the design decisions with the reasons behind them. The six tiles at the top open the matching tab. <b>✎ Edit</b> lets you correct the text; <b>✨ AI › Rewrite the explanation</b> writes it again from the current model.</p>
+<p>The <b>Standards</b> tab shows the published ontologies and industry standards the model builds on: how each is used, which terms are reused, and a table of every class that is aligned to a published term.</p>
+<figure><img src="/static/help/img/standards.png" alt="The Standards tab"><figcaption>Standards the ontology builds on.</figcaption></figure>
+<p>Standards marked <b>catalogue</b> come from the application’s built-in list; their names, publishers, links and namespaces are fixed. Standards marked <b>proposed by AI — verify</b> were added by the model. In both cases the list of reused terms is written by the AI from its knowledge: <b>confirm the terms against the publisher’s documentation before you publish</b>. The application does not look anything up on the internet.</p>
+</section>
+
+<section id="diagram" data-title="Diagram &amp; visual editing">
+<h2>The diagram — viewing and editing visually</h2>
+<figure><img src="/static/help/img/diagram.png" alt="The Diagram tab with a class selected"><figcaption>Click a box to see the class on the right.</figcaption></figure>
+<h3>Three views</h3>
+<table>
+<tr><th>View</th><th>Shows</th></tr>
+<tr><td><b>Class hierarchy</b></td><td>Every class as a tree: a line means “is a kind of”. Choose one module to see only its part.</td></tr>
+<tr><td><b>Relationships of a module</b></td><td>The classes of one module and the relationships between them, as labelled arrows. Grey boxes are classes of other modules that they link to.</td></tr>
+<tr><td><b>Around one class</b></td><td>One class in the middle with everything it is related to, its parent and its subclasses.</td></tr>
+</table>
+<p>Colour = module. Drag the background to move; use −, +, Fit and 100%, or <kbd>Ctrl</kbd> + scroll, to zoom.</p>
+<h3>Editing on the diagram</h3>
+<p>If you can edit the ontology:</p>
+<ul>
+<li><b>＋ Class</b> (top right) adds a class anywhere.</li>
+<li><b>Click a box</b>, then in the panel on the right: <b>✎ Edit</b> (name, definition, parent, module, other names, and metadata — the published term it is aligned to and where it was derived from), <b>＋ Subclass</b>, <b>＋ Attribute</b>, <b>＋ Relationship</b>, or <b>Delete</b>.</li>
+<li><b>Click a line or its label</b> in a relationship view to edit or delete that relationship. The pencil next to an attribute or relationship in the panel does the same.</li>
+</ul>
+<figure><img src="/static/help/img/class-form.png" alt="Adding a subclass"><figcaption>Adding a subclass from the diagram.</figcaption></figure>
+<figure><img src="/static/help/img/relationship-form.png" alt="Adding a relationship"><figcaption>Adding a relationship: the blue line shows how it will read. Naming an inverse creates the reverse link too.</figcaption></figure>
+<p>Every change is saved at once as a new version (see <a href="#/help/versions">Versions</a>), so nothing you try is irreversible. Good to know:</p>
+<ul>
+<li>Deleting a class also deletes the relationships and attributes defined on it; its subclasses move up to its parent. The confirmation tells you how many are affected.</li>
+<li>An identifier is made from the name when a class or property is created and does not change when you rename it.</li>
+<li>The layout is drawn automatically. Boxes cannot be dragged to a new position.</li>
+</ul>
+<figure><img src="/static/help/img/diagram-around.png" alt="Around one class"><figcaption>“Around one class” after adding a relationship.</figcaption></figure>
+<h3>Classes &amp; properties tab</h3>
+<p>The same content as tables — Classes, Relationships, Attributes, Controlled values, Rules, Modules — with a filter box. Click a class row to open it; use Edit on the other rows. This is the quickest way to review definitions in bulk or to add controlled values and rules.</p>
+<figure><img src="/static/help/img/model.png" alt="Classes and properties as tables"><figcaption>Classes &amp; properties.</figcaption></figure>
+<h3>Changing it with AI</h3>
+<p><b>✨ AI › Change it with an instruction</b>: describe the change in plain words (“add co-applicants and guarantors to a loan application”). The AI adds, corrects or removes what is needed and saves a new version; everything else is left untouched.</p>
+</section>
+
+<section id="usecases" data-title="Use cases">
+<h2>Use cases</h2>
+<p>The <b>Use cases</b> tab lists the questions the ontology is meant to answer. Open one to see why it matters, a diagram of exactly the classes, relationships and attributes that answer it, the path through the model step by step, a SPARQL query, and an example answer.</p>
+<figure><img src="/static/help/img/usecase.png" alt="A use case with its diagram"><figcaption>A use case and the part of the model that answers it.</figcaption></figure>
+<ul>
+<li><b>Required by the owner</b> — the use cases you listed when creating the ontology.</li>
+<li><b>Written by AI</b> — added during the build or with <b>✨ Write more with AI</b> (you can give a focus, e.g. “risk and compliance questions”).</li>
+<li><b>Added by hand</b> — <b>＋ Add use case</b>. You may tick the classes and properties it uses, or leave them empty and test it.</li>
+<li><b>From the test bed</b> — a tested use case saved with “Save as use case”.</li>
+</ul>
+<p><b>🧪 Test this use case</b> takes it to the test bed.</p>
+</section>
+
+<section id="testbed" data-title="Test bed">
+<h2>Test bed — does the ontology address a use case?</h2>
+<p>Type any use case, question or report in your own words and press <b>🧪 Run test</b>. Viewers can run tests too; a test changes nothing in the ontology.</p>
+<figure><img src="/static/help/img/test-result.png" alt="A test result"><figcaption>A test result: coverage, verdict, requirements, the picture and the proposed additions.</figcaption></figure>
+<h3>What you get</h3>
+<ul>
+<li><b>Coverage</b> — a percentage, and a verdict: <i>Addressed</i>, <i>Partly addressed</i> or <i>Not addressed</i>.</li>
+<li><b>Requirement by requirement</b> — the use case is broken into the concepts, relationships, attributes and rules it needs. Each is <b>covered</b> (an element means exactly this), <b>partial</b> (something close exists) or <b>missing</b>, with the elements that are the evidence and the reason.</li>
+<li><b>A picture</b> — the classes the use case touches (green outline) and the proposed additions (orange, dashed).</li>
+<li><b>Gaps</b> — what is missing and what cannot be answered because of it. If the classes needed are not linked to each other, that is reported as “Not joined up”.</li>
+<li><b>Proposed additions</b> — the classes and properties that would close the gaps. <b>＋ Add these to the ontology</b> adds them as a new version; then press <b>↻ Test again</b> to confirm the coverage went up.</li>
+<li><b>How it would be answered</b> and a SPARQL query, when it is answerable.</li>
+</ul>
+<h3>How the score is produced — and why you can rely on it</h3>
+<p>The AI model does the reading and the matching. The application then <b>checks the model’s claims itself</b> before anything is shown:</p>
+<ul>
+<li>Every element cited as evidence must exist in the ontology. If it does not, the requirement is marked down and a “Checked:” note says why.</li>
+<li>A relationship counts as covered only if an actual relationship is cited, an attribute only if an actual attribute or controlled value is cited.</li>
+<li>Coverage = (covered + ½ × partial) ÷ all requirements. It is calculated by the application, never taken from the model.</li>
+<li><i>Addressed</i> means at least 85% with nothing missing; <i>Not addressed</i> means under 40%.</li>
+<li>Proposed additions that point to something that does not exist are discarded.</li>
+</ul>
+<p>What it cannot do: judge whether the breakdown into requirements is the one you had in mind. Read the requirement list — if something you need is not in it, rephrase the use case and test again.</p>
+<p>The tiles above the history summarise the latest result of each distinct use case. Results are kept per version: an older result says “(older)” and offers Test again. Test results are included in the PDF, PowerPoint and Excel downloads.</p>
+<figure><img src="/static/help/img/test-bed.png" alt="The test bed with its summary and history"><figcaption>Summary tiles and test history.</figcaption></figure>
+</section>
+
+<section id="quality" data-title="Quality, reasoner &amp; gap review">
+<h2>Quality, reasoner and gap review</h2>
+<p>The <b>Quality &amp; reasoning</b> tab has three independent checks.</p>
+<figure><img src="/static/help/img/quality.png" alt="Quality and reasoning tab"><figcaption>Modelling checks, the reasoner, and the AI gap review.</figcaption></figure>
+<h3>1 · Modelling checks (no AI)</h3>
+<p>Run automatically on every change, giving a score out of 100: classes or properties without a definition, classes not connected to anything, groups cut off from the main model, parents with a single subclass, duplicate labels, leaf classes without attributes, relationships without an inverse, naming convention, use cases that reference nothing, modules no use case touches, no standard referenced. Click a class name to open it in the diagram.</p>
+<h3>2 · Logical test with a reasoner</h3>
+<p>A reasoner works out everything that logically follows from the ontology and reports contradictions.</p>
+<table>
+<tr><th>Reasoner</th><th>What it is</th><th>Needs</th></tr>
+<tr><td><b>Built-in (OWL 2 RL)</b></td><td>A rule reasoner. To expose classes that can never have a member, it creates a test member for every class and both ends of every relationship and looks for contradictions.</td><td>Nothing extra.</td></tr>
+<tr><td><b>HermiT (OWL 2 DL)</b></td><td>A complete description-logic reasoner, the one used by Protégé.</td><td>Java installed on the server. If it is not, the button is greyed out and says so.</td></tr>
+</table>
+<p>They find, for example: a class placed under two classes that a rule says never overlap; a relationship whose two ends cannot both be satisfied; an inverse pair that does not mirror each other. The result also states <b>how much logic there was to test</b>. A reasoner can only test what is stated: add <b>“never overlap” rules</b> (Classes &amp; properties › Rules) and mark properties as mandatory to give it more to check. A reasoner cannot tell you a concept is missing — that is what the test bed and the gap review are for.</p>
+<h3>3 · Gap review by a reasoning model</h3>
+<p>An AI model reads the whole ontology as a critical domain reviewer, lists what is missing or wrong for the scope and the required use cases, and proposes additions and corrections. <b>Nothing changes until you press Apply these changes.</b> Choose any configured model — Claude, or a self-hosted model such as Hermes, Llama or Qwen connected through an OpenAI-compatible endpoint (see <a href="#/help/admin">Administration</a>). Using a different model for the review than for the build gives an independent second opinion.</p>
+</section>
+
+<section id="downloads" data-title="Downloads">
+<h2>Downloads</h2>
+<p><b>⬇ Download</b> at the top of an ontology. Anyone who can view the ontology can download it.</p>
+<figure><img src="/static/help/img/download-menu.png" alt="The download menu"><figcaption>All formats.</figcaption></figure>
+<table>
+<tr><th>Format</th><th>Contents</th><th>Use it for</th></tr>
+<tr><td><b>Handbook (PDF)</b></td><td>Cover, explanation, standards with alignment table, hierarchy diagram, every module with its relationship diagram and tables of classes and properties, controlled values, rules, use cases with diagrams and queries, quality check, test bed results.</td><td>Review and sign-off; documentation.</td></tr>
+<tr><td><b>Presentation (PowerPoint)</b></td><td>Title, purpose and scope, the ontology at a glance, standards, hierarchy diagram, walkthrough, one slide per module, use cases, test bed results, quality and next steps. Editable.</td><td>Walking stakeholders through the model.</td></tr>
+<tr><td><b>Workbook (Excel)</b></td><td>An Overview sheet with the explanation, then one sheet each for Modules, Classes, Relationships, Attributes, Controlled values, Rules, Standards, Use cases, Quality and Test results — with filters, frozen headings and a note on how to read each sheet.</td><td>Line-by-line review by business users; loading into other tools.</td></tr>
+<tr><td><b>OWL (RDF/XML)</b></td><td>The ontology in the W3C standard format: classes, subclass links, object and datatype properties with domain and range, inverses, mandatory-property restrictions, “never overlap” axioms, individuals, labels, definitions, alignment to published terms.</td><td>Protégé, TopBraid, reasoners.</td></tr>
+<tr><td><b>Turtle (.ttl)</b></td><td>The same content in the compact Turtle syntax.</td><td>Triple stores and knowledge graphs (GraphDB, Stardog, Neptune, Fuseki).</td></tr>
+<tr><td><b>JSON-LD</b></td><td>The same content as linked-data JSON.</td><td>Web and API use.</td></tr>
+<tr><td><b>JSON</b></td><td>The application’s own complete format, including explanation, standards and use cases.</td><td>Backup; moving an ontology to another installation (Import file).</td></tr>
+</table>
+<p>The PDF, PowerPoint and Excel are produced for the current version. OWL, Turtle and JSON of any earlier version can be downloaded from the Versions tab. Identifiers in OWL / Turtle start with the base namespace set by the administrator.</p>
+</section>
+
+<section id="versions" data-title="Versions">
+<h2>Versions</h2>
+<p>Every change — a build, an AI instruction, an edit on the diagram, additions from the test bed or the gap review — is saved as a new version with who made it, a note, and what was added, removed and changed.</p>
+<figure><img src="/static/help/img/versions.png" alt="Versions tab"><figcaption>Version history.</figcaption></figure>
+<p><b>Restore</b> brings an earlier version back as a new version, so nothing is ever lost.</p>
+</section>
+
+<section id="folders" data-title="Folders &amp; access">
+<h2>Folders and access levels</h2>
+<p>Folders are on the left of the library. <b>＋ New folder</b> creates one; folders can be nested. Open a folder you own to <b>Rename / move</b> it, <b>Delete</b> it (it must be empty) or set its <b>👥 Access</b>.</p>
+<figure><img src="/static/help/img/folder-access.png" alt="Folder access dialog"><figcaption>Who can use a folder.</figcaption></figure>
+<h3>Access levels</h3>
+<table>
+<tr><th>Level</th><th>Can</th></tr>
+<tr><td><b>Read only</b> (“Can view”)</td><td>Open, download, run tests and the reasoner.</td></tr>
+<tr><td><b>Can edit</b></td><td>Also change the ontologies in the folder, build and refine them with AI, add sources, and create new ontologies and sub-folders there.</td></tr>
+<tr><td><b>Owner</b></td><td>Also delete, move, and decide who has access. Administrators have this on everything.</td></tr>
+</table>
+<h3>How access is decided</h3>
+<ul>
+<li>A new ontology is <b>private</b>: only its owner and administrators see it.</li>
+<li>Access given on a <b>folder</b> applies to every ontology in it and in the folders inside it. Give it to named people, or to <b>everyone signed in</b>.</li>
+<li>An ontology can also be <b>Shared with everyone</b> (read only) under ⚙ Settings › Who can see it.</li>
+<li>A person with the <b>Viewer role</b> is always read-only, whatever a folder grants.</li>
+<li>An ontology someone else put into your folder can be edited by you, but only its owner or an administrator can delete or move it.</li>
+</ul>
+<p>People are added by an administrator under Admin › Users. Ontologies are moved between folders in ⚙ Settings by their owner.</p>
+</section>
+
+<section id="usage" data-title="AI usage">
+<h2>AI usage dashboard</h2>
+<p><b>AI usage</b> in the menu shows how much AI work was done: number of AI jobs, model calls, input and output tokens, estimated cost, average time, a chart per day (switch between cost, tokens, jobs and calls), break-downs by kind of work, by AI model and by ontology, and the recent jobs. Filter by period, model and kind; <b>⬇ CSV</b> downloads the detail.</p>
+<figure><img src="/static/help/img/usage.png" alt="AI usage dashboard"><figcaption>The AI usage dashboard as an administrator sees it.</figcaption></figure>
+<ul>
+<li><b>Everyone sees their own usage.</b></li>
+<li><b>Administrators see everyone’s</b>, with a break-down by person and a filter to look at one person.</li>
+<li>An “AI job” is one piece of work — a build, an instruction, a test, a gap review. A build makes about six model calls (more when many documents are read).</li>
+<li><b>Cost is an estimate</b>: the tokens reported by the provider multiplied by the prices entered for each model under Admin › AI models. Keep those prices up to date. Self-hosted models can be given a price of 0.</li>
+</ul>
+</section>
+
+<section id="admin" data-title="Administration" data-role="Administrator">
+<h2>Administration</h2>
+<h3>Users</h3>
+<p>Add a user with their email, name and role. A one-time password is shown once — pass it on securely; they must choose their own at first sign-in. You can reset a password (which signs the person out), reset their 2FA device, unlock a locked account, disable or delete an account. The last active administrator cannot be removed.</p>
+<figure><img src="/static/help/img/users.png" alt="Users"><figcaption>Admin › Users.</figcaption></figure>
+<h3>AI models</h3>
+<p>At least one enabled model is needed to build or test. <b>＋ Add model</b>:</p>
+<table>
+<tr><th>Provider</th><th>What to enter</th></tr>
+<tr><td><b>Anthropic Claude</b></td><td>Model ID (for example <code>claude-opus-5-5</code>, <code>claude-sonnet-5-5</code>, <code>claude-fable-5-2</code>) and your Anthropic API key. “Reasoning effort” is optional.</td></tr>
+<tr><td><b>OpenAI</b></td><td>Model ID and API key.</td></tr>
+<tr><td><b>Self-hosted / OpenAI-compatible</b></td><td>The base URL of the endpoint (Ollama, vLLM, LM Studio…), the model ID as that server names it (for example <code>hermes3:70b</code>), and a key if the server wants one.</td></tr>
+</table>
+<ul>
+<li>Press <b>Test</b> to check the connection.</li>
+<li>The <b>default</b> model is pre-selected wherever a model is chosen; people can pick any enabled model per run.</li>
+<li>Enter the <b>prices</b> per million tokens so the usage dashboard can estimate cost.</li>
+<li>API keys are encrypted and never shown again.</li>
+<li>Building an ontology is demanding work: larger models give noticeably better and more complete results. Small self-hosted models may fail to return a usable answer; the job then stops with a message and nothing is changed.</li>
+</ul>
+<figure><img src="/static/help/img/models.png" alt="AI models"><figcaption>Admin › AI models.</figcaption></figure>
+<h3>Appearance</h3>
+<p>Set the application name, the accent colour, the theme new visitors get (light, dark, or following their device), a line shown on the sign-in page, and a footer added to exported PDF, PowerPoint and Excel files (for example “Confidential”). Each person can still switch light / dark with <b>◐ Theme</b>.</p>
+<figure><img src="/static/help/img/appearance.png" alt="Appearance settings"><figcaption>Admin › Appearance.</figcaption></figure>
+<h3>Settings</h3>
+<table>
+<tr><th>Setting</th><th>Default</th><th>Meaning</th></tr>
+<tr><td>Require two-factor authentication</td><td>off</td><td>Everyone must enrol before continuing — including you.</td></tr>
+<tr><td>Session length</td><td>12 hours</td><td>How long a sign-in lasts.</td></tr>
+<tr><td>Failed sign-ins before lockout / lockout duration</td><td>5 / 15 minutes</td><td>Protection against password guessing.</td></tr>
+<tr><td>AI build / refine runs per user per hour</td><td>10</td><td>Limits cost. Tests have their own limit.</td></tr>
+<tr><td>Test-bed runs per user per minute</td><td>10</td><td></td></tr>
+<tr><td>AI jobs running at the same time</td><td>3</td><td>Others wait in a queue.</td></tr>
+<tr><td>Use cases written with a new ontology</td><td>8</td><td>Used when the wizard’s number is not set.</td></tr>
+<tr><td>Maximum classes in one ontology</td><td>250</td><td>Larger imports are cut at this limit and say so.</td></tr>
+<tr><td>Base namespace</td><td>https://example.org/ontology/</td><td>The web address that prefixes identifiers in OWL / Turtle exports of <i>new</i> ontologies. Set it to an address your organisation owns.</td></tr>
+</table>
+<h3>AI activity and audit log</h3>
+<p><b>AI activity</b> lists the last 200 AI jobs with status, tokens and cost (the AI usage dashboard has the charts and filters). The <b>Audit log</b> records sign-ins, changes to users, models and settings, every creation, edit, build, export and deletion of an ontology, folder access changes, database reads and tests — searchable and downloadable as CSV.</p>
+</section>
+
+<section id="privacy" data-title="What the AI receives">
+<h2>What is sent to the AI model</h2>
+<p>When you build, refine, review or test, the chosen AI model receives:</p>
+<ul>
+<li>the domain, scope, required use cases, requirements and reference notes of the ontology;</li>
+<li>the text extracted from its source documents, and the structure of its databases (table and column names, types, keys, comments);</li>
+<li>entries from the built-in standards catalogue;</li>
+<li>the ontology itself; and, in the test bed, the use case you typed.</li>
+</ul>
+<p>It never receives: rows from a database (they are never read), database passwords, other ontologies, user accounts, or API keys.</p>
+<p>If source documents contain confidential material, choose a model your organisation is allowed to send it to — or a <b>self-hosted model</b>, in which case nothing leaves your network. The application itself makes no other outside connections.</p>
+<p>What comes back from a model is never used as it is: it is rebuilt field by field, references to things that do not exist are repaired or dropped, and test-bed scores are computed by the application.</p>
+</section>
+
+<section id="security" data-title="Account &amp; security">
+<h2>Account and security</h2>
+<p>Click your name at the bottom of the menu for <b>My account</b>.</p>
+<ul>
+<li><b>Password</b> — changing it signs out your other sessions.</li>
+<li><b>Two-factor authentication (2FA)</b> — scan the QR code with an authenticator app (Microsoft Authenticator, Google Authenticator, 1Password, Authy…) and enter the 6-digit code. Save the recovery codes: each works once if you lose the device. An administrator can reset your 2FA.</li>
+<li>After repeated wrong passwords the account is locked for a while; an administrator can unlock it.</li>
+<li><b>◐ Theme</b> switches light and dark; the choice is remembered on your device.</li>
+</ul>
+</section>
+
+<section id="trouble" data-title="Troubleshooting">
+<h2>Troubleshooting</h2>
+<table>
+<tr><th>What you see</th><th>What to do</th></tr>
+<tr><td>“No AI model is available”</td><td>An administrator must add and enable a model under Admin › AI models.</td></tr>
+<tr><td>“The API key was rejected” / “Model … was not found”</td><td>Admin › AI models: correct the key or the model ID, then press Test.</td></tr>
+<tr><td>“The model’s answer was cut off because it was too long”</td><td>Choose a smaller size (Standard instead of Comprehensive) or a narrower scope, or a model with a larger output limit.</td></tr>
+<tr><td>“The AI model did not return a readable answer (tried twice)”</td><td>Usually a small model that cannot follow the required format. Try again or choose a more capable model.</td></tr>
+<tr><td>“You have reached the hourly limit for AI runs”</td><td>Wait, or ask an administrator to raise the limit in Settings.</td></tr>
+<tr><td>“An AI job is already running on this ontology”</td><td>Wait for the progress box at the top to finish; editing is paused meanwhile.</td></tr>
+<tr><td>“The server was restarted while this was running”</td><td>Start the job again. Nothing was changed.</td></tr>
+<tr><td>A file “was not added”</td><td>The reason is listed: scanned PDF without text, unsupported type, larger than 25 MB, damaged or password-protected.</td></tr>
+<tr><td>“The driver for this kind of database is not installed”</td><td>An administrator runs the <code>pip install …</code> command shown, on the server, and restarts the application. Or upload a schema script instead.</td></tr>
+<tr><td>HermiT button greyed out</td><td>Java is not installed on the server. The built-in reasoner works without it.</td></tr>
+<tr><td>A class I expected is missing</td><td>Test the use case that needs it in the test bed and add the proposed elements; or use ✨ AI › Change it with an instruction; or add it on the diagram.</td></tr>
+<tr><td>The diagram is too large to read</td><td>Choose one module in the hierarchy view, or use “Relationships of a module” / “Around one class”.</td></tr>
+</table>
+</section>

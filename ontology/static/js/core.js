@@ -1,5 +1,5 @@
 // Shared helpers: DOM builder, API client, modal, toast, formatting.
-export const state = { me: null, onAuthLost: null, onForbidden: null };
+export const state = { me: null, brand: null, onAuthLost: null, onForbidden: null, onTab: null };
 
 export function h(tag, attrs, ...kids) {
   const el = document.createElement(tag);
@@ -170,14 +170,27 @@ export function prettySQL(sql) {
 }
 
 export function theme() { return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'; }
-export function initTheme() {
-  let saved = null;
-  try { saved = localStorage.getItem('onto-theme'); } catch { /* storage blocked */ }
-  document.documentElement.dataset.theme = saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+function savedTheme() { try { return localStorage.getItem('onto-theme'); } catch { return null; } }
+function setTheme(pref) {
+  const mode = pref === 'light' || pref === 'dark' ? pref : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  document.documentElement.dataset.theme = mode;
+  const b = state.brand;
+  if (b) {      // the accent colour chosen by the administrator, in its light or dark variant
+    const c = mode === 'dark' ? b.accent_dark : b.accent_light, st = document.documentElement.style;
+    st.setProperty('--accent', c);
+    st.setProperty('--accent-soft', `color-mix(in srgb, ${c} ${mode === 'dark' ? 22 : 13}%, var(--surface))`);
+    st.setProperty('--accent-ink', mode === 'dark' ? '#0b1420' : '#ffffff');
+  }
+}
+export function initTheme() { setTheme(savedTheme() || 'system'); }
+/** Apply the organisation's appearance settings (name, accent colour, default theme). */
+export function applyBranding(b) {
+  state.brand = b;
+  setTheme(savedTheme() || b.default_theme);
 }
 export function toggleTheme() {
   const next = theme() === 'dark' ? 'light' : 'dark';
-  document.documentElement.dataset.theme = next;
   try { localStorage.setItem('onto-theme', next); } catch { /* storage blocked */ }
+  setTheme(next);
   window.dispatchEvent(new Event('themechange'));
 }
