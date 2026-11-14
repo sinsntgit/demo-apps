@@ -1,0 +1,301 @@
+"""API-level tests. Each one would fail if the rule it names broke."""
+import io
+import json
+import sqlite3
+import tempfile
+
+import pytest
+from rdflib import Graph
+
+from tests.conftest import H, make_user, wait_job
+
+
+@pytest.fixture(scope="module")
+def built(admin):
+    """An ontology built end to end by the stand-in model, with required use cases."""
+    c, mid = admin
+    oid = c.post("/api/ontologies", headers=H, json={"name": "Retail test", "domain": "Retail order management", "scope": "Orders and returns",
+                                                    "requirements": "Must track gift cards.", "use_cases": ["Which customers ordered twice this month?"]}).json()["id"]
+    j = wait_job(c, c.post(f"/api/ontologies/{oid}/build", headers=H, json={"model_id": mid, "use_cases": 4}).json()["id"])
+    assert j["status"] == "done", j
+    return c, mid, oid, j
+
+
+def test_first_run_has_sample_and_no_secrets(admin):
+    c, mid = admin
+    lib = c.get("/api/library").json()
+    assert any(o["name"].startswith("Sample:") and o["status"] == "ready" for o in lib["ontologies"])
+    models = c.get("/api/admin/models").json()["models"]
+    assert all("api_key" not in m and "api_key_enc" not in m for m in models)
+    assert "sk-secret-value" not in json.dumps(models)
+    assert c.post(f"/api/admin/models/{mid}/test", headers=H).json()["ok"] is True
+
+
+def test_csrf_and_auth_required(app_client):
+    from fastapi.testclient import TestClient
+    from app.main import app
+    anon = TestClient(app)
+    assert anon.get("/api/library").status_code == 401
+    assert anon.post("/api/auth/login", json={"email": "a", "password": "b"}).status_code == 403      # no X-Requested-With
+
+
+def test_build_pipeline(built, fake_llm):
+    c, mid, oid, job = built
+    o = c.get(f"/api/ontologies/{oid}").json()
+    ct = o["content"]
+    ids = {k["id"] for k in ct["classes"]}
+    assert o["status"] == "ready" and o["version"] == 1
+    assert {"Order", "Customer", "GiftCard"} <= ids                 # GiftCard comes from the completeness review
+    assert "GhostClass" in ids and next(k for k in ct["classes"] if k["id"] == "GhostClass")["parent"] is None   # dangling parent repaired
+    assert not any(p["id"] == "dangling" for p in ct["properties"])  # a property to a class that does not exist is dropped
+    assert job["result"]["review"]["added"] >= 3 and job["calls"] == 6 and job["cost"] > 0
+    # facts about a catalogued standard come from the catalogue; an unknown one is flagged and its bad link dropped
+    st = {s["id"]: s for s in ct["standards"]}
+    assert st["schema"]["in_catalogue"] and st["schema"]["namespace"] == "https://schema.org/"
+    assert st["arts"]["in_catalogue"] is False and st["arts"]["url"] == ""
+    # the owner's use case comes first and is marked as required
+    assert ct["use_cases"][0]["source"] == "required" and "twice this month" in ct["use_cases"][0]["question"]
+    assert len(ct["use_cases"]) == 5
+    sent = json.dumps(fake_llm.REQUESTS)
+    assert "Must track gift cards." in sent and "sk-secret-value" not in sent
+
+
+def test_exports_are_valid(built):
+    c, _, oid, _ = built
+    for fmt, rd in (("ttl", "turtle"), ("owl", "xml"), ("jsonld", "json-ld")):
+        r = c.get(f"/api/ontologies/{oid}/export/{fmt}")
+        assert r.status_code == 200 and "attachment" in r.headers["content-disposition"]
+        g = Graph().parse(data=r.content, format=rd)
+        assert len(g) > 500
+        q = "ASK { ?c a <http://www.w3.org/2002/07/owl#Class> ; <http://www.w3.org/2000/01/rdf-schema#label> 'Order'@en }"
+        assert g.query(q).askAnswer
+    doc = c.get(f"/api/ontologies/{oid}/export/json").json()
+    assert doc["format"] == "ontostudio-ontology" and doc["stats"]["classes"] == len(doc["classes"])
+    pdf = c.get(f"/api/ontologies/{oid}/export/pdf")
+    assert pdf.content[:5] == b"%PDF-" and len(pdf.content) > 50000
+    from pypdf import PdfReader
+    text = " ".join(p.extract_text() for p in PdfReader(io.BytesIO(pdf.content)).pages)
+    assert "Industry standards it builds on" in text and "Schema.org" in text and "Gift card" in text
+    ppt = c.get(f"/api/ontologies/{oid}/export/pptx")
+    from pptx import Presentation
+    prs = Presentation(io.BytesIO(ppt.content))
+    assert len(prs.slides) >= 12
+    assert any(sh.shape_type == 13 for s in prs.slides for sh in s.shapes)      # diagrams are embedded as pictures
+
+
+def test_test_bed_checks_the_models_claims(built):
+    c, mid, oid, _ = built
+    r = c.post(f"/api/ontologies/{oid}/tests", headers=H, json={"text": "Track warranty claims for products customers bought", "model_id": mid}).json()
+    wait_job(c, r["job"]["id"])
+    t = c.get(f"/api/ontologies/{oid}/tests/{r['test']['id']}").json()
+    res = t["result"]
+    by = {x["text"]: x for x in res["requirements"]}
+    # the model claimed "covered" pointing at an element that does not exist: the server does not believe it
+    assert by["Imaginary element"]["claimed"] == "covered" and by["Imaginary element"]["status"] == "missing" and by["Imaginary element"]["check"]
+    assert res["counts"] == {"covered": 1, "partial": 0, "missing": 3} and t["score"] == 0.25 and t["verdict"] == "not_addressed"
+    assert [k["id"] for k in res["suggestions"]["classes"]] == ["Warranty"]
+    assert [p["id"] for p in res["suggestions"]["properties"]] == ["coveredBy"]      # the proposal to a non-existent class is dropped
+    assert any(n["style"] == "gap" for n in t["diagram"]["nodes"]) and any(e["style"] == "gap" for e in t["diagram"]["edges"])
+    # close the gap, test again: coverage rises
+    a = c.post(f"/api/ontologies/{oid}/tests/{t['id']}/apply", headers=H).json()
+    assert a["added"] == 2
+    r2 = c.post(f"/api/ontologies/{oid}/tests", headers=H, json={"text": "Track warranty claims for products customers bought", "model_id": mid}).json()
+    wait_job(c, r2["job"]["id"])
+    t2 = c.get(f"/api/ontologies/{oid}/tests/{r2['test']['id']}").json()
+    assert t2["score"] == 1.0 and t2["verdict"] == "addressed" and t2["version"] == a["version"]
+    # a "covered" attribute with only a class as evidence is downgraded to partial
+    r3 = c.post(f"/api/ontologies/{oid}/tests", headers=H, json={"text": "Does the weather affect store sales?", "model_id": mid}).json()
+    wait_job(c, r3["job"]["id"])
+    t3 = c.get(f"/api/ontologies/{oid}/tests/{r3['test']['id']}").json()
+    assert t3["result"]["counts"] == {"covered": 0, "partial": 1, "missing": 1} and t3["score"] == 0.25
+    s = c.get(f"/api/ontologies/{oid}/tests").json()["summary"]
+    assert s["tested"] == 2 and s["addressed"] == 1          # latest result per distinct use case
+
+
+def test_refine_edit_versions_restore(built):
+    c, mid, oid, _ = built
+    v0 = c.get(f"/api/ontologies/{oid}").json()["version"]
+    j = wait_job(c, c.post(f"/api/ontologies/{oid}/run/refine", headers=H, json={"model_id": mid, "instruction": "Add a loyalty programme"}).json()["id"])
+    assert j["status"] == "done" and j["result"]["added"] == 2
+    j = wait_job(c, c.post(f"/api/ontologies/{oid}/run/refine", headers=H, json={"model_id": mid, "instruction": "change nothing please"}).json()["id"])
+    assert j["status"] == "error" and "no change" in j["error"]
+    assert c.get(f"/api/ontologies/{oid}").json()["status"] == "ready"         # a failed job does not leave it stuck on "building"
+    # manual edit, as the diagram editor sends it
+    e = c.post(f"/api/ontologies/{oid}/edit", headers=H, json={"note": "Added Wishlist", "patch": {
+        "classes": [{"id": "wish list", "label": "Wish list", "parent": "Order", "definition": "Products a customer saved for later.", "module": "Sales"}],
+        "properties": [{"id": "savedBy", "kind": "object", "domain": "WishList", "range": "Customer"}, {"id": "broken", "kind": "object", "domain": "WishList", "range": "Nope"}]}}).json()
+    ids = {k["id"] for k in e["content"]["classes"]}
+    assert "WishList" in ids and any(p["id"] == "savedBy" for p in e["content"]["properties"]) and not any(p["id"] == "broken" for p in e["content"]["properties"])
+    # removing a class drops the properties that hang on it and moves its children up
+    c.post(f"/api/ontologies/{oid}/edit", headers=H, json={"patch": {"classes": [{"id": "SubWish", "parent": "WishList", "module": "Sales", "definition": "A child class."}]}})
+    e = c.post(f"/api/ontologies/{oid}/edit", headers=H, json={"patch": {"remove_classes": ["WishList"]}}).json()
+    assert not any(p["id"] == "savedBy" for p in e["content"]["properties"])
+    assert next(k for k in e["content"]["classes"] if k["id"] == "SubWish")["parent"] == "Order"
+    vs = c.get(f"/api/ontologies/{oid}/versions").json()
+    assert vs[0]["number"] == e["version"] and "WishList" in vs[0]["diff"]["classes_removed"]
+    r = c.post(f"/api/ontologies/{oid}/versions/{v0}/restore", headers=H).json()
+    after = c.get(f"/api/ontologies/{oid}").json()
+    assert after["version"] == r["version"] and not any(k["id"] == "LoyaltyProgram" for k in after["content"]["classes"])
+
+
+def test_bad_json_is_retried_once(admin):
+    c, mid = admin
+    oid = c.post("/api/ontologies", headers=H, json={"name": "Retry", "domain": "Retail BROKEN-JSON"}).json()["id"]
+    j = wait_job(c, c.post(f"/api/ontologies/{oid}/build", headers=H, json={"model_id": mid, "use_cases": 0}).json()["id"])
+    assert j["status"] == "done" and j["calls"] == 10          # 5 steps, each answered properly on the second try
+    c.delete(f"/api/ontologies/{oid}", headers=H)
+
+
+def test_sources_documents_and_database_schema(admin, fake_llm):
+    c, mid = admin
+    oid = c.post("/api/ontologies", headers=H, json={"name": "From sources"}).json()["id"]
+    r = c.post(f"/api/ontologies/{oid}/build", headers=H, json={"model_id": mid})
+    assert r.status_code == 400                                 # nothing to build from yet
+    path = tempfile.mktemp(suffix=".db")
+    con = sqlite3.connect(path)
+    con.executescript("create table customers(id integer primary key, name text); create table loans(id integer primary key, "
+                      "customer_id integer references customers(id), amount numeric); insert into customers values (1, 'SECRET-ROW-VALUE');")
+    con.close()
+    big = ("The lending desk sanctions tractor loans. " * 2000).encode()
+    files = [("files", ("lending.sqlite", open(path, "rb").read(), "application/octet-stream")),
+             ("files", ("policy/credit-policy.txt", big, "text/plain")), ("files", ("policy/notes.md", b"Gift vouchers expire after 12 months.", "text/markdown")),
+             ("files", ("photo.png", b"\x89PNG\r\n", "image/png")), ("files", ("empty.txt", b"", "text/plain"))]
+    up = c.post(f"/api/ontologies/{oid}/sources", headers=H, files=files,
+                data={"paths": json.dumps(["lending.sqlite", "policy/credit-policy.txt", "policy/notes.md", "photo.png", "empty.txt"])}).json()
+    assert [s["kind"] for s in up["added"]] == ["schema", "document", "document"]
+    assert {f["name"] for f in up["failed"]} == {"photo.png", "empty.txt"} and all(f["reason"] for f in up["failed"])
+    assert "structure only, no rows read" in up["added"][0]["note"]
+    assert "SECRET-ROW-VALUE" not in c.get(f"/api/ontologies/{oid}/sources/{up['added'][0]['id']}").json()["text"]
+    n = len(fake_llm.REQUESTS)
+    j = wait_job(c, c.post(f"/api/ontologies/{oid}/build", headers=H, json={"model_id": mid, "use_cases": 0}).json()["id"])
+    assert j["status"] == "done", j
+    assert j["result"]["sources"] == {"schemas": 1, "documents": 2, "skipped": [], "distilled": True}
+    sent = json.dumps(fake_llm.REQUESTS[n:])
+    assert "TABLE loans" in sent and "FK (customer_id) -> customers" in sent        # the schema reaches the model...
+    assert "SECRET-ROW-VALUE" not in sent                                            # ...the rows never do
+    assert "Gift voucher" in sent                                                     # findings distilled from the documents are used
+    o = c.get(f"/api/ontologies/{oid}").json()
+    assert o["domain"] == "Retail order management"                                   # inferred, since none was given
+    assert next(k for k in o["content"]["classes"] if k["id"] == "Loan")["derived_from"] == "loans"
+    # a wrong database connection fails with a readable message and stores nothing
+    bad = c.post(f"/api/ontologies/{oid}/sources/database", headers=H, json={"db_type": "postgresql", "host": "127.0.0.1", "port": 1, "database": "x", "user": "u", "password": "hunter2-pw"})
+    assert bad.status_code == 400 and "hunter2-pw" not in bad.text
+    assert "hunter2-pw" not in json.dumps(c.get("/api/admin/audit?q=source").json())
+    c.delete(f"/api/ontologies/{oid}", headers=H)
+
+
+def test_folders_and_access_levels(admin):
+    c, mid = admin
+    ann = make_user(c, "ann@test.local", "ontologist")
+    bob = make_user(c, "bob@test.local", "ontologist")
+    vic = make_user(c, "vic@test.local", "viewer")
+    fid = ann.post("/api/folders", headers=H, json={"name": "Lending"}).json()["id"]
+    sub = ann.post("/api/folders", headers=H, json={"name": "Drafts", "parent_id": fid}).json()["id"]
+    oid = ann.post("/api/ontologies", headers=H, json={"name": "Ann's loans", "domain": "Lending", "folder_id": sub}).json()["id"]
+    ann.post(f"/api/ontologies/{oid}/edit", headers=H, json={"patch": {"classes": [{"id": "Loan", "definition": "Money lent to a borrower."}]}})
+    names = lambda cl: {o["name"] for o in cl.get("/api/library").json()["ontologies"]}   # noqa: E731
+    # private by default: nobody else sees it, by listing or by id
+    assert "Ann's loans" not in names(bob) and "Ann's loans" not in names(vic)
+    for path in (f"/api/ontologies/{oid}", f"/api/ontologies/{oid}/export/ttl", f"/api/ontologies/{oid}/diagram", f"/api/ontologies/{oid}/versions",
+                 f"/api/ontologies/{oid}/sources", f"/api/ontologies/{oid}/tests"):
+        assert bob.get(path).status_code == 404, path
+    assert vic.post("/api/folders", headers=H, json={"name": "x"}).status_code == 403          # viewers cannot create
+    assert vic.post("/api/ontologies", headers=H, json={"name": "x"}).status_code == 403
+    assert bob.put(f"/api/folders/{fid}/access", headers=H, json={"everyone": "edit"}).status_code == 404   # not his folder
+    users = {u["email"]: u["id"] for u in ann.get(f"/api/folders/{fid}/access").json()["users"]}
+    # view access on the parent folder reaches the ontology in the sub-folder - read only
+    ann.put(f"/api/folders/{fid}/access", headers=H, json={"grants": [{"user_id": users["bob@test.local"], "level": "view"}, {"user_id": users["vic@test.local"], "level": "edit"}]})
+    assert bob.get(f"/api/ontologies/{oid}").json()["level"] == "view"
+    assert bob.post(f"/api/ontologies/{oid}/edit", headers=H, json={"patch": {"classes": [{"id": "Hack"}]}}).status_code == 403
+    assert bob.post(f"/api/ontologies/{oid}/run/refine", headers=H, json={"instruction": "add things"}).status_code == 403
+    assert bob.delete(f"/api/ontologies/{oid}", headers=H).status_code == 403
+    assert bob.get(f"/api/ontologies/{oid}/export/ttl").status_code == 200
+    assert bob.post("/api/ontologies", headers=H, json={"name": "Sneak", "folder_id": sub}).status_code == 403
+    # the Viewer role stays read-only even where a folder grants edit
+    assert vic.get(f"/api/ontologies/{oid}").json()["level"] == "view"
+    assert vic.post(f"/api/ontologies/{oid}/edit", headers=H, json={"patch": {"classes": [{"id": "Hack"}]}}).status_code == 403
+    # edit access: may change the ontology, may not delete it, move it or change who sees it
+    ann.put(f"/api/folders/{fid}/access", headers=H, json={"grants": [{"user_id": users["bob@test.local"], "level": "edit"}]})
+    assert bob.post(f"/api/ontologies/{oid}/edit", headers=H, json={"patch": {"classes": [{"id": "Borrower", "definition": "The party that takes a loan."}]}}).status_code == 200
+    assert bob.delete(f"/api/ontologies/{oid}", headers=H).status_code == 403
+    cur = bob.get(f"/api/ontologies/{oid}").json()
+    body = {"name": cur["name"], "domain": cur["domain"], "folder_id": cur["folder_id"]}
+    assert bob.put(f"/api/ontologies/{oid}", headers=H, json={**body, "visibility": "shared"}).status_code == 403
+    assert bob.put(f"/api/ontologies/{oid}", headers=H, json={**body, "folder_id": None}).status_code == 403
+    assert vic.get(f"/api/ontologies/{oid}").status_code == 404                                 # his grant was replaced
+    # revoked: gone again
+    ann.put(f"/api/folders/{fid}/access", headers=H, json={"grants": []})
+    assert bob.get(f"/api/ontologies/{oid}").status_code == 404
+    # "shared" visibility: everyone can read
+    assert ann.put(f"/api/ontologies/{oid}", headers=H, json={**body, "visibility": "shared"}).status_code == 200
+    assert vic.get(f"/api/ontologies/{oid}").json()["level"] == "view"
+    # folders: not deletable while they hold something; cannot be moved into themselves
+    assert ann.delete(f"/api/folders/{sub}", headers=H).status_code == 400
+    assert ann.put(f"/api/folders/{fid}", headers=H, json={"name": "Lending", "parent_id": sub}).status_code == 400
+    assert c.get(f"/api/ontologies/{oid}").json()["level"] == "manage"                           # administrators see everything
+    assert ann.delete(f"/api/ontologies/{oid}", headers=H).status_code == 200
+    assert ann.delete(f"/api/folders/{sub}", headers=H).status_code == 200 and ann.delete(f"/api/folders/{fid}", headers=H).status_code == 200
+    actions = {a["action"] for a in c.get("/api/admin/audit?q=Lending").json()["items"]}
+    assert {"folder.created", "folder.access", "folder.deleted"} <= actions
+    for email in ("ann@test.local", "bob@test.local", "vic@test.local"):
+        uid = next(u["id"] for u in c.get("/api/admin/users").json() if u["email"] == email)
+        c.delete(f"/api/admin/users/{uid}", headers=H)
+
+
+def test_reasoner_finds_planted_contradictions(admin):
+    c, _ = admin
+    sample = next(o for o in c.get("/api/library").json()["ontologies"] if o["name"].startswith("Sample:"))
+    ok = c.post(f"/api/ontologies/{sample['id']}/reason/owlrl", headers=H).json()
+    assert ok["consistent"] and not ok["unsatisfiable"] and not ok["problems"] and ok["inferred"]["subclass"] >= 2
+    raw = c.get(f"/api/ontologies/{sample['id']}/export/json").content
+    oid = c.post("/api/ontologies/import", headers=H, files={"file": ("broken.json", raw, "application/json")}).json()["id"]
+    # a kiosk that is both a store and an online channel, which rule R4 says never overlap
+    c.post(f"/api/ontologies/{oid}/edit", headers=H, json={"patch": {
+        "classes": [{"id": "Kiosk", "parent": "Store", "module": "Sales", "definition": "An unattended sales point."}],
+        "rules": [{"id": "R9", "kind": "disjoint", "statement": "A party is never a sales channel.", "applies_to": ["Party", "SalesChannel"]}],
+        "properties": [{"id": "operates", "kind": "object", "domain": "Party", "range": "Store", "inverse": "operatedBy"},
+                       {"id": "operatedBy", "kind": "object", "domain": "Party", "range": "Party", "inverse": "operates"}]}})
+    bad = c.post(f"/api/ontologies/{oid}/reason/owlrl", headers=H).json()
+    text = " ".join(p["text"] for p in bad["problems"])
+    assert "operatedBy" in text and "do not mirror" in text and "cannot hold between anything" in text
+    assert c.get(f"/api/ontologies/{oid}").json()["reasoners"]["owlrl"]["available"]
+    c.delete(f"/api/ontologies/{oid}", headers=H)
+
+
+def test_import_turtle_round_trip(admin):
+    c, _ = admin
+    sample = next(o for o in c.get("/api/library").json()["ontologies"] if o["name"].startswith("Sample:"))
+    ttl = c.get(f"/api/ontologies/{sample['id']}/export/ttl").content
+    r = c.post("/api/ontologies/import", headers=H, files={"file": ("retail.ttl", ttl, "text/turtle")}).json()
+    assert r["classes"] == 24 and r["properties"] == 57
+    o = c.get(f"/api/ontologies/{r['id']}").json()
+    assert next(k for k in o["content"]["classes"] if k["id"] == "Carrier")["parent"] == "Organization"
+    assert c.post("/api/ontologies/import", headers=H, files={"file": ("x.ttl", b"this is not turtle <", "text/turtle")}).status_code == 400
+    c.delete(f"/api/ontologies/{r['id']}", headers=H)
+
+
+def test_gap_review_proposes_without_changing(built):
+    c, mid, oid, _ = built
+    v = c.get(f"/api/ontologies/{oid}").json()["version"]
+    c.post(f"/api/ontologies/{oid}/edit", headers=H, json={"patch": {"remove_classes": ["GiftCard"]}})
+    j = wait_job(c, c.post(f"/api/ontologies/{oid}/run/gaps", headers=H, json={"model_id": mid}).json()["id"])
+    assert j["status"] == "done" and j["result"]["findings"] and "proposed" not in j["result"]
+    assert [k["id"] for k in j["result"]["added"]["classes"]] == ["GiftCard"]
+    o = c.get(f"/api/ontologies/{oid}").json()
+    assert o["version"] == v + 1 and not any(k["id"] == "GiftCard" for k in o["content"]["classes"])     # nothing applied yet
+    a = c.post(f"/api/ontologies/{oid}/gaps/{j['id']}/apply", headers=H)
+    assert a.status_code == 200
+    assert any(k["id"] == "GiftCard" for k in c.get(f"/api/ontologies/{oid}").json()["content"]["classes"])
+    assert c.post(f"/api/ontologies/{oid}/gaps/{j['id']}/apply", headers=H).status_code == 400
+
+
+def test_schema_upgrade_of_an_older_database():
+    """New columns are added to an existing database at start-up (the owner keeps their data folder)."""
+    from sqlalchemy import inspect, text
+    from app.db import engine
+    from app.main import upgrade_schema
+    with engine.begin() as con:
+        con.execute(text("ALTER TABLE ontologies DROP COLUMN material"))
+    assert "material" not in {c["name"] for c in inspect(engine).get_columns("ontologies")}
+    upgrade_schema()
+    assert "material" in {c["name"] for c in inspect(engine).get_columns("ontologies")}

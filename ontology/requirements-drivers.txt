@@ -1,0 +1,5 @@
+# Optional: only needed to read the structure of a live database of that kind.
+psycopg2-binary>=2.9     # PostgreSQL
+pymysql>=1.1             # MySQL / MariaDB
+pymssql>=2.3             # SQL Server
+oracledb>=2.0            # Oracle
