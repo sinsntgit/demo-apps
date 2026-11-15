@@ -70,6 +70,66 @@ def structural(c: dict) -> list:
     return out
 
 
+def fixes(c: dict) -> list[dict]:
+    """Concrete changes that remove each contradiction `structural` finds. Where the right answer is a business
+    decision, the options share a `group` (pick one) and the more conservative one is `recommended`.
+    Item shape as onto.change_items, plus group / recommended."""
+    ix, out = onto.index(c), []
+    rel = lambda a, b: a == b or a in onto.ancestors(ix, b) or b in onto.ancestors(ix, a)  # noqa: E731
+    lab = lambda cid: ix["classes"].get(cid, {}).get("label", cid)                        # noqa: E731
+
+    def item(iid, action, kind, element, title, details, reason, patch, group="", recommended=False):
+        out.append({"id": iid, "action": action, "kind": kind, "element": element, "title": title, "details": details, "reason": reason,
+                    "patch": patch, "needs": [], "group": group, "recommended": recommended})
+
+    for p in c["properties"]:
+        q = ix["props"].get(p["inverse"])
+        if not q or p["kind"] != "object" or p["id"] > q["id"]:
+            continue
+        g = f"inv:{p['id']}:{q['id']}"
+        if q["inverse"] != p["id"]:
+            item(f"fix:{g}:link", "modify", "relationship", q["id"], f"Change relationship “{q['label']}”",
+                 f"inverse: {q['inverse'] or '—'} → {p['id']}", f"“{p['label']}” names it as its inverse but it does not name “{p['label']}” back.",
+                 {"properties": [{"id": q["id"], "inverse": p["id"]}]}, g, True)
+        if not (rel(p["domain"], q["range"]) and rel(p["range"], q["domain"])):
+            depth = lambda x: len(onto.ancestors(ix, x["domain"])) + len(onto.ancestors(ix, x["range"]))  # noqa: E731
+            keep_first = sorted((p, q), key=depth, reverse=True)      # keep the more specific one as it is
+            for n, (keep, change) in enumerate([tuple(keep_first), tuple(reversed(keep_first))]):
+                item(f"fix:{g}:mirror:{change['id']}", "modify", "relationship", change["id"], f"Change relationship “{change['label']}”",
+                     f"from class: {lab(change['domain'])} → {lab(keep['range'])}; to class: {lab(change['range'])} → {lab(keep['domain'])}",
+                     f"An inverse must run the opposite way to “{keep['label']}” ({lab(keep['domain'])} → {lab(keep['range'])}).",
+                     {"properties": [{"id": change["id"], "domain": keep["range"], "range": keep["domain"], "inverse": keep["id"]}]}, g, n == 0)
+            item(f"fix:{g}:unlink", "modify", "relationship", p["id"], f"Stop treating “{p['label']}” and “{q['label']}” as inverses",
+                 f"inverse of {p['label']}: {q['id']} → —; inverse of {q['label']}: {p['id']} → —",
+                 "Use this if the two relationships really mean different things.",
+                 {"properties": [{"id": p["id"], "inverse": ""}, {"id": q["id"], "inverse": ""}]}, g)
+    for r in c["rules"]:
+        if r["kind"] != "disjoint":
+            continue
+        for n, a in enumerate(r["applies_to"]):
+            for b in r["applies_to"][n + 1:]:
+                if not rel(a, b):
+                    continue
+                child, anc = (a, b) if b in onto.ancestors(ix, a) or a == b else (b, a)
+                g = f"disj:{r['id']}:{child}"
+                rest = [x for x in r["applies_to"] if x != child]
+                if len(rest) >= 2:
+                    item(f"fix:{g}:rule", "modify", "rule", r["id"], f"Change rule {r['id']}",
+                         f"applies to: {', '.join(map(lab, r['applies_to']))} → {', '.join(map(lab, rest))}",
+                         f"{lab(child)} is a kind of {lab(anc)}, so the two cannot be declared never to overlap.",
+                         {"rules": [{"id": r["id"], "applies_to": rest}]}, g, True)
+                else:
+                    item(f"fix:{g}:rule", "delete", "rule", r["id"], f"Delete rule {r['id']}", r["statement"],
+                         f"{lab(child)} is a kind of {lab(anc)}, so the two cannot be declared never to overlap.",
+                         {"remove_rules": [r["id"]]}, g, True)
+                if child != anc:
+                    item(f"fix:{g}:parent", "modify", "class", child, f"Change class “{lab(child)}”",
+                         f"kind of: {lab(ix['classes'][child]['parent'])} → — (top level)",
+                         f"Use this if {lab(child)} is in fact not a kind of {lab(anc)}.",
+                         {"classes": [{"id": child, "parent": None}]}, g)
+    return out
+
+
 def _graph(c: dict, hermit: bool) -> Graph:
     g = exports.graph(c, 0)
     if hermit:                                         # HermiT rejects datatypes outside the OWL 2 map; swap them in this copy only
@@ -102,7 +162,7 @@ def run(c: dict, engine: str = "owlrl") -> dict:
     ns = c["meta"]["namespace"]
     ix = onto.index(c)
     res = {"engine": engine, "consistent": True, "unsatisfiable": [], "problems": structural(c), "logic": _logic(c),
-           "inferred": {}, "error": "", "notes": []}
+           "inferred": {}, "error": "", "notes": [], "fixes": []}
     if not c["classes"]:
         res["error"] = "The ontology has no classes yet."
         return res
@@ -194,6 +254,7 @@ def run(c: dict, engine: str = "owlrl") -> dict:
                             "classified as two incompatible kinds. Add disjoint rules for sibling classes that must not overlap.")
     if not lg["mandatory"]:
         res["notes"].append("No property is mandatory, so the reasoner cannot flag incomplete records.")
+    res["fixes"] = fixes(c)
     res["seconds"] = round(time.time() - t0, 1)
     res["problems"].sort(key=lambda p: p["severity"] != "high")
     return res

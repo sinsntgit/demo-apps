@@ -229,7 +229,7 @@
 <li><b>Requirement by requirement</b> — the use case is broken into the concepts, relationships, attributes and rules it needs. Each is <b>covered</b> (an element means exactly this), <b>partial</b> (something close exists) or <b>missing</b>, with the elements that are the evidence and the reason.</li>
 <li><b>A picture</b> — the classes the use case touches (green outline) and the proposed additions (orange, dashed).</li>
 <li><b>Gaps</b> — what is missing and what cannot be answered because of it. If the classes needed are not linked to each other, that is reported as “Not joined up”.</li>
-<li><b>Proposed additions</b> — the classes and properties that would close the gaps. <b>＋ Add these to the ontology</b> adds them as a new version; then press <b>↻ Test again</b> to confirm the coverage went up.</li>
+<li><b>Proposed changes</b> — the classes and properties that would close the gaps, as a list you tick (see <a href="#/help/changes">Choosing proposed changes</a>). <b>Apply selected changes</b> saves them as a new version; then press <b>↻ Test again</b> to confirm the coverage went up.</li>
 <li><b>How it would be answered</b> and a SPARQL query, when it is answerable.</li>
 </ul>
 <h3>How the score is produced — and why you can rely on it</h3>
@@ -242,8 +242,16 @@
 <li>Proposed additions that point to something that does not exist are discarded.</li>
 </ul>
 <p>What it cannot do: judge whether the breakdown into requirements is the one you had in mind. Read the requirement list — if something you need is not in it, rephrase the use case and test again.</p>
+<h3>Test again, and why a score can go down</h3>
+<p>The AI model breaks a use case into requirements anew every time it is asked. A fresh breakdown of the same text can come out different — usually longer and stricter once the ontology has grown, because there is more to compare against — and its percentage is then measured against a different list. That is why a score could fall after you had added the proposed elements, although nothing had got worse.</p>
+<p>So there are two buttons on a result:</p>
+<ul>
+<li><b>↻ Test again</b> re-checks <b>the same requirements</b> against the current version. The scores compare like with like, and a green or amber line says, for example, “Re-test of the same 4 requirements: 25% on version 3 → 100% on version 4. 3 improved, 0 got worse.” A <b>Before</b> column shows each requirement's earlier status, with ▲ or ▼ where it changed. If something got worse, the <b>Why</b> column says what the model now finds lacking — typically a definition that became vague or a relationship that was removed.</li>
+<li><b>New breakdown</b> lets the model break the use case down afresh. Use it when you have reworded the use case or want a second opinion; its score is not directly comparable with the earlier one.</li>
+</ul>
+<figure><img src="/static/help/img/test-compare.png" alt="A re-test compared with the earlier result"><figcaption>Re-test of the same requirements, compared with the earlier result.</figcaption></figure>
 <p>The tiles above the history summarise the latest result of each distinct use case. Results are kept per version: an older result says “(older)” and offers Test again. Test results are included in the PDF, PowerPoint and Excel downloads.</p>
-<figure><img src="/static/help/img/test-bed.png" alt="The test bed with its summary and history"><figcaption>Summary tiles and test history.</figcaption></figure>
+<figure><img src="/static/help/img/test-changes.png" alt="Proposed changes from a test, with checkboxes"><figcaption>The changes a test proposes, ready to tick and apply.</figcaption></figure>
 </section>
 
 <section id="quality" data-title="Quality, reasoner &amp; gap review">
@@ -260,8 +268,34 @@
 <tr><td><b>HermiT (OWL 2 DL)</b></td><td>A complete description-logic reasoner, the one used by Protégé.</td><td>Java installed on the server. If it is not, the button is greyed out and says so.</td></tr>
 </table>
 <p>They find, for example: a class placed under two classes that a rule says never overlap; a relationship whose two ends cannot both be satisfied; an inverse pair that does not mirror each other. The result also states <b>how much logic there was to test</b>. A reasoner can only test what is stated: add <b>“never overlap” rules</b> (Classes &amp; properties › Rules) and mark properties as mandatory to give it more to check. A reasoner cannot tell you a concept is missing — that is what the test bed and the gap review are for.</p>
-<h3>3 · Gap review by a reasoning model</h3>
-<p>An AI model reads the whole ontology as a critical domain reviewer, lists what is missing or wrong for the scope and the required use cases, and proposes additions and corrections. <b>Nothing changes until you press Apply these changes.</b> Choose any configured model — Claude, or a self-hosted model such as Hermes, Llama or Qwen connected through an OpenAI-compatible endpoint (see <a href="#/help/admin">Administration</a>). Using a different model for the review than for the build gives an independent second opinion.</p>
+<p><b>The reasoner also proposes the fix.</b> For every contradiction it finds, it lists the concrete changes that remove it — which relationship to change, which rule to adjust or delete, which class to move. Where the right answer is a business decision (for example: is a Store really a kind of Sales channel, or should the rule go?), it shows the options side by side, ticks the recommended one, and lets you pick only one. Apply, run the reasoner again, and it should report “Logically consistent”.</p>
+<figure><img src="/static/help/img/reasoner-fixes.png" alt="Changes the reasoner proposes"><figcaption>The reasoner's proposed fixes: recommended options ticked, alternatives beside them.</figcaption></figure>
+<p>A reasoner can only remove contradictions; it cannot write a missing definition or invent a concept. For that, use the next two.</p>
+<h3>3 · Fix proposals by a reasoning model</h3>
+<p><b>✨ Propose fixes with AI</b> gives an AI model everything the reasoner and the modelling checks found — contradictions, missing definitions, classes without attributes, the absence of “never overlap” rules — and asks for the concrete changes that fix them: what to <b>add</b>, what to <b>change</b> and what to <b>delete</b>, each with the reason in plain language. You can add a note of anything else to attend to. Nothing changes until you choose.</p>
+<figure><img src="/static/help/img/ai-fixes.png" alt="AI fix proposals"><figcaption>AI fix proposals: add, change and delete, each with its reason.</figcaption></figure>
+<h3>4 · Gap review by a reasoning model</h3>
+<p>An AI model reads the whole ontology as a critical domain reviewer, lists what is missing or wrong for the scope and the required use cases, and proposes additions, corrections and deletions in the same tick-and-apply list. Choose any configured model — Claude, or a self-hosted model such as Hermes, Llama or Qwen connected through an OpenAI-compatible endpoint (see <a href="#/help/admin">Administration</a>). Using a different model for the review than for the build gives an independent second opinion.</p>
+<p>What you leave unticked stays on offer: after applying some changes, the rest are listed again against the new version, until you run the review again.</p>
+</section>
+
+<section id="changes" data-title="Choosing proposed changes">
+<h2>Choosing proposed changes</h2>
+<p>The reasoner, the AI fix proposals, the gap review and the test bed all present what they suggest the same way: a list of separate changes, each one a row you can tick.</p>
+<table>
+<tr><th>Column</th><th>Meaning</th></tr>
+<tr><td><b>Action</b></td><td><span>Add</span> a new class, relationship, attribute, value or rule · <span>Change</span> an existing one (the details show old → new for each field that changes) · <span>Delete</span> one.</td></tr>
+<tr><td><b>What changes</b></td><td>The element, written as a reader would say it — “Product — covered by → Warranty (0..1)”.</td></tr>
+<tr><td><b>Why</b></td><td>The problem or gap it fixes.</td></tr>
+</table>
+<ul>
+<li><b>Dependencies are kept together.</b> A relationship to a new class needs that class: ticking the relationship ticks the class, unticking the class unticks the relationship. Deleting a class also deletes the relationships and attributes defined on it; those rows are linked the same way. A row says what it needs (“Needs: …”) or what goes with it (“Also removes: …”).</li>
+<li><b>Alternatives:</b> where two options fix the same problem, they are marked <i>recommended</i> and <i>alternative</i>; ticking one unticks the other.</li>
+<li><b>Apply selected changes</b> saves them together as one new version. Every change can therefore be undone from <a href="#/help/versions">Versions</a>.</li>
+<li>The server works out the changes again from what it holds at the moment you apply — the browser only says which rows you chose — and every change passes through the same checks as an edit by hand.</li>
+<li>If the ontology has changed since the proposals were made, they are marked out of date: run the check again.</li>
+<li>Only people who can edit the ontology can apply; everyone who can see it can read the proposals.</li>
+</ul>
 </section>
 
 <section id="downloads" data-title="Downloads">
@@ -404,6 +438,7 @@
 <tr><td>HermiT button greyed out</td><td>Java is not installed on the server. The built-in reasoner works without it.</td></tr>
 <tr><td>HermiT: “could not reserve enough space … object heap” (older versions) or “could not reserve even 256 MB”</td><td>Java could not get the memory it asked for. The application now asks for 1024 MB and automatically steps down to 512 and 256 MB. If even that fails, a <b>32-bit Java</b> is almost certainly installed: install a 64-bit Java (for example Temurin from adoptium.net), restart the application, and run HermiT again. The amount tried first can be set with the environment variable <code>ONTO_HERMIT_MEMORY_MB</code>.</td></tr>
 <tr><td>I want to change a pre-built ontology</td><td>You cannot change the library itself. Open it and press ＋ Use this ontology — the copy is yours to change.</td></tr>
+<tr><td>The test score went down after I applied the suggested changes</td><td>You probably ran a fresh breakdown, which can produce a different and longer list of requirements. Use <b>↻ Test again</b> on the earlier result: it re-checks the same requirements, so the scores compare. See <a href="#/help/testbed">Test bed</a>.</td></tr>
 <tr><td>A class I expected is missing</td><td>Test the use case that needs it in the test bed and add the proposed elements; or use ✨ AI › Change it with an instruction; or add it on the diagram.</td></tr>
 <tr><td>The diagram is too large to read</td><td>Choose one module in the hierarchy view, or use “Relationships of a module” / “Around one class”.</td></tr>
 </table>

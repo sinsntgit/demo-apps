@@ -148,23 +148,47 @@ const waitJob = async () => { await page.waitForSelector('.joblog', { timeout: 8
     ok('test diagram shows the proposed class as a gap', (await page.locator('.dg-node.s-gap').count()) === 1);
     await shot('test-result');
     await page.evaluate(() => document.querySelector('.ring').scrollIntoView()); await shot('test-gauge');
-    await page.click('button:text-is("＋ Add these to the ontology")');
-    await page.waitForSelector('.badge.good:has-text("Added to the ontology")');
+    const changes = page.locator('table.changes tbody tr');
+    ok('the test proposes itemised additions with checkboxes', (await changes.count()) === 2 && (await page.innerText('table.changes')).includes('Needs: Add class “Warranty”'));
+    await changes.nth(0).locator('input').uncheck();                    // unticking the class unticks the relationship that needs it
+    ok('unticking a class unticks what depends on it', !(await changes.nth(1).locator('input').isChecked()) && await page.locator('button:has-text("Apply 0 selected")').isDisabled());
+    await changes.nth(1).locator('input').check();                      // ticking the relationship brings its class back
+    ok('ticking a relationship ticks the class it needs', await changes.nth(0).locator('input').isChecked());
+    await page.locator('table.changes').scrollIntoViewIfNeeded(); await shot('test-changes');
+    await page.click('button:has-text("Apply 2 selected changes")');
+    await page.waitForSelector('.toast:has-text("2 changes applied")');
     await page.click('button:text-is("↻ Test again")');
     await page.waitForSelector('.ring:has-text("100%")', { timeout: 30000 });
-    ok('after adding the proposed elements the same use case is fully addressed', (await page.innerText('.card:has(.ring)')).includes('Addressed'));
+    const after = await page.innerText('.card:has(.ring)');
+    ok('re-test checks the same requirements and shows the comparison', after.includes('Re-test of the same 4 requirements: 25%') && after.includes('3 improved, 0 got worse') && after.includes('Before'), after.slice(0, 80).replace(/\n/g, ' '));
+    await page.locator('.banner:has-text("Re-test of the same")').scrollIntoViewIfNeeded(); await shot('test-compare');
     await page.evaluate(() => window.scrollTo(0, 0)); await shot('test-bed');
   });
 
   await step('quality & reasoner', async () => {
     await page.click('.tabs button:text-is("Quality & reasoning")'); await page.waitForSelector('button:has-text("built-in reasoner")');
+    // plant two contradictions, as a person editing by hand might
+    await page.evaluate(async () => { const id = location.hash.split('/')[2]; await fetch(`/api/ontologies/${id}/edit`, { method: 'POST', headers: { 'X-Requested-With': 'fetch', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ patch: { rules: [{ id: 'R9', kind: 'disjoint', statement: 'A store is never a sales channel.', applies_to: ['Store', 'SalesChannel'] }],
+        properties: [{ id: 'operates', kind: 'object', domain: 'Party', range: 'Store', inverse: 'operatedBy', definition: 'A store the party runs.' },
+                     { id: 'operatedBy', kind: 'object', domain: 'Party', range: 'Party', inverse: 'operates', definition: 'Who runs it.' }] }, note: 'planted' }) }); });
     await page.click('button:has-text("built-in reasoner")');
+    await page.waitForSelector('.banner.bad:has-text("logical problem")', { timeout: 30000 });
+    const fixRows = page.locator('table.changes tbody tr');
+    ok('the reasoner proposes changes with alternatives, recommended ones ticked', (await fixRows.count()) === 5 && (await page.locator('table.changes input:checked').count()) === 2 && (await page.innerText('table.changes')).includes('alternative'));
+    await page.locator('table.changes').scrollIntoViewIfNeeded(); await shot('reasoner-fixes');
+    await page.click('button:has-text("Apply 2 selected changes")');
     await page.waitForSelector('.banner.good:has-text("Logically consistent")', { timeout: 30000 });
-    ok('built-in reasoner reports the sample as consistent', true);
+    ok('after applying the reasoner\'s fixes the ontology is consistent', true);
+    await page.click('button:has-text("Propose fixes with AI")'); await waitJob();
+    await page.waitForSelector('text=Problems addressed (2)');
+    const fx = await page.innerText('.card:has-text("3 · Fix proposals")');
+    ok('AI fix proposals: add, change and delete items, each with a reason', fx.includes('Add') && fx.includes('Change class “Brand”') && fx.includes('Delete relationship') && fx.includes('Promotions are out of scope'));
+    await page.locator('.card:has-text("3 · Fix proposals") table.changes').scrollIntoViewIfNeeded(); await shot('ai-fixes');
     await page.click('button:has-text("Run a gap review")'); await waitJob();
     await page.waitForSelector('text=Gaps found (1)');
-    ok('AI gap review lists gaps and proposed changes', (await page.innerText('body')).includes('Class Gift card'));
-    await shot('quality');
+    ok('AI gap review lists its proposed changes as items', (await page.innerText('.card:has-text("4 · Gap review")')).includes('Add class “Gift card”'));
+    await page.evaluate(() => window.scrollTo(0, 0)); await shot('quality');
   });
 
   await step('downloads', async () => {
@@ -240,7 +264,7 @@ const waitJob = async () => { await page.waitForSelector('.joblog', { timeout: 8
   await step('usage dashboard and appearance', async () => {
     await page.goto(BASE + '/#/usage'); await page.waitForSelector('svg.chart .bar');
     const kp = await page.innerText('.kpis');
-    ok('usage dashboard shows jobs, tokens, cost and a chart', /AI jobs\s*\n\s*4/.test(kp) && kp.includes('Estimated cost'), kp.replace(/\n/g, ' ').slice(0, 80));
+    ok('usage dashboard shows jobs, tokens, cost and a chart', /AI jobs\s*\n\s*5/.test(kp) && kp.includes('Estimated cost'), kp.replace(/\n/g, ' ').slice(0, 80));
     ok('admin can filter by person', (await page.locator('select:has(option:text-is("All users"))').count()) === 1);
     await shot('usage');
     await page.goto(BASE + '/#/admin/appearance'); await page.waitForSelector('.swatch');

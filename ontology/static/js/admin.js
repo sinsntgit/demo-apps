@@ -140,7 +140,7 @@ function appearanceTab(el) {
 
 function activityTab(el) {
   api('GET', '/api/admin/jobs').then(r => {
-    const KIND = { build: 'Build', refine: 'Refine', explain: 'Explanation', usecases: 'Use cases', test: 'Test', gaps: 'Gap review' };
+    const KIND = { build: 'Build', refine: 'Refine', explain: 'Explanation', usecases: 'Use cases', test: 'Test', gaps: 'Gap review', fix: 'Fix proposals' };
     fill(el, h('div', { class: 'stack' },
       h('div', { class: 'kpis' }, [['AI jobs', fmtNum(r.totals.jobs)], ['Input tokens', fmtNum(r.totals.input_tokens)], ['Output tokens', fmtNum(r.totals.output_tokens)], ['Estimated cost', '$' + r.totals.cost.toFixed(2)]]
         .map(([l, v]) => h('div', { class: 'kpi' }, h('div', { class: 'l' }, l), h('div', { class: 'v' }, v)))),

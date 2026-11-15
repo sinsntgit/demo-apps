@@ -33,9 +33,18 @@ def answer(prompt: str) -> dict | str:
     if "Step 3: add the relationships" in prompt:
         return {"properties": sample.PROPERTIES + [{"id": "dangling", "kind": "object", "domain": "Order", "range": "DoesNotExist"}],
                 "individuals": sample.INDIVIDUALS, "rules": sample.RULES}
+    if "Propose the concrete changes that fix these problems" in prompt:
+        return {"findings": ["Brand has no attributes.", "Store and online channel can overlap."],
+                "properties": [{"id": "brandName", "label": "brand name", "kind": "data", "domain": "Brand", "range": "string", "cardinality": "1",
+                                "definition": "The name the brand is marketed under.", "reason": "Brand had no attributes."}],
+                "classes": [{"id": "Brand", "definition": "The trade name under which a product is marketed to customers.", "reason": "A sharper definition."}],
+                "rules": [{"id": "R10", "label": "Party kinds", "kind": "disjoint", "statement": "A person is never an organisation.",
+                           "applies_to": ["Person", "Organization"], "reason": "Lets the reasoner catch a party recorded as both."}],
+                "remove_properties": [{"id": "appliedPromotion", "reason": "Promotions are out of scope for this test."}]}
     if "Step 4: completeness review" in prompt:
         return {"findings": ["Gift cards used as a means of payment are not modelled."],
-                "classes": [{"id": "GiftCard", "label": "Gift card", "definition": "A prepaid card that can be redeemed against orders.", "parent": None, "module": "Fulfilment"}],
+                "classes": [{"id": "GiftCard", "label": "Gift card", "definition": "A prepaid card that can be redeemed against orders.", "parent": None, "module": "Fulfilment",
+                             "reason": "Gift cards are a payment means the scope mentions."}],
                 "properties": [{"id": "redeems", "kind": "object", "domain": "Payment", "range": "GiftCard", "definition": "The gift card used for this payment.", "cardinality": "0..1"},
                                {"id": "cardBalance", "kind": "data", "domain": "GiftCard", "range": "decimal", "definition": "Remaining value on the card."}]}
     if "Write the explanation of this ontology" in prompt:

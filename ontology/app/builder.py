@@ -293,7 +293,36 @@ JSON shape:
     content["properties"], content["individuals"], content["rules"] = props, inds, rules
 
 
-def review(ctx: Ctx, o: Ontology, content: dict, max_classes: int) -> dict:
+def take_reasons(obj: dict) -> dict:
+    """Collect the 'reason' a model gave for each proposed element or removal, and normalise removal lists
+    (which may be written as objects) to plain ids. -> {element id: reason}"""
+    out = {}
+    for key, upper in (("classes", True), ("properties", False), ("individuals", True), ("rules", None)):
+        for x in obj.get(key) if isinstance(obj.get(key), list) else []:
+            if isinstance(x, dict) and onto.s(x.get("reason")):
+                xid = onto.s(x.get("id") or x.get("label"), 80) if upper is None else onto.ident(x.get("id") or x.get("label"), upper)
+                out[xid] = onto.s(x.get("reason"), 400)
+    for key, upper in (("remove_classes", True), ("remove_properties", False), ("remove_individuals", True), ("remove_rules", None)):
+        ids = []
+        for x in obj.get(key) if isinstance(obj.get(key), list) else []:
+            xid = onto.s(x.get("id"), 80) if isinstance(x, dict) else onto.s(x, 80)
+            if not xid:
+                continue
+            xid = xid if upper is None else onto.ident(xid, upper)
+            ids.append(xid)
+            if isinstance(x, dict) and onto.s(x.get("reason")):
+                out[xid] = onto.s(x.get("reason"), 400)
+        if key in obj:
+            obj[key] = ids
+    return out
+
+
+CHANGE_FORMAT = """Give every element you add or change a "reason" field: one plain sentence a business reader understands, saying \
+which gap or problem it fixes. Removals are objects too: {{"id": "...", "reason": "..."}}. An element with an existing id \
+replaces that element; include its id and the fields that change."""
+
+
+def review(ctx: Ctx, o: Ontology, content: dict, max_classes: int, reasons: dict | None = None) -> dict:
     q = onto.quality(content)
     issues = "\n".join(f"- {f['title']}: {', '.join(f['items'][:25])}" for f in q["findings"] if f["severity"] != "low") or "(none found)"
     obj = ctx.ask(f"""{_brief(o)}
@@ -310,15 +339,18 @@ Automatic checks found:
 Step 4: completeness review. Read the draft as a critical reviewer who knows this domain. List the questions a business \
 user in this domain would ask that the draft cannot answer, and the concepts, relationships, attributes, states and rules \
 that are missing or wrong for the stated scope. Then supply the additions and corrections that close those gaps and fix \
-the issues the checks found. An element with an existing id replaces that element. Only add what the scope needs.
+the issues the checks found. Only add what the scope needs. {CHANGE_FORMAT}
 
 JSON shape:
 {{"findings": ["each gap you found, one sentence"],
  "modules": [], "classes": [], "properties": [], "individuals": [], "rules": [],
- "remove_classes": ["ids that do not belong"], "remove_properties": []}}
+ "remove_classes": [{{"id": "", "reason": ""}}], "remove_properties": [], "remove_individuals": [], "remove_rules": []}}
 (Elements use the same fields as in the draft: classes have id, label, definition, parent, module, aligned_to, alignment; \
 properties have id, label, definition, kind, domain, range, cardinality, inverse.)""", need=("findings",))
-    merged, counts = onto.merge(content, obj, max_classes)
+    why = take_reasons(obj)
+    if reasons is not None:
+        reasons.update(why)
+    merged, counts = onto.apply_patch(content, obj, max_classes)
     content.clear(); content.update(merged)
     return {"findings": onto.strs(obj.get("findings"), 30, 400), **counts}
 
@@ -594,32 +626,85 @@ def _gaps(ctx: Ctx, o: Ontology, cfg: dict):
     the proposed additions are kept with the job and applied only if the user says so."""
     content = json.loads(json.dumps(o.content))
     ctx.stage("Reviewing the ontology for gaps", 25)
-    rev = review(ctx, o, content, int(cfg["max_classes"]))
-    before, after = onto.index(o.content), onto.index(content)
-    added = {"classes": [k for i, k in after["classes"].items() if i not in before["classes"]],
-             "properties": [p for i, p in after["props"].items() if i not in before["props"]],
-             "individuals": [x for i, x in after["individuals"].items() if i not in before["individuals"]],
-             "rules": [r for r in content["rules"] if r["statement"] not in {x["statement"] for x in o.content["rules"]}]}
-    changed = [i for i, k in after["classes"].items() if i in before["classes"] and k != before["classes"][i]] + \
-              [i for i, p in after["props"].items() if i in before["props"] and p != before["props"][i]]
-    removed = [i for i in before["classes"] if i not in after["classes"]] + [i for i in before["props"] if i not in after["props"]]
-    return {"findings": rev["findings"], "added": added, "changed": changed, "removed": removed, "proposed": content,
-            "on_version": o.version, "applied": False}
+    reasons: dict = {}
+    rev = review(ctx, o, content, int(cfg["max_classes"]), reasons)
+    content["standards"], content["explanation"], content["use_cases"] = o.content["standards"], o.content["explanation"], o.content["use_cases"]
+    return {"findings": rev["findings"], "proposed": content, "reasons": reasons, "on_version": o.version, "applied": [], "source": "gaps"}
+
+
+def _fix(ctx: Ctx, o: Ontology, cfg: dict):
+    """AI proposals that fix what the reasoner and the modelling checks found. Nothing is changed until the
+    person ticks the items and applies them."""
+    from . import reasoner
+    content = json.loads(json.dumps(o.content))
+    ctx.stage("Running the reasoner and the modelling checks", 10)
+    r = reasoner.run(content, "owlrl")
+    q = onto.quality(content)
+    lines = [f"- REASONER ({p['severity']}): {p['text']}" for p in r["problems"]]
+    lines += [f"- REASONER NOTE: {n}" for n in r["notes"]]
+    lines += [f"- CHECK ({f['severity']}) {f['title']}: {', '.join(f['items'][:30])}{' …' if f['count'] > 30 else ''}. {f['advice']}" for f in q["findings"]]
+    focus = onto.s(ctx.job.params.get("focus"), 1000)
+    if not lines and not focus:
+        return {"findings": ["The reasoner found no contradiction and the modelling checks found nothing to fix."], "proposed": content,
+                "reasons": {}, "on_version": o.version, "applied": [], "source": "fix"}
+    ctx.stage("Proposing the changes that fix them", 35)
+    obj = ctx.ask(f"""{_brief(o)}
+
+The ontology:
+{onto.outline(content)}
+
+Problems found by an OWL reasoner and by automatic modelling checks:
+{chr(10).join(lines) or '(none)'}
+{('Also attend to: ' + focus) if focus else ''}
+
+Propose the concrete changes that fix these problems - additions, corrections and deletions. Fix contradictions first. \
+Write the missing definitions in plain business language. Where the reasoner notes that no classes are declared never to \
+overlap, add "disjoint" rules for sibling classes that genuinely cannot share a member, and say why. Do not change what is \
+fine; do not add scope. {CHANGE_FORMAT}
+
+JSON shape:
+{{"findings": ["each problem you are fixing, one sentence"],
+ "classes": [], "properties": [], "individuals": [], "rules": [{{"id": "", "label": "", "statement": "", "kind": "constraint|derivation|disjoint|definition", "applies_to": [], "reason": ""}}],
+ "remove_classes": [], "remove_properties": [], "remove_individuals": [], "remove_rules": []}}
+(Classes have id, label, definition, parent, module, aligned_to, alignment; properties have id, label, definition, kind, domain, \
+range, cardinality, inverse.)""", need=("findings",))
+    reasons = take_reasons(obj)
+    merged, _ = onto.apply_patch(content, obj, int(cfg["max_classes"]))
+    merged["standards"], merged["explanation"], merged["use_cases"] = o.content["standards"], o.content["explanation"], o.content["use_cases"]
+    return {"findings": onto.strs(obj.get("findings"), 40, 400), "proposed": merged, "reasons": reasons, "on_version": o.version,
+            "applied": [], "source": "fix"}
 
 
 def _test(ctx: Ctx, o: Ontology, cfg: dict):
     tr = ctx.db.get(TestRun, ctx.job.params["test_run_id"])
-    ctx.stage("Breaking the use case into requirements and checking each against the ontology", 30)
-    raw = ctx.ask(TEST_PROMPT.format(name=o.name, outline=onto.outline(o.content), text=tr.text[:8000]), need=("requirements",))
+    base = ctx.db.get(TestRun, ctx.job.params.get("baseline_id") or 0)
+    fixed = base.result["requirements"] if base and base.result else None
+    prompt = TEST_PROMPT.format(name=o.name, outline=onto.outline(o.content), text=tr.text[:8000])
+    if fixed:
+        ctx.stage(f"Re-checking the same {len(fixed)} requirements against the ontology", 30)
+        prompt += "\n\nIMPORTANT - this is a re-test. Do NOT break the use case down again. Assess exactly these requirements, in this " \
+                  "order, with the same wording and kind, one entry each - no more, no fewer:\n" + \
+                  "\n".join(f"{n + 1}. [{r['kind']}] {r['text']}" for n, r in enumerate(fixed))
+    else:
+        ctx.stage("Breaking the use case into requirements and checking each against the ontology", 30)
+    raw = ctx.ask(prompt, need=("requirements",))
     ctx.stage("Verifying the assessment against the ontology", 85)
-    res = onto.verify_test(o.content, raw)
+    res = onto.verify_test(o.content, raw, fixed)
+    if base and base.result:
+        before = {r["text"]: r["status"] for r in base.result["requirements"]}
+        rank = {"missing": 0, "partial": 1, "covered": 2}
+        res["compare"] = {"baseline_id": base.id, "previous_score": base.score, "previous_version": base.version,
+                          "improved": sum(rank[r["status"]] > rank[before.get(r["text"], "missing")] for r in res["requirements"]),
+                          "worse": sum(rank[r["status"]] < rank[before.get(r["text"], "missing")] for r in res["requirements"])}
+        for r in res["requirements"]:
+            r["before"] = before.get(r["text"], "")
     if not res["requirements"]:
         raise Stop("The AI model could not break this use case into requirements. Describe what the user wants to know or do in a sentence or two.")
     tr.result, tr.score, tr.verdict, tr.status = res, res["score"], res["verdict"], "done"
     return {"test_run_id": tr.id, "score": res["score"]}
 
 
-KINDS = {"build": _build, "refine": _refine, "explain": _explain, "usecases": _use_cases, "test": _test, "gaps": _gaps}
+KINDS = {"build": _build, "refine": _refine, "explain": _explain, "usecases": _use_cases, "test": _test, "gaps": _gaps, "fix": _fix}
 
 
 def recover():

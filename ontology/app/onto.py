@@ -458,12 +458,24 @@ STATUS = ("covered", "partial", "missing")
 KINDS = ("concept", "relationship", "attribute", "rule")
 
 
-def verify_test(c: dict, raw: dict) -> dict:
+def verify_test(c: dict, raw: dict, fixed: list | None = None) -> dict:
     """Turn a model's coverage assessment into a checked result. Every mapped element must exist; a
     requirement claimed as covered without valid evidence is downgraded; the score is computed here."""
     ix = index(c)
     rule_ids = {r["id"] for r in c["rules"]}
     reqs = []
+    if fixed:   # a re-test: the requirement list is the earlier one, whatever the model returned, so scores compare
+        given = [r for r in (raw.get("requirements") if isinstance(raw.get("requirements"), list) else []) if isinstance(r, dict)]
+        key = lambda r: s(r.get("text") or r.get("requirement"), 400).lower()  # noqa: E731
+        by_text = {key(r): r for r in given}
+        wanted = {f["text"].lower() for f in fixed}
+        aligned = []
+        for n, f in enumerate(fixed):
+            # same wording first; otherwise the answer in the same position, unless that answer is about another requirement
+            r = by_text.get(f["text"].lower()) or (given[n] if n < len(given) and key(given[n]) not in wanted else None)
+            aligned.append({**(r or {"status": "missing", "mapped": [], "note": "The AI model did not assess this requirement in the re-test."}),
+                            "text": f["text"], "kind": f["kind"]})
+        raw = {**raw, "requirements": aligned}
     for n, r in enumerate(raw.get("requirements") if isinstance(raw.get("requirements"), list) else []):
         if not isinstance(r, dict) or not s(r.get("text") or r.get("requirement")):
             continue
@@ -499,6 +511,7 @@ def verify_test(c: dict, raw: dict) -> dict:
         reqs.append({"id": f"RQ{n + 1}", "text": s(r.get("text") or r.get("requirement"), 400), "kind": kind, "status": status,
                      "claimed": claimed, "mapped": mapped, "note": text(r.get("note") or r.get("rationale"), 800), "check": check})
     reqs = reqs[:40]
+
     counts = {k: sum(r["status"] == k for r in reqs) for k in STATUS}
     total = len(reqs)
     score = round((counts["covered"] + 0.5 * counts["partial"]) / total, 3) if total else 0.0
@@ -532,3 +545,117 @@ def verify_test(c: dict, raw: dict) -> dict:
             "suggestions": {"classes": s_classes, "properties": s_props[:40]},
             "answer_path": strs(raw.get("answer_path"), 12, 500), "sparql": text(raw.get("sparql"), 4000),
             "downgraded": sum(bool(r["check"]) for r in reqs)}
+
+
+# ---- proposed changes as items a person can tick ---------------------------------------------
+KIND_LABEL = {"classes": "Class", "properties": None, "individuals": "Value", "rules": "Rule"}
+FIELD_LABEL = {"label": "name", "definition": "definition", "parent": "kind of", "module": "module", "aligned_to": "aligned to",
+               "alignment": "alignment", "synonyms": "also called", "abstract": "grouping class", "derived_from": "derived from",
+               "kind": "kind", "domain": "from class", "range": "to / type", "cardinality": "how many", "inverse": "inverse",
+               "type": "list", "statement": "statement", "applies_to": "applies to"}
+
+
+def apply_patch(base: dict, p: dict, max_classes: int = 250) -> tuple[dict, dict]:
+    """Removals of any kind, then additions and changes (onto.merge). Used by manual edits and by applying
+    proposed changes, so both follow exactly the same rules."""
+    base = {k: (list(v) if isinstance(v, list) else dict(v) if isinstance(v, dict) else v) for k, v in base.items()}
+    for key, rm in (("individuals", "remove_individuals"), ("rules", "remove_rules"), ("use_cases", "remove_use_cases"), ("modules", "remove_modules")):
+        gone = set(strs(p.get(rm), 400, 80))
+        if gone:
+            base[key] = [x for x in base[key] if x["id"] not in gone]
+    removed_c = set(strs(p.get("remove_classes"), 400, 80))
+    if removed_c:                                     # children of a removed class move up to its parent
+        parent = {k["id"]: k["parent"] for k in base["classes"]}
+        base["classes"] = [dict(k) for k in base["classes"]]
+        for k in base["classes"]:
+            while k["parent"] in removed_c:
+                k["parent"] = parent.get(k["parent"])
+    return merge(base, p, max_classes)
+
+
+def _short(v, n=90) -> str:
+    if isinstance(v, list):
+        v = ", ".join(map(str, v)) or "—"
+    v = "yes" if v is True else "no" if v is False else ("—" if v in (None, "") else str(v))
+    return v if len(v) <= n else v[:n - 1] + "…"
+
+
+def change_items(before: dict, after: dict, reasons: dict | None = None) -> list[dict]:
+    """The difference between two versions as separate items, each with the patch that makes it.
+    item: {id, action add|modify|delete, kind, element, title, details, reason, patch, needs[]}"""
+    reasons, items = reasons or {}, []
+    b_ix, a_ix = index(before), index(after)
+    lab = lambda cid: (a_ix["classes"].get(cid) or b_ix["classes"].get(cid) or {}).get("label", cid)  # noqa: E731
+
+    def kind_of(key, x):
+        if key == "properties":
+            return "relationship" if x["kind"] == "object" else "attribute"
+        return {"classes": "class", "individuals": "value", "rules": "rule"}[key]
+
+    def describe(key, x):
+        if key == "classes":
+            return (f"a kind of {lab(x['parent'])}. " if x["parent"] else "") + (x["definition"] or "No definition.")
+        if key == "properties":
+            if x["kind"] == "object":
+                return f"{lab(x['domain'])} — {x['label']} → {lab(x['range'])} ({x['cardinality']}). {x['definition']}".strip()
+            return f"{lab(x['domain'])} has {x['label']} ({x['range']}, {x['cardinality']}). {x['definition']}".strip()
+        if key == "individuals":
+            return f"A value of {lab(x['type'])}. {x['definition']}".strip()
+        return x["statement"]
+
+    for key in ("classes", "properties", "individuals", "rules"):
+        b = {x["id"]: x for x in before.get(key, [])}
+        a = {x["id"]: x for x in after.get(key, [])}
+        for xid, x in a.items():
+            k = kind_of(key, x)
+            name = x.get("label") or xid
+            if xid not in b:
+                items.append({"id": f"add:{key}:{xid}", "action": "add", "kind": k, "element": xid, "title": f"Add {k} “{name}”",
+                              "details": describe(key, x), "reason": reasons.get(xid, ""), "patch": {key: [x]}, "needs": []})
+            elif x != b[xid]:
+                changed = [f for f in x if x.get(f) != b[xid].get(f) and f in FIELD_LABEL]
+                if not changed:
+                    continue
+                details = "; ".join(f"{FIELD_LABEL[f]}: {_short(lab(b[xid][f]) if f in ('parent', 'domain', 'range', 'type') else b[xid].get(f))} → "
+                                    f"{_short(lab(x[f]) if f in ('parent', 'domain', 'range', 'type') else x.get(f))}" for f in changed)
+                items.append({"id": f"modify:{key}:{xid}", "action": "modify", "kind": k, "element": xid, "title": f"Change {k} “{name}”",
+                              "details": details, "reason": reasons.get(xid, ""), "patch": {key: [{"id": xid, **{f: x[f] for f in changed}}]}, "needs": []})
+        for xid, x in b.items():
+            if xid not in a:
+                k = kind_of(key, x)
+                extra = ""
+                if key == "classes":
+                    n = sum(p["domain"] == xid or p["range"] == xid for p in before["properties"])
+                    extra = f" Its {n} relationship(s) and attribute(s) go with it." if n else ""
+                rm = {"classes": "remove_classes", "properties": "remove_properties", "individuals": "remove_individuals", "rules": "remove_rules"}[key]
+                items.append({"id": f"delete:{key}:{xid}", "action": "delete", "kind": k, "element": xid, "title": f"Delete {k} “{x.get('label') or xid}”",
+                              "details": describe(key, x) + extra, "reason": reasons.get(xid, ""), "patch": {rm: [xid]}, "needs": []})
+    # an addition that refers to another new element needs that element too
+    new_classes = {i["element"]: i["id"] for i in items if i["action"] == "add" and i["kind"] == "class"}
+    new_props = {i["element"]: i["id"] for i in items if i["action"] == "add" and i["kind"] in ("relationship", "attribute")}
+    for i in items:
+        if i["action"] == "delete":
+            continue
+        x = next(iter(v for v in i["patch"].values()))[0]
+        refs = [x.get("parent"), x.get("domain"), x.get("range"), x.get("type"), *(x.get("applies_to") or [])]
+        i["needs"] = sorted({new_classes[r] for r in refs if r in new_classes and new_classes[r] != i["id"]} |
+                            ({new_props[x["inverse"]]} if x.get("inverse") in new_props and new_props[x.get("inverse")] != i["id"] else set()))
+    # deleting a class takes the properties defined on it along: those deletions belong to it
+    del_props = {i["element"]: i["id"] for i in items if i["action"] == "delete" and i["kind"] in ("relationship", "attribute")}
+    for i in items:
+        if i["action"] == "delete" and i["kind"] == "class":
+            i["needs"] = sorted(pid for e, pid in del_props.items()
+                                if any(p["id"] == e and i["element"] in (p["domain"], p["range"]) for p in before["properties"]))
+    order = {"add": 0, "modify": 1, "delete": 2}
+    kinds = {"class": 0, "relationship": 1, "attribute": 2, "value": 3, "rule": 4}
+    items.sort(key=lambda i: (order[i["action"]], kinds[i["kind"]], i["title"]))
+    return items
+
+
+def apply_items(content: dict, items: list[dict], max_classes: int = 250) -> tuple[dict, dict]:
+    """Apply chosen items together as one patch."""
+    patch: dict = {}
+    for i in items:
+        for k, v in i["patch"].items():
+            patch.setdefault(k, []).extend(v)
+    return apply_patch(content, patch, max_classes)

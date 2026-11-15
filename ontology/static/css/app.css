@@ -328,3 +328,4 @@ pre.code { margin: 0; background: var(--code-bg); border-radius: 9px; padding: 1
 .dg.dg-max .dg-scroll { flex: 1; } .dg-max .split .dg-scroll { height: calc(100vh - 150px); }
 .dg-max .split { grid-template-columns: minmax(0, 1fr) 360px; } .dg-max .side { max-height: calc(100vh - 90px); top: 0; }
 body.dg-max-open { overflow: hidden; }
+table.changes td { vertical-align: top; } table.changes tr.dim td { opacity: .6; }

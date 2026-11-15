@@ -135,6 +135,7 @@ class TestRun(Base):
     error: Mapped[str] = mapped_column(Text, default="")
     model_label: Mapped[str] = mapped_column(String(255), default="")
     fixes_applied: Mapped[bool] = mapped_column(Boolean, default=False)
+    baseline_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)   # a re-test of the same requirements as this run
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
 
 

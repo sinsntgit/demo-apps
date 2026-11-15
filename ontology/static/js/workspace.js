@@ -10,7 +10,7 @@ const TABS = [['overview', 'Overview'], ['standards', 'Standards'], ['diagram', 
 const EXPORTS = [['pdf', '📕 Handbook (PDF)', 'Full explanation with diagrams'], ['pptx', '📊 Presentation (PowerPoint)', 'Slides for a walkthrough'],
   ['xlsx', '📗 Workbook (Excel)', 'Every element in readable sheets'], ['owl', '🦉 OWL (RDF/XML)', 'For Protégé and reasoners'], ['ttl', '🐢 Turtle (.ttl)', 'For triple stores'],
   ['jsonld', '{ } JSON-LD', 'Linked data as JSON'], ['json', '{ } JSON', 'This application’s own format']];
-export const JOB = { build: 'Building the ontology', refine: 'Refining the ontology', explain: 'Rewriting the explanation', usecases: 'Writing use cases', gaps: 'Reviewing for gaps', test: 'Testing a use case' };
+export const JOB = { build: 'Building the ontology', refine: 'Refining the ontology', explain: 'Rewriting the explanation', usecases: 'Writing use cases', gaps: 'Reviewing for gaps', fix: 'Proposing fixes', test: 'Testing a use case' };
 
 export async function workspaceView(root, id, tab, arg) {
   const ctx = { id: Number(id), models: await api('GET', '/api/models').catch(() => []) };
@@ -90,7 +90,7 @@ export async function workspaceView(root, id, tab, arg) {
       if (job.status === 'done' || job.status === 'error') {
         if (job.status === 'error') modal('The AI job did not finish', h('div', { class: 'stack' }, h('div', { class: 'banner bad' }, job.error),
           h('p', { class: 'small muted' }, 'Nothing was changed. You can try again, choose another model, or narrow the scope.')));
-        else if (job.kind === 'gaps') toast('Gap review finished.'); else toast(doneText(job));
+        else if (job.kind === 'gaps' || job.kind === 'fix') toast('Proposals ready — see Quality & reasoning.'); else toast(doneText(job));
         return ctx.reload();
       }
       paint(job); setTimeout(tick, 1500);

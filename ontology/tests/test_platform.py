@@ -97,12 +97,20 @@ def test_test_bed_checks_the_models_claims(built):
     assert [p["id"] for p in res["suggestions"]["properties"]] == ["coveredBy"]      # the proposal to a non-existent class is dropped
     assert any(n["style"] == "gap" for n in t["diagram"]["nodes"]) and any(e["style"] == "gap" for e in t["diagram"]["edges"])
     # close the gap, test again: coverage rises
-    a = c.post(f"/api/ontologies/{oid}/tests/{t['id']}/apply", headers=H).json()
-    assert a["added"] == 2
-    r2 = c.post(f"/api/ontologies/{oid}/tests", headers=H, json={"text": "Track warranty claims for products customers bought", "model_id": mid}).json()
+    items = {i["id"]: i for i in t["items"]}
+    assert set(items) == {"add:classes:Warranty", "add:properties:coveredBy"} and items["add:properties:coveredBy"]["needs"] == ["add:classes:Warranty"]
+    # choosing only the relationship brings the class it needs along
+    a = c.post(f"/api/ontologies/{oid}/changes/apply", headers=H, json={"source": "test", "ref": t["id"], "items": ["add:properties:coveredBy"]}).json()
+    assert a["added"] == 2 and a["applied"] == 2
+    # "Test again" re-checks the SAME requirements, so the two scores compare
+    r2 = c.post(f"/api/ontologies/{oid}/tests", headers=H, json={"text": "ignored on a re-test", "model_id": mid, "baseline_id": t["id"]}).json()
     wait_job(c, r2["job"]["id"])
     t2 = c.get(f"/api/ontologies/{oid}/tests/{r2['test']['id']}").json()
-    assert t2["score"] == 1.0 and t2["verdict"] == "addressed" and t2["version"] == a["version"]
+    assert t2["text"] == t["text"] and t2["version"] == a["version"]
+    assert [x["text"] for x in t2["result"]["requirements"]] == [x["text"] for x in res["requirements"]]
+    assert t2["score"] == 1.0 and t2["result"]["compare"] == {"baseline_id": t["id"], "previous_score": 0.25, "previous_version": t["version"], "improved": 3, "worse": 0}
+    assert [x["before"] for x in t2["result"]["requirements"]] == ["covered", "missing", "missing", "missing"]
+    assert t2["items"] == []                                          # nothing left to propose
     # a "covered" attribute with only a class as evidence is downgraded to partial
     r3 = c.post(f"/api/ontologies/{oid}/tests", headers=H, json={"text": "Does the weather affect store sales?", "model_id": mid}).json()
     wait_job(c, r3["job"]["id"])
@@ -274,19 +282,67 @@ def test_import_turtle_round_trip(admin):
     c.delete(f"/api/ontologies/{r['id']}", headers=H)
 
 
-def test_gap_review_proposes_without_changing(built):
+def test_gap_review_proposes_items_and_applies_only_the_chosen(built):
     c, mid, oid, _ = built
     v = c.get(f"/api/ontologies/{oid}").json()["version"]
     c.post(f"/api/ontologies/{oid}/edit", headers=H, json={"patch": {"remove_classes": ["GiftCard"]}})
     j = wait_job(c, c.post(f"/api/ontologies/{oid}/run/gaps", headers=H, json={"model_id": mid}).json()["id"])
     assert j["status"] == "done" and j["result"]["findings"] and "proposed" not in j["result"]
-    assert [k["id"] for k in j["result"]["added"]["classes"]] == ["GiftCard"]
+    rv = c.get(f"/api/ontologies/{oid}/review/gaps").json()
+    items = {i["id"]: i for i in rv["items"]}
+    assert {"add:classes:GiftCard", "add:properties:redeems", "add:properties:cardBalance"} <= set(items) and not rv["stale"]
+    assert items["add:classes:GiftCard"]["reason"] == "Gift cards are a payment means the scope mentions."
+    assert items["add:properties:redeems"]["needs"] == ["add:classes:GiftCard"]
     o = c.get(f"/api/ontologies/{oid}").json()
     assert o["version"] == v + 1 and not any(k["id"] == "GiftCard" for k in o["content"]["classes"])     # nothing applied yet
-    a = c.post(f"/api/ontologies/{oid}/gaps/{j['id']}/apply", headers=H)
-    assert a.status_code == 200
-    assert any(k["id"] == "GiftCard" for k in c.get(f"/api/ontologies/{oid}").json()["content"]["classes"])
-    assert c.post(f"/api/ontologies/{oid}/gaps/{j['id']}/apply", headers=H).status_code == 400
+    assert c.post(f"/api/ontologies/{oid}/changes/apply", headers=H, json={"source": "review", "ref": j["id"], "items": ["nope"]}).status_code == 409
+    a = c.post(f"/api/ontologies/{oid}/changes/apply", headers=H, json={"source": "review", "ref": j["id"], "items": ["add:classes:GiftCard"]}).json()
+    o = c.get(f"/api/ontologies/{oid}").json()
+    assert a["applied"] == 1 and any(k["id"] == "GiftCard" for k in o["content"]["classes"]) and not any(p["id"] == "redeems" for p in o["content"]["properties"])
+    left = c.get(f"/api/ontologies/{oid}/review/gaps").json()       # what was not chosen is still on offer, against the new version
+    assert not left["stale"] and "add:classes:GiftCard" not in {i["id"] for i in left["items"]} and "add:properties:redeems" in {i["id"] for i in left["items"]}
+
+
+def test_reasoner_fixes_and_ai_fix_proposals(admin):
+    c, mid = admin
+    sample = next(o for o in c.get("/api/library").json()["ontologies"] if o["name"].startswith("Sample:"))
+    oid = c.post(f"/api/ontologies/{sample['id']}/duplicate", headers=H, json={"name": "Fix me"}).json()["id"]
+    c.post(f"/api/ontologies/{oid}/edit", headers=H, json={"patch": {
+        "rules": [{"id": "R9", "kind": "disjoint", "statement": "A store is never a sales channel.", "applies_to": ["Store", "SalesChannel"]}],
+        "properties": [{"id": "operates", "kind": "object", "domain": "Party", "range": "Store", "inverse": "operatedBy", "definition": "x"},
+                       {"id": "operatedBy", "kind": "object", "domain": "Party", "range": "Party", "inverse": "operates", "definition": "y"}]}})
+    r = c.post(f"/api/ontologies/{oid}/reason/owlrl", headers=H).json()
+    assert r["problems"] and {f["group"] for f in r["fixes"]} == {"inv:operatedBy:operates", "disj:R9:Store"}
+    rec = [f for f in r["fixes"] if f["recommended"]]
+    assert len(rec) == 2 and any(f["id"].endswith(":mirror:operatedBy") for f in rec)      # keep the more specific "operates -> Store"
+    alts = [f["id"] for f in r["fixes"] if f["group"] == "disj:R9:Store"]
+    bad = c.post(f"/api/ontologies/{oid}/changes/apply", headers=H, json={"source": "reasoner", "items": alts})
+    assert bad.status_code == 400 and "alternatives" in bad.json()["detail"]
+    ok = c.post(f"/api/ontologies/{oid}/changes/apply", headers=H, json={"source": "reasoner", "items": [f["id"] for f in rec]}).json()
+    assert ok["applied"] == 2
+    again = c.post(f"/api/ontologies/{oid}/reason/owlrl", headers=H).json()
+    assert again["consistent"] and not again["problems"] and not again["fixes"]
+    o = c.get(f"/api/ontologies/{oid}").json()
+    assert next(p for p in o["content"]["properties"] if p["id"] == "operates")["range"] == "Store"
+    # AI proposals for what the reasoner and the checks found: itemised with reasons, nothing applied until chosen
+    j = wait_job(c, c.post(f"/api/ontologies/{oid}/run/fix", headers=H, json={"model_id": mid}).json()["id"])
+    assert j["status"] == "done", j
+    rv = c.get(f"/api/ontologies/{oid}/review/fix").json()
+    items = {i["id"]: i for i in rv["items"]}
+    assert set(items) >= {"add:properties:brandName", "modify:classes:Brand", "add:rules:R10", "delete:properties:appliedPromotion"}
+    assert items["delete:properties:appliedPromotion"]["reason"] == "Promotions are out of scope for this test."
+    assert "definition:" in items["modify:classes:Brand"]["details"] and items["add:rules:R10"]["kind"] == "rule"
+    assert c.get(f"/api/ontologies/{oid}").json()["version"] == o["version"]
+    a = c.post(f"/api/ontologies/{oid}/changes/apply", headers=H, json={"source": "review", "ref": j["id"],
+                                                                         "items": ["add:rules:R10", "modify:classes:Brand"]}).json()
+    o2 = c.get(f"/api/ontologies/{oid}").json()
+    assert a["applied"] == 2 and any(x["id"] == "R10" for x in o2["content"]["rules"])
+    assert any(p["id"] == "appliedPromotion" for p in o2["content"]["properties"])            # not chosen, not deleted
+    assert next(k for k in o2["content"]["classes"] if k["id"] == "Brand")["definition"].endswith("to customers.")
+    vic = make_user(c, "fix-vic@test.local", "viewer")
+    assert vic.post(f"/api/ontologies/{oid}/changes/apply", headers=H, json={"source": "reasoner"}).status_code == 404
+    c.delete(f"/api/ontologies/{oid}", headers=H)
+    c.delete(f"/api/admin/users/{next(u['id'] for u in c.get('/api/admin/users').json() if u['email'] == 'fix-vic@test.local')}", headers=H)
 
 
 def test_schema_upgrade_of_an_older_database():

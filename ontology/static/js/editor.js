@@ -341,10 +341,10 @@ export async function testTab(el, ctx) {
   const preset = sessionStorage.getItem('onto-test-text');
   if (ctx.arg === 'new' && preset) { text.value = preset; sessionStorage.removeItem('onto-test-text'); }
   const run = h('button', { class: 'btn primary', disabled: !ctx.models.length, onclick: () => start(text.value) }, '🧪 Run test');
-  async function start(t) {
+  async function start(t, baseline) {
     await busy(run, async () => {
-      const r = await api('POST', `/api/ontologies/${ctx.id}/tests`, { text: t, model_id: Number(model.value) });
-      fill(detail, h('div', { class: 'card row' }, h('span', { class: 'spinner' }), h('span', {}, 'Breaking the use case into requirements and checking each one against the ontology… (usually under a minute)')));
+      const r = await api('POST', `/api/ontologies/${ctx.id}/tests`, { text: t, model_id: Number(model.value), baseline_id: baseline || null });
+      fill(detail, h('div', { class: 'card row' }, h('span', { class: 'spinner' }), h('span', {}, baseline ? 'Re-checking the same requirements against the current ontology… (usually under a minute)' : 'Breaking the use case into requirements and checking each one against the ontology… (usually under a minute)')));
       detail.scrollIntoView({ block: 'nearest' });
       for (;;) {
         await new Promise(res => setTimeout(res, 1300));
@@ -368,14 +368,18 @@ export async function testTab(el, ctx) {
     const r = t.result, n = r.counts, tot = n.covered + n.partial + n.missing, [vc, vl] = VERDICT[t.verdict];
     const color = t.verdict === 'addressed' ? 'var(--good)' : t.verdict === 'partly' ? '#d99a1c' : 'var(--bad)';
     const stale = t.version !== t.current_version;
-    const sug = r.suggestions, hasSug = sug.classes.length + sug.properties.length > 0;
+    const cmp = r.compare, before = cmp ? (r.requirements.some(x => x.before) ? true : false) : false;
     const w = k => `flex:${n[k]}`;
     return h('div', { class: 'card stack' },
       h('div', { class: 'row wrap top' }, h('div', { style: 'flex:1;min-width:260px' }, h('h2', { style: 'margin:0 0 4px' }, r.title || 'Test result'), h('div', { class: 'muted' }, '“' + t.text + '”'),
         h('div', { class: 'small dim', style: 'margin-top:4px' }, `Tested on version ${t.version} with ${t.model} · ${fmtTime(t.at)} · ${t.user}`)),
-        h('button', { class: 'btn', onclick: () => start(t.text) }, '↻ Test again'),
+        h('button', { class: 'btn', title: 'Check the same requirements again against the current version, so the scores compare', onclick: () => start(t.text, t.id) }, '↻ Test again'),
+        h('button', { class: 'btn ghost', title: 'Let the AI break the use case down afresh (the score may then differ for that reason alone)', onclick: () => start(t.text) }, 'New breakdown'),
         ctx.canEdit ? h('button', { class: 'btn', onclick: e => busy(e.target, async () => { const x = await api('POST', `/api/ontologies/${ctx.id}/tests/${t.id}/save-use-case`); toast(`Saved as use case ${x.id}.`); await ctx.load(); }) }, '＋ Save as use case') : null),
-      stale ? h('div', { class: 'banner warn' }, `The ontology has changed since this test (it is now version ${t.current_version}). Press “Test again” for an up-to-date result.`) : null,
+      stale ? h('div', { class: 'banner warn' }, `The ontology has changed since this test (it is now version ${t.current_version}). Press “Test again” to re-check the same requirements against it.`) : null,
+      cmp ? h('div', { class: 'banner ' + (t.score > cmp.previous_score ? 'good' : t.score < cmp.previous_score ? 'warn' : 'info') },
+        h('b', {}, `Re-test of the same ${r.requirements.length} requirements: ${pct(cmp.previous_score)} on version ${cmp.previous_version} → ${pct(t.score)} on version ${t.version}. `),
+        `${cmp.improved} improved, ${cmp.worse} got worse.`, cmp.worse ? ' The “Before” column shows which; the “Why” column says what the AI model now finds lacking.' : '') : null,
       h('div', { class: 'gauge' }, h('div', { class: 'ring', style: `--p:${Math.round(t.score * 100)};--c:${color}` }, h('div', {}, pct(t.score))),
         h('div', { style: 'flex:1;min-width:260px' }, h('div', { class: 'row', style: 'margin-bottom:8px' }, h('span', { class: 'badge ' + vc, style: 'font-size:13px;padding:3px 12px' }, vl),
           h('span', { class: 'small muted' }, `${tot} requirements checked`)),
@@ -384,20 +388,21 @@ export async function testTab(el, ctx) {
           h('p', { style: 'margin:10px 0 0' }, r.summary))),
       r.downgraded ? h('div', { class: 'banner info' }, `${r.downgraded} requirement(s) were marked down by the application’s own check: the AI model said they were covered, but the elements it pointed to do not exist or are of the wrong kind. See “Checked” below.`) : null,
       h('div', {}, h('h3', {}, 'Requirement by requirement'), h('div', { class: 'tbl-wrap', style: 'max-height:none' }, h('table', { class: 'tbl' },
-        h('thead', {}, h('tr', {}, ['What the use case needs', 'Type', 'Status', 'Evidence in the ontology', 'Why'].map(x => h('th', {}, x)))),
-        h('tbody', {}, r.requirements.map(x => h('tr', {}, h('td', {}, x.text), h('td', { class: 'small' }, x.kind), h('td', { class: 'nowrap' }, h('span', { class: 'st ' + x.status }), x.status),
+        h('thead', {}, h('tr', {}, ['What the use case needs', 'Type', before ? 'Before' : null, 'Status', 'Evidence in the ontology', 'Why'].filter(Boolean).map(x => h('th', {}, x)))),
+        h('tbody', {}, r.requirements.map(x => h('tr', {}, h('td', {}, x.text), h('td', { class: 'small' }, x.kind),
+          before ? h('td', { class: 'nowrap small dim' }, x.before ? [h('span', { class: 'st ' + x.before }), x.before] : '—') : null,
+          h('td', { class: 'nowrap' }, h('span', { class: 'st ' + x.status }), x.status,
+            before && x.before && x.before !== x.status ? h('span', { class: 'small', style: `margin-left:4px;color:${['missing', 'partial', 'covered'].indexOf(x.status) > ['missing', 'partial', 'covered'].indexOf(x.before) ? 'var(--good)' : 'var(--bad)'}` },
+              ['missing', 'partial', 'covered'].indexOf(x.status) > ['missing', 'partial', 'covered'].indexOf(x.before) ? '▲' : '▼') : null),
           h('td', {}, x.mapped.length ? x.mapped.map((m, i) => [i ? ', ' : '', m.type === 'class' ? h('a', { href: `#/o/${ctx.id}/diagram/${m.id}` }, label(ctx, m.id)) : h('span', { title: m.type }, ctx.c.properties.find(p => p.id === m.id)?.label || m.id)]) : h('span', { class: 'dim' }, '—')),
           h('td', { class: 'small' }, x.note, x.check ? h('div', { style: 'color:var(--warn);margin-top:3px' }, 'Checked: ' + x.check) : null))))))),
       t.diagram && t.diagram.nodes.length ? h('div', {}, h('h3', {}, 'What it touches in the ontology'), diagram(t.diagram, { maxHeight: 460 })) : null,
       r.disconnected.length ? h('div', { class: 'banner warn' }, h('b', {}, 'Not joined up: '), 'the use case needs these groups of classes together, but no relationship links them to the rest — ',
         r.disconnected.map(g => g.map(x => label(ctx, x)).join(', ')).join('; '), '.') : null,
       r.gaps.length ? h('div', {}, h('h3', {}, 'Gaps'), h('ul', { class: 'bul' }, r.gaps.map(g => h('li', {}, h('b', {}, g.text), g.impact ? h('span', { class: 'muted' }, ' — ' + g.impact) : null)))) : null,
-      hasSug ? h('div', { class: 'card', style: 'background:var(--surface-2)' }, h('div', { class: 'row wrap' }, h('h3', { style: 'margin:0;flex:1' }, `Proposed additions to close the gaps (${sug.classes.length + sug.properties.length})`),
-        t.fixes_applied ? h('span', { class: 'badge good' }, '✓ Added to the ontology') : ctx.canEdit ? h('button', { class: 'btn primary', disabled: stale, title: stale ? 'Test again first — the ontology has changed' : '', onclick: e => busy(e.target, async () => {
-          const x = await api('POST', `/api/ontologies/${ctx.id}/tests/${t.id}/apply`); toast(`${x.added} element(s) added — now version ${x.version}. Test again to confirm.`); await ctx.load(); open(t.id);
-        }) }, '＋ Add these to the ontology') : h('span', { class: 'small dim' }, 'Ask someone with edit access to add them.')),
-        h('ul', { class: 'bul' }, sug.classes.map(k => h('li', {}, h('b', {}, 'Class ' + k.label), k.parent ? ` (a kind of ${label(ctx, k.parent)})` : '', k.definition ? ' — ' + k.definition : '')),
-          sug.properties.map(p => h('li', {}, h('b', {}, (p.kind === 'object' ? 'Relationship ' : 'Attribute ') + p.label), ` — ${label(ctx, p.domain) || p.domain} → ${p.kind === 'object' ? (label(ctx, p.range) || p.range) : p.range}`, p.definition ? '. ' + p.definition : '')))) : null,
+      t.items.length ? h('div', { class: 'card stack', style: 'background:var(--surface-2)' }, h('h3', { style: 'margin:0' }, `Proposed changes to close the gaps (${t.items.length})`),
+        changeList(ctx, t.items, { source: 'test', ref: t.id, canApply: ctx.canEdit,
+          onApplied: async () => { await ctx.load(); open(t.id); toast('Press “Test again” to re-check the same requirements against the new version.'); } })) : null,
       r.answer_path.length ? h('div', {}, h('h3', {}, 'How it would be answered'), h('ol', { class: 'bul' }, r.answer_path.map(x => h('li', {}, x)))) : null,
       r.sparql ? h('details', {}, h('summary', { style: 'cursor:pointer;color:var(--accent)' }, 'Query (SPARQL)'), h('pre', { class: 'code', style: 'margin-top:8px' }, r.sparql)) : null);
   }
@@ -418,12 +423,68 @@ export async function testTab(el, ctx) {
   if (ctx.arg && /^\d+$/.test(ctx.arg)) open(Number(ctx.arg));
 }
 
+// ---- Proposed changes: a list a person ticks and applies ---------------------------------------
+const ACTION = { add: ['good', 'Add'], modify: ['info', 'Change'], delete: ['bad', 'Delete'] };
+/** items: from the server ({id, action, kind, title, details, reason, needs, group, recommended}).
+ *  opts: source ('reasoner' | 'review' | 'test'), ref, canApply, stale, applied (ids), defaultAll, onApplied(result) */
+export function changeList(ctx, items, opts) {
+  if (!items.length) return h('div', { class: 'small dim' }, opts.empty || 'Nothing to change.');
+  const box = {}, needers = {};
+  items.forEach(i => (i.needs || []).forEach(n => (needers[n] = needers[n] || []).push(i.id)));
+  const byId = Object.fromEntries(items.map(i => [i.id, i]));
+  const btn = h('button', { class: 'btn primary' });
+  const count = () => { const n = Object.values(box).filter(b => b.checked).length; btn.textContent = `Apply ${n} selected change${n === 1 ? '' : 's'}`; btn.disabled = !n || opts.stale; };
+  const tick = (id, on, seen = new Set()) => {
+    if (seen.has(id) || !box[id]) return; seen.add(id);
+    box[id].checked = on;
+    const i = byId[id];
+    if (on) {
+      (i.needs || []).forEach(n => tick(n, true, seen));                                   // what it depends on comes along
+      if (i.group) items.filter(x => x.group === i.group && x.id !== id).forEach(x => tick(x.id, false, seen));   // alternatives: one only
+    } else (needers[id] || []).forEach(n => tick(n, false, seen));                       // what depends on it cannot stay
+  };
+  const groups = {};
+  items.forEach(i => { if (i.group) groups[i.group] = (groups[i.group] || 0) + 1; });
+  const rows = items.map(i => {
+    const done = (opts.applied || []).includes(i.id);
+    const def = done ? false : i.group ? !!i.recommended : opts.defaultAll !== false;
+    const cb = box[i.id] = h('input', { type: i.group && groups[i.group] > 1 ? 'checkbox' : 'checkbox', checked: def, disabled: !opts.canApply || done || opts.stale, style: 'width:auto',
+      'aria-label': i.title, onchange: e => { tick(i.id, e.target.checked); count(); } });
+    const [cls_, word] = ACTION[i.action];
+    const needs = (i.needs || []).map(n => byId[n]?.title).filter(Boolean);
+    return h('tr', { class: done ? 'dim' : '' }, h('td', { style: 'width:28px' }, cb),
+      h('td', { class: 'nowrap' }, h('span', { class: 'badge ' + cls_ }, word), i.group && groups[i.group] > 1 ? h('div', { class: 'small dim', style: 'margin-top:3px' }, i.recommended ? 'recommended' : 'alternative') : null),
+      h('td', {}, h('b', {}, i.title), h('div', { class: 'small muted' }, i.details),
+        needs.length ? h('div', { class: 'small dim' }, (i.action === 'delete' ? 'Also removes: ' : 'Needs: ') + needs.join('; ')) : null,
+        done ? h('div', { class: 'small', style: 'color:var(--good)' }, '✓ applied') : null),
+      h('td', { class: 'small' }, i.reason || h('span', { class: 'dim' }, '—')));
+  });
+  btn.onclick = () => busy(btn, async () => {
+    const chosen = Object.keys(box).filter(id => box[id].checked);
+    const r = await api('POST', `/api/ontologies/${ctx.id}/changes/apply`, { source: opts.source, ref: opts.ref ?? null, items: chosen });
+    toast(`${r.applied} change${r.applied === 1 ? '' : 's'} applied — now version ${r.version}.`);
+    await opts.onApplied?.(r);
+  });
+  const all = on => { items.forEach(i => { if (!box[i.id].disabled) box[i.id].checked = false; }); if (on) items.forEach(i => { if (!box[i.id].disabled && (!i.group || i.recommended)) tick(i.id, true); }); count(); };
+  count();
+  const alt = Object.values(groups).some(n => n > 1);
+  return h('div', { class: 'stack' },
+    alt ? h('div', { class: 'small muted' }, 'Where two options fix the same problem, only one can be chosen; the recommended one is ticked.') : null,
+    h('div', { class: 'tbl-wrap', style: 'max-height:none' }, h('table', { class: 'tbl changes' },
+      h('thead', {}, h('tr', {}, h('th', {}), h('th', {}, 'Action'), h('th', {}, 'What changes'), h('th', {}, 'Why'))), h('tbody', {}, rows))),
+    opts.canApply ? h('div', { class: 'row wrap' }, btn, h('button', { class: 'btn sm', onclick: () => all(true) }, 'Select all'), h('button', { class: 'btn sm', onclick: () => all(false) }, 'Select none'),
+      opts.stale ? h('span', { class: 'small', style: 'color:var(--warn)' }, 'The ontology has changed since these were proposed. Run it again first.') : h('span', { class: 'small dim' }, 'Nothing changes until you apply. Every change is saved as a new version, so it can be undone from Versions.'))
+      : h('div', { class: 'small dim' }, 'Ask someone with edit access to apply these changes.'));
+}
+
 // ---- Quality & reasoning -----------------------------------------------------------------------
 export async function qualityTab(el, ctx) {
   const q = ctx.o.quality, eng = ctx.o.reasoners;
-  const rOut = h('div', {}), gOut = h('div', {});
+  const rOut = h('div', {}), fixOut = h('div', {}), gOut = h('div', {});
   const names = items => items.map((x, i) => [i ? ', ' : '', cls(ctx, x) ? h('a', { href: `#/o/${ctx.id}/diagram/${x}` }, label(ctx, x)) : x]);
-  const reason = engine => async e => busy(e.target, async () => {
+  let lastEngine = null;
+  const reason = engine => async e => busy(e?.target, async () => {
+    lastEngine = engine;
     fill(rOut, h('div', { class: 'row' }, h('span', { class: 'spinner' }), 'Reasoning…'));
     const r = await api('POST', `/api/ontologies/${ctx.id}/reason/${engine}`);
     const L = r.logic;
@@ -433,30 +494,31 @@ export async function qualityTab(el, ctx) {
         ` ${eng[engine].label}, version ${r.version}, ${r.seconds}s.`),
       r.problems.length ? h('ul', { class: 'bul' }, r.problems.map(p => h('li', {}, h('span', { class: 'sev ' + p.severity }, p.severity + ': '), p.text))) : null,
       r.unsatisfiable.length ? h('div', {}, h('b', {}, 'Classes that can never have a member: '), names(r.unsatisfiable)) : null,
+      r.fixes.length ? h('div', { class: 'card stack', style: 'background:var(--surface-2)' }, h('h3', { style: 'margin:0' }, `Changes that remove these contradictions (${r.fixes.length})`),
+        changeList(ctx, r.fixes, { source: 'reasoner', canApply: ctx.canEdit, onApplied: async () => { await ctx.load(); reason(engine)(); } })) : null,
       h('div', { class: 'small muted' }, h('b', {}, 'What there was to test: '), `${L.subclass} “is a kind of” statements, ${L.domain_range} properties with a domain and range, ${L.inverse} inverse pairs, ${L.mandatory} mandatory properties, ${L.disjoint} “never overlap” pairs, ${L.typed_values} typed values.`,
         r.inferred?.statements ? ` The reasoner derived ${r.inferred.statements.toLocaleString()} further statements` + (r.inferred.examples.length ? ` (for example: ${r.inferred.examples.slice(0, 3).join('; ')}).` : '.') : ''),
-      r.notes.map(n => h('div', { class: 'banner info' }, n))));
+      r.notes.map(n => h('div', { class: 'banner info' }, n)),
+      ctx.canEdit ? h('div', { class: 'small muted' }, 'To add what the reasoner cannot invent — missing definitions, “never overlap” rules, fixes for the modelling checks — use ', h('b', {}, '✨ Propose fixes with AI'), ' below.') : null));
   });
-  const gaps = await api('GET', `/api/ontologies/${ctx.id}/gaps`).catch(() => ({ job: null }));
-  const drawGaps = () => {
-    const j = gaps.job;
-    if (!j) return fill(gOut, h('p', { class: 'small dim' }, 'No review has been run yet.'));
-    if (j.status === 'running' || j.status === 'queued') return fill(gOut, h('div', { class: 'row' }, h('span', { class: 'spinner' }), 'A review is running — see the progress at the top of the page.'));
-    if (j.status === 'error') return fill(gOut, h('div', { class: 'banner bad' }, j.error));
-    const r = j.result, add = r.added, nAdd = add.classes.length + add.properties.length + add.individuals.length + add.rules.length;
-    fill(gOut, h('div', { class: 'stack' }, h('div', { class: 'small dim' }, `Reviewed by ${j.model} on version ${r.on_version} · ${fmtTime(j.at)} · ~$${j.cost.toFixed(2)}`),
-      gaps.stale && !r.applied ? h('div', { class: 'banner warn' }, 'The ontology has changed since this review. Run it again before applying.') : null,
-      h('div', {}, h('b', {}, `Gaps found (${r.findings.length})`), r.findings.length ? h('ul', { class: 'bul' }, r.findings.map(f => h('li', {}, f))) : h('p', { class: 'small dim' }, 'The model found no gaps.')),
-      nAdd + r.changed.length + r.removed.length ? h('div', { class: 'card', style: 'background:var(--surface-2)' }, h('div', { class: 'row wrap' }, h('b', { style: 'flex:1' }, `Proposed changes: ${nAdd} to add, ${r.changed.length} to correct, ${r.removed.length} to remove`),
-        r.applied ? h('span', { class: 'badge good' }, '✓ Applied') : ctx.canEdit ? h('button', { class: 'btn primary', disabled: gaps.stale, onclick: e => busy(e.target, async () => {
-          const x = await api('POST', `/api/ontologies/${ctx.id}/gaps/${j.id}/apply`); toast(`Applied — now version ${x.version}.`); await ctx.reload();
-        }) }, 'Apply these changes') : null),
-        h('ul', { class: 'bul' }, add.classes.map(k => h('li', {}, h('b', {}, 'Class ' + k.label), k.definition ? ' — ' + k.definition : '')),
-          add.properties.map(p => h('li', {}, h('b', {}, (p.kind === 'object' ? 'Relationship ' : 'Attribute ') + p.label), ` — ${label(ctx, p.domain) || p.domain} → ${p.kind === 'object' ? (label(ctx, p.range) || p.range) : p.range}`)),
-          add.individuals.length ? h('li', {}, h('b', {}, 'Values: '), add.individuals.map(i => i.label).join(', ')) : null, add.rules.map(x => h('li', {}, h('b', {}, 'Rule: '), x.statement)),
-          r.changed.length ? h('li', {}, h('b', {}, 'Corrected: '), r.changed.join(', ')) : null, r.removed.length ? h('li', {}, h('b', {}, 'Removed: '), r.removed.join(', ')) : null)) : null));
+  const review = (kind, out) => async () => {
+    const d = await api('GET', `/api/ontologies/${ctx.id}/review/${kind}`).catch(() => ({ job: null }));
+    const j = d.job;
+    if (!j) return fill(out, h('p', { class: 'small dim' }, 'Not run yet.'));
+    if (j.status === 'running' || j.status === 'queued') return fill(out, h('div', { class: 'row' }, h('span', { class: 'spinner' }), 'Running — see the progress at the top of the page.'));
+    if (j.status === 'error') return fill(out, h('div', { class: 'banner bad' }, j.error));
+    const r = j.result;
+    fill(out, h('div', { class: 'stack' }, h('div', { class: 'small dim' }, `By ${j.model} on version ${r.on_version} · ${fmtTime(j.at)} · ~$${j.cost.toFixed(2)}`),
+      h('div', {}, h('b', {}, kind === 'gaps' ? `Gaps found (${r.findings.length})` : `Problems addressed (${r.findings.length})`),
+        r.findings.length ? h('ul', { class: 'bul' }, r.findings.map(f => h('li', {}, f))) : h('p', { class: 'small dim' }, 'Nothing found.')),
+      d.stale ? h('div', { class: 'banner warn' }, 'The ontology has changed since this was run. Run it again to get proposals for the current version.') :
+        h('div', {}, h('b', {}, `Proposed changes (${d.items.length})`), h('div', { style: 'margin-top:8px' },
+          changeList(ctx, d.items, { source: 'review', ref: j.id, canApply: ctx.canEdit, applied: d.applied, empty: (d.applied || []).length ? 'Every proposed change has been applied.' : 'No change proposed.',
+            onApplied: async () => { await ctx.reload(); } })))));
   };
-  const model = ctx.modelSelect();
+  const drawFix = review('fix', fixOut), drawGaps = review('gaps', gOut);
+  const model = ctx.modelSelect(), model2 = ctx.modelSelect();
+  const focus = h('input', { type: 'text', placeholder: 'Optional — anything else to attend to, e.g. “add attributes to every leaf class”', style: 'max-width:520px' });
   fill(el, h('div', { class: 'stack' },
     h('div', { class: 'card stack' }, h('div', { class: 'row wrap' }, h('h2', { style: 'margin:0;flex:1' }, '1 · Modelling checks'), h('span', { class: 'badge ' + (q.score >= 85 ? 'good' : q.score >= 60 ? 'warn' : 'bad'), style: 'font-size:14px;padding:4px 14px' }, `Quality ${q.score} / 100`)),
       h('p', { class: 'muted', style: 'margin:0' }, 'Automatic checks for the common modelling pitfalls, run on every change. They need no AI.'),
@@ -464,15 +526,20 @@ export async function qualityTab(el, ctx) {
         h('tbody', {}, q.findings.map(f => h('tr', {}, h('td', {}, h('span', { class: 'sev ' + f.severity }, f.severity)), h('td', {}, h('b', {}, f.title), h('div', { class: 'small dim' }, `${f.count} found`)),
           h('td', { class: 'small' }, names(f.items.slice(0, 18)), f.count > 18 ? ' …' : ''), h('td', { class: 'small' }, f.advice)))))) : h('div', { class: 'banner good' }, 'No findings.')),
     h('div', { class: 'card stack' }, h('h2', { style: 'margin:0' }, '2 · Logical test with a reasoner'),
-      h('p', { class: 'muted', style: 'margin:0' }, 'An OWL reasoner works out everything that follows from the ontology’s statements and reports contradictions: classes that can never have a member, relationships that cannot hold, inverses that do not mirror each other. It tests the logic — whether a concept is missing is the job of the test bed and the gap review below.'),
+      h('p', { class: 'muted', style: 'margin:0' }, 'An OWL reasoner works out everything that follows from the ontology’s statements and reports contradictions: classes that can never have a member, relationships that cannot hold, inverses that do not mirror each other. For each contradiction it proposes the changes that remove it, ready to tick and apply. Whether a concept is missing is the job of the test bed and the gap review.'),
       h('div', { class: 'row wrap' }, h('button', { class: 'btn primary', onclick: reason('owlrl') }, '▶ Run the built-in reasoner (OWL 2 RL)'),
         h('button', { class: 'btn', disabled: !eng.hermit.available, title: eng.hermit.why_not || '', onclick: reason('hermit') }, '▶ Run HermiT (OWL 2 DL)'),
         eng.hermit.available ? null : h('span', { class: 'small dim' }, `HermiT is not available on this server: ${eng.hermit.why_not} The built-in reasoner needs nothing extra.`)),
       rOut),
-    h('div', { class: 'card stack' }, h('h2', { style: 'margin:0' }, '3 · Gap review by a reasoning model'),
-      h('p', { class: 'muted', style: 'margin:0' }, 'An AI model reads the whole ontology as a critical domain reviewer, lists what is missing or wrong for the stated scope and the required use cases, and proposes the additions. Nothing changes until you apply them. Any configured model can be used — Claude, or a self-hosted model such as Hermes through an OpenAI-compatible endpoint.'),
-      ctx.noModel(), ctx.canEdit ? h('div', { class: 'row wrap' }, h('button', { class: 'btn primary', disabled: !ctx.models.length || !!ctx.o.job, onclick: e => busy(e.target, () => ctx.run('gaps', { model_id: Number(model.value) })) }, '🔍 Run a gap review'),
-        h('label', { class: 'small dim' }, 'AI model '), model) : null,
+    h('div', { class: 'card stack' }, h('h2', { style: 'margin:0' }, '3 · Fix proposals by a reasoning model'),
+      h('p', { class: 'muted', style: 'margin:0' }, 'The AI model is given everything the reasoner and the modelling checks found and proposes the concrete changes — what to add, change and delete, each with the reason. You choose which to apply.'),
+      ctx.noModel(), ctx.canEdit ? h('div', { class: 'row wrap' }, h('button', { class: 'btn primary', disabled: !ctx.models.length || !!ctx.o.job, onclick: e => busy(e.target, () => ctx.run('fix', { model_id: Number(model.value), focus: focus.value })) }, '✨ Propose fixes with AI'),
+        h('label', { class: 'small dim' }, 'AI model '), model, focus) : null,
+      fixOut),
+    h('div', { class: 'card stack' }, h('h2', { style: 'margin:0' }, '4 · Gap review by a reasoning model'),
+      h('p', { class: 'muted', style: 'margin:0' }, 'An AI model reads the whole ontology as a critical domain reviewer, lists what is missing or wrong for the stated scope and the required use cases, and proposes the additions, corrections and deletions. Any configured model can be used — Claude, or a self-hosted model such as Hermes through an OpenAI-compatible endpoint.'),
+      ctx.noModel(), ctx.canEdit ? h('div', { class: 'row wrap' }, h('button', { class: 'btn primary', disabled: !ctx.models.length || !!ctx.o.job, onclick: e => busy(e.target, () => ctx.run('gaps', { model_id: Number(model2.value) })) }, '🔍 Run a gap review'),
+        h('label', { class: 'small dim' }, 'AI model '), model2) : null,
       gOut)));
-  drawGaps();
+  drawFix(); drawGaps();
 }

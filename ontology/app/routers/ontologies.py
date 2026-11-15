@@ -590,7 +590,7 @@ def build(oid: int, body: JobIn, request: Request, user: User = Depends(current_
 
 @router.post("/ontologies/{oid}/run/{kind}")
 def run_job(oid: int, kind: str, body: JobIn, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    if kind not in ("refine", "explain", "usecases", "gaps"):
+    if kind not in ("refine", "explain", "usecases", "gaps", "fix"):
         raise HTTPException(404, "Not found")
     o = get_ontology(db, user, oid, "edit")
     if not o.content or not o.content["classes"]:
@@ -610,35 +610,102 @@ def job(jid: int, user: User = Depends(current_user), db: Session = Depends(get_
     return _job(j)
 
 
-@router.get("/ontologies/{oid}/gaps")
-def last_gaps(oid: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    """The most recent AI gap review, with what it proposes."""
+# ---- proposed changes: listed as items, applied by choice ---------------------------------------
+def _job_items(o: Ontology, j: Job) -> list:
+    r = j.result or {}
+    if not r.get("proposed") or r.get("on_version") != o.version:
+        return []
+    return onto.change_items(o.content, onto.clean(r["proposed"], 10_000), r.get("reasons") or {})
+
+
+def _test_items(o: Ontology, t: TestRun) -> list:
+    sug = (t.result or {}).get("suggestions") or {}
+    if not (sug.get("classes") or sug.get("properties")) or not o.content:
+        return []
+    proposed, _ = onto.merge(o.content, {"classes": sug.get("classes") or [], "properties": sug.get("properties") or []}, 10_000)
+    return onto.change_items(o.content, proposed)
+
+
+@router.get("/ontologies/{oid}/review/{kind}")
+def last_review(oid: int, kind: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """The most recent AI gap review ('gaps') or AI fix proposal ('fix'), with its proposed changes as items."""
+    if kind not in ("gaps", "fix"):
+        raise HTTPException(404, "Not found")
     o = get_ontology(db, user, oid)
-    j = db.scalar(select(Job).where(Job.ontology_id == oid, Job.kind == "gaps").order_by(Job.id.desc()))
+    j = db.scalar(select(Job).where(Job.ontology_id == oid, Job.kind == kind).order_by(Job.id.desc()))
     if not j:
         return {"job": None}
     out = {"job": _job(j)}
     if j.status == "done":
         out["stale"] = j.result.get("on_version") != o.version
+        out["items"] = _job_items(o, j)
+        out["applied"] = j.result.get("applied") or []
     return out
 
 
-@router.post("/ontologies/{oid}/gaps/{jid}/apply")
-def apply_gaps(oid: int, jid: int, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+class ApplyIn(BaseModel):
+    source: str                      # reasoner | review | test
+    ref: int | None = None           # the job id (review) or test id (test)
+    items: list[str] | None = None   # ids to apply; for the reasoner, None = the recommended ones
+
+
+@router.post("/ontologies/{oid}/changes/apply")
+def apply_changes(oid: int, body: ApplyIn, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Apply the proposed changes a person chose. The items are always recomputed here from what the server
+    holds - the browser only says which ones - and pass through the same cleaning as any edit."""
+    from .. import reasoner
     o = get_ontology(db, user, oid, "edit")
-    j = db.get(Job, jid)
-    if not j or j.ontology_id != oid or j.kind != "gaps" or j.status != "done":
-        raise HTTPException(404, "Not found")
-    if j.result.get("applied"):
-        raise HTTPException(400, "These changes were already applied.")
-    if j.result.get("on_version") != o.version:
-        raise HTTPException(409, "The ontology has changed since this review. Run the review again.")
-    proposed = {**j.result["proposed"], "explanation": o.content["explanation"], "use_cases": o.content["use_cases"], "standards": o.content["standards"]}
-    v = builder.save_version(db, o, proposed, f"Applied the AI gap review ({j.model_label})", user.email, int(get_settings(db)["max_classes"]))
-    j.result = {**j.result, "applied": True}
-    audit(db, request, user, "ontology.gaps_applied", o.name, f"version {v}")
+    if _active_job(db, oid):
+        raise HTTPException(409, "An AI job is running on this ontology. Wait for it to finish.")
+    if not o.content:
+        raise HTTPException(400, "Build the ontology first.")
+    job = test = None
+    if body.source == "reasoner":
+        items, label = reasoner.fixes(o.content), "Fixed reasoner findings"
+    elif body.source == "review":
+        job = db.get(Job, body.ref or 0)
+        if not job or job.ontology_id != oid or job.kind not in ("gaps", "fix") or job.status != "done":
+            raise HTTPException(404, "Not found")
+        if job.result.get("on_version") != o.version:
+            raise HTTPException(409, "The ontology has changed since this review. Run it again to get proposals for the current version.")
+        items = _job_items(o, job)
+        label = f"Applied the AI {'gap review' if job.kind == 'gaps' else 'fix proposals'} ({job.model_label})"
+    elif body.source == "test":
+        test = _get_test(db, oid, body.ref or 0)
+        items = _test_items(o, test)
+        label = f"Closed gaps found by test: {(test.result.get('title') or test.text)[:100]}"
+    else:
+        raise HTTPException(400, "Unknown source.")
+    by_id = {i["id"]: i for i in items}
+    if body.items is None:
+        chosen = [i for i in items if i.get("recommended", True)] if body.source == "reasoner" else items
+    else:
+        unknown = [x for x in body.items if x not in by_id]
+        if unknown:
+            raise HTTPException(409, "Some of the chosen changes no longer apply - the ontology has changed. Reload and choose again.")
+        chosen = [by_id[x] for x in body.items]
+    if not chosen:
+        raise HTTPException(400, "Choose at least one change.")
+    groups = [i["group"] for i in chosen if i.get("group")]
+    if len(groups) != len(set(groups)):
+        raise HTTPException(400, "Two of the chosen changes are alternatives to each other. Choose one of them.")
+    ids = {i["id"] for i in chosen}                   # whatever an item depends on comes with it
+    for i in list(chosen):
+        for n in i.get("needs", []):
+            if n not in ids and n in by_id:
+                ids.add(n); chosen.append(by_id[n])
+    cfg = get_settings(db)
+    merged, counts = onto.apply_items(json.loads(json.dumps(o.content)), chosen, int(cfg["max_classes"]))
+    n = len(chosen)
+    v = builder.save_version(db, o, merged, f"{label}: {n} change{'s' if n != 1 else ''}", user.email, int(cfg["max_classes"]))
+    if job:
+        job.result = {**job.result, "applied": sorted(set(job.result.get("applied") or []) | ids), "on_version": v}
+        job.result["proposed"] = {**job.result["proposed"]}           # still valid against the new version for what is left
+    if test:
+        test.fixes_applied = True
+    audit(db, request, user, "ontology.changes_applied", o.name, f"{body.source} {body.ref or ''}: {', '.join(sorted(ids))[:900]}")
     db.commit()
-    return {"version": v}
+    return {"version": v, "applied": n, **counts}
 
 
 # ---- manual editing (forms and the diagram editor) -------------------------------------------
@@ -657,14 +724,6 @@ def edit(oid: int, body: PatchIn, request: Request, user: User = Depends(current
     cfg = get_settings(db)
     base = json.loads(json.dumps(o.content)) if o.content else onto.empty(o.name, o.domain, o.scope, cfg["base_namespace"])
     p = body.patch
-    for key, rm in (("individuals", "remove_individuals"), ("rules", "remove_rules"), ("use_cases", "remove_use_cases"), ("modules", "remove_modules")):
-        gone = set(onto.strs(p.get(rm), 200, 80))
-        if gone:
-            base[key] = [x for x in base[key] if x["id"] not in gone]
-    removed_c = set(onto.strs(p.get("remove_classes"), 200, 80))
-    for k in base["classes"]:                         # children of a removed class move up to its parent
-        if k["parent"] in removed_c:
-            k["parent"] = next((x["parent"] for x in base["classes"] if x["id"] == k["parent"]), None)
     for u in p.get("use_cases") if isinstance(p.get("use_cases"), list) else []:
         y = onto.clean_use_case(u, len(base["use_cases"]))
         if y:
@@ -683,7 +742,7 @@ def edit(oid: int, body: PatchIn, request: Request, user: User = Depends(current
         base["standards"] = p["standards"]
     if isinstance(p.get("meta"), dict):
         base["meta"] = {**base["meta"], **{k: v for k, v in p["meta"].items() if k in ("prefix", "namespace")}}
-    merged, counts = onto.merge(base, p, int(cfg["max_classes"]))
+    merged, counts = onto.apply_patch(base, p, int(cfg["max_classes"]))
     have = {k["id"] for k in merged["classes"]}
     if any(isinstance(x, dict) and onto.ident(x.get("id") or x.get("label"), True) not in have for x in (p.get("classes") or [])) \
             and len(merged["classes"]) >= int(cfg["max_classes"]):
@@ -812,6 +871,7 @@ def export(oid: int, fmt: str, request: Request, version: int = 0, user: User = 
 class TestIn(BaseModel):
     text: str
     model_id: int | None = None
+    baseline_id: int | None = None   # re-check the same requirements as this earlier test
 
 
 def _test(t: TestRun, c: dict | None = None, full: bool = False) -> dict:
@@ -836,10 +896,17 @@ def run_test(oid: int, body: TestIn, request: Request, user: User = Depends(curr
     if len(text) < 10:
         raise HTTPException(400, "Describe the use case in a sentence or two.")
     model = _model(db, body.model_id)
-    t = TestRun(ontology_id=oid, version=o.version, user_id=user.id, user_email=user.email, text=text[:8000], model_label=model.name)
+    base = None
+    if body.baseline_id:
+        base = _get_test(db, oid, body.baseline_id)
+        if base.status != "done" or not base.result:
+            raise HTTPException(400, "The earlier test did not finish, so there is nothing to compare with.")
+        text = base.text
+    t = TestRun(ontology_id=oid, version=o.version, user_id=user.id, user_email=user.email, text=text[:8000], model_label=model.name,
+                baseline_id=base.id if base else None)
     db.add(t)
     db.flush()
-    j = _launch(db, request, user, o, "test", model, {"test_run_id": t.id}, "tests")
+    j = _launch(db, request, user, o, "test", model, {"test_run_id": t.id, "baseline_id": base.id if base else None}, "tests")
     return {"job": _job(j), "test": _test(t)}
 
 
@@ -871,26 +938,10 @@ def test_detail(oid: int, tid: int, user: User = Depends(current_user), db: Sess
             c = _content(db, o, t.version)
         except HTTPException:
             c = None
-    return {**_test(t, c, True), "current_version": o.version}
-
-
-@router.post("/ontologies/{oid}/tests/{tid}/apply")
-def apply_fixes(oid: int, tid: int, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    """Add the classes and properties a test proposed. They pass through the same cleaning as any edit."""
-    o = get_ontology(db, user, oid, "edit")
-    t = _get_test(db, oid, tid)
-    sug = (t.result or {}).get("suggestions") or {}
-    if t.status != "done" or not (sug.get("classes") or sug.get("properties")):
-        raise HTTPException(400, "This test proposed no additions.")
-    if _active_job(db, oid):
-        raise HTTPException(409, "An AI job is running on this ontology.")
-    merged, counts = onto.merge(json.loads(json.dumps(o.content)), {"classes": sug.get("classes"), "properties": sug.get("properties")},
-                                int(get_settings(db)["max_classes"]))
-    v = builder.save_version(db, o, merged, f"Closed gaps found by test: {(t.result.get('title') or t.text)[:120]}", user.email)
-    t.fixes_applied = True
-    audit(db, request, user, "ontology.test_fixes_applied", o.name, f"test {t.id}: {counts['added']} added")
-    db.commit()
-    return {"version": v, **counts}
+    out = {**_test(t, c, True), "current_version": o.version}
+    if t.status == "done":
+        out["items"] = _test_items(o, t)
+    return out
 
 
 @router.post("/ontologies/{oid}/tests/{tid}/save-use-case")
