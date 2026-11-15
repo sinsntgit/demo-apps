@@ -1,0 +1,129 @@
+id: data-governance
+name: Data governance and catalogue
+industry: Data & analytics
+domain: Enterprise data management: data assets, glossary, ownership, lineage, quality, privacy and access
+scope: Systems and data stores, datasets, tables and columns, business glossary terms, data domains, owners and stewards, lineage between datasets through pipelines, data quality rules and results, classifications and personal data, processing purposes, access policies and data products.
+summary: Describes an organisation's data as an asset: what data exists and where, what it means, who is accountable, where it came from, how good it is, how sensitive it is and who may use it. A starter model built directly on the W3C standards DCAT, PROV-O, SKOS, ODRL and the Data Privacy Vocabulary.
+purpose: Shared vocabulary for a data catalogue, lineage and quality tooling, and privacy compliance; basis for a metadata knowledge graph.
+read: A System hosts Datasets; a dataset has Columns. Glossary terms in a Data domain give business meaning to datasets and columns. Owners and Stewards are accountable. A Pipeline run reads datasets and writes others, giving lineage. Quality rules are checked on datasets and produce Quality results. Columns carry a Classification; Processing activities state the purpose and legal basis for using personal data. Access policies grant use; Data products package datasets for consumers.
+in: Systems, datasets, columns; Glossary and domains; Ownership; Lineage; Quality; Classification and privacy; Access and data products
+out: Master data matching logic; Report layout; Infrastructure monitoring; Model training pipelines
+std: dcat | high | Catalogue, dataset, distribution and data service follow DCAT. | dcat:Catalog, dcat:Dataset, dcat:Distribution, dcat:DataService
+std: prov | high | Lineage follows PROV-O: entities, activities, agents. | prov:Entity, prov:Activity, prov:Agent, prov:used, prov:wasGeneratedBy
+std: skos | high | The business glossary is a SKOS concept scheme. | skos:Concept, skos:ConceptScheme, skos:broader
+std: dpv | medium | Personal data categories, purposes and legal bases follow the Data Privacy Vocabulary. | dpv:PersonalData, dpv:Purpose, dpv:LegalBasis, dpv:Processing
+std: odrl | medium | Access policies follow ODRL. | odrl:Policy, odrl:Permission
+std: dcterms | low | Titles, descriptions and dates use Dublin Core terms. | dcterms:title, dcterms:description
+== Asset | Data assets | What data exists and where.
+System | An application, database or platform that stores or processes data. | ~dcat:DataService
+  - name : string !
+  - technology : string
+  - environment : string
+  > owned by > Owner ?
+Dataset | A named collection of data, such as a table, file or topic. | =dcat:Dataset
+  - name : string !
+  - description : string
+  - row count : integer
+  - refreshed at : dateTime
+  - certified : boolean
+  > stored in > System 1 | | hosts
+  > in domain > DataDomain ?
+  > owned by > Owner ?
+  > stewarded by > Steward ?
+  > described by > GlossaryTerm *
+  > of type > DatasetType 1
+DatasetType | The form of a dataset.
+  * Table, View, File, Stream, Report, API
+Column | A field of a dataset.
+  - name : string !
+  - data type : string !
+  - description : string
+  - nullable : boolean
+  - primary key : boolean
+  > of dataset > Dataset 1 | | has column
+  > means > GlossaryTerm ?
+  > has classification > Classification ?
+== Meaning | Glossary and ownership | What data means and who answers for it.
+DataDomain | A subject area of the business, such as Customer or Finance.
+  - name : string !
+  - description : string
+GlossaryTerm | A business term with an agreed definition. | <skos:Concept
+  - term : string !
+  - definition : string !
+  - approved : boolean
+  > in domain > DataDomain 1
+  > broader > GlossaryTerm ?
+  > owned by > Owner ?
+Owner | The person accountable for a data asset or term.
+  - name : string !
+  - department : string
+Steward | The person who looks after a data asset day to day.
+  - name : string !
+== Lineage | Lineage | Where data comes from.
+Pipeline | A defined process that moves or transforms data.
+  - name : string !
+  - schedule : string
+  - tool : string
+PipelineRun | One execution of a pipeline. | <prov:Activity
+  - started at : dateTime !
+  - ended at : dateTime
+  - succeeded : boolean
+  - rows written : integer
+  > of pipeline > Pipeline 1 | | has run
+  > reads > Dataset * | A dataset used as input. | read by
+  > writes > Dataset * | A dataset produced or updated. | written by
+== Quality | Data quality | How good it is.
+QualityRule | A check that data must pass.
+  - name : string !
+  - expression : string
+  - threshold percent : decimal
+  > on dataset > Dataset 1
+  > on column > Column ?
+  > of dimension > QualityDimension 1
+QualityDimension | The aspect of quality a rule measures.
+  * Completeness, Uniqueness, Validity, Accuracy, Consistency, Timeliness
+QualityResult | The outcome of running a quality rule.
+  - checked at : dateTime !
+  - pass percent : decimal !
+  - failed rows : integer
+  - passed : boolean
+  > of rule > QualityRule 1 | | has result
+QualityIssue | A recorded data problem needing resolution.
+  - raised on : date !
+  - resolved on : date
+  - description : string !
+  > about dataset > Dataset 1
+  > from result > QualityResult ?
+  > assigned to > Steward ?
+== Privacy | Classification, privacy and access | How sensitive it is and who may use it.
+Classification | The sensitivity of data.
+  * Public, Internal, Confidential, Personal data, Sensitive personal data
+ProcessingActivity | A use of personal data for a stated purpose under a legal basis. | ~dpv:Processing
+  - name : string !
+  - purpose : string !
+  - retention months : integer
+  > uses > Dataset +
+  > on legal basis > LegalBasis 1
+LegalBasis | The lawful ground for processing personal data.
+  * Consent, Contract, Legal obligation, Legitimate interest, Public task, Vital interest
+AccessPolicy | A rule saying who may use a dataset and for what. | ~odrl:Policy
+  - name : string !
+  - valid until : date
+  > grants access to > Dataset +
+  > for role > ConsumerRole 1
+ConsumerRole | A group of data consumers.
+  - role name : string !
+DataProduct | A curated, documented set of datasets offered for consumption.
+  - name : string !
+  - description : string
+  - sla hours : integer
+  > contains > Dataset +
+  > owned by > Owner 1
+  > serves > ConsumerRole *
+rule: derivation | Upstream lineage | A dataset's upstream datasets are those read by any pipeline run that writes it, and theirs in turn. | Dataset, PipelineRun
+rule: constraint | Personal data needs a purpose | A dataset with a column classified as personal data must be used by at least one processing activity with a legal basis. | Dataset, Column, ProcessingActivity
+rule: constraint | Ownership | A certified dataset must have an owner and a steward. | Dataset
+rule: constraint | Quality gate | A quality result passes when its pass percent is at least the rule's threshold. | QualityResult, QualityRule
+uc: Impact analysis | Data engineer | If this table changes, which downstream datasets and data products are affected? | Dataset, PipelineRun, DataProduct | reads, writes, contains
+uc: Where is personal data | Data protection officer | Which datasets hold personal data, in which systems, and under which purpose and legal basis are they used? | Column, Classification, Dataset, System, ProcessingActivity, LegalBasis | has classification, Column.of dataset, stored in, ProcessingActivity.uses, on legal basis, ProcessingActivity.purpose
+uc: Quality scorecard | Chief data officer | What share of quality rules pass per data domain and dimension, and which datasets have open issues? | QualityResult, QualityRule, QualityDimension, Dataset, DataDomain, QualityIssue | of rule, QualityRule.on dataset, of dimension, Dataset.in domain, about dataset, QualityResult.passed

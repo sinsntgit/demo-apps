@@ -34,6 +34,7 @@ export async function libraryView(root, arg) {
       cur.everyone ? h('span', { class: 'badge info', style: 'margin-left:6px' }, cur.everyone === 'edit' ? 'Everyone can edit' : 'Everyone can view') : null) : null),
     cur?.level === 'manage' ? [h('button', { class: 'btn', onclick: () => accessForm(cur, reload) }, '👥 Access'), h('button', { class: 'btn', onclick: () => folderForm(cur, cur.parent_id, folders, reload) }, 'Rename / move'),
       h('button', { class: 'btn danger', onclick: async () => { if (await confirmDialog('Delete this folder?', `"${cur.name}" must be empty.`, 'Delete')) { try { await api('DELETE', `/api/folders/${cur.id}`); location.hash = '#/library'; } catch (e) { fail(e); } } } }, 'Delete')] : null,
+    h('a', { class: 'btn', href: '#/templates' }, '📚 Pre-built library'),
     canAdd ? [h('button', { class: 'btn', onclick: () => importForm(cur, reload) }, '⬆ Import file'), h('button', { class: 'btn primary', onclick: () => wizard(cur, folders) }, '＋ New ontology')] : null);
 
   const card = o => {
@@ -48,7 +49,7 @@ export async function libraryView(root, arg) {
   };
   fill(root, h('div', { class: 'page' }, head, h('div', { class: 'lib' }, tree,
     shown.length ? h('div', { class: 'cards' }, shown.map(card)) : h('div', { class: 'card empty' }, h('p', {}, 'No ontologies here yet.'),
-      canAdd ? h('p', { class: 'small' }, 'Use ', h('b', {}, '＋ New ontology'), ' to build one from a domain, your use cases, a database or a folder of documents.') : null))));
+      canAdd ? h('p', { class: 'small' }, 'Use ', h('b', {}, '＋ New ontology'), ' to build one from a domain, your use cases, a database or a folder of documents — or start from a ready-made one in the ', h('a', { href: '#/templates' }, 'pre-built library'), '.') : null))));
   if (lib.ontologies.some(o => o.status === 'building')) setTimeout(() => { if (location.hash.startsWith('#/library') && root.isConnected) reload(); }, 5000);
 }
 
@@ -126,7 +127,7 @@ async function wizard(cur, folders) {
   const addDb = h('button', { class: 'btn', onclick: () => { const v = db.value(); if (!v || !v.host || !v.database) return toast('Enter at least the host and the database name.', true); dbs.push({ payload: v, label: db.label() }); drawFiles(); sync(); toast('Database added to the list.'); } }, '＋ Add this database');
 
   const panes = {
-    basics: h('div', { class: 'stack' }, field('Name', name), field('Domain', domain), field('Scope', scope, 'optional, but the more precise the better'),
+    basics: h('div', { class: 'stack' }, h('div', { class: 'banner info' }, 'Prefer not to start from scratch? The ', h('a', { href: '#/templates', onclick: () => close() }, 'pre-built library'), ' has ready-made ontologies by industry that you can copy and extend.'), field('Name', name), field('Domain', domain), field('Scope', scope, 'optional, but the more precise the better'),
       h('div', { class: 'grid2' }, field('Size', depth), field('Folder', folder))),
     needs: h('div', { class: 'stack' }, h('p', { class: 'muted' }, 'Tell the builder what the ontology is for. Every use case you list becomes a required use case: the ontology is designed so it can answer it, and it appears first under Use cases, ready to be tested.'),
       field('Use cases it must answer', ucs), field('Requirements', reqs), field('Reference notes', notes)),

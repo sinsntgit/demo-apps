@@ -10,6 +10,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from .. import builder, exports, layout, onto, reasoner, render, security, sources
+from .. import library as prebuilt
 from ..db import get_db, now
 from ..deps import RANK, audit, builder_up, current_user, folder_level, get_folder, get_ontology, get_settings, level
 from ..models import Folder, FolderAccess, Job, LLMModel, Ontology, OntologyVersion, Source, TestRun, User
@@ -294,6 +295,98 @@ async def import_ontology(request: Request, file: UploadFile = File(...), folder
                if len(raw.get("properties") or []) > len(o.content["properties"]) else "")}
 
 
+# ---- pre-built library and copies --------------------------------------------------------------
+def _template(tid: str) -> dict:
+    item = prebuilt.load().get(tid)
+    if not item:
+        raise HTTPException(404, "This ontology is not in the pre-built library.")
+    return item
+
+
+@router.get("/templates")
+def templates(_: User = Depends(current_user)):
+    items = [prebuilt.summary(i) for i in prebuilt.load().values()]
+    return {"items": items, "industries": sorted({i["industry"] for i in items})}
+
+
+@router.get("/templates/{tid}")
+def template(tid: str, _: User = Depends(current_user)):
+    item = _template(tid)
+    c = item["content"]
+    return {**prebuilt.summary(item), "content": c, "stats": onto.stats(c), "quality": onto.quality(c)["score"]}
+
+
+@router.get("/templates/{tid}/diagram")
+def template_diagram(tid: str, view: str = "hierarchy", module: str = "", _: User = Depends(current_user)):
+    c = _template(tid)["content"]
+    if view == "module" and any(m["id"] == module for m in c["modules"]):
+        return layout.module_map(c, module)
+    return layout.hierarchy(c, module or None)
+
+
+def _new_copy(db, user: User, content: dict, name: str, folder_id: int | None, based_on: str, note: str, src: Ontology | None = None) -> Ontology:
+    """A new ontology owned by `user`, starting from existing content. Private, in the folder asked for."""
+    name = onto.s(name, 255)
+    if not name:
+        raise HTTPException(400, "Give the ontology a name.")
+    if folder_id:
+        get_folder(db, user, folder_id, "edit")
+    cfg = get_settings(db)
+    c = json.loads(json.dumps(content))
+    fresh = onto.empty(name, c["meta"]["domain"], c["meta"]["scope"], cfg["base_namespace"])["meta"]
+    c["meta"] = {**c["meta"], "name": name, "prefix": fresh["prefix"], "namespace": fresh["namespace"]}     # its own identifiers
+    o = Ontology(name=name, domain=c["meta"]["domain"], scope=c["meta"]["scope"], owner_id=user.id, owner_email=user.email, folder_id=folder_id,
+                 status="ready", based_on=based_on[:300], model_label=src.model_label if src else "pre-built library",
+                 notes=src.notes if src else "", requirements=src.requirements if src else "", depth=src.depth if src else "standard")
+    db.add(o)
+    db.flush()
+    builder.save_version(db, o, c, note, user.email, max(int(cfg["max_classes"]), len(c["classes"])))
+    return o
+
+
+class UseIn(BaseModel):
+    name: str
+    folder_id: int | None = None
+    instruction: str = ""
+    model_id: int | None = None
+
+
+@router.post("/templates/{tid}/use")
+def use_template(tid: str, body: UseIn, request: Request, user: User = Depends(builder_up), db: Session = Depends(get_db)):
+    """Copy a pre-built ontology into the user's library. With an instruction, an AI refine job tailors it at once."""
+    item = _template(tid)
+    model = _model(db, body.model_id) if body.instruction.strip() else None       # fail before creating anything
+    o = _new_copy(db, user, item["content"], body.name, body.folder_id, f"Pre-built library: {item['name']}",
+                  f"Copied from the pre-built library: {item['name']}")
+    audit(db, request, user, "ontology.from_library", o.name, item["id"])
+    db.commit()
+    job = None
+    if model:
+        job = _job(_launch(db, request, user, o, "refine", model, {"instruction": body.instruction.strip()[:6000]}))
+    return {"id": o.id, "job": job}
+
+
+class CopyIn(BaseModel):
+    name: str
+    folder_id: int | None = None
+
+
+@router.post("/ontologies/{oid}/duplicate")
+def duplicate(oid: int, body: CopyIn, request: Request, user: User = Depends(builder_up), db: Session = Depends(get_db)):
+    """A private copy of an ontology the user can see, to modify without touching the original."""
+    src = get_ontology(db, user, oid)
+    if not src.content or not src.content["classes"]:
+        raise HTTPException(400, "This ontology has nothing to copy yet.")
+    o = _new_copy(db, user, src.content, body.name, body.folder_id, f"Copy of {src.name} (version {src.version})",
+                  f"Copied from {src.name}, version {src.version}", src)
+    for s in db.scalars(select(Source).where(Source.ontology_id == oid)):       # its source material comes along
+        db.add(Source(ontology_id=o.id, kind=s.kind, name=s.name, size=s.size, chars=s.chars, text=s.text, note=s.note, added_by=s.added_by))
+    o.material, o.seed_use_cases = src.material, list(src.seed_use_cases or [])
+    audit(db, request, user, "ontology.duplicated", o.name, f"from {src.name} v{src.version}")
+    db.commit()
+    return {"id": o.id}
+
+
 def _active_job(db: Session, oid: int) -> Job | None:
     return db.scalar(select(Job).where(Job.ontology_id == oid, Job.status.in_(("queued", "running")), Job.kind != "test").order_by(Job.id.desc()))
 
@@ -316,7 +409,8 @@ def get(oid: int, user: User = Depends(current_user), db: Session = Depends(get_
             "quality": onto.quality(o.content) if o.content else None, "job": _job(job) if job else None,
             "last_build": _job(last) if last and last.status in ("error", "done") else None,
             "sources": {k: n for k, n in srcs}, "reasoners": reasoner.engines(),
-            "folder": db.get(Folder, o.folder_id).name if o.folder_id and db.get(Folder, o.folder_id) else None}
+            "folder": db.get(Folder, o.folder_id).name if o.folder_id and db.get(Folder, o.folder_id) else None,
+            "based_on": o.based_on or ""}
 
 
 @router.put("/ontologies/{oid}")

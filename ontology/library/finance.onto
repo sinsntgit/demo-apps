@@ -1,0 +1,144 @@
+id: finance
+name: Finance and accounting
+industry: Finance & accounting
+domain: Financial accounting: ledger, receivables, payables, assets, budgets and reporting
+scope: Legal entities and chart of accounts, journal entries, fiscal periods, customers and receivables, suppliers and payables, fixed assets and depreciation, cost and profit centres, budgets, taxes and financial statements.
+summary: Describes how an organisation records and reports money: the accounts it keeps, the entries posted to them, what customers owe and suppliers are owed, the assets it holds and how actuals compare with budget. A starter model whose reporting concepts follow IFRS / XBRL.
+purpose: Shared vocabulary across ERP finance modules and reporting tools; basis for close, receivables and variance analytics.
+read: A Legal entity keeps a Chart of accounts of GL accounts, each of an Account type. A Journal entry in a Fiscal period has balanced Journal lines posting amounts to accounts and optionally a Cost centre. Customer invoices and Receipts form receivables; Supplier bills and Payments form payables. Fixed assets depreciate. Budget lines hold plan amounts; Financial statement lines group accounts for reporting.
+in: Ledger and periods; Receivables; Payables; Fixed assets; Cost centres and budgets; Tax; Financial statements
+out: Treasury dealing; Payroll calculation; Consolidation eliminations detail; Management costing models
+std: xbrl | high | Statement lines and account types follow IFRS / XBRL reporting concepts. | Assets, Liabilities, Equity, Revenue, ProfitLoss, ReportingPeriod
+std: fibo | medium | Legal entities and currencies follow FIBO foundations. | LegalEntity, Currency
+std: ubl | medium | Invoice structures follow UBL. | Invoice, TaxTotal, PaymentMeans
+std: schema | low | Invoices are aligned to schema.org. | schema:Invoice
+== Ledger | General ledger | Accounts and entries.
+LegalEntity | A company that keeps its own books and reports.
+  - entity code : string !
+  - name : string !
+  - functional currency : string !
+  - country : string
+ChartOfAccounts | The structured list of accounts used by one or more legal entities.
+  - name : string !
+  > used by > LegalEntity +
+GLAccount | A general ledger account in which amounts of one kind are recorded.
+  - account number : string !
+  - account name : string !
+  - active : boolean
+  > in chart > ChartOfAccounts 1
+  > of type > AccountType 1
+  > rolls up to > GLAccount ?
+  > reported in > StatementLine ?
+AccountType | The fundamental kind of account.
+  * Asset, Liability, Equity, Revenue, Expense
+FiscalPeriod | A month or other period of the financial year.
+  - period name : string !
+  - start date : date !
+  - end date : date !
+  - fiscal year : gYear !
+  > has status > PeriodStatus 1
+PeriodStatus | Whether postings are allowed.
+  * Open, Closing, Closed
+JournalEntry | A dated, balanced set of postings recording one business event.
+  - entry number : string !
+  - posting date : date !
+  - description : string
+  - reversed : boolean
+  > of entity > LegalEntity 1
+  > in period > FiscalPeriod 1
+  > from source > JournalSource 1
+JournalSource | Where an entry originated.
+  * Manual, Receivables, Payables, Assets, Payroll, Inventory, Accrual
+JournalLine | One debit or credit to an account within a journal entry.
+  - debit amount : decimal
+  - credit amount : decimal
+  - currency : string
+  - narration : string
+  > of entry > JournalEntry 1 | | has line
+  > posts to > GLAccount 1
+  > for cost centre > CostCentre ?
+  > for profit centre > ProfitCentre ?
+== Receivable | Receivables | What customers owe.
+Customer | A party that buys on credit.
+  - customer number : string !
+  - name : string !
+  - credit limit : decimal
+  - payment terms days : integer
+CustomerInvoice | A bill issued to a customer. | ~schema:Invoice
+  - invoice number : string !
+  - invoice date : date !
+  - due date : date !
+  - net amount : decimal !
+  - tax amount : decimal
+  - outstanding amount : decimal
+  > billed to > Customer 1 | | is billed
+  > of entity > LegalEntity 1
+  > posted as > JournalEntry ?
+CustomerReceipt | Money received from a customer.
+  - received on : date !
+  - amount : decimal !
+  > from customer > Customer 1
+  > applied to > CustomerInvoice *
+== Payable | Payables | What we owe suppliers.
+Supplier | A party we buy from on credit.
+  - supplier number : string !
+  - name : string !
+  - payment terms days : integer
+SupplierBill | A bill received from a supplier.
+  - bill number : string !
+  - bill date : date !
+  - due date : date !
+  - net amount : decimal !
+  - tax amount : decimal
+  - outstanding amount : decimal
+  > from supplier > Supplier 1
+  > of entity > LegalEntity 1
+  > posted as > JournalEntry ?
+SupplierPayment | Money paid to a supplier.
+  - paid on : date !
+  - amount : decimal !
+  > to supplier > Supplier 1
+  > settles > SupplierBill *
+TaxCode | A tax and rate applied to a transaction.
+  - code : string !
+  - rate percent : decimal !
+  - jurisdiction : string
+== Control | Assets, cost centres and budgets | Managing the business.
+FixedAsset | A long-lived asset that is capitalised and depreciated.
+  - asset number : string !
+  - description : string !
+  - acquired on : date !
+  - cost : decimal !
+  - useful life months : integer
+  - accumulated depreciation : decimal
+  > owned by > LegalEntity 1
+  > in class > AssetClass 1
+  > assigned to > CostCentre ?
+AssetClass | A category of fixed assets with a depreciation rule.
+  * Land, Buildings, Plant and machinery, Vehicles, Furniture, IT equipment, Intangibles
+CostCentre | A unit of the organisation to which costs are assigned.
+  - cost centre code : string !
+  - name : string !
+  > part of > CostCentre ?
+ProfitCentre | A unit of the organisation measured on profit.
+  - profit centre code : string !
+  - name : string !
+BudgetLine | A planned amount for an account and cost centre in a period.
+  - amount : decimal !
+  - version : string
+  > for account > GLAccount 1
+  > for cost centre > CostCentre ?
+  > in period > FiscalPeriod 1
+StatementLine | A line of the balance sheet, income statement or cash-flow statement.
+  - line name : string !
+  - sequence : integer
+  > in statement > StatementType 1
+StatementType | The financial statement.
+  * Balance sheet, Income statement, Cash flow statement
+rule: constraint | Balanced entry | In every journal entry the sum of debit amounts equals the sum of credit amounts. | JournalEntry, JournalLine
+rule: constraint | Closed periods | No journal entry can be posted to a period whose status is Closed. | JournalEntry, FiscalPeriod
+rule: derivation | Days sales outstanding | DSO is outstanding receivables divided by credit sales, times the days in the period. | CustomerInvoice
+rule: derivation | Variance | Variance is actual postings less the budget line for the same account, cost centre and period. | BudgetLine, JournalLine
+uc: Receivables ageing | Credit controller | How much do customers owe, by ageing bucket of days overdue? | CustomerInvoice, Customer | billed to, CustomerInvoice.due date, CustomerInvoice.outstanding amount
+uc: Actual versus budget | Finance business partner | Where do actual expenses differ from budget by cost centre this period? | JournalLine, JournalEntry, GLAccount, CostCentre, BudgetLine, FiscalPeriod | of entry, posts to, JournalLine.for cost centre, JournalEntry.in period, BudgetLine.for account, BudgetLine.for cost centre, BudgetLine.in period, BudgetLine.amount
+uc: Trial balance | Financial controller | What is the balance of every account for a legal entity at period end? | JournalLine, JournalEntry, GLAccount, AccountType, LegalEntity, FiscalPeriod | of entry, posts to, GLAccount.of type, JournalEntry.of entity, JournalEntry.in period, JournalLine.debit amount, JournalLine.credit amount

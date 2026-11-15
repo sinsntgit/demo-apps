@@ -187,6 +187,34 @@ const waitJob = async () => { await page.waitForSelector('.joblog', { timeout: 8
     ok('library shows the folder with its ontology', (await page.innerText('.tree a:has-text("Lending")')).includes('1'));
   });
 
+  await step('pre-built library: browse, preview, copy, duplicate', async () => {
+    await page.goto(BASE + '/#/templates'); await page.waitForSelector('h1:text-is("Pre-built library")'); await page.waitForSelector('.ocard');
+    const all = await page.locator('.ocard').count();
+    ok('pre-built library lists ontologies across industries', all >= 22 && (await page.locator('.steps button').count()) >= 19, `${all} ontologies`);
+    await shot('prebuilt');
+    await page.fill('input[type=search]', 'tractor'); await page.waitForTimeout(200);
+    ok('search narrows the library', (await page.locator('.ocard').count()) >= 1 && (await page.locator('.ocard').count()) < all);
+    await page.fill('input[type=search]', '');
+    await page.click('.steps button:text-is("Banking & financial services")'); await page.waitForTimeout(200);
+    ok('industry filter', (await page.locator('.ocard').count()) === 2);
+    await page.click('.ocard:has-text("Lending and loan origination")');
+    await page.waitForSelector('.modal .dg-svg .dg-node');
+    ok('preview shows the diagram, standards and use cases', (await drawn('.modal .dg-svg')) >= 40 && (await page.innerText('.modal')).includes('Dealer rejection rate'), `${await drawn('.modal .dg-svg')} boxes`);
+    await shot('prebuilt-preview');
+    await page.click('.modal button:text-is("＋ Use this ontology")');
+    await page.waitForSelector('.modal h2:has-text("Use “Lending")');
+    await page.locator('.modal input[type=text]').fill('Agri lending'); await shot('prebuilt-use');
+    await page.click('.modal button:text-is("Create my copy")');
+    await page.waitForSelector('h1:text-is("Agri lending")'); await page.waitForSelector('.prose');
+    ok('the copy opens as my own ontology, marked with where it came from', (await page.innerText('.ws-head')).includes('Pre-built library: Lending and loan origination') && (await page.innerText('.ws-head')).includes('Owner'));
+    await shot('prebuilt-copy');
+    await page.click('button:text-is("⧉ Duplicate")'); await page.waitForSelector('.modal h2:text-is("Duplicate this ontology")');
+    await page.locator('.modal input[type=text]').fill('Agri lending v2'); await shot('duplicate');
+    await page.click('.modal button:text-is("Create copy")');
+    await page.waitForSelector('h1:text-is("Agri lending v2")');
+    ok('duplicate creates a separate copy', (await page.innerText('.ws-head')).includes('Copy of Agri lending'));
+  });
+
   await step('usage dashboard and appearance', async () => {
     await page.goto(BASE + '/#/usage'); await page.waitForSelector('svg.chart .bar');
     const kp = await page.innerText('.kpis');
@@ -224,6 +252,9 @@ const waitJob = async () => { await page.waitForSelector('.joblog', { timeout: 8
     await p2.click('button:text-is("Change password")'); await p2.waitForSelector('.ocard');
     const names = await p2.locator('.ocard h3').allInnerTexts();
     ok('viewer sees the shared sample and the ontology in the folder she was given', names.length === 2 && names.includes('Tractor loans'), names.join(', '));
+    await p2.goto(BASE + '/#/templates'); await p2.waitForSelector('h1:text-is("Pre-built library")'); await p2.waitForSelector('.ocard'); await p2.click('.ocard >> nth=0'); await p2.waitForSelector('.modal .dg-svg .dg-node');
+    ok('viewer can preview the pre-built library but not copy from it', (await p2.locator('.modal button:text-is("＋ Use this ontology")').count()) === 0);
+    await p2.keyboard.press('Escape'); await p2.goto(BASE + '/#/library'); await p2.waitForSelector('.ocard');
     ok('viewer has no create buttons and no Admin menu', (await p2.locator('button:text-is("＋ New ontology")').count()) === 0 && (await p2.locator('.nav a:has-text("Admin")').count()) === 0);
     await p2.click('.ocard:has-text("Tractor loans")'); await p2.waitForSelector('.prose');
     ok('viewer: no AI menu or settings, but can download', (await p2.locator('button:text-is("✨ AI")').count()) === 0 && (await p2.locator('button:text-is("⬇ Download")').count()) === 1);

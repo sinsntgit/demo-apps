@@ -1,0 +1,141 @@
+id: healthcare
+name: Healthcare - patient care
+industry: Healthcare & life sciences
+domain: Hospital and clinic care: patients, encounters, diagnoses, treatment and billing
+scope: Patients and practitioners, facilities, appointments and encounters, conditions, observations and laboratory results, procedures, medication, allergies, immunisation, insurance coverage and claims.
+summary: Describes the care a provider gives a patient: visits, what was found, what was done and prescribed, and how it was billed. A starter model whose classes mirror the HL7 FHIR resources, so data can be exchanged with FHIR systems.
+purpose: Shared vocabulary for hospital information, laboratory and billing systems; basis for clinical analytics and a patient-360 view.
+read: A Patient has Encounters at a Healthcare facility with Practitioners. During an encounter, Conditions are diagnosed, Observations and Diagnostic reports record findings, Procedures are performed and Medication requests are written for a Medication. Coverage links the patient to a payer; a Healthcare claim bills an encounter.
+in: Patients, practitioners, facilities; Appointments and encounters; Diagnoses, observations, procedures, medication; Coverage and claims
+out: Clinical decision rules; Pharmacy stock; Staff rostering; Research protocols
+std: fhir | high | Each clinical class corresponds to the HL7 FHIR resource of the same name. | fhir:Patient, fhir:Encounter, fhir:Condition, fhir:Observation, fhir:Procedure, fhir:MedicationRequest, fhir:Practitioner, fhir:Coverage, fhir:Claim
+std: snomed | medium | Conditions, procedures and findings are coded with SNOMED CT concepts. | Clinical finding, Procedure
+std: loinc | medium | Laboratory tests and observations are coded with LOINC. | Lab test codes
+std: icd | medium | Diagnoses for billing and statistics are coded with ICD. | Disease categories
+== People | People and places | Who gives and receives care, and where.
+Patient | A person receiving or registered to receive care. | =fhir:Patient
+  - medical record number : string !
+  - name : string !
+  - date of birth : date
+  - sex : string
+  - blood group : string
+  - contact number : string
+Practitioner | A person who provides care, such as a doctor, nurse or therapist. | =fhir:Practitioner
+  - registration number : string !
+  - name : string !
+  > has specialty > Specialty *
+  > works at > HealthcareFacility *
+Specialty | A field of clinical practice.
+  * General medicine, Cardiology, Orthopaedics, Paediatrics, Obstetrics, Oncology, Radiology, Emergency
+HealthcareFacility | A hospital, clinic or laboratory where care is delivered. | ~fhir:Location
+  - facility code : string !
+  - name : string !
+  - city : string
+  > has department > Department *
+Department | An organisational unit of a facility.
+  - department name : string !
+== Visit | Appointments and encounters | Contact between patient and provider.
+Appointment | A booking for a patient to see a practitioner at a time. | =fhir:Appointment
+  - scheduled start : dateTime !
+  - scheduled end : dateTime
+  - no show : boolean
+  > for patient > Patient 1
+  > with practitioner > Practitioner 1
+  > at facility > HealthcareFacility 1
+Encounter | An interaction between a patient and providers for the purpose of care. | =fhir:Encounter
+  - encounter number : string !
+  - started at : dateTime !
+  - ended at : dateTime
+  - reason : string
+  > of patient > Patient 1 | | has encounter
+  > at facility > HealthcareFacility 1
+  > in department > Department ?
+  > attended by > Practitioner +
+  > of class > EncounterClass 1
+  > booked as > Appointment ?
+EncounterClass | The setting of the encounter.
+  * Outpatient, Inpatient, Emergency, Day care, Teleconsultation
+== Clinical | Clinical record | What was found and done.
+Condition | A diagnosis, problem or health concern of a patient. | =fhir:Condition
+  - code : string ! | SNOMED CT or ICD code.
+  - description : string !
+  - onset date : date
+  - resolved date : date
+  > of patient > Patient 1
+  > diagnosed in > Encounter ?
+  > has severity > Severity ?
+Severity | How serious a condition is.
+  * Mild, Moderate, Severe
+Observation | A measurement or finding about a patient, such as a vital sign or lab value. | =fhir:Observation
+  - code : string ! | LOINC code.
+  - name : string !
+  - value : string
+  - unit : string
+  - observed at : dateTime !
+  - abnormal : boolean
+  > of patient > Patient 1
+  > made in > Encounter ?
+DiagnosticReport | The result of a laboratory or imaging investigation, grouping observations. | =fhir:DiagnosticReport
+  - report number : string !
+  - issued at : dateTime
+  - conclusion : string
+  > of patient > Patient 1
+  > ordered in > Encounter ?
+  > includes > Observation *
+Procedure | An action performed on or for a patient, such as surgery or therapy. | =fhir:Procedure
+  - code : string !
+  - description : string !
+  - performed at : dateTime !
+  > of patient > Patient 1
+  > performed in > Encounter 1
+  > performed by > Practitioner *
+AllergyIntolerance | A patient's risk of harmful reaction to a substance. | =fhir:AllergyIntolerance
+  - substance : string !
+  - reaction : string
+  > of patient > Patient 1
+Immunization | A vaccine administered to a patient. | =fhir:Immunization
+  - vaccine : string !
+  - given on : date !
+  - dose number : integer
+  > of patient > Patient 1
+== Medication | Medication | What was prescribed.
+Medication | A medicinal product. | =fhir:Medication
+  - code : string !
+  - name : string !
+  - form : string
+  - strength : string
+MedicationRequest | A prescription or order for a medication for a patient. | =fhir:MedicationRequest
+  - written on : date !
+  - dose instruction : string
+  - duration days : integer
+  > for patient > Patient 1
+  > for medication > Medication 1
+  > written in > Encounter ?
+  > prescribed by > Practitioner 1
+  > treats > Condition *
+== Billing | Coverage and billing | Who pays.
+Payer | An insurer or scheme that pays for care.
+  - payer name : string !
+Coverage | A patient's entitlement to have care paid by a payer. | =fhir:Coverage
+  - member number : string !
+  - valid from : date
+  - valid to : date
+  > covers > Patient 1
+  > provided by > Payer 1
+HealthcareClaim | A bill submitted to a payer for care given in an encounter. | =fhir:Claim
+  - claim number : string !
+  - submitted on : date !
+  - billed amount : decimal !
+  - approved amount : decimal
+  > bills > Encounter 1
+  > under coverage > Coverage 1
+  > has status > ClaimStatus 1
+ClaimStatus | The state of a claim with the payer.
+  * Submitted, Queried, Approved, Partially approved, Denied, Paid
+rule: constraint | Encounter dates | An encounter's end cannot be before its start. | Encounter
+rule: constraint | Allergy check | A medication request should not be written for a medication containing a substance the patient is allergic to. | MedicationRequest, AllergyIntolerance
+rule: constraint | Covered period | A claim can only be made under a coverage valid on the encounter date. | HealthcareClaim, Coverage
+rule: derivation | Length of stay | Length of stay is the time between an inpatient encounter's start and end. | Encounter
+uc: Readmissions within 30 days | Quality manager | Which patients were admitted again within 30 days of discharge, and for which condition? | Patient, Encounter, EncounterClass, Condition | has encounter, Encounter.started at, Encounter.ended at, of class, diagnosed in
+uc: Average length of stay by department | Hospital administrator | What is the average length of stay per department and specialty? | Encounter, Department, EncounterClass | Encounter.started at, Encounter.ended at, in department, of class
+uc: Claim denial rate by payer | Revenue cycle manager | What share of claims is denied by each payer? | HealthcareClaim, Coverage, Payer, ClaimStatus | under coverage, provided by, HealthcareClaim.has status

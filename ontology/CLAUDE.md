@@ -62,6 +62,7 @@ modules, hash routes. Run: `python -m uvicorn app.main:app --port 8000`.
 | `app/render.py` | `draw` (spec → PNG), `build_pdf`, `build_pptx`, `build_xlsx`. |
 | `app/exports.py` | rdflib graph → OWL / Turtle / JSON-LD; native JSON; `import_file`. |
 | `app/reasoner.py` | OWL 2 RL with probe individuals; HermiT via owlready2; structural contradictions. |
+| `app/library.py`, `library/*.onto` | The pre-built library: plain-text ontology files (format documented at the top of `library.py`), parsed and validated at first use; a bad file is logged and skipped. The retail sample is added as the `retail` entry. |
 | `app/sample.py` | Hand-written retail ontology installed on first run; also the stand-in model's canned answer. |
 | `app/routers/ontologies.py` | Library, folders, sources, jobs, edit, diagrams, versions, exports, test bed, reasoner, usage. |
 | `app/routers/admin.py` | Users, models, settings (incl. appearance), AI activity, audit. |
@@ -71,6 +72,7 @@ modules, hash routes. Run: `python -m uvicorn app.main:app --port 8000`.
 | `static/js/workspace.js` | One ontology: header, AI menu, job progress, Overview, Standards, Sources, Versions. |
 | `static/js/editor.js` | Diagram editor, class / property forms, tables, Use cases, Test bed, Quality & reasoning. |
 | `static/js/diagram.js` | SVG renderer for a layout spec (zoom, pan, click). |
+| `static/js/templates.js` | Pre-built library screen: filter, preview, copy (optionally with an AI instruction). |
 | `static/js/usage.js`, `admin.js`, `help.js`, `auth.js`, `account.js` | As named. |
 
 Content shape (`Ontology.content`): `meta`, `standards[]`, `modules[]`, `classes[]` (id, label, definition, parent,
@@ -96,7 +98,12 @@ range, cardinality, inverse, derived_from), `individuals[]`, `rules[]` (kind `di
 11. Before changing `llm.py`, read current Anthropic SDK guidance: requests are streamed (`messages.stream` →
     `get_final_message`), `max_tokens` 64000, effort via `output_config`, no sampling parameters, no `thinking`
     parameter (current models think adaptively by default). Use exact model IDs.
-12. Help screenshots are produced by `tests/e2e/features.js` and copied by name into `static/help/img/`.
+12. In `routers/ontologies.py` the module `app.library` is imported as `prebuilt`, because the route function
+    `library()` (GET /api/library) has the same name.
+13. A library ontology must survive `onto.clean` without losing anything - `library.parse` raises if a property or
+    class is dropped. The test `test_every_library_ontology_is_sound` holds every file to the same bar; run it after
+    adding or editing a `.onto` file. Library content is never edited at run time: users work on copies (`_new_copy`).
+14. Help screenshots are produced by `tests/e2e/features.js` and copied by name into `static/help/img/`.
     Check for drift: every `img/*.png` named in `help.html` must exist.
 
 ## Verification — non-negotiable

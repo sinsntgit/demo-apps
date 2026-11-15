@@ -1,0 +1,139 @@
+id: public-sector
+name: Public sector - citizen services
+industry: Government & public sector
+domain: Government service delivery: citizens, public services, applications, benefits, grievances and public bodies
+scope: Public organisations and offices, citizens and households, businesses, public services and their eligibility criteria, service applications and required documents, decisions, benefits and payments, licences and permits, grievances, jurisdictions.
+summary: Describes how a public body delivers services: which services exist and who is eligible, who applied with which evidence, what was decided, what benefit or licence was issued, and what complaints were raised. A starter model following the EU Core Vocabularies for person, business, location and public service.
+purpose: Shared vocabulary across service portals, case management and benefit payment systems; basis for service-level and inclusion analytics.
+read: A Public organisation offers Public services, each with Eligibility criteria and Required documents, within a Jurisdiction. A Citizen (member of a Household) or a Business submits a Service application at an Office or online; Submitted documents are evidence; an Officer makes a Decision. Approved applications lead to a Benefit entitlement with Benefit payments, or to a Licence. Grievances are raised about services or applications.
+in: Public bodies and jurisdictions; Citizens, households, businesses; Service catalogue and eligibility; Applications and decisions; Benefits and licences; Grievances
+out: Legislation drafting; Tax assessment; Public procurement; Court proceedings
+std: cpsv | high | Person, legal entity, location and public service follow the EU Core Vocabularies (Core Person, Core Business, Core Location, CPSV-AP). | Person, LegalEntity, Address, PublicService, PublicOrganisation
+std: org | medium | Public bodies and their units follow the W3C Organization Ontology. | org:Organization, org:OrganizationalUnit
+std: akn | low | Legal bases of services can reference legislation identifiers (ELI). | LegalResource
+std: dpv | low | Handling of citizens' personal data follows the Data Privacy Vocabulary. | dpv:PersonalData, dpv:Purpose
+== Body | Public bodies | Who serves.
+PublicOrganisation | A government department, agency or local authority. | ~org:Organization
+  - name : string !
+  - level : string | National, state or local.
+  > part of > PublicOrganisation ?
+  > serves > Jurisdiction *
+Office | A place where the public is served.
+  - office code : string !
+  - name : string !
+  - address : string
+  > of organisation > PublicOrganisation 1
+  > in jurisdiction > Jurisdiction 1
+Officer | A public servant who processes applications.
+  - employee number : string !
+  - name : string !
+  - designation : string
+  > posted at > Office 1
+Jurisdiction | An administrative area such as a state, district or municipality; jurisdictions nest.
+  - name : string !
+  - code : string
+  > within > Jurisdiction ?
+  > of level > JurisdictionLevel 1
+JurisdictionLevel | The tier of an administrative area.
+  * Country, State, District, Block, Municipality, Village
+== People | Citizens and businesses | Who is served.
+Citizen | A person who may use public services.
+  - citizen id : string !
+  - name : string !
+  - date of birth : date
+  - gender : string
+  - mobile number : string
+  > resides in > Jurisdiction 1
+  > member of > Household ?
+Household | People living together and assessed as one unit for some services.
+  - household number : string !
+  - size : integer
+  - annual income : decimal
+  - address : string
+Business | A legal entity that deals with public bodies.
+  - registration number : string !
+  - legal name : string !
+  - sector : string
+  > registered in > Jurisdiction 1
+== Catalogue | Service catalogue | What is offered.
+PublicService | A service a public body provides to citizens or businesses.
+  - service code : string !
+  - name : string !
+  - description : string
+  - target days : integer | Days within which it should be delivered.
+  - fee : decimal
+  - online : boolean
+  > provided by > PublicOrganisation 1 | | provides
+  > in sector > ServiceSector 1
+ServiceSector | The policy area of a service.
+  * Social welfare, Health, Education, Agriculture, Revenue and land, Transport, Civil registration, Business and industry
+EligibilityCriterion | A condition an applicant must meet to receive a service.
+  - description : string !
+  > for service > PublicService 1
+DocumentType | A kind of document accepted as evidence.
+  * Identity proof, Address proof, Income certificate, Caste certificate, Land record, Bank passbook, Photograph
+RequiredDocument | A document type that must accompany an application for a service.
+  - mandatory : boolean
+  > for service > PublicService 1
+  > of type > DocumentType 1
+== Case | Applications and decisions | The transaction.
+ServiceApplication | A request by a citizen or business for a public service.
+  - application number : string !
+  - submitted at : dateTime !
+  - channel : string
+  - closed at : dateTime
+  > for service > PublicService 1 | | receives application
+  > by citizen > Citizen ?
+  > by business > Business ?
+  > at office > Office ?
+  > has status > ApplicationStatus 1
+ApplicationStatus | The state of an application.
+  * Submitted, Under scrutiny, Returned for correction, Approved, Rejected, Delivered
+SubmittedDocument | A document provided with an application.
+  - reference : string
+  - verified : boolean
+  > with application > ServiceApplication 1
+  > of type > DocumentType 1
+Decision | The outcome decided on an application.
+  - decided on : date !
+  - approved : boolean !
+  - reason : string
+  > on application > ServiceApplication 1
+  > by officer > Officer 1
+== Outcome | Benefits, licences and grievances | What results.
+BenefitEntitlement | A citizen's or household's right to a benefit for a period.
+  - valid from : date !
+  - valid to : date
+  - amount per period : decimal
+  > granted by > Decision 1
+  > to citizen > Citizen ?
+  > to household > Household ?
+BenefitPayment | A payment made under an entitlement.
+  - paid on : date !
+  - amount : decimal !
+  - reached beneficiary : boolean
+  > under > BenefitEntitlement 1
+Licence | A permit or certificate issued to a citizen or business.
+  - licence number : string !
+  - issued on : date !
+  - expires on : date
+  > granted by > Decision 1
+  > of type > LicenceType 1
+LicenceType | The kind of permission or certificate.
+  * Birth certificate, Trade licence, Driving licence, Building permit, Income certificate, Land mutation
+Grievance | A complaint about a service, office or decision.
+  - grievance number : string !
+  - raised at : dateTime !
+  - resolved at : dateTime
+  - description : string !
+  > raised by > Citizen 1
+  > about application > ServiceApplication ?
+  > about service > PublicService ?
+  > handled by > Office ?
+rule: constraint | Evidence | An application can be approved only when every mandatory required document of the service has been submitted and verified. | ServiceApplication, RequiredDocument, SubmittedDocument
+rule: derivation | Service level | An application is within service level when it is closed within the service's target days. | ServiceApplication, PublicService
+rule: constraint | Reasoned rejection | A decision that is not approved must state a reason. | Decision
+rule: constraint | Jurisdiction | An application is processed by an office in the jurisdiction where the applicant resides or is registered. | ServiceApplication, Office, Jurisdiction
+uc: Service-level compliance | Department secretary | What share of applications was delivered within the target days, by service and office? | ServiceApplication, PublicService, Office | ServiceApplication.for service, at office, ServiceApplication.submitted at, ServiceApplication.closed at, PublicService.target days
+uc: Rejection reasons | Service owner | Which services have the highest rejection rates, and for what reasons? | Decision, ServiceApplication, PublicService | on application, ServiceApplication.for service, Decision.approved, Decision.reason
+uc: Benefit reach | Welfare director | How many households in each district receive a benefit, and how much was paid? | BenefitPayment, BenefitEntitlement, Household, Citizen, Jurisdiction | under, to household, Citizen.member of, resides in, BenefitPayment.amount

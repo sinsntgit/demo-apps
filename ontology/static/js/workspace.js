@@ -59,9 +59,10 @@ export async function workspaceView(root, id, tab, arg) {
       h('h1', {}, o.name),
       h('div', { class: 'row wrap', style: 'margin-top:6px' }, h('span', { class: 'badge ' + st[0] }, st[1]), o.version ? h('span', { class: 'badge' }, 'Version ' + o.version) : null,
         h('span', { class: 'badge' }, LEVEL[o.level]), o.visibility === 'shared' ? h('span', { class: 'badge info' }, 'Shared with everyone') : null,
-        h('span', { class: 'small dim' }, o.domain))),
+        h('span', { class: 'small dim' }, o.domain), o.based_on ? h('span', { class: 'small dim' }, '· ' + o.based_on) : null)),
       ctx.built ? menu('⬇ Download', pop, '') : null,
       ctx.built && ctx.canEdit && o.status !== 'building' ? menu('✨ AI', ai, 'primary') : null,
+      ctx.built && state.me.role !== 'viewer' ? h('button', { class: 'btn', title: 'Make your own copy to modify', onclick: () => duplicateForm(ctx) }, '⧉ Duplicate') : null,
       ctx.canEdit ? h('button', { class: 'btn', onclick: () => settingsForm(ctx) }, '⚙ Settings') : null));
     fill(bar, TABS.map(([k, l]) => h('button', { 'data-key': k, class: current === k ? 'on' : '', onclick: () => ctx.go(k) }, l,
       k === 'sources' && (o.sources.document || o.sources.schema) ? h('span', { class: 'small dim' }, ` ${(o.sources.document || 0) + (o.sources.schema || 0)}`) : null)));
@@ -157,6 +158,19 @@ function simpleRun(ctx, kind, title, text) {
     actions: close => [h('button', { class: 'btn', onclick: close }, 'Cancel'), h('button', { class: 'btn primary', disabled: !ctx.models.length, onclick: e => busy(e.target, async () => {
       await ctx.run(kind, { model_id: Number(model.value) }); close();
     }) }, 'Run')] });
+}
+
+async function duplicateForm(ctx) {
+  const lib = await api('GET', '/api/library').catch(() => ({ folders: [] }));
+  const name = h('input', { type: 'text', value: 'Copy of ' + ctx.o.name, maxlength: 200 });
+  const folder = select([['', '— no folder —'], ...lib.folders.filter(f => f.level !== 'view').map(f => [f.id, f.name])], ctx.canEdit ? (ctx.o.folder_id || '') : '');
+  modal('Duplicate this ontology', h('div', { class: 'stack' },
+    h('p', { class: 'muted' }, 'Creates a separate, private copy that you own: the current version with its explanation, use cases and source material. The original is not changed. Version history and test results are not copied.'),
+    field('Name of the copy', name), field('Folder', folder)), {
+    actions: close => [h('button', { class: 'btn', onclick: close }, 'Cancel'), h('button', { class: 'btn primary', onclick: e => busy(e.target, async () => {
+      const r = await api('POST', `/api/ontologies/${ctx.id}/duplicate`, { name: name.value, folder_id: folder.value ? Number(folder.value) : null });
+      close(); toast('Copy created.'); location.hash = `#/o/${r.id}`;
+    }) }, 'Create copy')] });
 }
 
 async function settingsForm(ctx) {

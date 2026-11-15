@@ -1,0 +1,135 @@
+id: real-estate
+name: Real estate and property management
+industry: Real estate & construction
+domain: Property sales, leasing and management
+scope: Properties, buildings and units, owners, listings, enquiries and viewings, sale transactions, leases and tenants, rent and service charges, maintenance requests, valuations.
+summary: Describes property and what happens to it commercially: what exists and who owns it, how it is listed, shown and sold or let, what rent is due and paid, and how it is maintained. A starter model following the RESO Data Dictionary for listings and the Building Topology Ontology for structure.
+purpose: Shared vocabulary across listing, leasing and facilities systems; basis for occupancy, yield and arrears analytics.
+read: A Property contains Buildings and Units and is owned by an Owner. A Listing offers a unit for sale or rent through an Agent; Enquiries and Viewings follow. A Sale transaction transfers it to a buyer; a Lease lets a unit to a Tenant, generating Rent charges settled by Rent payments. Maintenance requests are raised on units; Valuations record worth.
+in: Property structure and ownership; Listings, enquiries, viewings; Sales; Leases and rent; Maintenance; Valuation
+out: Construction project management; Mortgage lending; Land registry procedures; Facility energy management
+std: realestate | high | Listing, property, member and office concepts follow the RESO Data Dictionary; lease concepts follow OSCRE. | Property, Listing, Member, Office, Lease
+std: ifc | medium | Site, building, storey and space structure follows the Building Topology Ontology (BOT) / IFC. | bot:Building, bot:Storey, bot:Space
+std: schema | medium | Places, offers and agents are aligned to schema.org. | schema:Residence, schema:RealEstateAgent, schema:Offer
+std: geosparql | low | Locations follow GeoSPARQL. | geo:Feature
+== Property | Property | What exists.
+Property | A parcel of land with whatever is built on it.
+  - property code : string !
+  - name : string
+  - address : string !
+  - city : string
+  - land area sqm : decimal
+  - latitude : decimal
+  - longitude : decimal
+  > owned by > Owner +
+  > of type > PropertyType 1
+PropertyType | The use of a property.
+  * Residential, Office, Retail, Industrial, Land, Mixed use
+Building | A structure on a property.
+  - name : string !
+  - floors : integer
+  - built year : gYear
+  > on property > Property 1
+Unit | A separately sellable or lettable space, such as a flat, shop or office suite.
+  - unit number : string !
+  - floor : integer
+  - area sqm : decimal !
+  - bedrooms : integer
+  - furnished : boolean
+  > in building > Building 1 | | has unit
+  > has status > UnitStatus 1
+UnitStatus | Whether a unit is occupied or available.
+  * Vacant, Listed, Let, Sold, Under maintenance
+Owner | A person or company holding title to a property.
+  - name : string !
+  - contact number : string
+== Market | Listings and viewings | Finding buyers and tenants.
+Agent | A person who markets property for owners. | ~schema:RealEstateAgent
+  - name : string !
+  - licence number : string
+  - agency : string
+Listing | An offer of a unit for sale or rent.
+  - listing number : string !
+  - listed on : date !
+  - asking price : decimal !
+  - closed on : date
+  > of unit > Unit 1
+  > by agent > Agent 1
+  > for purpose > ListingPurpose 1
+  > has status > ListingStatus 1
+ListingPurpose | Whether the unit is offered for sale or to let.
+  * Sale, Rent
+ListingStatus | The state of a listing.
+  * Active, Under offer, Closed, Withdrawn, Expired
+Enquiry | An expression of interest in a listing.
+  - received on : date !
+  - name : string
+  - source : string
+  > about > Listing 1 | | receives enquiry
+Viewing | A visit by a prospect to a listed unit.
+  - held at : dateTime !
+  - feedback : string
+  > of listing > Listing 1
+  > from enquiry > Enquiry ?
+  > hosted by > Agent ?
+== Deal | Sales and leases | Transfer and letting.
+SaleTransaction | The sale of a unit to a buyer.
+  - agreed on : date !
+  - completed on : date
+  - sale price : decimal !
+  - buyer name : string !
+  > of unit > Unit 1
+  > from listing > Listing ?
+Tenant | A person or company that rents a unit.
+  - name : string !
+  - contact number : string
+  - email : string
+Lease | An agreement letting a unit to a tenant for a period at a rent.
+  - lease number : string !
+  - start date : date !
+  - end date : date !
+  - monthly rent : decimal !
+  - deposit : decimal
+  - escalation percent : decimal
+  > of unit > Unit 1 | | let under
+  > to tenant > Tenant 1
+  > from listing > Listing ?
+  > has status > LeaseStatus 1
+LeaseStatus | The state of a lease.
+  * Active, Notice given, Expired, Terminated, Renewed
+RentCharge | An amount due under a lease for a period.
+  - period : string !
+  - due date : date !
+  - amount : decimal !
+  > under lease > Lease 1
+  > of type > ChargeType 1
+ChargeType | The kind of charge.
+  * Rent, Service charge, Utilities, Late fee
+RentPayment | Money received from a tenant.
+  - paid on : date !
+  - amount : decimal !
+  > settles > RentCharge +
+== Upkeep | Maintenance and valuation | Looking after it.
+MaintenanceRequest | A reported need for repair or service in a unit.
+  - raised on : date !
+  - completed on : date
+  - description : string !
+  - cost : decimal
+  > for unit > Unit 1
+  > raised by > Tenant ?
+  > in category > MaintenanceCategory 1
+MaintenanceCategory | The trade involved.
+  * Plumbing, Electrical, HVAC, Structural, Appliances, Cleaning
+Valuation | An assessment of what a property or unit is worth.
+  - valued on : date !
+  - market value : decimal !
+  - valuer : string
+  > of property > Property ?
+  > of unit > Unit ?
+rule: derivation | Occupancy | Occupancy is let area divided by total lettable area. | Unit, Lease
+rule: constraint | One active lease | A unit has at most one active lease at a time. | Lease, Unit
+rule: derivation | Arrears | Arrears are rent charges past their due date less payments settling them. | RentCharge, RentPayment
+rule: derivation | Gross yield | Gross yield is annual rent divided by market value. | Lease, Valuation
+uc: Leases expiring | Leasing manager | Which leases expire in the next 90 days, and at what rent compared with asking rents? | Lease, Unit, Tenant, LeaseStatus | Lease.of unit, to tenant, Lease.has status, Lease.end date, Lease.monthly rent
+uc: Rent arrears | Property manager | Which tenants owe rent past the due date, and how much? | RentCharge, RentPayment, Lease, Tenant | under lease, to tenant, settles, RentCharge.amount, RentCharge.due date
+uc: Days on market | Sales director | How long do listings take to close, by property type and agent? | Listing, Unit, Building, Property, PropertyType, Agent | Listing.of unit, in building, on property, Property.of type, by agent, Listing.listed on, Listing.closed on

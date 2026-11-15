@@ -1,0 +1,151 @@
+id: manufacturing
+name: Manufacturing operations
+industry: Manufacturing & industrial
+domain: Discrete and process manufacturing: products, plants, production, quality and maintenance
+scope: Plants, work centres and equipment; materials, bills of material and routings; production orders and operations; material lots and consumption; quality inspections and non-conformances; maintenance orders and downtime.
+summary: Describes how a manufacturer makes products: what they are made of, where and on which equipment, what was actually produced and consumed, how quality was checked and how equipment is kept running. A starter model following the ISA-95 structure of equipment, material, personnel and process.
+purpose: Common vocabulary between ERP, MES, quality and maintenance systems; basis for OEE, yield and traceability analytics.
+read: A Material has a Bill of material (its components) and a Routing (its Operations at Work centres). A Production order makes a quantity of a material at a Plant; its Production operations run on Equipment by Operators, consume Material lots and produce new lots. Inspections check lots against Quality characteristics and raise Non-conformances. Maintenance orders and Downtime events record equipment availability.
+in: Plant structure and equipment; Materials, BOM and routing; Production execution; Lot traceability; Quality; Maintenance
+out: Sales and distribution; Finance and costing detail; Product design (CAD/PLM); Workforce payroll
+std: isa95 | high | Equipment, material, personnel and process-segment models follow ISA-95 / IEC 62264. | Equipment, MaterialLot, Personnel, ProcessSegment, OperationsSchedule, WorkOrder
+std: iof | medium | Class definitions follow the Industrial Ontologies Foundry Core where a term exists. | MaterialArtifact, ManufacturingProcess, MaintenanceProcess
+std: qudt | low | Quantities and units of measure follow QUDT. | qudt:Unit, qudt:QuantityValue
+std: sosa | low | Sensor readings on equipment follow SOSA observations. | sosa:Sensor, sosa:Observation
+== Plant | Plant and equipment | Where things are made.
+Plant | A manufacturing site.
+  - plant code : string !
+  - name : string !
+  - country : string
+WorkCentre | A place in a plant where operations are performed, with a defined capacity.
+  - work centre code : string !
+  - capacity hours per day : decimal
+  > in plant > Plant 1
+Equipment | A machine, line or tool used in production.
+  - equipment number : string !
+  - description : string
+  - manufacturer : string
+  - commissioned on : date
+  > located at > WorkCentre 1
+  > of class > EquipmentClass ?
+EquipmentClass | A type of equipment.
+  * Press, CNC machine, Assembly line, Furnace, Paint booth, Robot, Test bench, Packaging line
+Operator | A person who performs production work.
+  - employee number : string !
+  - skill level : string
+Shift | A scheduled working period.
+  * Morning, Afternoon, Night
+== Product | Materials and how to make them | The definition of the product.
+Material | Anything produced, bought or consumed: finished goods, semi-finished goods, components and raw materials.
+  - material number : string !
+  - description : string !
+  - base unit : string !
+  > of type > MaterialType 1
+MaterialType | The role of a material in production.
+  * Finished good, Semi-finished, Component, Raw material, Consumable, Packaging
+BillOfMaterial | The list of components and quantities needed to make one unit of a material.
+  - valid from : date
+  - version : string
+  > makes > Material 1
+  > has component > BomComponent +
+BomComponent | One component line of a bill of material.
+  - quantity per : decimal !
+  - scrap percent : decimal
+  > of material > Material 1
+Routing | The ordered operations needed to make a material.
+  - version : string
+  > for material > Material 1
+  > has operation > Operation +
+Operation | One standard step of a routing, performed at a work centre.
+  - sequence : integer !
+  - description : string !
+  - standard minutes per unit : decimal
+  - setup minutes : decimal
+  > at work centre > WorkCentre 1
+== Execution | Production execution | What actually happened.
+ProductionOrder | An instruction to make a quantity of a material by a date.
+  - order number : string !
+  - planned quantity : decimal !
+  - produced quantity : decimal
+  - scrap quantity : decimal
+  - planned start : dateTime
+  - actual finish : dateTime
+  > produces > Material 1
+  > at plant > Plant 1
+  > follows > Routing ?
+  > has status > OrderStatus 1
+OrderStatus | The state of a production order.
+  * Planned, Released, In process, Completed, Closed, Cancelled
+ProductionOperation | The execution of one operation for a production order.
+  - started at : dateTime
+  - finished at : dateTime
+  - good quantity : decimal
+  - reject quantity : decimal
+  > of order > ProductionOrder 1 | | has operation run
+  > performs > Operation 1
+  > on equipment > Equipment ?
+  > by operator > Operator *
+  > in shift > Shift ?
+MaterialLot | A uniquely identified quantity of a material made or received together, used for traceability.
+  - lot number : string !
+  - quantity : decimal !
+  - produced on : date
+  - expires on : date
+  > of material > Material 1
+  > produced by > ProductionOrder ?
+MaterialConsumption | The use of a quantity of a lot in a production order.
+  - quantity : decimal !
+  - consumed at : dateTime
+  > consumed in > ProductionOrder 1
+  > from lot > MaterialLot 1
+== Quality | Quality | Checking the product.
+QualityCharacteristic | A property that is measured or checked, with its limits.
+  - name : string !
+  - lower limit : decimal
+  - upper limit : decimal
+  - unit : string
+Inspection | A check of a lot or operation against quality characteristics.
+  - inspected at : dateTime !
+  - measured value : decimal
+  - passed : boolean !
+  > inspects lot > MaterialLot ?
+  > inspects operation > ProductionOperation ?
+  > against > QualityCharacteristic 1
+NonConformance | A recorded failure to meet a requirement, with its disposition.
+  - reference : string !
+  - raised on : date !
+  - description : string
+  - quantity affected : decimal
+  > found by > Inspection ?
+  > affects lot > MaterialLot *
+  > has cause > DefectCause ?
+  > has disposition > Disposition ?
+DefectCause | The category of root cause.
+  * Material, Machine, Method, Operator, Measurement, Environment
+Disposition | What is done with non-conforming material.
+  * Rework, Scrap, Use as is, Return to supplier
+== Maintenance | Maintenance | Keeping equipment available.
+MaintenanceOrder | A planned or corrective job on a piece of equipment.
+  - order number : string !
+  - raised on : date !
+  - completed on : date
+  - labour hours : decimal
+  > on equipment > Equipment 1
+  > of type > MaintenanceType 1
+MaintenanceType | Why the work is done.
+  * Preventive, Corrective, Predictive, Calibration
+DowntimeEvent | A period when equipment was not available for production.
+  - started at : dateTime !
+  - ended at : dateTime
+  - planned : boolean
+  > of equipment > Equipment 1
+  > has reason > DowntimeReason 1
+DowntimeReason | Why the equipment was down.
+  * Breakdown, Changeover, No material, No operator, Planned maintenance, Quality hold
+rule: derivation | Yield | Yield is good quantity divided by good plus reject quantity. | ProductionOperation
+rule: derivation | OEE | Overall equipment effectiveness is availability times performance times quality for an equipment and period. | Equipment, DowntimeEvent, ProductionOperation
+rule: constraint | Traceability | Every produced lot is linked to the production order that made it and, through consumption, to the lots it was made from. | MaterialLot, MaterialConsumption
+rule: constraint | Held lots | A lot with an open non-conformance cannot be consumed or shipped. | MaterialLot, NonConformance
+uc: Lot genealogy | Quality engineer | Which finished lots contain material from a given supplier lot? | MaterialLot, MaterialConsumption, ProductionOrder | from lot, consumed in, produced by
+uc: Downtime by reason | Plant manager | How many hours was each line down last month, by reason? | DowntimeEvent, Equipment, DowntimeReason, WorkCentre | of equipment, DowntimeEvent.has reason, DowntimeEvent.started at, DowntimeEvent.ended at, located at
+uc: First pass yield by product | Production manager | What is the first-pass yield by material and work centre? | ProductionOperation, ProductionOrder, Material, Operation, WorkCentre | of order, produces, performs, at work centre, ProductionOperation.good quantity, ProductionOperation.reject quantity

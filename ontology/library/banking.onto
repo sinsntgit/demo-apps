@@ -1,0 +1,132 @@
+id: banking
+name: Retail banking - accounts and payments
+industry: Banking & financial services
+domain: Retail banking: customers, accounts, cards and payments
+scope: Customers and KYC, deposit accounts, cards, payment transactions between accounts, channels and branches, standing instructions, fraud alerts and complaints.
+summary: Describes a retail bank's customers, the accounts and cards they hold, and the payments that move money between accounts through channels. A starter model for customer-360, payments analytics and regulatory reporting.
+purpose: Common vocabulary for core banking, payments and channel systems; basis for a customer and transaction knowledge graph.
+read: A Customer holds Accounts of an Account product at a Branch. Cards are issued on accounts. A Payment transaction debits one account and credits another, is initiated through a Channel and may be a card transaction at a Merchant. Standing instructions and Mandates automate payments; Alerts and Complaints record exceptions.
+in: Customers and KYC; Accounts, products and balances; Cards; Payments and channels; Alerts and complaints
+out: Lending (see the lending ontology); Treasury and markets; General ledger
+std: fibo | high | Accounts, legal entities and financial products follow FIBO Foundations and Business Entities. | Account, LegalEntity, FinancialProduct, FinancialInstitution
+std: iso20022 | high | Payment transactions, parties and cash accounts follow the ISO 20022 business model. | Payment, CashAccount, Party, FinancialInstitution, PaymentInstruction
+std: lei | low | Corporate customers can carry a Legal Entity Identifier. | LegalEntityIdentifier
+std: schema | low | People and organisations are aligned to schema.org. | schema:Person, schema:Organization, schema:BankAccount
+== Customer | Customers | Who the bank serves and how it knows them.
+Customer | A person or organisation that has, or is applying for, a relationship with the bank.
+  - customer number : string !
+  - name : string !
+  - onboarded on : date
+  - risk rating : string
+  > has segment > CustomerSegment ?
+  > has kyc record > KycRecord *
+  > home branch > Branch ?
+RetailCustomer : Customer | An individual customer. | ~schema:Person
+  - date of birth : date
+  - occupation : string
+CorporateCustomer : Customer | A company or other legal entity as customer. | ~schema:Organization
+  - legal entity identifier : string
+  - industry : string
+CustomerSegment | A marketing or service grouping of customers.
+  * Mass, Affluent, Private, Small business, Corporate
+KycRecord | Evidence that the customer's identity and address were verified.
+  - document type : string !
+  - document number : string
+  - verified on : date
+  - valid until : date
+Branch | A physical office of the bank.
+  - branch code : string !
+  - city : string
+  - region : string
+== Account | Accounts and cards | What customers hold.
+Account | A record of money held by the bank for a customer, with a balance. | ~schema:BankAccount
+  - account number : string !
+  - opened on : date !
+  - currency : string !
+  - current balance : decimal
+  - closed on : date
+  > held by > Customer + | The owner or joint owners. | holds
+  > of product > AccountProduct 1
+  > maintained at > Branch 1
+  > has status > AccountStatus 1
+SavingsAccount : Account | An interest-bearing account for individuals.
+  - interest rate percent : decimal
+CurrentAccount : Account | A transactional account, usually for businesses, that may allow overdraft.
+  - overdraft limit : decimal
+TermDeposit : Account | Money placed for a fixed period at a fixed rate.
+  - principal : decimal !
+  - matures on : date !
+  - interest rate percent : decimal
+AccountProduct | A type of account the bank offers.
+  - product code : string !
+  - product name : string !
+  - minimum balance : decimal
+AccountStatus | The operating state of an account.
+  * Active, Dormant, Frozen, Closed
+Card | A payment card issued on an account.
+  - masked number : string !
+  - expires on : date
+  - blocked : boolean
+  > issued on > Account 1
+  > of type > CardType 1
+CardType | The kind of card.
+  * Debit, Credit, Prepaid
+== Payment | Payments | Money moving between accounts.
+PaymentTransaction | A movement of money that debits one account and credits another.
+  - transaction reference : string !
+  - booked at : dateTime !
+  - amount : decimal !
+  - currency : string !
+  - narration : string
+  > debits > Account ? | The account money leaves. | debited by
+  > credits > Account ? | The account money arrives in. | credited by
+  > through channel > Channel 1
+  > of type > PaymentType 1
+  > has status > PaymentStatus 1
+  > to beneficiary > Beneficiary ?
+CardTransaction : PaymentTransaction | A payment made with a card at a merchant or ATM.
+  - authorisation code : string
+  > uses card > Card 1
+  > at merchant > Merchant ?
+PaymentType | The scheme or instrument used.
+  * UPI, NEFT, RTGS, IMPS, Card, Cheque, Cash, Internal transfer
+PaymentStatus | The outcome of a payment.
+  * Initiated, Completed, Failed, Reversed
+Channel | The route through which a customer transacts.
+  * Branch, ATM, Internet banking, Mobile app, Point of sale, Call centre
+Beneficiary | A payee a customer has registered for outgoing payments.
+  - beneficiary name : string !
+  - account number : string
+  - bank code : string
+  > registered by > Customer 1
+Merchant | A business that accepts card payments.
+  - merchant id : string !
+  - merchant name : string
+  - category code : string
+StandingInstruction | A customer's order to pay a fixed amount at a regular interval.
+  - amount : decimal !
+  - frequency : string !
+  - next run on : date
+  > from account > Account 1
+  > to beneficiary > Beneficiary 1
+== Care | Alerts and complaints | Exceptions and service.
+FraudAlert | A signal that a transaction or account may be fraudulent.
+  - raised at : dateTime !
+  - rule name : string
+  - confirmed fraud : boolean
+  > on transaction > PaymentTransaction ?
+  > on account > Account ?
+Complaint | A grievance raised by a customer.
+  - reference : string !
+  - raised on : date !
+  - category : string
+  - resolved on : date
+  > raised by > Customer 1
+  > about transaction > PaymentTransaction ?
+rule: constraint | Two sides | A completed payment transaction debits or credits at least one account held at the bank. | PaymentTransaction
+rule: constraint | No debit on frozen accounts | A payment cannot debit an account whose status is Frozen or Closed. | PaymentTransaction, Account
+rule: constraint | KYC before account | An account can only be opened for a customer with a verified KYC record. | Account, KycRecord
+rule: disjoint | Retail or corporate | A customer is either a retail or a corporate customer. | RetailCustomer, CorporateCustomer
+uc: Dormant accounts with balance | Branch manager | Which accounts are dormant but hold a balance above a threshold, by branch? | Account, AccountStatus, Branch | Account.has status, Account.current balance, maintained at
+uc: Failed payments by channel | Payments operations | What share of payments fail on each channel and payment type? | PaymentTransaction, Channel, PaymentType, PaymentStatus | through channel, PaymentTransaction.of type, PaymentTransaction.has status
+uc: Customer 360 | Relationship manager | Show everything a customer holds: accounts, cards, standing instructions and open complaints. | Customer, Account, Card, StandingInstruction, Complaint | holds, issued on, from account, raised by

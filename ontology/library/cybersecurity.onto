@@ -1,0 +1,134 @@
+id: cybersecurity
+name: Cybersecurity - assets, threats, controls, incidents
+industry: Information technology
+domain: Information security management: assets, vulnerabilities, threats, controls, risks and incidents
+scope: Information assets and their owners, vulnerabilities and findings, threat actors and techniques, security controls and frameworks, risks and treatments, alerts, incidents, indicators and response actions.
+summary: Describes what an organisation must protect, what could go wrong, what is done to prevent it and what happened when it did. A starter model that brings together asset, vulnerability, threat, control and incident concepts in the terms used by STIX, MITRE ATT&CK and ISO 27001.
+purpose: Shared vocabulary across vulnerability management, SIEM/SOC and GRC tools; basis for risk and coverage reporting.
+read: An Asset has an Owner and a Criticality. Vulnerabilities are found on assets as Findings. Threat actors use Attack techniques that exploit vulnerabilities. Controls, drawn from a Framework, mitigate techniques and protect assets. A Risk combines an asset, a threat and its likelihood and impact, and has a Treatment. Alerts may be escalated to an Incident, which involves assets, Indicators and Response actions.
+in: Assets; Vulnerabilities; Threats and techniques; Controls and frameworks; Risk; Alerts and incidents
+out: Identity lifecycle detail; Network topology; Legal and breach-notification workflow; Forensic evidence handling
+std: uco | high | Threat, technique, vulnerability, indicator and incident concepts follow UCO / STIX and MITRE ATT&CK; countermeasures follow D3FEND. | Threat actor, Attack pattern, Vulnerability, Indicator, Incident, Countermeasure
+std: iso27001 | high | Risk, control and assessment concepts follow ISO/IEC 27001 and the NIST Cybersecurity Framework. | Risk, Control, ControlObjective, Assessment, Finding, Asset
+std: itil | low | Incident handling follows ITIL practice. | Incident
+std: dpv | low | Personal-data aspects follow the Data Privacy Vocabulary. | dpv:PersonalData
+== Asset | Assets | What must be protected.
+Asset | Anything of value to the organisation that needs protection: systems, data, devices.
+  - asset name : string !
+  - identifier : string
+  - internet facing : boolean
+  - holds personal data : boolean
+  > of type > AssetType 1
+  > owned by > Owner 1
+  > has criticality > Criticality 1
+AssetType | The kind of asset.
+  * Application, Server, Endpoint, Network device, Database, Cloud account, Data set, Identity
+Owner | The person or team accountable for an asset or risk.
+  - name : string !
+  - department : string
+Criticality | How much the business depends on the asset.
+  * Low, Medium, High, Crown jewel
+== Weakness | Vulnerabilities | Where we are weak.
+Vulnerability | A weakness that can be exploited, usually identified by a CVE.
+  - cve id : string !
+  - title : string
+  - cvss score : decimal
+  - published on : date
+  - exploit available : boolean
+Finding | An instance of a vulnerability or misconfiguration detected on an asset.
+  - detected on : date !
+  - remediated on : date
+  - due date : date
+  > on asset > Asset 1 | | has finding
+  > of vulnerability > Vulnerability ?
+  > has severity > Severity 1
+  > has status > FindingStatus 1
+Severity | How serious something is.
+  * Informational, Low, Medium, High, Critical
+FindingStatus | The remediation state.
+  * Open, In remediation, Remediated, Risk accepted, False positive
+== Threat | Threats | Who and how.
+ThreatActor | An individual or group that conducts attacks.
+  - name : string !
+  - motivation : string
+  - sophistication : string
+AttackTechnique | A way of achieving an adversary objective, as catalogued in MITRE ATT&CK.
+  - technique id : string !
+  - name : string !
+  > in tactic > Tactic 1
+  > exploits > Vulnerability *
+  > used by > ThreatActor *
+Tactic | The adversary's goal at a stage of an attack.
+  * Initial access, Execution, Persistence, Privilege escalation, Defence evasion, Credential access, Lateral movement, Exfiltration, Impact
+Indicator | An observable sign of malicious activity, such as an IP address, domain or file hash.
+  - value : string !
+  - indicator type : string !
+  - first seen : dateTime
+  > indicates > AttackTechnique *
+== Control | Controls and risk | What we do about it.
+Framework | A published set of control requirements.
+  * ISO 27001, NIST CSF, CIS Controls, PCI DSS, SOC 2
+Control | A safeguard that reduces risk.
+  - control id : string !
+  - name : string !
+  - description : string
+  - implemented : boolean
+  - last tested on : date
+  > from framework > Framework *
+  > mitigates > AttackTechnique *
+  > protects > Asset *
+  > owned by > Owner ?
+  > of type > ControlType 1
+ControlType | How the control works.
+  * Preventive, Detective, Corrective
+ControlTest | An assessment of whether a control works.
+  - tested on : date !
+  - effective : boolean !
+  - evidence : string
+  > of control > Control 1
+Risk | The possibility that a threat exploits a weakness and harms an asset.
+  - risk title : string !
+  - likelihood : integer ! | 1 (rare) to 5 (almost certain).
+  - impact : integer ! | 1 (minor) to 5 (severe).
+  - identified on : date
+  - review date : date
+  > to asset > Asset *
+  > from technique > AttackTechnique *
+  > reduced by > Control *
+  > owned by > Owner 1
+  > has treatment > Treatment 1
+Treatment | The decision taken on a risk.
+  * Mitigate, Accept, Transfer, Avoid
+== Response | Alerts and incidents | When it happens.
+Alert | A signal from a detection tool that something may be wrong.
+  - raised at : dateTime !
+  - rule name : string
+  - true positive : boolean
+  > on asset > Asset ?
+  > matches > Indicator *
+  > has severity > Severity 1
+  > escalated to > SecurityIncident ?
+SecurityIncident | A confirmed event that compromises confidentiality, integrity or availability.
+  - incident number : string !
+  - detected at : dateTime !
+  - contained at : dateTime
+  - closed at : dateTime
+  - records affected : integer
+  > involves asset > Asset +
+  > uses technique > AttackTechnique *
+  > attributed to > ThreatActor ?
+  > has severity > Severity 1
+  > of category > IncidentCategory 1
+IncidentCategory | The kind of incident.
+  * Malware, Phishing, Ransomware, Data breach, Denial of service, Insider, Account compromise
+ResponseAction | A step taken to contain, eradicate or recover from an incident.
+  - performed at : dateTime !
+  - description : string !
+  > for incident > SecurityIncident 1 | | has action
+rule: derivation | Risk score | Risk score is likelihood multiplied by impact. | Risk
+rule: constraint | Remediation deadline | A Critical finding on an internet-facing asset must be remediated within the policy's deadline. | Finding, Asset
+rule: derivation | Control coverage | A technique is covered when at least one implemented, effective control mitigates it. | AttackTechnique, Control, ControlTest
+rule: derivation | Dwell time | Dwell time is contained at minus detected at. | SecurityIncident
+uc: Overdue critical findings | Vulnerability manager | Which critical findings on crown-jewel or internet-facing assets are past their due date, by owner? | Finding, Asset, Severity, Criticality, Owner | Finding.on asset, Finding.has severity, has criticality, Asset.owned by, Finding.due date, Asset.internet facing
+uc: Technique coverage | Security architect | Which attack techniques used by relevant threat actors have no implemented control? | AttackTechnique, ThreatActor, Control | used by, mitigates, Control.implemented
+uc: Incident trend | CISO | How many incidents occurred by category and severity, and how long did containment take? | SecurityIncident, IncidentCategory, Severity | of category, SecurityIncident.has severity, SecurityIncident.detected at, SecurityIncident.contained at

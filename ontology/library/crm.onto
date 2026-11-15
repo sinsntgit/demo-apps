@@ -1,0 +1,146 @@
+id: crm
+name: Customer relationship and sales
+industry: Sales, marketing & service
+domain: CRM: accounts, contacts, leads, opportunities, campaigns, quotes and service cases
+scope: Accounts and contacts, leads and their sources, opportunities and pipeline stages, products and quotes, marketing campaigns and responses, activities, service cases and customer feedback.
+summary: Describes how a business wins and keeps customers: who they are, how interest becomes an opportunity and a deal, which campaigns produced it, and how customers are served afterwards. A starter model for sales pipeline, marketing attribution and service analytics.
+purpose: Shared vocabulary across CRM, marketing automation and service desk tools.
+read: A Lead comes from a Lead source or Campaign and may convert into an Account, Contact and Opportunity. An Opportunity moves through Sales stages, is owned by a Sales rep, and is priced with a Quote of Quote lines for Products. Activities record interactions. After the sale, Service cases and Feedback record how the customer is looked after.
+in: Accounts and contacts; Leads and campaigns; Opportunities, quotes; Activities; Service cases and feedback
+out: Order fulfilment; Invoicing and collections; Product catalogue management; Web analytics detail
+std: schema | high | Organisations, people, products and offers are aligned to schema.org. | schema:Organization, schema:Person, schema:Product, schema:Offer
+std: crmcustomer | medium | Party names, addresses and relationships follow OASIS CIQ. | Party, PartyName, Address, PartyRelationship
+std: gr | low | Offer and price concepts follow GoodRelations. | gr:Offering, gr:PriceSpecification
+std: vcard | low | Contact details follow the vCard ontology. | vcard:hasEmail, vcard:hasTelephone
+== Customer | Accounts and contacts | Who we sell to.
+Account | A company or household that is a customer or prospect. | ~schema:Organization
+  - account number : string !
+  - name : string !
+  - industry : string
+  - annual revenue : decimal
+  - city : string
+  - country : string
+  > owned by > SalesRep ?
+  > in segment > Segment ?
+  > has type > AccountType 1
+AccountType | The relationship with the account.
+  * Prospect, Customer, Partner, Former customer
+Segment | A grouping of accounts for targeting.
+  * Enterprise, Mid-market, Small business, Consumer
+Contact | A person at an account. | ~schema:Person
+  - name : string !
+  - job title : string
+  - email : string
+  - phone : string
+  - opted out : boolean
+  > works for > Account 1 | | has contact
+SalesRep | A person responsible for selling.
+  - employee number : string !
+  - name : string !
+  > in territory > Territory ?
+Territory | A geographic or named area of sales responsibility.
+  - territory name : string !
+== Demand | Leads and campaigns | Where interest comes from.
+Lead | An unqualified expression of interest by a person or company.
+  - name : string !
+  - company : string
+  - email : string
+  - created on : date !
+  - score : integer
+  > from source > LeadSource ?
+  > from campaign > Campaign ?
+  > has status > LeadStatus 1
+  > converted to > Opportunity ?
+LeadSource | The channel a lead came from.
+  * Website, Referral, Event, Cold call, Partner, Advertisement, Social media
+LeadStatus | The state of a lead.
+  * New, Contacted, Qualified, Unqualified, Converted
+Campaign | A planned marketing effort with a budget and a goal.
+  - campaign name : string !
+  - start date : date
+  - end date : date
+  - budget : decimal
+  - actual cost : decimal
+  > of type > CampaignType 1
+CampaignType | The kind of campaign.
+  * Email, Event, Webinar, Digital ads, Direct mail, Telemarketing
+CampaignResponse | A contact's or lead's reaction to a campaign.
+  - responded on : date !
+  - response : string
+  > to campaign > Campaign 1 | | has response
+  > by contact > Contact ?
+  > by lead > Lead ?
+== Sales | Opportunities and quotes | Turning interest into deals.
+Opportunity | A qualified chance to sell, with an expected value and close date.
+  - opportunity name : string !
+  - amount : decimal
+  - probability percent : decimal
+  - expected close : date
+  - created on : date !
+  - closed on : date
+  > for account > Account 1 | | has opportunity
+  > primary contact > Contact ?
+  > owned by > SalesRep 1
+  > at stage > SalesStage 1
+  > lost for > LossReason ?
+SalesStage | A step of the sales process.
+  * Qualification, Needs analysis, Proposal, Negotiation, Closed won, Closed lost
+LossReason | Why an opportunity was lost.
+  * Price, Competitor, No budget, No decision, Product fit, Timing
+Product | Something the business sells. | ~schema:Product
+  - product code : string !
+  - name : string !
+  - list price : decimal
+  - family : string
+Quote | A priced proposal made for an opportunity.
+  - quote number : string !
+  - issued on : date !
+  - valid until : date
+  - total amount : decimal
+  - accepted : boolean
+  > for opportunity > Opportunity 1
+QuoteLine | One product, quantity and price on a quote.
+  - quantity : decimal !
+  - unit price : decimal !
+  - discount percent : decimal
+  > of quote > Quote 1 | | has line
+  > for product > Product 1
+Activity | A call, meeting, email or task with a customer.
+  - subject : string !
+  - happened at : dateTime !
+  - notes : string
+  > of type > ActivityType 1
+  > with contact > Contact ?
+  > about opportunity > Opportunity ?
+  > by rep > SalesRep ?
+ActivityType | The kind of interaction.
+  * Call, Meeting, Email, Demo, Task
+== Service | Service and feedback | Looking after customers.
+ServiceCase | A customer's request for help or complaint.
+  - case number : string !
+  - opened at : dateTime !
+  - closed at : dateTime
+  - subject : string
+  > raised by > Contact ?
+  > for account > Account 1
+  > about product > Product ?
+  > has priority > CasePriority 1
+  > has status > CaseStatus 1
+CasePriority | How urgent a case is.
+  * Low, Medium, High, Critical
+CaseStatus | The state of a case.
+  * New, In progress, Waiting on customer, Resolved, Closed
+Feedback | A customer's rating of their experience.
+  - given on : date !
+  - score : integer ! | For example a 0-10 recommendation score.
+  - comment : string
+  > from contact > Contact ?
+  > about case > ServiceCase ?
+rule: derivation | Weighted pipeline | Weighted pipeline is the sum of opportunity amount times probability for open opportunities. | Opportunity
+rule: constraint | Loss needs reason | An opportunity at stage Closed lost must have a loss reason. | Opportunity
+rule: constraint | Respect opt-out | A contact who has opted out is not included in campaigns. | Contact, Campaign
+rule: derivation | Win rate | Win rate is opportunities Closed won divided by all closed opportunities. | Opportunity
+uc: Pipeline by stage and rep | Sales manager | What is the open pipeline by stage and sales rep, and what closes this quarter? | Opportunity, SalesStage, SalesRep | at stage, Opportunity.owned by, Opportunity.amount, Opportunity.expected close
+uc: Campaign return | Marketing manager | Which campaigns produced leads that became won opportunities, and at what cost? | Campaign, Lead, Opportunity, SalesStage | from campaign, converted to, at stage, Campaign.actual cost, Opportunity.amount
+uc: Win and loss reasons | Sales operations | What is the win rate by segment, and why are deals lost? | Opportunity, Account, Segment, SalesStage, LossReason | Opportunity.for account, in segment, at stage, lost for
+uc: Case resolution time | Service manager | How long do cases take to resolve, by priority and product? | ServiceCase, CasePriority, Product | ServiceCase.opened at, ServiceCase.closed at, has priority, about product

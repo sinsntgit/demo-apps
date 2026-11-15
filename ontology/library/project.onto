@@ -1,0 +1,141 @@
+id: project
+name: Project and portfolio management
+industry: Professional services & projects
+domain: Projects, programmes and portfolios: scope, schedule, resources, cost, risks and issues
+scope: Portfolios and programmes, projects and phases, work packages, tasks and milestones, deliverables, team members and assignments, timesheets, budgets and costs, risks, issues, change requests and stakeholders.
+summary: Describes how work is planned and delivered as projects: what must be produced, by when, by whom, at what cost, and what threatens it. A starter model following the PMBOK / ISO 21502 vocabulary.
+purpose: Shared vocabulary across project planning, resource and time-recording tools; basis for portfolio status and earned-value reporting.
+read: A Portfolio holds Programmes and Projects. A Project is broken into Work packages and Tasks, marked by Milestones, and produces Deliverables. Team members are placed on tasks through Assignments and record Time entries. Budget lines and Cost entries track money. Risks, Issues and Change requests are logged against the project; Stakeholders have an interest in it.
+in: Portfolio, programme, project; Scope and schedule; Resources and time; Budget and cost; Risks, issues, changes; Stakeholders
+out: Procurement contracts; Benefit realisation models; Agile board mechanics; Payroll
+std: pmbok | high | Project, work package, milestone, deliverable, stakeholder, risk and issue follow the PMBOK Guide / ISO 21502. | Project, WorkPackage, Milestone, Deliverable, Stakeholder, Risk, Issue, Budget
+std: org | low | Teams and roles follow the W3C Organization Ontology. | org:Role, org:Membership
+std: prov | low | Deliverable versions and approvals can be expressed with PROV-O. | prov:Entity, prov:Activity
+std: time | low | Planned and actual intervals follow OWL-Time. | time:Interval
+== Portfolio | Portfolio and project | The containers of work.
+Portfolio | A collection of programmes and projects managed together to meet strategic objectives.
+  - name : string !
+  - owner : string
+Programme | A group of related projects managed in a coordinated way.
+  - name : string !
+  > in portfolio > Portfolio ?
+Project | A temporary endeavour to create a defined result within time and budget.
+  - project code : string !
+  - name : string !
+  - objective : string
+  - planned start : date
+  - planned finish : date
+  - actual finish : date
+  - percent complete : decimal
+  > in programme > Programme ?
+  > in portfolio > Portfolio ?
+  > managed by > TeamMember 1
+  > sponsored by > Stakeholder ?
+  > has status > ProjectStatus 1
+  > has health > Health ?
+ProjectStatus | The lifecycle state of a project.
+  * Proposed, Approved, In progress, On hold, Completed, Cancelled
+Health | A red-amber-green summary of status.
+  * Green, Amber, Red
+Phase | A stage of a project ending in a decision point.
+  - name : string !
+  - sequence : integer
+  > of project > Project 1
+== Scope | Scope and schedule | What and when.
+WorkPackage | A deliverable-oriented part of the project's scope, the lowest level of the work breakdown structure.
+  - wbs code : string !
+  - name : string !
+  > of project > Project 1 | | has work package
+  > in phase > Phase ?
+  > part of > WorkPackage ?
+Task | A piece of work with a duration, assigned to people.
+  - name : string !
+  - planned start : date
+  - planned finish : date
+  - actual start : date
+  - actual finish : date
+  - planned hours : decimal
+  - percent complete : decimal
+  > in work package > WorkPackage 1
+  > depends on > Task * | A task that must finish first. | precedes
+  > has status > TaskStatus 1
+TaskStatus | The state of a task.
+  * Not started, In progress, Blocked, Done
+Milestone | A significant point in the schedule with no duration.
+  - name : string !
+  - due date : date !
+  - achieved on : date
+  > of project > Project 1
+Deliverable | A product, result or document the project must produce.
+  - name : string !
+  - due date : date
+  - accepted on : date
+  > produced by > WorkPackage 1
+  > accepted by > Stakeholder ?
+== Resource | Resources and time | Who does the work.
+TeamMember | A person who works on projects.
+  - name : string !
+  - cost rate per hour : decimal
+  > has role > ProjectRole ?
+ProjectRole | The function a person performs.
+  * Project manager, Business analyst, Developer, Tester, Architect, Subject expert
+Assignment | The allocation of a team member to a task.
+  - allocated hours : decimal !
+  > of member > TeamMember 1
+  > to task > Task 1 | | has assignment
+TimeEntry | Hours a team member recorded against a task on a day.
+  - worked on : date !
+  - hours : decimal !
+  - billable : boolean
+  > by member > TeamMember 1
+  > on task > Task 1
+== Cost | Budget and cost | The money.
+BudgetLine | An approved amount for a cost category of a project.
+  - amount : decimal !
+  - approved on : date
+  > of project > Project 1
+  > for category > CostCategory 1
+CostEntry | An actual cost incurred by a project.
+  - incurred on : date !
+  - amount : decimal !
+  - description : string
+  > of project > Project 1
+  > for category > CostCategory 1
+CostCategory | The kind of cost.
+  * Labour, Software, Hardware, Travel, External services, Contingency
+== Control | Risks, issues and changes | What threatens the plan.
+Risk | An uncertain event that would affect the project if it happened.
+  - title : string !
+  - probability : integer ! | Scored from 1 (low) to 5 (high).
+  - impact : integer ! | Scored from 1 (low) to 5 (high).
+  - response : string
+  - closed on : date
+  > of project > Project 1
+  > owned by > TeamMember ?
+Issue | A problem that has happened and needs resolution.
+  - title : string !
+  - raised on : date !
+  - resolved on : date
+  > of project > Project 1
+  > owned by > TeamMember ?
+  > has severity > IssueSeverity 1
+IssueSeverity | How serious an issue is.
+  * Low, Medium, High, Critical
+ChangeRequest | A proposal to alter scope, schedule or budget.
+  - title : string !
+  - raised on : date !
+  - cost impact : decimal
+  - schedule impact days : integer
+  - approved : boolean
+  > of project > Project 1
+Stakeholder | A person or group with an interest in or influence over the project.
+  - name : string !
+  - organisation : string
+  - influence : string
+rule: derivation | Schedule variance | A task is late when it is not Done and its planned finish has passed. | Task
+rule: derivation | Cost variance | Cost variance is the budget for a category less the sum of its cost entries. | BudgetLine, CostEntry
+rule: derivation | Risk exposure | Risk exposure is probability multiplied by impact. | Risk
+rule: constraint | Dependencies | A task cannot start before the tasks it depends on are done. | Task
+uc: Portfolio status | Portfolio manager | Which projects are red or amber, and how far behind schedule and over budget are they? | Project, Health, ProjectStatus, BudgetLine, CostEntry | has health, Project.has status, Project.planned finish, BudgetLine.of project, CostEntry.of project, BudgetLine.amount, CostEntry.amount
+uc: Resource utilisation | Resource manager | How many hours did each team member record against allocation last month? | TeamMember, Assignment, TimeEntry, Task | of member, to task, by member, on task, Assignment.allocated hours, TimeEntry.hours
+uc: Top risks | Project sponsor | What are the highest-exposure open risks across the portfolio? | Risk, Project, Portfolio | Risk.of project, Project.in portfolio, Risk.probability, Risk.impact

@@ -286,7 +286,13 @@ def merge(base: dict, patch: dict, max_classes: int = 250) -> tuple[dict, dict]:
                 given = set(x) | ({"label"} if "name" in x else set()) if isinstance(x, dict) else set(y)
                 out[key][idx] = {**out[key][idx], **{k: v for k, v in y.items() if k in given}}     # only what the caller supplied
                 counts["updated"] += key != "modules"
-    return clean(out, max_classes), counts
+    result = clean(out, max_classes)
+    # count what really ended up in the ontology: cleaning may drop an element that points at nothing
+    def ids(c):
+        return {(k, x["id"]) for k in ("classes", "properties", "individuals") for x in c.get(k, [])} | {("rules", r["statement"]) for r in c.get("rules", [])}
+    before, after = ids(base), ids(result)
+    counts["added"], counts["removed"] = len(after - before), len(before - after)
+    return result, counts
 
 
 # ---- graph helpers ----------------------------------------------------------------------------

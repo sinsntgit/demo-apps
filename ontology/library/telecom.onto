@@ -1,0 +1,131 @@
+id: telecom
+name: Telecommunications - customer, product, service
+industry: Telecommunications
+domain: Telecom operator: subscribers, product offerings, subscriptions, network services, usage, billing and trouble tickets
+scope: Customers and accounts, product offerings and plans, subscriptions and SIMs, customer-facing services and network resources, usage records, bills and payments, orders and trouble tickets.
+summary: Describes what a telecom operator sells and delivers: who subscribes to which offering, which services and network resources realise it, how usage is recorded and billed, and how faults are handled. A starter model following the TM Forum Information Framework (SID) domains.
+purpose: Shared vocabulary across CRM, billing, provisioning and assurance systems; basis for churn, revenue and network-quality analytics.
+read: A Customer has Billing accounts. A Subscription is a customer's purchase of a Product offering (a Plan with Allowances); it is realised by Services that use Network resources such as a SIM, number or line. Usage records are rated and collected into a Bill for the billing account. Product orders create or change subscriptions; Trouble tickets report service problems.
+in: Customer and accounts; Offerings and subscriptions; Services and resources; Usage and billing; Orders and tickets
+out: Network planning and inventory detail; Interconnect settlement; Partner and wholesale; Handset logistics
+std: tmf | high | Customer, product, service, resource and usage classes follow the TM Forum SID domains. | Party, Customer, ProductOffering, Service, Resource, CustomerBill, Usage, TroubleTicket
+std: schema | low | Organisations and people are aligned to schema.org. | schema:Organization, schema:Person
+std: itil | low | Trouble ticket handling follows ITIL incident practice. | Incident
+== Customer | Customers | Who subscribes.
+Customer | A person or organisation that buys services from the operator.
+  - customer number : string !
+  - name : string !
+  - joined on : date
+  - city : string
+  > of type > CustomerType 1
+CustomerType | The kind of customer.
+  * Consumer, Small business, Enterprise
+BillingAccount | The account to which charges are billed and payments are made.
+  - account number : string !
+  - billing cycle day : integer
+  - credit limit : decimal
+  - prepaid : boolean
+  > belongs to > Customer 1 | | has billing account
+== Product | Offerings and subscriptions | What is sold.
+ProductOffering | Something the operator sells at a price, such as a plan, add-on or device.
+  - offering code : string !
+  - name : string !
+  - monthly charge : decimal
+  - launched on : date
+  > in category > OfferingCategory 1
+OfferingCategory | The line of product.
+  * Mobile postpaid, Mobile prepaid, Fixed broadband, TV, Add-on, Device, Enterprise connectivity
+Allowance | An amount of usage included in an offering.
+  - quantity : decimal !
+  - unit : string !
+  > included in > ProductOffering 1
+  > of usage type > UsageType 1
+Subscription | A customer's active purchase of a product offering.
+  - subscription id : string !
+  - activated on : date !
+  - terminated on : date
+  - contract months : integer
+  > of offering > ProductOffering 1
+  > billed to > BillingAccount 1 | | has subscription
+  > has status > SubscriptionStatus 1
+SubscriptionStatus | The state of a subscription.
+  * Pending, Active, Suspended, Terminated
+ProductOrder | A request to add, change or cancel a subscription.
+  - order number : string !
+  - ordered at : dateTime !
+  - completed at : dateTime
+  > for subscription > Subscription 1
+  > of type > OrderType 1
+OrderType | What the order does.
+  * New, Upgrade, Downgrade, Add-on, Cancel, Port in, Port out
+== Network | Services and resources | How it is delivered.
+Service | A capability delivered to the customer, such as voice, data or broadband access.
+  - service id : string !
+  - activated on : date
+  > realises > Subscription 1
+  > of type > ServiceType 1
+  > uses > NetworkResource *
+ServiceType | The kind of service.
+  * Voice, SMS, Mobile data, Broadband, IPTV, Leased line
+NetworkResource | A physical or logical thing used to deliver a service.
+  - resource id : string !
+  > of type > ResourceType 1
+  > at site > NetworkSite ?
+ResourceType | The kind of resource.
+  * SIM, Phone number, Router, Port, IP address, Set-top box
+NetworkSite | A location of network equipment, such as a cell site or exchange.
+  - site code : string !
+  - city : string
+  - technology : string
+== Revenue | Usage and billing | What was used and charged.
+UsageRecord | A rated record of one use of a service.
+  - started at : dateTime !
+  - quantity : decimal !
+  - unit : string
+  - charge : decimal
+  - roaming : boolean
+  > of service > Service 1
+  > of usage type > UsageType 1
+  > via site > NetworkSite ?
+UsageType | The kind of usage.
+  * Voice minutes, SMS, Data megabytes, International, Roaming, Content
+Bill | The statement of charges for a billing account for a period.
+  - bill number : string !
+  - period start : date !
+  - period end : date !
+  - total amount : decimal !
+  - due date : date
+  > for account > BillingAccount 1
+BillCharge | One line of a bill.
+  - amount : decimal !
+  - description : string
+  > on bill > Bill 1 | | has charge
+  > for subscription > Subscription ?
+  > of type > ChargeType 1
+ChargeType | The kind of charge.
+  * Recurring, Usage, One-time, Discount, Tax, Late fee
+Payment | Money received against a billing account.
+  - paid on : date !
+  - amount : decimal !
+  - method : string
+  > to account > BillingAccount 1
+  > settles > Bill *
+== Care | Trouble tickets | When something goes wrong.
+TroubleTicket | A reported problem with a service.
+  - ticket number : string !
+  - opened at : dateTime !
+  - resolved at : dateTime
+  - description : string
+  > raised by > Customer 1
+  > about service > Service ?
+  > at site > NetworkSite ?
+  > has category > TicketCategory 1
+TicketCategory | The kind of problem.
+  * No service, Slow speed, Call drops, Billing dispute, Activation, Device
+rule: derivation | ARPU | Average revenue per user is billed amount divided by active subscriptions in the period. | Bill, Subscription
+rule: derivation | Churn | A subscription has churned when its status becomes Terminated; churn rate is terminations over active subscriptions. | Subscription
+rule: constraint | Overage | Usage beyond an offering's allowance is charged at the usage rate. | UsageRecord, Allowance
+rule: constraint | Suspension | A subscription is suspended when its billing account has a bill unpaid past the due date. | Subscription, Bill
+uc: Churn by offering | Retention manager | Which offerings lose the most subscribers, and how long after activation? | Subscription, ProductOffering, SubscriptionStatus | of offering, Subscription.has status, Subscription.activated on, Subscription.terminated on
+uc: Revenue by charge type | Revenue assurance | How does billed revenue split by charge type and offering category each month? | BillCharge, Bill, ChargeType, Subscription, ProductOffering, OfferingCategory | on bill, BillCharge.of type, BillCharge.for subscription, of offering, ProductOffering.in category, BillCharge.amount
+uc: Tickets by site | Network operations | Which network sites generate the most trouble tickets and how fast are they resolved? | TroubleTicket, NetworkSite, TicketCategory | TroubleTicket.at site, has category, TroubleTicket.opened at, TroubleTicket.resolved at

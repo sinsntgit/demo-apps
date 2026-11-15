@@ -1,0 +1,125 @@
+id: energy
+name: Energy and utilities - grid, metering, billing
+industry: Energy & utilities
+domain: Electricity distribution utility: network assets, connections, metering, consumption, billing and outages
+scope: Network structure (substations, feeders, transformers), assets and their maintenance, customers and service connections, meters and readings, tariffs, bills and payments, outages and work orders.
+summary: Describes an electricity distributor's network, the customers connected to it, what they consume and are billed, and how outages are handled. A starter model following the IEC Common Information Model (CIM).
+purpose: Shared vocabulary across GIS, SCADA/outage, metering and billing systems; basis for loss, reliability and revenue analytics.
+read: A Substation feeds Feeders; Distribution transformers on a feeder supply Service connections (usage points) of Customers. A Meter at a connection produces Meter readings; a Tariff prices consumption into a Bill. An Outage affects equipment and connections and is restored through a Work order by a Crew.
+in: Network and assets; Customers and connections; Metering and consumption; Tariffs and billing; Outages and work
+out: Power generation and trading; Transmission planning; Protection settings; Regulatory tariff filings
+std: cim | high | Network equipment, assets, metering and outage classes follow IEC 61970 / 61968 (CIM). | PowerSystemResource, ConductingEquipment, Substation, Meter, Asset, Outage, UsagePoint
+std: sosa | low | Meter readings can be treated as SOSA observations. | sosa:Observation, sosa:Sensor
+std: qudt | low | Units of measure follow QUDT. | qudt:Unit
+std: geosparql | low | Locations of assets follow GeoSPARQL. | geo:Feature
+== Network | Network and assets | The grid.
+Substation | A facility where voltage is transformed and feeders originate.
+  - substation code : string !
+  - name : string !
+  - voltage kv : decimal
+  - latitude : decimal
+  - longitude : decimal
+Feeder | A circuit carrying power from a substation to an area.
+  - feeder code : string !
+  - length km : decimal
+  - voltage kv : decimal
+  > fed from > Substation 1 | | feeds
+DistributionTransformer | A transformer stepping voltage down for a group of customers.
+  - transformer code : string !
+  - capacity kva : decimal
+  - installed on : date
+  > on feeder > Feeder 1
+Asset | A physical item of plant with a lifecycle and a value.
+  - asset number : string !
+  - manufacturer : string
+  - installed on : date
+  - condition score : decimal
+  > of type > AssetType 1
+  > is transformer > DistributionTransformer ?
+AssetType | The kind of asset.
+  * Transformer, Breaker, Pole, Conductor, Cable, Meter, Switchgear
+== Customer | Customers and connections | Who is supplied.
+Customer | A person or organisation supplied with electricity.
+  - customer number : string !
+  - name : string !
+  - contact number : string
+ServiceConnection | A point where a customer's premises are connected and usage is measured.
+  - connection number : string !
+  - address : string
+  - sanctioned load kw : decimal
+  - connected on : date
+  - disconnected on : date
+  > of customer > Customer 1 | | has connection
+  > supplied by > DistributionTransformer 1
+  > in category > ConsumerCategory 1
+  > on tariff > Tariff 1
+ConsumerCategory | The class of consumer.
+  * Domestic, Commercial, Industrial, Agricultural, Public lighting
+== Metering | Metering | What is consumed.
+Meter | A device that measures energy at a service connection.
+  - meter number : string !
+  - smart : boolean
+  - installed on : date
+  > at connection > ServiceConnection 1
+MeterReading | A meter's register value at a time.
+  - read at : dateTime !
+  - reading kwh : decimal !
+  - consumption kwh : decimal
+  - estimated : boolean
+  > of meter > Meter 1 | | has reading
+EnergyAudit | A comparison of energy sent out on a feeder with energy billed.
+  - period : string !
+  - input kwh : decimal !
+  - billed kwh : decimal !
+  - loss percent : decimal
+  > of feeder > Feeder 1
+== Billing | Tariffs and billing | What is charged.
+Tariff | The schedule of prices for a consumer category.
+  - tariff code : string !
+  - energy charge per kwh : decimal
+  - fixed charge per month : decimal
+  - effective from : date
+Bill | The charge for a connection's consumption in a period.
+  - bill number : string !
+  - period start : date !
+  - period end : date !
+  - units billed kwh : decimal
+  - amount : decimal !
+  - due date : date
+  > for connection > ServiceConnection 1
+Payment | Money received against a bill.
+  - paid on : date !
+  - amount : decimal !
+  - channel : string
+  > settles > Bill 1
+== Reliability | Outages and work | Keeping the lights on.
+Outage | An interruption of supply.
+  - started at : dateTime !
+  - restored at : dateTime
+  - planned : boolean
+  - customers affected : integer
+  > on feeder > Feeder ?
+  > on transformer > DistributionTransformer ?
+  > has cause > OutageCause 1
+OutageCause | Why supply was interrupted.
+  * Equipment failure, Weather, Tree contact, Overload, Planned maintenance, Third-party damage
+WorkOrder | A job for a field crew.
+  - work order number : string !
+  - created at : dateTime !
+  - completed at : dateTime
+  > for outage > Outage ?
+  > on asset > Asset ?
+  > assigned to > Crew ?
+  > of type > WorkType 1
+WorkType | The kind of field work.
+  * Restoration, Inspection, Preventive maintenance, New connection, Meter replacement, Disconnection
+Crew | A field team that carries out work orders.
+  - crew code : string !
+  - depot : string
+rule: derivation | Distribution loss | Loss percent is input energy less billed energy, divided by input energy. | EnergyAudit
+rule: derivation | SAIDI | System average interruption duration is customer-minutes of outage divided by customers served. | Outage, ServiceConnection
+rule: derivation | Consumption | Consumption is the difference between consecutive readings of the same meter. | MeterReading
+rule: constraint | Transformer loading | The sum of sanctioned load on a transformer should not exceed its capacity. | DistributionTransformer, ServiceConnection
+uc: Feeder losses | Loss reduction cell | Which feeders have the highest distribution loss this quarter? | EnergyAudit, Feeder, Substation | EnergyAudit.of feeder, fed from, EnergyAudit.loss percent
+uc: Outage duration by cause | Operations head | How long were outages by cause and feeder, and how many customers were affected? | Outage, OutageCause, Feeder | Outage.on feeder, Outage.has cause, Outage.started at, Outage.restored at, Outage.customers affected
+uc: Arrears by category | Revenue manager | How much is unpaid past the due date by consumer category? | Bill, Payment, ServiceConnection, ConsumerCategory | for connection, ServiceConnection.in category, settles, Bill.amount, Bill.due date

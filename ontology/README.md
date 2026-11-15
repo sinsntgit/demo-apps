@@ -10,6 +10,7 @@ In-app **Help** (menu → Help) is the full user and administrator manual, with 
 | Area | What you get |
 |---|---|
 | **Build with AI** | From any of: a domain and scope · your own use cases and requirements · a database schema · documents or a whole folder. Pipeline: read sources → research standards → class hierarchy → relationships, attributes, controlled values, rules → completeness review → explanation → use cases. Runs in the background with live progress. |
+| **Pre-built library** | 22 ready-made starter ontologies across 19 industries (lending, banking, insurance, healthcare, manufacturing, supply chain, procurement, HR, CRM, finance, telecom, energy, IT service management, cybersecurity, projects, education, real estate, agriculture, public sector, data governance, travel, retail). Preview, copy into your library - optionally tailored by AI at once - and build on it. Any ontology can also be duplicated. |
 | **Industry standards** | Built-in catalogue of 65 published ontologies and standards (schema.org, FIBO, HL7 FHIR, GS1, ISO 20022, SKOS, PROV-O, IOF, SAREF, TM Forum SID…). Candidates are matched locally; the AI chooses, says how each is used, aligns classes to published terms. |
 | **Explanation** | Summary, purpose, scope in / out, how to read the model, a paragraph per module, design decisions. Editable; can be rewritten by AI. |
 | **Diagram & visual editing** | Class hierarchy, relationships of a module, everything around one class. Click a box or a line to edit; add classes, subclasses, relationships, attributes and metadata from the diagram. |
@@ -96,6 +97,8 @@ Verified here, with a stand-in AI model that returns a fixed retail ontology (`t
 - OWL / Turtle / JSON-LD exports re-parsed with rdflib; import round-trip; PDF, PowerPoint and Excel opened and read;
 - both reasoners on a correct ontology and on one with planted contradictions (HermiT with Java 21);
 - AI usage rules (a user cannot see another's usage); appearance; schema upgrade of an older database;
+- all 22 pre-built ontologies: parsed without loss, quality score 93+, valid Turtle export, consistent under the reasoner;
+  copy and duplicate with their access rules;
 - every screen in a headless browser, including visual editing on the diagram, as administrator and as viewer;
 - the Anthropic SDK code path (streaming, effort, token accounting) against an Anthropic-shaped stand-in server.
 
@@ -109,6 +112,10 @@ Verified here, with a stand-in AI model that returns a fixed retail ontology (`t
 - Windows, and Python versions other than 3.13.
 - Very large inputs (hundreds of documents; ontologies near the class limit).
 - The reused terms the AI lists for a standard are not checked against the standard itself — the UI says so.
+- **The pre-built ontologies are starter models written for this application**, aligned to the published standards from
+  knowledge of them. They were not compared term by term with the official ontology files (which could not be
+  downloaded here) and have not been reviewed by a practitioner of each industry. They are sound as models
+  (see above); whether each fits a given organisation is for that organisation to judge and extend.
 
 Not built: single sign-on; user groups (access is per person or “everyone”); free positioning of boxes in diagrams
 (layout is automatic); looking standards up live on the internet; reading rows of data to infer an ontology;

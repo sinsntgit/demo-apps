@@ -1,0 +1,151 @@
+id: agriculture
+name: Agriculture - farms, crops and produce
+industry: Agriculture & food
+domain: Farm management and agri value chain: farmers, land, crop cycles, inputs, equipment, harvest and sale
+scope: Farmers and farmer groups, farms and field plots, soil tests, crops and varieties, seasons and crop cycles, field operations and input use, equipment such as tractors, irrigation, weather observations, harvest, storage and sale at markets, advisories.
+summary: Describes what is grown, where and by whom, what was done and applied to each plot through a season, which equipment was used, what was harvested and where it was sold. A starter model for farm advisory, agri-lending and procurement analytics, using AGROVOC terms for crops and practices.
+purpose: Shared vocabulary across farmer registries, advisory apps, procurement and agri-finance systems.
+read: A Farmer owns or leases a Farm made of Plots. A Crop cycle is one Crop variety grown on a plot in a Season. Field operations (sowing, spraying, harvesting) happen in a cycle, apply Inputs and use Equipment. Soil tests and Weather observations describe conditions. A Harvest records yield; a Produce sale sells it to a Buyer at a Market. Advisories are sent to farmers.
+in: Farmers and land; Crops, seasons, crop cycles; Operations, inputs, equipment; Soil and weather; Harvest and sale; Advisory
+out: Food processing; Livestock breeding detail; Commodity exchange trading; Land title law
+std: agrovoc | high | Crops, practices and inputs are named with AGROVOC / FoodOn concepts. | Crop, Soil, AgriculturalPractice, FoodProduct
+std: sosa | medium | Soil tests and weather readings follow SOSA observations. | sosa:Observation, sosa:FeatureOfInterest
+std: geosparql | medium | Farm and plot boundaries follow GeoSPARQL. | geo:Feature, geo:hasGeometry
+std: qudt | low | Areas, quantities and yields use QUDT units. | qudt:Unit
+std: gs1 | low | Produce lots can be identified with GS1 keys for traceability. | gs1:Product
+== Farmer | Farmers and land | Who farms what.
+Farmer | A person who cultivates land.
+  - farmer id : string !
+  - name : string !
+  - mobile number : string
+  - village : string
+  - district : string
+  - state : string
+  > member of > FarmerGroup *
+FarmerGroup | A cooperative, producer organisation or self-help group of farmers.
+  - name : string !
+  - registered on : date
+Farm | The land a farmer operates as one holding.
+  - farm code : string !
+  - total area acres : decimal !
+  - latitude : decimal
+  - longitude : decimal
+  > operated by > Farmer 1 | | operates
+  > held as > TenureType 1
+TenureType | The basis on which land is held.
+  * Owned, Leased, Sharecropped
+Plot | A contiguous field within a farm on which one crop is grown at a time.
+  - plot number : string !
+  - area acres : decimal !
+  - irrigated : boolean
+  > part of > Farm 1 | | has plot
+  > has soil type > SoilType ?
+  > irrigated by > IrrigationSource ?
+SoilType | The class of soil.
+  * Alluvial, Black, Red, Laterite, Sandy, Clay loam
+IrrigationSource | Where irrigation water comes from.
+  * Canal, Borewell, Open well, Drip, Sprinkler, Rainfed
+== Crop | Crops and seasons | What is grown and when.
+Crop | A cultivated plant species.
+  - crop name : string !
+  - crop group : string
+CropVariety | A named variety or hybrid of a crop.
+  - variety name : string !
+  - duration days : integer
+  > of crop > Crop 1
+Season | A growing season in a year.
+  - name : string ! | For example Kharif 2026.
+  - start date : date
+  - end date : date
+CropCycle | One crop variety grown on one plot in one season, from sowing to harvest.
+  - sown on : date
+  - sown area acres : decimal !
+  - expected yield quintals : decimal
+  > on plot > Plot 1 | | has crop cycle
+  > of variety > CropVariety 1
+  > in season > Season 1
+  > has stage > CropStage ?
+CropStage | The growth stage of the crop.
+  * Land preparation, Sown, Vegetative, Flowering, Maturity, Harvested
+== Work | Operations, inputs and equipment | What was done.
+FieldOperation | An activity carried out on a plot during a crop cycle.
+  - performed on : date !
+  - labour days : decimal
+  - cost : decimal
+  > in cycle > CropCycle 1 | | has operation
+  > of type > OperationType 1
+  > uses equipment > Equipment *
+OperationType | The kind of field work.
+  * Ploughing, Sowing, Transplanting, Irrigation, Fertiliser application, Spraying, Weeding, Harvesting, Threshing
+Input | Something applied to the crop: seed, fertiliser, pesticide.
+  - input name : string !
+  - brand : string
+  - unit : string
+  > of type > InputType 1
+InputType | The kind of input.
+  * Seed, Fertiliser, Pesticide, Herbicide, Manure, Micronutrient
+InputApplication | The use of a quantity of an input in a field operation.
+  - quantity : decimal !
+  - cost : decimal
+  > in operation > FieldOperation 1
+  > of input > Input 1
+Equipment | A machine used in farming.
+  - make : string
+  - model : string
+  - horsepower : decimal
+  - purchased on : date
+  - financed : boolean
+  > owned by > Farmer ?
+  > of type > EquipmentType 1
+EquipmentType | The kind of machine.
+  * Tractor, Power tiller, Rotavator, Seed drill, Sprayer, Harvester, Thresher, Trailer
+== Condition | Soil and weather | The growing conditions.
+SoilTest | A laboratory analysis of a plot's soil.
+  - tested on : date !
+  - ph : decimal
+  - nitrogen kg per ha : decimal
+  - phosphorus kg per ha : decimal
+  - potassium kg per ha : decimal
+  - organic carbon percent : decimal
+  > of plot > Plot 1
+WeatherObservation | Weather recorded for a location on a day.
+  - observed on : date !
+  - rainfall mm : decimal
+  - max temperature c : decimal
+  - min temperature c : decimal
+  - humidity percent : decimal
+  > at farm > Farm 1
+Advisory | Guidance sent to a farmer about a crop cycle.
+  - issued on : date !
+  - message : string !
+  > to farmer > Farmer 1
+  > about cycle > CropCycle ?
+  > on topic > AdvisoryTopic 1
+AdvisoryTopic | The subject of an advisory.
+  * Sowing time, Nutrient, Pest and disease, Irrigation, Weather alert, Harvest, Market price
+== Output | Harvest and sale | What came out.
+Harvest | The produce gathered from a crop cycle.
+  - harvested on : date !
+  - quantity quintals : decimal !
+  - quality grade : string
+  > of cycle > CropCycle 1
+Market | A place where produce is sold, such as a regulated market yard.
+  - name : string !
+  - district : string
+Buyer | A trader, processor or agency that buys produce.
+  - name : string !
+  - buyer type : string
+ProduceSale | The sale of harvested produce.
+  - sold on : date !
+  - quantity quintals : decimal !
+  - price per quintal : decimal !
+  > of harvest > Harvest 1
+  > to buyer > Buyer ?
+  > at market > Market ?
+rule: derivation | Yield | Yield per acre is harvest quantity divided by the sown area of the crop cycle. | Harvest, CropCycle
+rule: constraint | One crop per plot | A plot has at most one crop cycle in progress at a time. | CropCycle, Plot
+rule: derivation | Cost of cultivation | Cost of cultivation is the sum of operation costs and input application costs of a crop cycle. | FieldOperation, InputApplication
+rule: constraint | Area | The sown area of a crop cycle cannot exceed the plot's area. | CropCycle, Plot
+uc: Yield by variety and district | Agronomist | What yield per acre did each variety achieve by district and irrigation source this season? | Harvest, CropCycle, CropVariety, Plot, Farm, Farmer, Season, IrrigationSource | of cycle, of variety, on plot, Plot.part of, operated by, in season, irrigated by, Harvest.quantity quintals, CropCycle.sown area acres, Farmer.district
+uc: Cost of cultivation | Farm advisor | What did it cost per acre to grow each crop, split by operation and input type? | CropCycle, FieldOperation, OperationType, InputApplication, Input, InputType | has operation, FieldOperation.of type, in operation, of input, Input.of type, FieldOperation.cost, InputApplication.cost
+uc: Tractor owners and usage | Agri-finance officer | Which farmers own financed tractors, how much land do they operate and how often is the tractor used? | Farmer, Equipment, EquipmentType, Farm, FieldOperation | Equipment.owned by, Equipment.of type, Equipment.financed, operates, Farm.total area acres, uses equipment

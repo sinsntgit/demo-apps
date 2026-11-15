@@ -1,0 +1,231 @@
+id: lending
+name: Lending and loan origination
+industry: Banking & financial services
+domain: Retail and agricultural lending - from enquiry to disbursement and repayment
+scope: Applicants and co-applicants, dealers and sourcing channels, loan products and schemes, applications, credit assessment and underwriting, sanction, collateral and financed assets, disbursement, repayment schedule and collections status.
+summary: Describes how a lender originates and services a loan: who applies and through which channel, what is financed, how the application is assessed and sanctioned, how money is disbursed and how it is repaid. It is a starter model for banks and NBFCs financing vehicles, tractors, equipment or personal needs.
+purpose: A shared vocabulary for loan origination, underwriting and portfolio analytics; the target model when integrating the loan origination system, the core lending system and the collections system.
+read: Start from Loan application. It is made by an Applicant (with optional Co-applicants and Guarantors), sourced through a Dealer or Branch, for a Loan product, to finance an Asset. A Credit assessment with Bureau reports and Underwriting decisions leads to a Sanction. A Loan account is opened against the sanction; Disbursements pay it out, a Repayment schedule of Instalments defines what is due, and Payments settle them.
+in: Parties and their roles; Products, schemes and pricing; Application, assessment and sanction; Assets and collateral; Disbursement and repayment
+out: Treasury and funding; General ledger accounting; Legal recovery proceedings; Deposit products
+std: fibo | high | Concepts for loans, borrowers, lenders, collateral and interest follow FIBO's Loans and Business Entities domains. | Loan, Borrower, Lender, Collateral, InterestRate, LegalEntity
+std: mismo | medium | The application - underwriting - closing - servicing lifecycle follows the MISMO reference model. | Loan, Borrower, Underwriting, Closing, Servicing, CreditReport
+std: schema | medium | People, organisations and addresses are aligned to schema.org for exchange. | schema:Person, schema:Organization, schema:PostalAddress
+std: iso20022 | low | Payment and disbursement instructions follow ISO 20022 payment concepts. | PaymentInstruction, CashAccount
+== Party | Parties and roles | The people and organisations involved in a loan and the roles they play.
+Party | A person or organisation that takes part in a lending relationship.
+  - name : string !
+  - mobile number : string
+  - email : string
+  > has address > Address *
+  > has identity document > IdentityDocument *
+Individual : Party | A natural person. | =schema:Person
+  - date of birth : date
+  - gender : string
+  - occupation : string
+  - annual income : decimal | Declared or assessed yearly income.
+Organization : Party | A company, firm or other body acting as one party. | =schema:Organization
+  - registration number : string
+  - date of incorporation : date
+Applicant : Party | The party that applies for the loan and is primarily liable to repay it. Also called the borrower once the loan is sanctioned.
+  - customer id : string !
+  - existing customer : boolean
+CoApplicant : Party | A party that applies jointly and shares liability for repayment.
+  - relationship to applicant : string
+Guarantor : Party | A party that undertakes to repay if the borrower does not.
+Dealer : Organization | A seller of the financed asset who sources applications for the lender.
+  - dealer code : string !
+  - empanelled on : date
+  - active : boolean
+Branch : Organization | An office of the lender that sources, processes or services loans.
+  - branch code : string !
+  - region : string
+  - state : string
+Employee | A member of the lender's staff acting on applications.
+  - employee id : string !
+  - designation : string
+  > works at > Branch 1
+Address | A postal location of a party or an asset. | =schema:PostalAddress
+  - line : string
+  - village or city : string
+  - district : string
+  - state : string
+  - postal code : string
+IdentityDocument | An official document proving a party's identity or address (KYC).
+  - document number : string !
+  - verified : boolean
+  > of type > IdentityDocumentType 1
+IdentityDocumentType | The kind of identity document.
+  * Aadhaar, PAN, Passport, Voter ID, Driving licence
+== Product | Products and pricing | What the lender offers and on what terms.
+LoanProduct | A type of loan the lender offers, with its eligibility and pricing rules.
+  - product code : string !
+  - product name : string !
+  - minimum amount : decimal
+  - maximum amount : decimal
+  - maximum tenure months : integer
+  > in category > ProductCategory 1
+ProductCategory | A grouping of loan products.
+  * Tractor loan, Vehicle loan, Equipment loan, Personal loan, Business loan, Gold loan
+Scheme | A time-bound variant of a product with special rates or terms, often tied to a manufacturer or season.
+  - scheme code : string !
+  - valid from : date
+  - valid to : date
+  > applies to > LoanProduct 1
+InterestRate | The price of the loan expressed as a yearly percentage.
+  - annual rate percent : decimal !
+  > of type > RateType 1
+RateType | Whether the rate is fixed for the term or follows a benchmark.
+  * Fixed, Floating
+Charge | A fee levied on the loan in addition to interest.
+  - amount : decimal !
+  > of type > ChargeType 1
+ChargeType | The kind of fee.
+  * Processing fee, Documentation charge, Insurance premium, Stamp duty, Late payment charge
+== Origination | Application and underwriting | From the first enquiry to the lender's decision.
+LoanApplication | A request for a loan of a stated amount and tenure, moving through the lender's process.
+  - application number : string !
+  - applied on : date !
+  - requested amount : decimal !
+  - requested tenure months : integer
+  - purpose : string
+  > made by > Applicant 1 | The primary applicant. | applies for
+  > has co-applicant > CoApplicant *
+  > guaranteed by > Guarantor *
+  > for product > LoanProduct 1
+  > under scheme > Scheme ?
+  > sourced by > Dealer ? | The dealer who brought the application. | sourced
+  > logged at > Branch 1
+  > to finance > Asset ?
+  > has status > ApplicationStatus 1
+  > handled by > Employee *
+ApplicationStatus | The stage an application has reached.
+  * Lead, Logged in, Under assessment, Sanctioned, Rejected, Withdrawn, Disbursed
+CreditAssessment | The lender's evaluation of the applicant's ability and willingness to repay.
+  - assessed on : date !
+  - assessed income : decimal
+  - obligations per month : decimal
+  - foir percent : decimal | Fixed obligations to income ratio.
+  - ltv percent : decimal | Loan amount as a share of the asset's value.
+  - internal score : decimal
+  > assesses > LoanApplication 1 | | assessed by
+  > uses > BureauReport *
+  > performed by > Employee ?
+BureauReport | A credit history report on a party obtained from a credit bureau.
+  - bureau name : string !
+  - score : integer
+  - pulled on : date !
+  - active loans : integer
+  - overdue amount : decimal
+  > about > Party 1
+FieldVerification | A physical check of the applicant's residence, business or land.
+  - visited on : date
+  - outcome : string
+  - remarks : string
+  > verifies > LoanApplication 1
+UnderwritingDecision | The lender's formal decision on an application, with any conditions.
+  - decided on : date !
+  - conditions : string
+  > decides > LoanApplication 1
+  > has outcome > DecisionOutcome 1
+  > decided by > Employee 1
+  > has reason > RejectionReason *
+DecisionOutcome | The result of underwriting.
+  * Approve, Approve with conditions, Refer, Reject
+RejectionReason | Why an application was declined.
+  * Low bureau score, Insufficient income, High existing obligations, Negative field report, Policy deviation, Incomplete documents
+Deviation | An approved exception to credit policy on a specific application.
+  - policy parameter : string !
+  - justification : string
+  > on > LoanApplication 1
+  > approved by > Employee 1
+Sanction | The lender's commitment to lend a stated amount on stated terms, valid for a period.
+  - sanction number : string !
+  - sanctioned on : date !
+  - sanctioned amount : decimal !
+  - tenure months : integer !
+  - valid until : date
+  > sanctions > LoanApplication 1 | | sanctioned as
+  > at rate > InterestRate 1
+  > with charge > Charge *
+== Security | Assets and collateral | What is financed and what secures the loan.
+Asset | A thing financed by the loan, such as a tractor, vehicle or machine.
+  - make : string
+  - model : string
+  - variant : string
+  - engine or serial number : string
+  - registration number : string
+  - invoice value : decimal
+  - on road price : decimal
+  > of type > AssetType 1
+  > supplied by > Dealer ?
+AssetType | The kind of financed asset.
+  * Tractor, Implement, Harvester, Commercial vehicle, Car, Two-wheeler, Machinery
+Collateral | Property pledged to the lender that may be taken if the loan is not repaid.
+  - description : string
+  - assessed value : decimal
+  - valued on : date
+  > secures > LoanAccount 1 | | secured by
+  > is asset > Asset ?
+  > of type > CollateralType 1
+CollateralType | The kind of security.
+  * Hypothecation of asset, Mortgage of land, Gold, Fixed deposit lien, Personal guarantee
+Insurance | Cover on the financed asset or the borrower's life, assigned to the lender.
+  - policy number : string !
+  - insurer : string
+  - sum insured : decimal
+  - expires on : date
+  > covers > Asset ?
+== Servicing | Disbursement and repayment | Paying the loan out and getting it back.
+LoanAccount | The loan as booked after sanction: the running record of what was lent, what is due and what was paid.
+  - loan account number : string !
+  - opened on : date !
+  - principal outstanding : decimal
+  - days past due : integer
+  - closed on : date
+  > booked from > Sanction 1
+  > owed by > Applicant 1 | | owes
+  > serviced at > Branch 1
+  > has status > LoanStatus 1
+  > has schedule > RepaymentSchedule 1
+LoanStatus | The servicing state of a loan account.
+  * Active, Overdue, Non-performing, Closed, Foreclosed, Written off
+Disbursement | A payment of loan money by the lender, in full or in a tranche.
+  - disbursed on : date !
+  - amount : decimal !
+  - reference number : string
+  > against > LoanAccount 1 | | paid out through
+  > paid to > Party 1 | The dealer or borrower who receives the money.
+  > by mode > PaymentMode 1
+RepaymentSchedule | The plan of instalments agreed for a loan account.
+  - instalment count : integer !
+  - first due date : date
+  > has frequency > RepaymentFrequency 1
+  > has instalment > Instalment +
+RepaymentFrequency | How often instalments fall due.
+  * Monthly, Quarterly, Half-yearly, Yearly
+Instalment | One scheduled amount due on a date, made of principal and interest.
+  - sequence : integer !
+  - due date : date !
+  - principal due : decimal
+  - interest due : decimal
+  - paid : boolean
+Payment | Money received from the borrower against a loan account.
+  - received on : date !
+  - amount : decimal !
+  - bounced : boolean
+  > credited to > LoanAccount 1
+  > settles > Instalment *
+  > by mode > PaymentMode 1
+PaymentMode | How money is paid.
+  * NACH mandate, UPI, Cheque, Cash, Bank transfer
+rule: constraint | Disbursement needs sanction | A disbursement can only be made against a loan account booked from a valid, unexpired sanction. | Disbursement, Sanction
+rule: constraint | Disbursed within sanction | The total disbursed on a loan account cannot exceed the sanctioned amount. | Disbursement, Sanction
+rule: derivation | Loan to value | LTV percent is the sanctioned amount divided by the asset's on-road price or assessed value. | CreditAssessment, Asset
+rule: derivation | Days past due | Days past due is counted from the due date of the oldest unpaid instalment. | LoanAccount, Instalment
+rule: constraint | Rejection needs a reason | An underwriting decision with outcome Reject must carry at least one rejection reason. | UnderwritingDecision
+rule: disjoint | Person or organisation | A party is either an individual or an organisation, never both. | Individual, Organization
+uc: Dealer rejection rate | Sales head | Which dealers have the highest share of applications rejected at underwriting, and for which reasons? | LoanApplication, Dealer, UnderwritingDecision, DecisionOutcome, RejectionReason | sourced by, decides, has outcome, UnderwritingDecision.has reason
+uc: Sanction to disbursement ageing | Operations manager | Which sanctions have not been disbursed within 30 days? | Sanction, LoanAccount, Disbursement | Sanction.sanctioned on, booked from, against, Disbursement.disbursed on
+uc: Portfolio at risk by product and branch | Risk manager | What share of outstanding principal is more than 90 days past due, by product and branch? | LoanAccount, Sanction, LoanApplication, LoanProduct, Branch | LoanAccount.days past due, LoanAccount.principal outstanding, booked from, sanctions, for product, serviced at
+uc: Bureau score versus delinquency | Credit policy analyst | How does the bureau score at application relate to later overdue status? | BureauReport, CreditAssessment, LoanApplication, Sanction, LoanAccount, LoanStatus | BureauReport.score, uses, assesses, sanctions, booked from, LoanAccount.has status

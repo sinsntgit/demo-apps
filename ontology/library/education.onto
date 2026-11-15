@@ -1,0 +1,122 @@
+id: education
+name: Education - students, courses, assessment
+industry: Education
+domain: Schools, colleges and universities: programmes, courses, enrolment, assessment and credentials
+scope: Institutions and departments, academic programmes and courses, terms and course sections, students, instructors, admission and enrolment, attendance, assessments and grades, credentials, fees.
+summary: Describes how an education provider teaches and certifies learners: what is offered, who enrols, who teaches, how learning is assessed and what is awarded. A starter model following the Common Education Data Standards and schema.org's education terms.
+purpose: Shared vocabulary across student information, learning management and fee systems; basis for retention and outcome analytics.
+read: An Institution's Departments offer Programmes made of Courses. A Course section runs a course in a Term, taught by an Instructor. A Student is admitted to a programme and has Enrolments in sections; Attendance, Assessments and Results record participation and performance, leading to a Grade and finally a Credential. Fee invoices and Fee payments record money.
+in: Institution and programmes; Courses and sections; Students, admission, enrolment; Attendance and assessment; Credentials; Fees
+out: Research grants; Library; Hostel and transport; Staff HR
+std: ceds | high | Student, course, enrolment, assessment and credential follow the Common Education Data Standards. | Student, Course, Enrollment, Assessment, Credential
+std: schema | medium | Courses, organisations and credentials are aligned to schema.org. | schema:Course, schema:CourseInstance, schema:EducationalOrganization, schema:EducationalOccupationalCredential
+std: esco | low | Qualifications can be linked to ESCO. | esco:Qualification
+== Offer | Institution and programmes | What is offered.
+Institution | A school, college or university. | =schema:EducationalOrganization
+  - name : string !
+  - institution code : string
+  - city : string
+Department | An academic unit of an institution.
+  - name : string !
+  > of institution > Institution 1
+Programme | A structured course of study leading to a credential.
+  - programme code : string !
+  - name : string !
+  - duration years : decimal
+  - total credits : decimal
+  > offered by > Department 1
+  > at level > ProgrammeLevel 1
+ProgrammeLevel | The level of study.
+  * School, Diploma, Undergraduate, Postgraduate, Doctoral, Certificate
+Course | A unit of teaching on a subject. | =schema:Course
+  - course code : string !
+  - title : string !
+  - credits : decimal
+  > owned by > Department 1
+  > part of > Programme *
+  > requires > Course * | A course that must be passed first.
+== Delivery | Teaching | When and by whom.
+Term | An academic period such as a semester.
+  - name : string !
+  - start date : date !
+  - end date : date !
+CourseSection | One delivery of a course in a term to a group of students. | ~schema:CourseInstance
+  - section code : string !
+  - capacity : integer
+  - mode : string
+  > of course > Course 1
+  > in term > Term 1
+  > taught by > Instructor +
+Instructor | A person who teaches.
+  - staff number : string !
+  - name : string !
+  - designation : string
+  > member of > Department 1
+== Learner | Students and enrolment | Who learns.
+Student | A person admitted to study.
+  - student number : string !
+  - name : string !
+  - date of birth : date
+  - gender : string
+  - admitted on : date
+  > in programme > Programme 1
+  > has status > StudentStatus 1
+StudentStatus | The student's standing.
+  * Active, On leave, Graduated, Withdrawn, Suspended
+Application | A request for admission to a programme.
+  - applied on : date !
+  - entrance score : decimal
+  - admitted : boolean
+  > by applicant > Student ?
+  > to programme > Programme 1
+Enrolment | A student's registration in a course section.
+  - enrolled on : date !
+  - dropped on : date
+  - final marks : decimal
+  > of student > Student 1 | | has enrolment
+  > in section > CourseSection 1
+  > has grade > Grade ?
+Grade | The letter or band awarded.
+  * A, B, C, D, E, F, Incomplete
+AttendanceRecord | Whether a student was present at a class session.
+  - session date : date !
+  - present : boolean !
+  > for enrolment > Enrolment 1
+== Assess | Assessment and credentials | How learning is measured.
+Assessment | An exam, assignment or project used to evaluate learning.
+  - title : string !
+  - maximum marks : decimal !
+  - weight percent : decimal
+  - held on : date
+  > for section > CourseSection 1
+  > of type > AssessmentType 1
+AssessmentType | The kind of assessment.
+  * Exam, Quiz, Assignment, Project, Practical, Viva
+AssessmentResult | A student's marks in an assessment.
+  - marks obtained : decimal !
+  > of assessment > Assessment 1
+  > for enrolment > Enrolment 1
+Credential | A degree, diploma or certificate awarded to a student. | ~schema:EducationalOccupationalCredential
+  - awarded on : date !
+  - cgpa : decimal
+  - certificate number : string
+  > awarded to > Student 1
+  > for programme > Programme 1
+== Fees | Fees | Money.
+FeeInvoice | An amount charged to a student for a term.
+  - invoice number : string !
+  - amount : decimal !
+  - due date : date
+  > to student > Student 1
+  > for term > Term 1
+FeePayment | Money received from a student.
+  - paid on : date !
+  - amount : decimal !
+  > against > FeeInvoice 1
+rule: constraint | Prerequisites | A student can enrol in a course section only after passing every course the course requires. | Enrolment, Course
+rule: constraint | Capacity | Enrolments in a section cannot exceed its capacity. | Enrolment, CourseSection
+rule: derivation | Final marks | Final marks are the weighted sum of the student's assessment results in the section. | AssessmentResult, Assessment, Enrolment
+rule: constraint | Award | A credential is awarded only when the credits passed reach the programme's total credits. | Credential, Programme
+uc: Pass rate by course | Dean | What is the pass rate and average marks per course and instructor this term? | Enrolment, CourseSection, Course, Instructor, Term, Grade | in section, of course, taught by, in term, has grade, Enrolment.final marks
+uc: Students at risk | Student advisor | Which students have attendance below 75 percent or failing marks this term? | Student, Enrolment, AttendanceRecord, AssessmentResult | has enrolment, AttendanceRecord.for enrolment, AttendanceRecord.present, AssessmentResult.for enrolment, AssessmentResult.marks obtained
+uc: Fee arrears | Bursar | Which students have unpaid fee invoices past the due date? | FeeInvoice, FeePayment, Student | to student, against, FeeInvoice.amount, FeeInvoice.due date

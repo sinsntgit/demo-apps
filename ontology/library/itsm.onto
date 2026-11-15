@@ -1,0 +1,117 @@
+id: itsm
+name: IT service management
+industry: Information technology
+domain: IT service management: services, configuration items, incidents, problems, changes and requests
+scope: Business and technical services, configuration items and their relationships, users and support groups, incidents, problems and known errors, change requests, service requests, service level agreements.
+summary: Describes how an IT organisation delivers and supports services: what it runs, what depends on what, what broke, why, what was changed and whether service levels were met. A starter model following ITIL 4 practices.
+purpose: Shared vocabulary across the service desk, CMDB and monitoring tools; basis for MTTR, change-success and SLA analytics.
+read: A Service is supported by Configuration items, which depend on each other. A User reports an Incident affecting a service or CI; it is assigned to a Support group and measured against an SLA. Recurring incidents are grouped under a Problem with a Known error. A Change request modifies CIs and may cause or fix incidents. Service requests cover routine asks.
+in: Services and SLAs; CMDB; Incidents; Problems; Changes; Requests
+out: Software development lifecycle; Project portfolio; Asset finance; Security operations detail
+std: itil | high | Practices and record types follow ITIL 4 / ISO 20000. | Incident, Problem, ChangeRequest, ConfigurationItem, ServiceLevelAgreement, ServiceRequest
+std: archimate | medium | Service and application layering follows ArchiMate. | ApplicationComponent, Node, BusinessService
+std: prov | low | Who changed what and when can be expressed with PROV-O. | prov:Activity, prov:Agent
+== Service | Services | What IT provides.
+Service | A means of delivering value to users, such as email or the ordering system.
+  - service name : string !
+  - description : string
+  - business critical : boolean
+  > owned by > SupportGroup ?
+  > of type > ServiceType 1
+ServiceType | Whether the service faces the business or supports other services.
+  * Business service, Technical service
+ServiceLevelAgreement | Agreed targets for a service.
+  - name : string !
+  - response minutes : integer
+  - resolution hours : decimal
+  - availability percent : decimal
+  > for service > Service 1
+== Cmdb | Configuration | What IT runs.
+ConfigurationItem | Any component that must be managed to deliver a service.
+  - ci name : string !
+  - serial or id : string
+  - environment : string
+  - installed on : date
+  > of class > CiClass 1
+  > supports > Service *
+  > depends on > ConfigurationItem * | A component this one needs in order to work. | is needed by
+  > managed by > SupportGroup ?
+  > has status > CiStatus 1
+CiClass | The kind of component.
+  * Application, Database, Server, Virtual machine, Network device, Storage, Cloud service, End-user device
+CiStatus | The lifecycle state of a component.
+  * Planned, In use, Under maintenance, Retired
+== People | People | Who asks and who helps.
+User | A person who uses IT services.
+  - user id : string !
+  - name : string !
+  - department : string
+  - location : string
+SupportGroup | A team that resolves records.
+  - group name : string !
+  - support tier : integer
+Agent | A member of a support group.
+  - name : string !
+  > member of > SupportGroup +
+== Record | Incidents, problems, changes, requests | What happens.
+Incident | An unplanned interruption or reduction in quality of a service.
+  - incident number : string !
+  - opened at : dateTime !
+  - resolved at : dateTime
+  - summary : string !
+  - sla breached : boolean
+  > reported by > User 1
+  > affects service > Service ?
+  > affects item > ConfigurationItem ?
+  > assigned to > SupportGroup 1
+  > resolved by > Agent ?
+  > has priority > Priority 1
+  > has status > RecordStatus 1
+  > caused by change > ChangeRequest ?
+  > linked to problem > Problem ?
+Priority | Urgency and impact combined.
+  * P1 Critical, P2 High, P3 Medium, P4 Low
+RecordStatus | The state of a record.
+  * New, Assigned, In progress, On hold, Resolved, Closed
+Problem | The underlying cause of one or more incidents.
+  - problem number : string !
+  - opened at : dateTime !
+  - root cause : string
+  - closed at : dateTime
+  > on item > ConfigurationItem ?
+  > has status > RecordStatus 1
+KnownError | A problem with a documented root cause and workaround.
+  - workaround : string !
+  - documented on : date
+  > for problem > Problem 1
+ChangeRequest | A proposal to add, modify or remove something that could affect services.
+  - change number : string !
+  - requested at : dateTime !
+  - planned start : dateTime
+  - planned end : dateTime
+  - implemented at : dateTime
+  - successful : boolean
+  > changes > ConfigurationItem +
+  > requested by > User ?
+  > implemented by > SupportGroup ?
+  > of type > ChangeType 1
+  > has risk > ChangeRisk 1
+  > fixes > Problem ?
+ChangeType | How the change is authorised.
+  * Standard, Normal, Emergency
+ChangeRisk | The assessed risk of the change.
+  * Low, Medium, High
+ServiceRequest | A user's request for something routine, such as access or a laptop.
+  - request number : string !
+  - opened at : dateTime !
+  - fulfilled at : dateTime
+  - item requested : string !
+  > requested by > User 1
+  > fulfilled by > SupportGroup ?
+rule: derivation | Time to resolve | Resolution time is resolved at minus opened at; MTTR is its average. | Incident
+rule: constraint | SLA breach | An incident breaches its SLA when resolution time exceeds the agreement's resolution hours for the affected service. | Incident, ServiceLevelAgreement
+rule: derivation | Impact | A CI's impact is every service supported by it or by any item that depends on it. | ConfigurationItem, Service
+rule: constraint | Emergency changes | An emergency change must be linked to the incident or problem it resolves. | ChangeRequest
+uc: Incidents caused by changes | Change manager | Which changes caused incidents, by change type and risk? | Incident, ChangeRequest, ChangeType, ChangeRisk | caused by change, ChangeRequest.of type, has risk
+uc: MTTR and SLA by service | Service owner | What is mean time to resolve and the SLA breach rate per service and priority? | Incident, Service, Priority | affects service, Incident.has priority, Incident.opened at, Incident.resolved at, Incident.sla breached
+uc: Blast radius | Operations engineer | If this server fails, which services are affected? | ConfigurationItem, Service | depends on, supports

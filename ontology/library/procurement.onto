@@ -1,0 +1,128 @@
+id: procurement
+name: Procurement and sourcing
+industry: Supply chain & logistics
+domain: Purchasing: suppliers, sourcing, contracts, purchase orders, receipts and supplier invoices
+scope: Suppliers and their qualification, spend categories, purchase requisitions, sourcing events and bids, contracts, purchase orders, goods receipts, supplier invoices and three-way match, supplier performance.
+summary: Describes how an organisation buys: who it buys from, what was requested and approved, which contract and order govern the purchase, what was received and what was invoiced. A starter model for procure-to-pay and spend analytics.
+purpose: Shared vocabulary across e-procurement, ERP and accounts payable; basis for spend, compliance and supplier-performance analysis.
+read: A Requisition raised by a Requester for a Cost centre leads to a Purchase order to a Supplier, optionally under a Contract awarded through a Sourcing event with Bids. Order lines name Items in a Spend category. Goods receipts confirm delivery; a Supplier invoice bills the order and is matched to order and receipt before Payment.
+in: Suppliers; Requisition to order; Sourcing and contracts; Receipt, invoice, payment; Supplier performance
+out: Inventory management; Production planning; General ledger; Logistics execution
+std: ubl | high | Order, invoice and party structures follow OASIS UBL business documents. | Order, Invoice, Party, LineItem, PaymentMeans
+std: unspsc | medium | Spend categories follow the UNSPSC hierarchy. | Segment, Family, Class, Commodity
+std: schema | low | Organisations and invoices are aligned to schema.org. | schema:Organization, schema:Invoice
+std: org | low | Cost centres map to organisational units. | org:OrganizationalUnit
+== Supplier | Suppliers | Who we buy from.
+Supplier | A company that sells goods or services to the organisation. | ~schema:Organization
+  - supplier number : string !
+  - name : string !
+  - tax registration : string
+  - country : string
+  - onboarded on : date
+  > has status > SupplierStatus 1
+  > supplies category > SpendCategory *
+SupplierStatus | Whether the supplier may be used.
+  * Prospective, Approved, Preferred, Blocked
+SupplierQualification | A check that a supplier meets a requirement, such as a certificate or audit.
+  - requirement : string !
+  - valid until : date
+  - passed : boolean
+  > of supplier > Supplier 1
+SpendCategory | A class of goods or services bought; categories nest.
+  - category code : string !
+  - category name : string !
+  > broader > SpendCategory ?
+Item | A good or service that can be bought.
+  - item code : string !
+  - description : string !
+  - unit : string
+  > in category > SpendCategory 1
+== Request | Requisition and order | Asking for and ordering things.
+CostCentre | The organisational unit that bears the cost. | ~org:OrganizationalUnit
+  - cost centre code : string !
+  - name : string
+Requester | A person who asks for a purchase.
+  - employee number : string !
+  - name : string
+Requisition | An internal request to buy something, needing approval.
+  - requisition number : string !
+  - raised on : date !
+  - estimated value : decimal
+  - justification : string
+  > raised by > Requester 1
+  > charged to > CostCentre 1
+  > has status > ApprovalStatus 1
+ApprovalStatus | The approval state.
+  * Draft, Pending approval, Approved, Rejected
+PurchaseOrder | A binding order placed with a supplier.
+  - po number : string !
+  - ordered on : date !
+  - total value : decimal
+  - currency : string
+  > placed with > Supplier 1 | | receives order
+  > from requisition > Requisition ?
+  > under contract > Contract ?
+  > has status > PurchaseOrderStatus 1
+PurchaseOrderLine | One item, quantity and price on a purchase order.
+  - quantity : decimal !
+  - unit price : decimal !
+  - promised date : date
+  > of order > PurchaseOrder 1 | | has line
+  > for item > Item 1
+PurchaseOrderStatus | The state of a purchase order.
+  * Open, Partially received, Received, Closed, Cancelled
+== Sourcing | Sourcing and contracts | Choosing suppliers and agreeing terms.
+SourcingEvent | A request for quotation or tender inviting suppliers to bid.
+  - event number : string !
+  - opened on : date
+  - closes on : date
+  > for category > SpendCategory 1
+Bid | A supplier's offer in a sourcing event.
+  - bid amount : decimal !
+  - submitted on : date
+  - awarded : boolean
+  > in event > SourcingEvent 1 | | has bid
+  > by supplier > Supplier 1
+Contract | An agreement with a supplier on prices and terms for a period.
+  - contract number : string !
+  - valid from : date !
+  - valid to : date !
+  - committed value : decimal
+  - payment terms days : integer
+  > with supplier > Supplier 1
+  > awarded from > SourcingEvent ?
+  > covers category > SpendCategory *
+== Pay | Receipt, invoice and payment | Closing the loop.
+GoodsReceipt | Confirmation that ordered goods or services were delivered.
+  - receipt number : string !
+  - received on : date !
+  - quantity received : decimal !
+  - quantity rejected : decimal
+  > against line > PurchaseOrderLine 1
+SupplierInvoice | A supplier's bill for goods or services. | ~schema:Invoice
+  - invoice number : string !
+  - invoice date : date !
+  - amount : decimal !
+  - due date : date
+  > from supplier > Supplier 1
+  > bills > PurchaseOrder ?
+  > has match status > MatchStatus 1
+MatchStatus | The result of comparing invoice, order and receipt.
+  * Matched, Price variance, Quantity variance, No purchase order, On hold
+SupplierPayment | Money paid to a supplier.
+  - paid on : date !
+  - amount : decimal !
+  > pays > SupplierInvoice +
+SupplierScorecard | A periodic rating of a supplier's performance.
+  - period : string !
+  - on time delivery percent : decimal
+  - quality reject percent : decimal
+  - overall score : decimal
+  > rates > Supplier 1
+rule: constraint | Three-way match | An invoice is paid only when its quantity and price agree with the purchase order and the goods receipt within tolerance. | SupplierInvoice, PurchaseOrder, GoodsReceipt
+rule: constraint | Approved suppliers only | A purchase order can be placed only with a supplier whose status is Approved or Preferred. | PurchaseOrder, Supplier
+rule: derivation | Maverick spend | Spend is maverick when a purchase order in a contracted category is not under a contract. | PurchaseOrder, Contract
+rule: constraint | Approval first | A purchase order from a requisition requires the requisition to be Approved. | PurchaseOrder, Requisition
+uc: Spend by category and supplier | Category manager | How much was spent per category and supplier this year, and how much of it under contract? | PurchaseOrder, PurchaseOrderLine, Item, SpendCategory, Supplier, Contract | has line, for item, Item.in category, placed with, under contract, PurchaseOrder.total value
+uc: Late deliveries | Buyer | Which order lines were received after the promised date, by supplier? | PurchaseOrderLine, GoodsReceipt, PurchaseOrder, Supplier | against line, GoodsReceipt.received on, PurchaseOrderLine.promised date, PurchaseOrderLine.of order, placed with
+uc: Invoices on hold | Accounts payable | Which invoices are held for a price or quantity variance? | SupplierInvoice, MatchStatus, Supplier | has match status, from supplier, SupplierInvoice.amount

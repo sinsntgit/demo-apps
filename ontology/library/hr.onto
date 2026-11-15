@@ -1,0 +1,152 @@
+id: hr
+name: Human resources and workforce
+industry: Human resources
+domain: Workforce management: organisation, positions, employees, recruitment, performance, learning, leave and pay
+scope: Organisation units, jobs and positions, employees and their assignments, recruitment from requisition to offer, skills, performance reviews, learning, leave and attendance, compensation and payroll results.
+summary: Describes an organisation's workforce: its structure and positions, the people who fill them, how they were hired, what they can do, how they perform and what they are paid. A starter model aligned to the W3C Organization ontology and the ESCO skills classification.
+purpose: Shared vocabulary across HRIS, recruiting, learning and payroll systems; basis for headcount, attrition and skills analytics.
+read: An Organisation unit contains Positions for a Job at a Grade and Work location. An Employee holds positions through Assignments and reports to a manager. Recruitment runs from a Job requisition through Applications by Candidates to an Offer. Employees have Skills, Performance reviews, Training enrolments, Leave requests and Compensation; Payslips record what was paid.
+in: Organisation and positions; Employees and assignments; Recruitment; Skills, performance, learning; Leave; Compensation and payroll
+out: Statutory filings detail; Benefits provider integrations; Time-clock hardware; Finance postings
+std: org | high | Units, posts, roles and membership follow the W3C Organization Ontology. | org:OrganizationalUnit, org:Post, org:Role, org:Membership, org:Site
+std: esco | medium | Occupations and skills are classified with ESCO. | esco:Occupation, esco:Skill
+std: hrxml | medium | Candidate, position opening and payroll structures follow HR Open Standards. | Candidate, PositionOpening, PayrollInstruction
+std: schema | low | People are aligned to schema.org. | schema:Person
+== Structure | Organisation and positions | How the organisation is built.
+OrganisationUnit | A division, department or team; units nest. | =org:OrganizationalUnit
+  - unit code : string !
+  - name : string !
+  > part of > OrganisationUnit ?
+  > headed by > Employee ?
+Job | A kind of work with defined responsibilities, independent of who does it. | ~esco:Occupation
+  - job code : string !
+  - title : string !
+  - job family : string
+Grade | A level in the pay and seniority structure.
+  - grade code : string !
+  - minimum pay : decimal
+  - maximum pay : decimal
+WorkLocation | A site where people work. | ~org:Site
+  - name : string !
+  - city : string
+  - country : string
+Position | A specific seat in the organisation that one person can fill. | ~org:Post
+  - position number : string !
+  - approved from : date
+  - vacant : boolean
+  > in unit > OrganisationUnit 1
+  > for job > Job 1
+  > at grade > Grade ?
+  > based at > WorkLocation ?
+== People | Employees | Who works here.
+Employee | A person employed by the organisation. | ~schema:Person
+  - employee number : string !
+  - name : string !
+  - date of birth : date
+  - gender : string
+  - joined on : date !
+  - left on : date
+  > reports to > Employee ? | The employee's manager. | manages
+  > has employment type > EmploymentType 1
+  > has status > EmploymentStatus 1
+EmploymentType | The contractual basis.
+  * Permanent, Fixed term, Contractor, Intern, Part time
+EmploymentStatus | Whether the person is currently employed.
+  * Active, On leave, Notice period, Separated
+Assignment | The placement of an employee in a position for a period.
+  - start date : date !
+  - end date : date
+  - primary : boolean
+  > of employee > Employee 1 | | has assignment
+  > to position > Position 1
+Separation | The end of an employment.
+  - last working day : date !
+  - voluntary : boolean
+  > of employee > Employee 1
+  > for reason > SeparationReason 1
+SeparationReason | Why the person left.
+  * Resignation, Retirement, End of contract, Termination, Redundancy
+== Hiring | Recruitment | Bringing people in.
+JobRequisition | An approved request to hire for a position.
+  - requisition number : string !
+  - opened on : date !
+  - closed on : date
+  > for position > Position 1
+  > hiring manager > Employee 1
+Candidate | A person being considered for employment.
+  - name : string !
+  - email : string
+  - source : string
+JobApplication | A candidate's application to a requisition.
+  - applied on : date !
+  > by candidate > Candidate 1
+  > to requisition > JobRequisition 1 | | receives application
+  > at stage > ApplicationStage 1
+ApplicationStage | How far an application has progressed.
+  * Applied, Screened, Interviewed, Offered, Hired, Rejected, Withdrawn
+Interview | An assessment conversation with a candidate.
+  - held on : dateTime !
+  - rating : decimal
+  - feedback : string
+  > for application > JobApplication 1
+  > conducted by > Employee +
+Offer | A proposal of employment made to a candidate.
+  - offered on : date !
+  - offered pay : decimal
+  - accepted : boolean
+  > for application > JobApplication 1
+== Growth | Skills, performance and learning | What people can do and how they develop.
+Skill | An ability or area of knowledge. | ~esco:Skill
+  - skill name : string !
+  - category : string
+EmployeeSkill | An employee's level in a skill.
+  - proficiency level : integer !
+  - assessed on : date
+  > of employee > Employee 1
+  > in skill > Skill 1
+PerformanceReview | A periodic assessment of an employee.
+  - period : string !
+  - rating : decimal
+  - comments : string
+  > of employee > Employee 1
+  > reviewed by > Employee 1
+Course | A training offering.
+  - course code : string !
+  - title : string !
+  - hours : decimal
+  > develops > Skill *
+TrainingEnrolment | An employee's participation in a course.
+  - enrolled on : date
+  - completed on : date
+  - score : decimal
+  > of employee > Employee 1
+  > in course > Course 1
+== Reward | Leave and pay | Time off and money.
+LeaveRequest | A request for time off.
+  - from date : date !
+  - to date : date !
+  - days : decimal
+  - approved : boolean
+  > by employee > Employee 1
+  > of type > LeaveType 1
+LeaveType | The kind of leave.
+  * Annual, Sick, Maternity, Paternity, Unpaid, Compensatory
+Compensation | An employee's agreed pay from a date.
+  - effective from : date !
+  - annual base pay : decimal !
+  - variable pay percent : decimal
+  - currency : string
+  > of employee > Employee 1
+Payslip | What an employee was paid for a period.
+  - pay period : string !
+  - gross pay : decimal !
+  - deductions : decimal
+  - net pay : decimal !
+  > of employee > Employee 1
+rule: constraint | One primary assignment | An active employee has exactly one primary assignment at a time. | Assignment, Employee
+rule: constraint | Pay within grade | Annual base pay should lie between the minimum and maximum pay of the position's grade. | Compensation, Grade
+rule: derivation | Attrition rate | Attrition is separations in a period divided by average active headcount. | Separation, Employee
+rule: derivation | Time to hire | Time to hire is the days from requisition opening to offer acceptance. | JobRequisition, Offer
+uc: Attrition by unit and reason | HR business partner | What is voluntary attrition by organisation unit and separation reason? | Separation, SeparationReason, Employee, Assignment, Position, OrganisationUnit | Separation.of employee, for reason, has assignment, to position, in unit, Separation.voluntary
+uc: Open positions and time to hire | Talent acquisition lead | Which requisitions have been open longest, and what is average time to hire by job? | JobRequisition, Position, Job, JobApplication, Offer | for position, for job, receives application, Offer.for application, JobRequisition.opened on, Offer.offered on
+uc: Skill gaps | Learning manager | Which skills required for a job family are below level 3 among its employees? | EmployeeSkill, Skill, Employee, Assignment, Position, Job | EmployeeSkill.of employee, in skill, EmployeeSkill.proficiency level, has assignment, to position, for job

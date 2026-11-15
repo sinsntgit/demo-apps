@@ -1,0 +1,141 @@
+id: insurance
+name: Insurance - policies and claims
+industry: Insurance
+domain: General and life insurance: products, policies, premiums and claims
+scope: Parties and intermediaries, insurance products and coverages, quotes and policies, insured objects, premiums, endorsements and renewals, claims, assessment, reserves and settlements, reinsurance cessions.
+summary: Describes what an insurer sells, who and what is insured under a policy, what premium is charged, and how a claim is notified, assessed and settled. A starter model for policy administration, claims analytics and regulatory reporting.
+purpose: Shared vocabulary across policy administration, claims and distribution systems.
+read: An Insurance product offers Coverages. A Quote may become a Policy issued to a Policyholder, sold by an Intermediary, covering Insured objects with Policy coverages at a sum insured, for a Premium. Endorsements change a policy. A Claim is made on a policy for a Loss event, assessed by an Adjuster, reserved and settled through Claim payments.
+in: Parties and intermediaries; Products and coverages; Policies, premiums, endorsements; Claims and settlement; Reinsurance
+out: Investment management; Actuarial model internals; HR and commissions accounting detail
+std: acord | high | Party, policy, coverage and claim concepts follow the ACORD Reference Architecture. | Policy, Coverage, Claim, Insured, Insurer, Premium, Endorsement
+std: fibo | low | Legal entities and contracts follow FIBO foundations. | LegalEntity, Contract
+std: schema | low | People and organisations are aligned to schema.org. | schema:Person, schema:Organization
+== Party | Parties | Who is involved.
+Party | A person or organisation involved in an insurance contract or claim.
+  - name : string !
+  - contact number : string
+  - email : string
+Policyholder : Party | The party that buys the policy and owes the premium.
+  - customer number : string !
+InsuredPerson : Party | A person whose life or health is covered.
+  - date of birth : date
+  - gender : string
+Beneficiary : Party | The party entitled to receive the benefit.
+  - share percent : decimal
+Intermediary : Party | An agent, broker or bank that sells policies for the insurer.
+  - licence number : string !
+  > of type > IntermediaryType 1
+IntermediaryType | The kind of distribution partner.
+  * Agent, Broker, Bancassurance, Direct, Web aggregator
+Adjuster : Party | A person who investigates and values a claim.
+== Product | Products | What is sold.
+InsuranceProduct | An insurance offering with defined coverages and rating rules.
+  - product code : string !
+  - product name : string !
+  > in line of business > LineOfBusiness 1
+  > offers > Coverage +
+LineOfBusiness | The class of insurance.
+  * Motor, Health, Property, Life, Crop, Travel, Liability, Marine
+Coverage | A type of protection against a defined peril or loss.
+  - coverage code : string !
+  - coverage name : string !
+  - description : string
+== Policy | Policies | The contract.
+Quote | A priced offer of insurance that has not yet been accepted.
+  - quote number : string !
+  - quoted on : date !
+  - quoted premium : decimal
+  - valid until : date
+  > for product > InsuranceProduct 1
+  > requested by > Party 1
+Policy | The insurance contract in force between the insurer and the policyholder.
+  - policy number : string !
+  - issued on : date !
+  - effective from : date !
+  - effective to : date !
+  - total sum insured : decimal
+  > issued to > Policyholder 1 | | holds policy
+  > of product > InsuranceProduct 1
+  > sold by > Intermediary ?
+  > converted from > Quote ?
+  > renews > Policy ? | The previous term this policy continues.
+  > has status > PolicyStatus 1
+  > covers object > InsuredObject *
+  > covers person > InsuredPerson *
+  > names beneficiary > Beneficiary *
+PolicyStatus | The state of a policy.
+  * In force, Lapsed, Cancelled, Expired, Renewed
+PolicyCoverage | One coverage as bought on a policy, with its limit and deductible.
+  - sum insured : decimal !
+  - deductible : decimal
+  - coverage premium : decimal
+  > on policy > Policy 1 | | has coverage
+  > of coverage > Coverage 1
+InsuredObject | A thing that is insured, such as a vehicle, building or crop.
+  - description : string !
+  - declared value : decimal
+  - identifier : string | Registration number, address or survey number.
+  > of type > InsuredObjectType 1
+InsuredObjectType | The kind of thing insured.
+  * Vehicle, Building, Contents, Crop, Livestock, Cargo, Equipment
+Premium | An amount charged for a policy for a period.
+  - due on : date !
+  - amount : decimal !
+  - tax amount : decimal
+  - paid on : date
+  > for policy > Policy 1
+Endorsement | An agreed change to a policy during its term.
+  - endorsement number : string !
+  - effective on : date !
+  - description : string
+  - premium change : decimal
+  > changes > Policy 1
+== Claim | Claims | When a loss happens.
+LossEvent | An occurrence that causes loss, such as an accident, illness or storm.
+  - occurred on : dateTime !
+  - location : string
+  - description : string
+  > of cause > CauseOfLoss 1
+CauseOfLoss | The peril that caused the loss.
+  * Accident, Theft, Fire, Flood, Illness, Death, Drought, Third-party liability
+Claim | A request for payment under a policy for a loss.
+  - claim number : string !
+  - notified on : date !
+  - claimed amount : decimal
+  - closed on : date
+  > made on > Policy 1 | | has claim
+  > under coverage > PolicyCoverage *
+  > arising from > LossEvent 1
+  > made by > Party 1
+  > has status > ClaimStatus 1
+  > assessed by > Adjuster ?
+ClaimStatus | The stage of a claim.
+  * Notified, Under assessment, Approved, Rejected, Settled, Reopened
+ClaimAssessment | The adjuster's finding on liability and amount.
+  - assessed on : date !
+  - assessed amount : decimal
+  - liability admitted : boolean
+  - remarks : string
+  > of claim > Claim 1
+ClaimReserve | Money set aside for the expected cost of an open claim.
+  - reserved on : date !
+  - amount : decimal !
+  > for claim > Claim 1
+ClaimPayment | A payment made to settle a claim in full or in part.
+  - paid on : date !
+  - amount : decimal !
+  > settles > Claim 1
+  > paid to > Party 1
+ReinsuranceCession | The share of a policy's risk passed to a reinsurer.
+  - ceded percent : decimal !
+  - reinsurer : string !
+  - treaty reference : string
+  > cedes > Policy 1
+rule: constraint | Loss within cover | A claim is payable only if the loss event occurred between the policy's effective dates. | Claim, Policy, LossEvent
+rule: constraint | Limit | Total claim payments under a policy coverage cannot exceed its sum insured less deductible. | ClaimPayment, PolicyCoverage
+rule: derivation | Loss ratio | Loss ratio is claim payments plus reserves divided by earned premium. | Claim, Premium
+rule: constraint | Premium before cover | A policy is in force only once its first premium is paid. | Policy, Premium
+uc: Loss ratio by product and intermediary | Underwriting head | What is the loss ratio by line of business and by intermediary? | Policy, InsuranceProduct, LineOfBusiness, Intermediary, Claim, ClaimPayment, Premium | of product, in line of business, sold by, made on, settles, for policy, ClaimPayment.amount, Premium.amount
+uc: Claims open too long | Claims manager | Which claims have been under assessment for more than 30 days? | Claim, ClaimStatus, Adjuster | Claim.notified on, Claim.has status, assessed by
+uc: Policies due for renewal | Retention team | Which in-force policies expire next month and who sold them? | Policy, PolicyStatus, Policyholder, Intermediary | Policy.effective to, Policy.has status, issued to, sold by

@@ -57,6 +57,7 @@ class Ontology(Base):
     seed_use_cases: Mapped[list] = mapped_column(JSON, default=list)   # use cases the owner requires it to answer
     folder_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     material: Mapped[str] = mapped_column(Text, default="")       # what was read from the sources, as given to the model
+    based_on: Mapped[str] = mapped_column(String(300), default="")   # "Pre-built library: X" or "Copy of Y" - where it started
     depth: Mapped[str] = mapped_column(String(20), default="standard")
     owner_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     owner_email: Mapped[str] = mapped_column(String(255), default="")

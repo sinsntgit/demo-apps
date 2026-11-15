@@ -363,3 +363,76 @@ def test_claude_code_path_against_a_stand_in(admin, fake_llm):
     assert req["stream"] is True and req["output_config"] == {"effort": "high"} and req["max_tokens"] == 64000 and "temperature" not in req
     c.delete(f"/api/ontologies/{oid}", headers=H)
     c.delete(f"/api/admin/models/{m['id']}", headers=H)
+
+
+def test_every_library_ontology_is_sound():
+    """Each pre-built ontology parses without losing anything, scores well, exports to valid Turtle and is logically consistent."""
+    from app import exports, library, onto, reasoner
+    library.load.cache_clear()
+    items = library.load()
+    assert len(items) >= 22 and len({i["industry"] for i in items.values()}) >= 18
+    for tid, item in items.items():
+        c = item["content"]
+        st = onto.stats(c)
+        assert st["classes"] >= 18 and st["object_properties"] >= 15 and st["data_properties"] >= 25, (tid, st)
+        assert st["use_cases"] >= 3 and st["rules"] >= 4 and st["standards"] >= 3 and st["modules"] >= 4, (tid, st)
+        q = onto.quality(c)
+        assert q["score"] >= 93 and not [f for f in q["findings"] if f["severity"] == "high"], (tid, q["score"], [f["title"] for f in q["findings"]])
+        assert all(u["classes"] and u["properties"] for u in c["use_cases"]), tid
+        assert all(s["in_catalogue"] for s in c["standards"]), tid
+        g = Graph().parse(data=exports.export(c, "ttl")[0], format="turtle")
+        assert len(g) > 400, tid
+        r = reasoner.run(c, "owlrl")
+        assert r["consistent"] and not r["problems"] and not r["unsatisfiable"], (tid, r["problems"])
+
+
+def test_library_file_errors_are_reported_not_fatal():
+    from app import library
+    for bad, msg in (("id: x\nname: X\nindustry: I\ndomain: d\nsummary: s\n== M | M | m\nA | A thing that exists.\n  > points to > Nowhere *", "unknown class"),
+                     ("id: x\nname: X\nindustry: I\ndomain: d\nsummary: s\nA | orphan", "needs a module"),
+                     ("id: x\nname: X\nindustry: I\ndomain: d\nsummary: s\nstd: nope | high | x | y", "not in the standards catalogue")):
+        with pytest.raises(library.LibraryError, match=msg):
+            library.parse(bad, "bad.onto")
+
+
+def test_use_a_library_ontology_and_duplicate(admin, fake_llm):
+    c, mid = admin
+    lst = c.get("/api/templates").json()
+    assert {"lending", "healthcare", "retail"} <= {t["id"] for t in lst["items"]} and "Insurance" in lst["industries"]
+    t = c.get("/api/templates/lending").json()
+    assert t["stats"]["classes"] >= 40 and any(k["id"] == "LoanApplication" for k in t["content"]["classes"])
+    assert c.get("/api/templates/lending/diagram").json()["nodes"] and c.get("/api/templates/nope").status_code == 404
+    # copy it - with an AI instruction, a refine job tailors the copy at once
+    r = c.post("/api/templates/lending/use", headers=H, json={"name": "My tractor loans", "instruction": "Add a loyalty programme", "model_id": mid}).json()
+    j = wait_job(c, r["job"]["id"])
+    assert j["status"] == "done" and j["result"]["added"] == 1, j      # the class is added; its link to a retail-only class is dropped
+    o = c.get(f"/api/ontologies/{r['id']}").json()
+    assert o["version"] == 2 and any(k["id"] == "LoyaltyProgram" for k in o["content"]["classes"])
+    assert o["name"] == "My tractor loans" and o["based_on"] == "Pre-built library: Lending and loan origination" and o["status"] == "ready"
+    assert o["content"]["meta"]["namespace"].endswith("my-tractor-loans#") and o["visibility"] == "private" and o["level"] == "manage"
+    assert len(o["content"]["classes"]) >= 42
+    # the copy is independent: editing it does not touch the library
+    c.post(f"/api/ontologies/{r['id']}/edit", headers=H, json={"patch": {"remove_classes": ["Guarantor"]}})
+    assert any(k["id"] == "Guarantor" for k in c.get("/api/templates/lending").json()["content"]["classes"])
+    plain = c.post("/api/templates/healthcare/use", headers=H, json={"name": "Clinic model"}).json()
+    assert plain["job"] is None and c.get(f"/api/ontologies/{plain['id']}").json()["version"] == 1
+    # roles: a viewer can browse the library but not copy; duplicating needs sight of the original
+    vic = make_user(c, "lib-vic@test.local", "viewer")
+    ann = make_user(c, "lib-ann@test.local", "ontologist")
+    assert vic.get("/api/templates").status_code == 200 and vic.get("/api/templates/lending").status_code == 200
+    assert vic.post("/api/templates/lending/use", headers=H, json={"name": "x"}).status_code == 403
+    assert ann.post(f"/api/ontologies/{plain['id']}/duplicate", headers=H, json={"name": "Stolen"}).status_code == 404      # private to admin
+    sample = next(x for x in c.get("/api/library").json()["ontologies"] if x["name"].startswith("Sample:"))
+    assert vic.post(f"/api/ontologies/{sample['id']}/duplicate", headers=H, json={"name": "x"}).status_code == 403
+    d = ann.post(f"/api/ontologies/{sample['id']}/duplicate", headers=H, json={"name": "Ann's retail"})
+    assert d.status_code == 200
+    mine = ann.get(f"/api/ontologies/{d.json()['id']}").json()
+    assert mine["level"] == "manage" and mine["visibility"] == "private" and mine["based_on"].startswith("Copy of Sample:")
+    assert len(mine["content"]["classes"]) == len(c.get(f"/api/ontologies/{sample['id']}").json()["content"]["classes"])
+    assert ann.post(f"/api/ontologies/{d.json()['id']}/edit", headers=H, json={"patch": {"classes": [{"id": "Voucher", "definition": "A discount voucher."}]}}).status_code == 200
+    assert not any(k["id"] == "Voucher" for k in c.get(f"/api/ontologies/{sample['id']}").json()["content"]["classes"])
+    for oid in (r["id"], plain["id"]):
+        c.delete(f"/api/ontologies/{oid}", headers=H)
+    ann.delete(f"/api/ontologies/{d.json()['id']}", headers=H)
+    for email in ("lib-vic@test.local", "lib-ann@test.local"):
+        c.delete(f"/api/admin/users/{next(u['id'] for u in c.get('/api/admin/users').json() if u['email'] == email)}", headers=H)

@@ -3,7 +3,7 @@
 <p>OntoStudio builds an <b>ontology</b> for any domain: a precise, shared description of the things a business deals with (its <i>classes</i>), how they relate (its <i>relationships</i>), what is recorded about them (their <i>attributes</i>) and the rules that hold. It researches the published industry standards for the domain, builds on them, explains the result in plain language, draws it, lists the questions it can answer, and lets you test whether it really covers a use case.</p>
 <h3>The flow in six steps</h3>
 <ol>
-<li><b>Create</b> an ontology: give a domain, your use cases and requirements, a database, or a folder of documents — any one of them is enough. See <a href="#/help/create">Creating an ontology</a>.</li>
+<li><b>Create</b> an ontology: copy a ready-made one from the <a href="#/help/prebuilt">Pre-built library</a>, or build a new one from a domain, your use cases and requirements, a database, or a folder of documents — any one of them is enough. See <a href="#/help/create">Creating an ontology</a>.</li>
 <li><b>Build</b> it with an AI model. This takes a few minutes and runs in the background.</li>
 <li><b>Read</b> the Overview and the Standards it was built on; look at the <a href="#/help/diagram">Diagram</a>.</li>
 <li><b>Adjust</b> it — by clicking on the diagram, in the tables, or by telling the AI what to change.</li>
@@ -43,9 +43,59 @@
 <p>The method follows standard practice in ontology engineering: reuse published vocabularies first, let the use cases decide what must be in the model, check it with a reasoner, and keep every version.</p>
 </section>
 
+<section id="prebuilt" data-title="Pre-built library">
+<h2>Pre-built library — ready-made ontologies by industry</h2>
+<p><b>Pre-built library</b> in the menu holds 22 ready-made ontologies across 19 industries. Each is a complete, working model — modules, classes, relationships, attributes, controlled values, rules and use cases — that you can copy and build on instead of starting from nothing.</p>
+<figure><img src="/static/help/img/prebuilt.png" alt="The pre-built library"><figcaption>The pre-built library: filter by industry or search by name, concept or standard.</figcaption></figure>
+<table>
+<tr><th>Industry</th><th>Ontology</th><th>Aligned to</th></tr>
+<tr><td>Agriculture &amp; food</td><td>Agriculture — farms, crops and produce</td><td>AGROVOC, SOSA, GeoSPARQL</td></tr>
+<tr><td>Banking &amp; financial services</td><td>Lending and loan origination · Retail banking — accounts and payments</td><td>FIBO, MISMO, ISO 20022, LEI</td></tr>
+<tr><td>Data &amp; analytics</td><td>Data governance and catalogue</td><td>DCAT, PROV-O, SKOS, DPV, ODRL</td></tr>
+<tr><td>Education</td><td>Education — students, courses, assessment</td><td>CEDS, schema.org</td></tr>
+<tr><td>Energy &amp; utilities</td><td>Energy and utilities — grid, metering, billing</td><td>IEC CIM</td></tr>
+<tr><td>Finance &amp; accounting</td><td>Finance and accounting</td><td>XBRL / IFRS, UBL</td></tr>
+<tr><td>Government &amp; public sector</td><td>Public sector — citizen services</td><td>EU Core Vocabularies, ORG</td></tr>
+<tr><td>Healthcare &amp; life sciences</td><td>Healthcare — patient care</td><td>HL7 FHIR, SNOMED CT, LOINC, ICD</td></tr>
+<tr><td>Human resources</td><td>Human resources and workforce</td><td>ORG, ESCO, HR Open Standards</td></tr>
+<tr><td>Information technology</td><td>IT service management · Cybersecurity</td><td>ITIL, ArchiMate · UCO / STIX / ATT&amp;CK, ISO 27001</td></tr>
+<tr><td>Insurance</td><td>Insurance — policies and claims</td><td>ACORD</td></tr>
+<tr><td>Manufacturing &amp; industrial</td><td>Manufacturing operations</td><td>ISA-95, IOF</td></tr>
+<tr><td>Professional services &amp; projects</td><td>Project and portfolio management</td><td>PMBOK / ISO 21502</td></tr>
+<tr><td>Real estate &amp; construction</td><td>Real estate and property management</td><td>RESO, BOT / IFC</td></tr>
+<tr><td>Retail &amp; e-commerce</td><td>Retail order management</td><td>schema.org, GoodRelations, GS1</td></tr>
+<tr><td>Sales, marketing &amp; service</td><td>Customer relationship and sales</td><td>schema.org, OASIS CIQ</td></tr>
+<tr><td>Supply chain &amp; logistics</td><td>Supply chain and logistics · Procurement and sourcing</td><td>GS1 / EPCIS, SCOR · UBL, UNSPSC</td></tr>
+<tr><td>Telecommunications</td><td>Telecommunications — customer, product, service</td><td>TM Forum SID</td></tr>
+<tr><td>Travel &amp; hospitality</td><td>Travel and hospitality</td><td>OpenTravel, schema.org</td></tr>
+</table>
+<h3>What these are — and are not</h3>
+<p>They are <b>starter models written for this application</b>. Each condenses the core concepts of the published standards for its industry and says which standards it follows. They are <b>not the official standards themselves</b>: the official FIBO or FHIR, for example, are far larger. If you need an official ontology in full, download it from its publisher and bring it in with <b>⬆ Import file</b>. The alignment notes were written from knowledge of the standards, not checked term by term against them — verify before you publish.</p>
+<h3>Look before you copy</h3>
+<p>Click a card to preview it: the summary and scope, the standards it follows, a diagram (the whole hierarchy, or the hierarchy or relationships of one module), every module with its classes, the questions it answers and how to read it. Everyone, including viewers, can preview.</p>
+<figure><img src="/static/help/img/prebuilt-preview.png" alt="Preview of a pre-built ontology"><figcaption>Previewing an ontology before copying it.</figcaption></figure>
+<h3>Use it</h3>
+<p><b>＋ Use this ontology</b> creates <b>your own copy</b> in your library (ontologists and administrators). Give it a name and a folder. Optionally write how it should be <b>tailored with AI straight away</b> — for example “we only finance tractors through dealers; add subsidy schemes and crop-linked repayment” — and the AI extends your copy as soon as it is created.</p>
+<figure><img src="/static/help/img/prebuilt-use.png" alt="Copying a pre-built ontology"><figcaption>Creating your copy, optionally tailored with AI.</figcaption></figure>
+<p>The copy is an ordinary ontology of yours: private until you share it, with its own identifiers and version history, and a note under its name saying which library ontology it started from. The pre-built original is never changed, so you can copy it again at any time.</p>
+<h3>Building on it</h3>
+<ul>
+<li><b>On the diagram</b> — add, rename and remove classes, relationships and attributes (see <a href="#/help/diagram">Diagram &amp; visual editing</a>).</li>
+<li><b>✨ AI › Change it with an instruction</b> — describe what your organisation needs in addition.</li>
+<li><b>Test bed</b> — enter your own use cases; where the model falls short, add the proposed elements with one click (see <a href="#/help/testbed">Test bed</a>).</li>
+<li><b>✨ AI › Review for gaps</b> — a critical read against your scope.</li>
+<li><b>Sources</b> — add your database or documents, then tell the AI to align the model with them.</li>
+</ul>
+<h3>Duplicating any ontology</h3>
+<p><b>⧉ Duplicate</b> at the top of any ontology you can see makes a separate, private copy that you own — the current version with its explanation, use cases and source material. Use it to try a different design, or to start a variant for another business unit, without touching the original. Version history and test results are not copied.</p>
+<figure><img src="/static/help/img/duplicate.png" alt="Duplicate dialog"><figcaption>Duplicating an ontology.</figcaption></figure>
+<h3>Adding your own ontologies to the pre-built library</h3>
+<p>The library is a folder of plain-text files (<code>library/*.onto</code>) on the server; an administrator with access to the server can add a file in the same simple format and restart the application. The format is described at the top of <code>app/library.py</code>. A file with a mistake is skipped and reported in the server log; it never stops the application.</p>
+</section>
+
 <section id="create" data-title="Creating an ontology" data-role="Ontologist, Administrator">
 <h2>Creating an ontology</h2>
-<p>In the library press <b>＋ New ontology</b>. The wizard has four steps; only the name is mandatory, and you may give as little or as much as you have.</p>
+<p>In the library press <b>＋ New ontology</b>. The wizard has four steps; only the name is mandatory, and you may give as little or as much as you have. (To start from a ready-made model instead, see <a href="#/help/prebuilt">Pre-built library</a>.)</p>
 <figure><img src="/static/help/img/wizard-basics.png" alt="New ontology wizard, step 1"><figcaption>Step 1: name, domain, scope, size and folder.</figcaption></figure>
 <h3>1 · Basics</h3>
 <ul>
@@ -342,6 +392,7 @@
 <tr><td>A file “was not added”</td><td>The reason is listed: scanned PDF without text, unsupported type, larger than 25 MB, damaged or password-protected.</td></tr>
 <tr><td>“The driver for this kind of database is not installed”</td><td>An administrator runs the <code>pip install …</code> command shown, on the server, and restarts the application. Or upload a schema script instead.</td></tr>
 <tr><td>HermiT button greyed out</td><td>Java is not installed on the server. The built-in reasoner works without it.</td></tr>
+<tr><td>I want to change a pre-built ontology</td><td>You cannot change the library itself. Open it and press ＋ Use this ontology — the copy is yours to change.</td></tr>
 <tr><td>A class I expected is missing</td><td>Test the use case that needs it in the test bed and add the proposed elements; or use ✨ AI › Change it with an instruction; or add it on the diagram.</td></tr>
 <tr><td>The diagram is too large to read</td><td>Choose one module in the hierarchy view, or use “Relationships of a module” / “Around one class”.</td></tr>
 </table>

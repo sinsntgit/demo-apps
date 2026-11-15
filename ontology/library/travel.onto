@@ -1,0 +1,138 @@
+id: travel
+name: Travel and hospitality
+industry: Travel & hospitality
+domain: Hotels and travel: properties, rooms, rates, reservations, stays, guests and flights
+scope: Hotel properties, room types and rooms, rate plans and availability, guests and loyalty, reservations and booking channels, stays and folio charges, payments, reviews; and for travel, itineraries with flight segments and travellers.
+summary: Describes what a hotel or travel company sells and delivers: rooms and rates, who booked what through which channel, who stayed and what they spent, and how trips are composed of flights and stays. A starter model following OpenTravel message concepts and schema.org's lodging and reservation terms.
+purpose: Shared vocabulary across property management, central reservation, channel and loyalty systems; basis for occupancy, ADR and RevPAR analytics.
+read: A Hotel has Room types and Rooms. A Rate plan prices a room type by date. A Guest makes a Reservation through a Booking channel for a room type and rate plan; on arrival it becomes a Stay in a Room with Folio charges and Payments. Guests may belong to a Loyalty tier and leave Reviews. An Itinerary groups reservations and Flight segments for a Traveller.
+in: Property, rooms, rates; Guests and loyalty; Reservations and channels; Stays, charges, payments; Reviews; Itineraries and flights
+out: Restaurant and spa operations detail; Airline operations; Housekeeping rosters; Revenue-management algorithms
+std: ota | high | Reservation, room type, rate plan, guest and itinerary follow OpenTravel Alliance concepts. | Reservation, Hotel, RoomType, RatePlan, Itinerary, Guest, FlightSegment
+std: schema | high | Lodging, reservations and flights are aligned to schema.org. | schema:Hotel, schema:HotelRoom, schema:LodgingReservation, schema:Flight, schema:Review
+std: time | low | Stay and travel intervals follow OWL-Time. | time:Interval
+== Property | Property and rooms | What is sold.
+Hotel | A lodging property. | =schema:Hotel
+  - hotel code : string !
+  - name : string !
+  - city : string
+  - country : string
+  - star rating : decimal
+  - total rooms : integer
+RoomType | A category of room with the same features and price. | ~schema:HotelRoom
+  - room type code : string !
+  - name : string !
+  - max occupancy : integer
+  - bed type : string
+  > at hotel > Hotel 1 | | has room type
+Room | A physical room.
+  - room number : string !
+  - floor : integer
+  - out of order : boolean
+  > of type > RoomType 1
+RatePlan | A set of prices and conditions under which rooms are sold.
+  - rate code : string !
+  - name : string !
+  - refundable : boolean
+  - includes breakfast : boolean
+  > at hotel > Hotel 1
+DailyRate | The price of a room type under a rate plan on a date.
+  - stay date : date !
+  - amount : decimal !
+  - rooms available : integer
+  > of rate plan > RatePlan 1
+  > for room type > RoomType 1
+== Guest | Guests | Who stays.
+Guest | A person who books or stays.
+  - guest id : string !
+  - name : string !
+  - email : string
+  - nationality : string
+  > in loyalty tier > LoyaltyTier ?
+LoyaltyTier | A level of the loyalty programme.
+  * Member, Silver, Gold, Platinum
+== Booking | Reservations | What was booked.
+Reservation | A booking of rooms for dates. | ~schema:LodgingReservation
+  - confirmation number : string !
+  - booked at : dateTime !
+  - arrival date : date !
+  - departure date : date !
+  - rooms : integer !
+  - adults : integer
+  - children : integer
+  - total amount : decimal
+  - cancelled at : dateTime
+  > made by > Guest 1 | | makes
+  > at hotel > Hotel 1
+  > for room type > RoomType 1
+  > on rate plan > RatePlan 1
+  > through channel > BookingChannel 1
+  > has status > ReservationStatus 1
+BookingChannel | The route through which a booking was made.
+  * Direct website, Mobile app, Call centre, Walk-in, Online travel agency, Travel agent, Corporate
+ReservationStatus | The state of a reservation.
+  * Confirmed, Cancelled, No show, Checked in, Checked out
+== Stay | Stays and spend | What actually happened.
+Stay | The actual occupation of a room by a guest.
+  - checked in at : dateTime !
+  - checked out at : dateTime
+  - nights : integer
+  > from reservation > Reservation ?
+  > in room > Room 1
+  > of guest > Guest 1
+FolioCharge | An amount charged to a stay.
+  - charged on : date !
+  - amount : decimal !
+  - description : string
+  > to stay > Stay 1 | | has charge
+  > of type > ChargeType 1
+ChargeType | The kind of charge.
+  * Room, Food and beverage, Spa, Laundry, Minibar, Tax, Other
+Payment | Money received for a stay or reservation.
+  - paid on : date !
+  - amount : decimal !
+  - method : string
+  > for stay > Stay ?
+  > for reservation > Reservation ?
+Review | A guest's rating of a stay. | ~schema:Review
+  - submitted on : date !
+  - rating : decimal !
+  - comment : string
+  - platform : string
+  > of stay > Stay ?
+  > about hotel > Hotel 1
+  > by guest > Guest ?
+== Trip | Itineraries and flights | Travel around the stay.
+Traveller | A person who travels on an itinerary.
+  - name : string !
+  - passport number : string
+Itinerary | A planned trip grouping flights and hotel reservations.
+  - itinerary number : string !
+  - created on : date !
+  - purpose : string
+  > for traveller > Traveller +
+  > includes stay booking > Reservation *
+  > includes flight > FlightSegment *
+FlightSegment | One flight from an origin airport to a destination. | ~schema:Flight
+  - flight number : string !
+  - departs at : dateTime !
+  - arrives at : dateTime !
+  - cabin class : string
+  - fare : decimal
+  > from airport > Airport 1
+  > to airport > Airport 1
+  > operated by > Airline 1
+Airport | A place where flights depart and arrive.
+  - iata code : string !
+  - name : string
+  - city : string
+Airline | A carrier operating flights.
+  - iata code : string !
+  - name : string !
+rule: derivation | Occupancy | Occupancy is room-nights occupied divided by room-nights available. | Stay, Room
+rule: derivation | ADR and RevPAR | Average daily rate is room revenue divided by room-nights sold; RevPAR is room revenue divided by room-nights available. | FolioCharge, Stay, Room
+rule: constraint | Dates | A reservation's departure date is after its arrival date. | Reservation
+rule: constraint | No double booking | A room cannot have two stays overlapping in time. | Stay, Room
+uc: Occupancy and ADR by hotel | Revenue manager | What were occupancy, ADR and RevPAR per hotel and room type last month? | Stay, Room, RoomType, Hotel, FolioCharge, ChargeType | in room, Room.of type, RoomType.at hotel, has charge, FolioCharge.of type, FolioCharge.amount, Stay.nights
+uc: Channel mix and cancellations | Distribution manager | What share of bookings and of cancellations comes from each channel? | Reservation, BookingChannel, ReservationStatus | through channel, Reservation.has status, Reservation.total amount
+uc: Guest history | Front desk | Show a guest's past stays, spend and reviews, and their loyalty tier. | Guest, Stay, FolioCharge, Review, LoyaltyTier | of guest, has charge, by guest, in loyalty tier, FolioCharge.amount

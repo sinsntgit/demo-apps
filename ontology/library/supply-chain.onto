@@ -1,0 +1,130 @@
+id: supply-chain
+name: Supply chain and logistics
+industry: Supply chain & logistics
+domain: Warehousing, inventory, shipment and traceability
+scope: Products and trade items, locations and warehouses, inventory and stock movements, inbound and outbound orders, shipments, carriers, transport legs, handling units, tracking events and returns.
+summary: Describes how goods are stored and moved: what is in stock where, which orders must be fulfilled, how shipments travel and what happened to them on the way. A starter model using GS1 identification and EPCIS-style tracking events.
+purpose: Shared vocabulary across warehouse, transport and order management systems; basis for on-time delivery and inventory analytics.
+read: A Trade item is stocked as Inventory at a Storage location in a Warehouse. Stock movements change inventory. A Fulfilment order with Order lines is delivered by one or more Shipments, made of Handling units, moved by a Carrier over Transport legs between Locations. Tracking events record what happened to a shipment or handling unit, where and when.
+in: Items and identification; Locations and inventory; Orders and shipments; Transport and tracking; Returns
+out: Procurement contracts; Production; Pricing and invoicing; Customs tariff detail
+std: gs1 | high | Products, locations and logistic units are identified with GS1 keys; tracking follows EPCIS event types. | gs1:Product, gs1:Place, gs1:gtin, ObjectEvent, AggregationEvent
+std: scor | medium | Process vocabulary (source, make, deliver, return) follows SCOR. | Deliver, Return
+std: gs1edi | medium | Consignment and transport-movement concepts follow the UN/CEFACT transport model. | Consignment, TransportMovement, TradeParty
+std: schema | low | Parcel delivery is aligned to schema.org. | schema:ParcelDelivery
+== Item | Items | What is moved.
+TradeItem | A product or pack that is ordered, stocked and shipped. | ~gs1:Product
+  - gtin : string | Global Trade Item Number.
+  - sku : string !
+  - description : string !
+  - weight kg : decimal
+  - volume m3 : decimal
+  - hazardous : boolean
+  > in category > ItemCategory ?
+ItemCategory | A grouping of trade items.
+  - category name : string !
+Batch | A quantity of a trade item made together, with a shelf life.
+  - batch number : string !
+  - expiry date : date
+  > of item > TradeItem 1
+== Place | Locations and inventory | Where things are.
+Location | A physical place in the network. | ~gs1:Place
+  - gln : string | Global Location Number.
+  - name : string !
+  - city : string
+  - country : string
+Warehouse : Location | A site where goods are stored and handled.
+  - capacity pallets : integer
+Store : Location | A point of sale that receives goods.
+StorageLocation | A zone, rack or bin inside a warehouse.
+  - bin code : string !
+  - temperature controlled : boolean
+  > in warehouse > Warehouse 1
+Inventory | The quantity of a trade item (and batch) on hand at a storage location.
+  - quantity on hand : decimal !
+  - quantity reserved : decimal
+  - as of : dateTime
+  > of item > TradeItem 1
+  > of batch > Batch ?
+  > at > StorageLocation 1
+StockMovement | A change to inventory: receipt, issue, transfer or adjustment.
+  - moved at : dateTime !
+  - quantity : decimal !
+  > of item > TradeItem 1
+  > from location > StorageLocation ?
+  > to location > StorageLocation ?
+  > of type > MovementType 1
+MovementType | The kind of stock movement.
+  * Goods receipt, Goods issue, Transfer, Adjustment, Return, Scrap
+== Order | Orders | What must be fulfilled.
+TradeParty | A company that orders, supplies, ships or receives goods.
+  - name : string !
+  - party identifier : string
+FulfilmentOrder | A request to deliver items to a destination by a date.
+  - order number : string !
+  - ordered on : date !
+  - requested delivery date : date
+  > ordered by > TradeParty 1
+  > ship from > Warehouse 1
+  > ship to > Location 1
+  > has status > OrderStatus 1
+OrderLine | One trade item and quantity on a fulfilment order.
+  - quantity ordered : decimal !
+  - quantity shipped : decimal
+  > of order > FulfilmentOrder 1 | | has line
+  > for item > TradeItem 1
+OrderStatus | The state of an order.
+  * Open, Allocated, Picked, Shipped, Delivered, Cancelled
+== Transport | Shipment and transport | How goods travel.
+Shipment | A consignment of goods travelling together from an origin to a destination. | ~schema:ParcelDelivery
+  - shipment number : string !
+  - dispatched at : dateTime
+  - promised delivery : dateTime
+  - delivered at : dateTime
+  - freight cost : decimal
+  > fulfils > FulfilmentOrder * | | fulfilled by
+  > from > Location 1
+  > to > Location 1
+  > carried by > Carrier ?
+  > has status > ShipmentStatus 1
+ShipmentStatus | The state of a shipment.
+  * Planned, In transit, Out for delivery, Delivered, Delayed, Lost, Returned
+HandlingUnit | A pallet, carton or container moved as one unit.
+  - sscc : string ! | Serial Shipping Container Code.
+  - gross weight kg : decimal
+  > part of > Shipment 1
+  > contains > TradeItem *
+Carrier : TradeParty | A company that transports shipments.
+  - carrier code : string !
+TransportLeg | One stage of a shipment's journey by one mode.
+  - sequence : integer !
+  - departed at : dateTime
+  - arrived at : dateTime
+  > of shipment > Shipment 1 | | has leg
+  > from > Location 1
+  > to > Location 1
+  > by mode > TransportMode 1
+  > on vehicle > Vehicle ?
+TransportMode | The means of transport.
+  * Road, Rail, Air, Sea, Courier
+Vehicle | A truck, wagon, vessel or aircraft.
+  - registration : string !
+  - capacity kg : decimal
+TrackingEvent | Something observed happening to a shipment or handling unit at a place and time.
+  - occurred at : dateTime !
+  - remarks : string
+  > about shipment > Shipment ?
+  > about unit > HandlingUnit ?
+  > at location > Location ?
+  > of type > TrackingEventType 1
+TrackingEventType | The kind of thing that happened to the shipment or unit.
+  * Picked up, Departed, Arrived, Customs cleared, Out for delivery, Delivered, Damaged, Exception
+ReturnShipment : Shipment | A shipment bringing goods back from the recipient.
+  - return reason : string
+rule: derivation | On time | A shipment is on time when it is delivered at or before the promised delivery. | Shipment
+rule: constraint | Available stock | Quantity reserved cannot exceed quantity on hand. | Inventory
+rule: constraint | First expired first out | Stock is issued from the batch with the earliest expiry date first. | Inventory, Batch
+rule: derivation | Fill rate | Fill rate is quantity shipped divided by quantity ordered. | OrderLine
+uc: On-time delivery by carrier | Logistics manager | What share of shipments did each carrier deliver on time, by lane? | Shipment, Carrier, Location | carried by, Shipment.promised delivery, Shipment.delivered at, Shipment.from, Shipment.to
+uc: Stock near expiry | Warehouse manager | Which batches expire within 30 days and where are they stored? | Inventory, Batch, TradeItem, StorageLocation, Warehouse | of batch, Batch.expiry date, Inventory.of item, at, in warehouse, Inventory.quantity on hand
+uc: Where is my shipment | Customer service | What was the last event for a shipment and where is it now? | Shipment, TrackingEvent, TrackingEventType, Location | about shipment, TrackingEvent.occurred at, TrackingEvent.of type, at location
