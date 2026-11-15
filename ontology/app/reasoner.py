@@ -82,6 +82,21 @@ def _graph(c: dict, hermit: bool) -> Graph:
     return g
 
 
+# HermiT runs in Java. owlready2 asks Java for 2000 MB by default, which a 32-bit Java (common on Windows) or a
+# small machine cannot reserve - Java then refuses to start. Start with a modest amount (ONTO_HERMIT_MEMORY_MB,
+# default 1024) and step down when Java cannot reserve it; ontologies of this size need far less.
+_NO_HEAP = re.compile(r"reserve enough space|Invalid maximum heap|Could not create the Java Virtual Machine|"
+                      r"Initial heap size set to a larger value", re.I)
+
+
+def _memory_steps() -> list[int]:
+    try:
+        first = max(128, int(os.environ.get("ONTO_HERMIT_MEMORY_MB", "1024")))
+    except ValueError:
+        first = 1024
+    return sorted({first, *(m for m in (512, 256) if m < first)}, reverse=True)
+
+
 def run(c: dict, engine: str = "owlrl") -> dict:
     t0 = time.time()
     ns = c["meta"]["namespace"]
@@ -97,23 +112,39 @@ def run(c: dict, engine: str = "owlrl") -> dict:
             res["error"] = "HermiT is not available on this server: " + engines()["hermit"]["why_not"]
             return res
         import owlready2
+        import owlready2.reasoning
         path = tempfile.mktemp(suffix=".owl")
         try:
             _graph(c, True).serialize(path, format="xml")
-            world = owlready2.World()
-            o = world.get_ontology("file://" + path).load()
-            try:
-                with o:
-                    owlready2.sync_reasoner_hermit(world, infer_property_values=False, debug=0)
+            steps = _memory_steps()
+            for mb in steps:
+                world = owlready2.World()
+                o = world.get_ontology("file://" + path).load()
+                owlready2.reasoning.JAVA_MEMORY = mb            # owlready2 starts Java with -Xmx<mb>M
+                try:
+                    with o:
+                        owlready2.sync_reasoner_hermit(world, infer_property_values=False, debug=0)
+                except owlready2.OwlReadyJavaError as e:
+                    if _NO_HEAP.search(str(e)) and mb != steps[-1]:
+                        continue                                # Java could not reserve that much memory: ask for less
+                    raise
                 bad = [local(k.iri) for k in world.inconsistent_classes()]
                 res["unsatisfiable"] = sorted(b for b in bad if b in ix["classes"])
-            except owlready2.OwlReadyInconsistentOntologyError:
-                res["consistent"] = False
-                res["problems"].append({"severity": "high", "elements": [],
-                                        "text": "HermiT found the ontology inconsistent: its statements contradict each other, so "
-                                                "nothing can be concluded from it. The built-in reasoner names the elements involved."})
-            except owlready2.OwlReadyJavaError as e:
-                msg = re.sub(r"\s+", " ", str(e))
+                if mb != steps[0]:
+                    res["notes"].append(f"Java could not reserve {steps[0]} MB, so HermiT ran with {mb} MB.")
+                break
+        except owlready2.OwlReadyInconsistentOntologyError:
+            res["consistent"] = False
+            res["problems"].append({"severity": "high", "elements": [],
+                                    "text": "HermiT found the ontology inconsistent: its statements contradict each other, so "
+                                            "nothing can be concluded from it. The built-in reasoner names the elements involved."})
+        except owlready2.OwlReadyJavaError as e:
+            msg = re.sub(r"\s+", " ", str(e))
+            if _NO_HEAP.search(msg):
+                res["error"] = ("Java on the server could not reserve even 256 MB of memory for HermiT. This usually means a 32-bit "
+                                "Java is installed: install a 64-bit Java (for example Temurin from adoptium.net), restart the "
+                                "application, and run HermiT again. The built-in reasoner works without Java.")
+            else:
                 res["error"] = "HermiT could not process the ontology: " + (msg.split("Exception")[-1][:300] if "Exception" in msg else msg[:300])
         finally:
             if os.path.exists(path):

@@ -173,6 +173,16 @@
 <tr><td><b>Around one class</b></td><td>One class in the middle with everything it is related to, its parent and its subclasses.</td></tr>
 </table>
 <p>Colour = module. Drag the background to move; use −, +, Fit and 100%, or <kbd>Ctrl</kbd> + scroll, to zoom.</p>
+<h3>Expand, collapse and maximise</h3>
+<ul>
+<li><b>⊖ / ⊕ beside a box</b> (class hierarchy) collapses or expands that branch. A collapsed box says how many classes are folded inside it, for example “+5 more”.</li>
+<li><b>⊟ Collapse all</b> shows only the top-level classes — the quickest way into a large ontology; then open the branches you need. <b>⊞ Expand all</b> shows everything again.</li>
+<li><b>Show attributes</b> (in “Around one class”) shows or hides the attribute list inside each box.</li>
+<li><b>⤢ Maximise</b> fills the whole window with the diagram — on the Diagram tab the class panel on the right stays visible, so you can keep editing. <b>⤡ Restore</b> or <kbd>Esc</kbd> returns to normal size.</li>
+</ul>
+<p>Zoom and position are kept while you expand and collapse. The diagrams in Use cases, the Test bed and the Pre-built library preview can also be maximised; the library preview can be expanded and collapsed too.</p>
+<figure><img src="/static/help/img/diagram-collapsed.png" alt="Hierarchy with branches collapsed"><figcaption>After Collapse all: only top-level classes, with ⊕ to open a branch.</figcaption></figure>
+<figure><img src="/static/help/img/diagram-maximised.png" alt="Maximised diagram with the class panel"><figcaption>Maximised: the diagram fills the window and the class panel stays beside it.</figcaption></figure>
 <h3>Editing on the diagram</h3>
 <p>If you can edit the ontology:</p>
 <ul>
@@ -392,6 +402,7 @@
 <tr><td>A file “was not added”</td><td>The reason is listed: scanned PDF without text, unsupported type, larger than 25 MB, damaged or password-protected.</td></tr>
 <tr><td>“The driver for this kind of database is not installed”</td><td>An administrator runs the <code>pip install …</code> command shown, on the server, and restarts the application. Or upload a schema script instead.</td></tr>
 <tr><td>HermiT button greyed out</td><td>Java is not installed on the server. The built-in reasoner works without it.</td></tr>
+<tr><td>HermiT: “could not reserve enough space … object heap” (older versions) or “could not reserve even 256 MB”</td><td>Java could not get the memory it asked for. The application now asks for 1024 MB and automatically steps down to 512 and 256 MB. If even that fails, a <b>32-bit Java</b> is almost certainly installed: install a 64-bit Java (for example Temurin from adoptium.net), restart the application, and run HermiT again. The amount tried first can be set with the environment variable <code>ONTO_HERMIT_MEMORY_MB</code>.</td></tr>
 <tr><td>I want to change a pre-built ontology</td><td>You cannot change the library itself. Open it and press ＋ Use this ontology — the copy is yours to change.</td></tr>
 <tr><td>A class I expected is missing</td><td>Test the use case that needs it in the test bed and add the proposed elements; or use ✨ AI › Change it with an instruction; or add it on the diagram.</td></tr>
 <tr><td>The diagram is too large to read</td><td>Choose one module in the hierarchy view, or use “Relationships of a module” / “Around one class”.</td></tr>

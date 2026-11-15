@@ -27,10 +27,19 @@ export async function templatesView(root, arg) {
     try { t = await api('GET', '/api/templates/' + id); } catch (e) { return fail(e); }
     const c = t.content, pic = h('div', {}, h('span', { class: 'spinner' }));
     const mod = select([['', 'Whole hierarchy'], ...c.modules.map(m => ['h:' + m.id, `Hierarchy · ${m.name}`]), ...c.modules.map(m => ['m:' + m.id, `Relationships · ${m.name}`])], '', v => show(v), { class: 'inline' });
+    const folded = new Set();
+    let current = '', keep = {};
     const show = async v => {
+      if (v !== current) { current = v; folded.clear(); keep = {}; }
       const [kind, m] = v ? v.split(':') : ['h', ''];
-      try { fill(pic, diagram(await api('GET', `/api/templates/${id}/diagram?view=${kind === 'm' ? 'module' : 'hierarchy'}&module=${m || ''}`), { maxHeight: 440 })); }
-      catch (e) { fill(pic, h('div', { class: 'banner bad' }, e.message)); }
+      const tree = kind !== 'm';
+      try {
+        const spec = await api('GET', `/api/templates/${id}/diagram?view=${tree ? 'hierarchy' : 'module'}&module=${m || ''}&collapsed=${[...folded].join(',')}`);
+        fill(pic, diagram(spec, { maxHeight: 440, keep, maxTarget: pic,
+          onToggle: tree ? n => { folded.has(n.id) ? folded.delete(n.id) : folded.add(n.id); show(current); } : null,
+          onExpandAll: tree ? () => { folded.clear(); show(current); } : null,
+          onCollapseAll: tree ? () => { folded.clear(); spec.nodes.filter(n => n.kids && n.id !== '__root').forEach(n => folded.add(n.id)); show(current); } : null }));
+      } catch (e) { fill(pic, h('div', { class: 'banner bad' }, e.message)); }
     };
     const label = cid => c.classes.find(k => k.id === cid)?.label || cid;
     modal(t.name, h('div', { class: 'stack' },

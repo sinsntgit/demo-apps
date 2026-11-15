@@ -436,3 +436,48 @@ def test_use_a_library_ontology_and_duplicate(admin, fake_llm):
     ann.delete(f"/api/ontologies/{d.json()['id']}", headers=H)
     for email in ("lib-vic@test.local", "lib-ann@test.local"):
         c.delete(f"/api/admin/users/{next(u['id'] for u in c.get('/api/admin/users').json() if u['email'] == email)}", headers=H)
+
+
+def test_diagram_collapse_and_attribute_toggle(admin):
+    c, _ = admin
+    sample = next(o for o in c.get("/api/library").json()["ontologies"] if o["name"].startswith("Sample:"))
+    full = c.get(f"/api/ontologies/{sample['id']}/diagram").json()
+    party = next(n for n in full["nodes"] if n["id"] == "Party")
+    assert party["kids"] == 3 and party["collapsed"] is False
+    folded = c.get(f"/api/ontologies/{sample['id']}/diagram?collapsed=Party,SalesChannel,Nope").json()
+    ids = {n["id"] for n in folded["nodes"]}
+    assert "Person" not in ids and "Retailer" not in ids and "Store" not in ids and "Party" in ids
+    p = next(n for n in folded["nodes"] if n["id"] == "Party")
+    assert p["collapsed"] is True and p["sub"] == "+5 more" and len(folded["nodes"]) == len(full["nodes"]) - 7
+    with_attrs = c.get(f"/api/ontologies/{sample['id']}/diagram?view=class&cls=Order").json()
+    without = c.get(f"/api/ontologies/{sample['id']}/diagram?view=class&cls=Order&attrs=0").json()
+    assert any(n["attrs"] for n in with_attrs["nodes"]) and not any(n["attrs"] for n in without["nodes"])
+    t = c.get("/api/templates/lending/diagram?collapsed=Party").json()
+    assert next(n for n in t["nodes"] if n["id"] == "Party")["collapsed"] is True
+
+
+def test_hermit_steps_down_when_java_cannot_reserve_memory(monkeypatch):
+    """Windows with a 32-bit Java cannot reserve owlready2's default 2000 MB; the run must step down, not fail."""
+    import owlready2
+    import owlready2.reasoning
+    from app import reasoner, sample
+    if not reasoner.engines()["hermit"]["available"]:
+        pytest.skip("Java is not installed here")
+    tried, real = [], owlready2.sync_reasoner_hermit
+
+    def fake(world, **kw):
+        tried.append(owlready2.reasoning.JAVA_MEMORY)
+        if owlready2.reasoning.JAVA_MEMORY > 256:
+            raise owlready2.OwlReadyJavaError("Java error message is:\nError occurred during initialization of VM\n"
+                                              "Could not reserve enough space for 2048000KB object heap")
+        return real(world, **kw)
+    monkeypatch.setattr(owlready2, "sync_reasoner_hermit", fake)
+    r = reasoner.run(sample.content(), "hermit")
+    assert tried == [1024, 512, 256] and r["error"] == "" and r["consistent"]
+    assert any("ran with 256 MB" in n for n in r["notes"])
+
+    def never(world, **kw):
+        raise owlready2.OwlReadyJavaError("Error occurred during initialization of VM Could not reserve enough space for 262144KB object heap")
+    monkeypatch.setattr(owlready2, "sync_reasoner_hermit", never)
+    r = reasoner.run(sample.content(), "hermit")
+    assert "64-bit Java" in r["error"]

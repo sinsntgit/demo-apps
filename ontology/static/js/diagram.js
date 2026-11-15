@@ -18,7 +18,12 @@ function clip(a, bx, by) {
 }
 let uid = 0;
 
-/** opts: onNode(node), onEdge(edge), selected (node id), maxHeight (px), legend (default true) */
+/** opts: onNode(node), onEdge(edge), selected (node id), maxHeight (px), legend (default true),
+ *  onToggle(node) - show a +/− on hierarchy boxes that have subclasses, to expand or collapse that branch,
+ *  onExpandAll() / onCollapseAll() - toolbar buttons for the whole tree,
+ *  maxTarget - the element that "Maximise" fills the window with (default: the diagram itself; pass a
+ *              surrounding element to keep side panels visible and to survive a redraw),
+ *  keep - an object the caller keeps between redraws; zoom and scroll position are remembered in it. */
 export function diagram(spec, opts = {}) {
   const id = 'dg' + (++uid);
   const W = Math.max(spec.width, 120), H = Math.max(spec.height, 60);
@@ -74,20 +79,50 @@ export function diagram(spec, opts = {}) {
       n.attrs.map((a, i) => s('text', { x: n.x - n.w / 2 + 10, y: top + 20 + i * 15, class: 'dg-attr' + (a.startsWith('+') ? ' gap' : '') }, a)));
     if (opts.onNode && n.style !== 'root') g.addEventListener('click', ev => { ev.stopPropagation(); opts.onNode(n); });
     gNodes.append(g);
+    if (spec.kind === 'hierarchy' && n.kids && opts.onToggle) {           // expand / collapse this branch
+      const tx = n.x + n.w / 2 + 11, title = n.collapsed ? `Expand: show the ${n.sub.replace(/^\+(\d+) more$/, '$1')} classes under ${n.label}` : `Collapse: hide the subclasses of ${n.label}`;
+      const tg = s('g', { class: 'dg-toggle', 'data-id': n.id, role: 'button', 'aria-label': title },
+        s('title', {}, title), s('circle', { cx: tx, cy: n.y, r: 8 }),
+        s('path', { d: n.collapsed ? `M${tx - 4},${n.y} H${tx + 4} M${tx},${n.y - 4} V${n.y + 4}` : `M${tx - 4},${n.y} H${tx + 4}` }));
+      tg.addEventListener('click', ev => { ev.stopPropagation(); opts.onToggle(n); });
+      gNodes.append(tg);
+    }
   }
 
   // zoom and pan
-  const scroller = h('div', { class: 'dg-scroll', style: opts.maxHeight ? `max-height:${opts.maxHeight}px` : null }, svg);
+  const keep = opts.keep || {};
+  const scroller = h('div', { class: 'dg-scroll', style: opts.maxHeight ? `max-height:${opts.maxHeight}px` : null,
+    onscroll: () => { keep.left = scroller.scrollLeft; keep.top = scroller.scrollTop; } }, svg);
   let zoom = 1;
   const apply = () => { svg.style.width = W * zoom + 'px'; svg.style.height = H * zoom + 'px'; pct.textContent = Math.round(zoom * 100) + '%'; };
-  const set = z => { zoom = Math.max(0.25, Math.min(2.5, z)); apply(); };
+  const set = z => { zoom = Math.max(0.25, Math.min(2.5, z)); keep.zoom = zoom; apply(); };
   const fit = () => { const w = scroller.clientWidth - 4; set(w > 0 ? Math.min(1, Math.max(0.3, w / W)) : 1); };
   const pct = h('span', { class: 'small dim', style: 'min-width:38px;text-align:center' });
+  // maximise: the target fills the window; Esc or the button restores it
+  const target = () => opts.maxTarget || el;
+  const isMax = () => target().classList.contains('dg-max');
+  const label = () => { maxBtn.textContent = isMax() ? '⤡ Restore' : '⤢ Maximise'; maxBtn.title = isMax() ? 'Back to normal size (Esc)' : 'Fill the window with the diagram'; };
+  const setMax = on => {
+    target().classList.toggle('dg-max', on);
+    document.body.classList.toggle('dg-max-open', !!document.querySelector('.dg-max'));
+    label(); requestAnimationFrame(fit);
+  };
+  const maxBtn = h('button', { class: 'btn sm', onclick: () => setMax(!isMax()) });
+  const onKey = e => {
+    if (!el.isConnected) return window.removeEventListener('keydown', onKey, true);
+    if (e.key === 'Escape' && isMax() && !document.querySelector('.overlay .modal:not(:has(.dg-max))')) { e.stopPropagation(); e.preventDefault(); setMax(false); }
+  };
+  window.addEventListener('keydown', onKey, true);       // capture: closes the maximised view before a dialog's Esc handler runs
   const bar = h('div', { class: 'dg-bar' },
     h('button', { class: 'btn sm', title: 'Zoom out', onclick: () => set(zoom / 1.2) }, '−'), pct,
     h('button', { class: 'btn sm', title: 'Zoom in', onclick: () => set(zoom * 1.2) }, '+'),
     h('button', { class: 'btn sm', title: 'Fit to width', onclick: fit }, 'Fit'),
-    h('button', { class: 'btn sm', title: 'Actual size', onclick: () => set(1) }, '100%'));
+    h('button', { class: 'btn sm', title: 'Actual size', onclick: () => set(1) }, '100%'),
+    opts.onExpandAll ? h('span', { class: 'dg-sep' }) : null,
+    opts.onExpandAll ? h('button', { class: 'btn sm', title: 'Show every class', onclick: () => opts.onExpandAll() }, '⊞ Expand all') : null,
+    opts.onCollapseAll ? h('button', { class: 'btn sm', title: 'Show only the top-level classes', onclick: () => opts.onCollapseAll() }, '⊟ Collapse all') : null,
+    spec.kind === 'hierarchy' && opts.onToggle ? h('span', { class: 'small dim dg-hint' }, '⊕ / ⊖ beside a box: expand / collapse') : null,
+    h('span', { class: 'spacer' }), maxBtn);
   scroller.addEventListener('wheel', e => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); set(zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1)); } }, { passive: false });
   let drag = null;
   scroller.addEventListener('mousedown', e => { if (e.target.closest('.click, .dg-hit')) return; drag = { x: e.clientX, y: e.clientY, l: scroller.scrollLeft, t: scroller.scrollTop }; scroller.classList.add('grabbing'); });
@@ -100,7 +135,11 @@ export function diagram(spec, opts = {}) {
       spec.nodes.some(n => n.style === 'dim') ? h('span', {}, h('i', { class: 'dimbox' }), 'Other module') : null);
   const el = h('div', { class: 'dg' }, bar, scroller, legend);
   el.fit = fit;
-  requestAnimationFrame(fit);
+  label();
+  if (keep.zoom) {                    // a redraw (expand / collapse) keeps the zoom and the part of the picture in view
+    set(keep.zoom);
+    requestAnimationFrame(() => { scroller.scrollLeft = keep.left || 0; scroller.scrollTop = keep.top || 0; });
+  } else requestAnimationFrame(fit);
   apply();
   return el;
 }

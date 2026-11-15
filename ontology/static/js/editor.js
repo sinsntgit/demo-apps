@@ -141,21 +141,27 @@ function classPanel(ctx, id, { refresh, close, onShow }) {
 // ---- Diagram tab: the visual editor ------------------------------------------------------------
 export function diagramTab(el, ctx) {
   const c = ctx.c || { modules: [], classes: [], properties: [] };
-  let view = 'hierarchy', module = '', focus = null, selected = null;
+  let view = 'hierarchy', module = '', focus = null, selected = null, showAttrs = true;
+  const collapsed = new Set();          // hierarchy branches folded by the user
+  let keep = {};                        // zoom and scroll, kept across redraws of the same view
+  const fresh = () => { keep = {}; };
   if (ctx.arg && c.modules.some(m => m.id === ctx.arg)) { view = 'module'; module = ctx.arg; }
   else if (ctx.arg && cls(ctx, ctx.arg)) { view = 'class'; focus = selected = ctx.arg; }
   const canvas = h('div', {}), side = h('div', { class: 'side' }), tools = h('div', { class: 'row wrap', style: 'margin-bottom:10px' });
-  const refresh = async keep => { if (keep !== undefined) selected = keep; if (view === 'class' && !cls(ctx, focus)) { view = 'hierarchy'; focus = null; } drawTools(); await draw(); drawSide(); };
+  const refresh = async sel => { if (sel !== undefined) selected = sel; if (selected) reveal(selected); if (view === 'class' && !cls(ctx, focus)) { view = 'hierarchy'; focus = null; } drawTools(); await draw(); drawSide(); };
+  const reveal = id => { let cur = cls(ctx, id)?.parent; while (cur) { collapsed.delete(cur); cur = cls(ctx, cur)?.parent; } };
   const showClass = id => { selected = id; if (view === 'class') focus = id; draw(); drawSide(); };
 
   function drawTools() {
     const cc = ctx.c || c;
     const viewSel = select([['hierarchy', 'Class hierarchy'], ['module', 'Relationships of a module'], ['class', 'Around one class']], view, v => {
-      view = v; if (v === 'module' && !module) module = cc.modules[0]?.id || ''; if (v === 'class' && !focus) focus = selected || cc.classes[0]?.id; draw(); drawTools(); }, { class: 'inline' });
+      view = v; fresh(); if (v === 'module' && !module) module = cc.modules[0]?.id || ''; if (v === 'class' && !focus) focus = selected || cc.classes[0]?.id; draw(); drawTools(); }, { class: 'inline' });
     const modSel = view === 'class' ? classSelect(ctx, focus) : select([...(view === 'hierarchy' ? [['', 'All modules']] : []), ...cc.modules.map(m => [m.id, m.name])], module, null, { class: 'inline' });
     modSel.classList.add('inline');
-    modSel.addEventListener('change', () => { if (view === 'class') { focus = selected = modSel.value; drawSide(); } else module = modSel.value; draw(); });
-    fill(tools, h('label', { class: 'small dim' }, 'View '), viewSel, cc.classes.length ? modSel : null, h('span', { class: 'spacer' }),
+    modSel.addEventListener('change', () => { fresh(); if (view === 'class') { focus = selected = modSel.value; drawSide(); } else module = modSel.value; draw(); });
+    const attrBox = view === 'class' ? h('label', { class: 'small dim row', style: 'gap:4px' }, h('input', { type: 'checkbox', checked: showAttrs, style: 'width:auto',
+      onchange: e => { showAttrs = e.target.checked; draw(); } }), 'Show attributes') : null;
+    fill(tools, h('label', { class: 'small dim' }, 'View '), viewSel, cc.classes.length ? modSel : null, attrBox, h('span', { class: 'spacer' }),
       ctx.canEdit ? [h('button', { class: 'btn primary', onclick: () => classForm(ctx, null, { module: module || undefined, parent: undefined }, id => refresh(id)) }, '＋ Class'),
         h('button', { class: 'btn', disabled: (ctx.c?.classes.length || 0) < 1, onclick: () => propForm(ctx, null, { kind: 'object', domain: selected }, () => refresh()) }, '＋ Relationship'),
         h('button', { class: 'btn', disabled: (ctx.c?.classes.length || 0) < 1, onclick: () => propForm(ctx, null, { kind: 'data', domain: selected }, () => refresh()) }, '＋ Attribute')] : null);
@@ -163,10 +169,15 @@ export function diagramTab(el, ctx) {
   async function draw() {
     if (!ctx.c || !ctx.c.classes.length) return fill(canvas, h('div', { class: 'card empty' }, h('p', {}, 'Nothing to draw yet.'), ctx.canEdit ? h('p', { class: 'small' }, 'Press ', h('b', {}, '＋ Class'), ' to add the first class, or build the ontology with AI from the Overview tab.') : null));
     const q = new URLSearchParams({ view });
-    if (view === 'class') q.set('cls', focus); else if (module) q.set('module', module);
+    if (view === 'class') { q.set('cls', focus); q.set('attrs', showAttrs ? 1 : 0); } else if (module) q.set('module', module);
+    if (view === 'hierarchy' && collapsed.size) q.set('collapsed', [...collapsed].join(','));
     let spec;
     try { spec = await api('GET', `/api/ontologies/${ctx.id}/diagram?${q}`); } catch (e) { return fill(canvas, h('div', { class: 'banner bad' }, e.message)); }
-    const d = diagram(spec, { selected, hitLabel: 'The class in focus', onNode: n => showClass(n.id), onEdge: e => edgeMenu(e) });
+    const tree = view === 'hierarchy';
+    const d = diagram(spec, { selected, hitLabel: 'The class in focus', onNode: n => showClass(n.id), onEdge: e => edgeMenu(e), keep, maxTarget: wrap,
+      onToggle: tree ? n => { collapsed.has(n.id) ? collapsed.delete(n.id) : collapsed.add(n.id); draw(); } : null,
+      onExpandAll: tree ? () => { collapsed.clear(); draw(); } : null,
+      onCollapseAll: tree ? () => { collapsed.clear(); spec.nodes.filter(n => n.kids && n.id !== '__root').forEach(n => collapsed.add(n.id)); draw(); } : null });
     fill(canvas, d);
     if (view !== 'hierarchy' && !spec.edges.length) canvas.append(h('p', { class: 'small dim', style: 'margin-top:8px' }, 'No relationships to show here yet.'));
   }
@@ -188,7 +199,8 @@ export function diagramTab(el, ctx) {
         ctx.canEdit ? 'Every change is saved at once as a new version — see Versions to go back.' : null].filter(Boolean).map(x => h('li', {}, x))),
       h('p', { class: 'small dim' }, 'The layout is drawn automatically; boxes cannot be dragged to a new position.')));
   }
-  fill(el, tools, h('div', { class: 'split' }, canvas, side));
+  const wrap = h('div', { class: 'dg-wrap' }, tools, h('div', { class: 'split' }, canvas, side));     // what Maximise fills the window with
+  fill(el, wrap);
   drawTools(); draw(); drawSide();
 }
 

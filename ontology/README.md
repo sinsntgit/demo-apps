@@ -13,7 +13,7 @@ In-app **Help** (menu → Help) is the full user and administrator manual, with 
 | **Pre-built library** | 22 ready-made starter ontologies across 19 industries (lending, banking, insurance, healthcare, manufacturing, supply chain, procurement, HR, CRM, finance, telecom, energy, IT service management, cybersecurity, projects, education, real estate, agriculture, public sector, data governance, travel, retail). Preview, copy into your library - optionally tailored by AI at once - and build on it. Any ontology can also be duplicated. |
 | **Industry standards** | Built-in catalogue of 65 published ontologies and standards (schema.org, FIBO, HL7 FHIR, GS1, ISO 20022, SKOS, PROV-O, IOF, SAREF, TM Forum SID…). Candidates are matched locally; the AI chooses, says how each is used, aligns classes to published terms. |
 | **Explanation** | Summary, purpose, scope in / out, how to read the model, a paragraph per module, design decisions. Editable; can be rewritten by AI. |
-| **Diagram & visual editing** | Class hierarchy, relationships of a module, everything around one class. Click a box or a line to edit; add classes, subclasses, relationships, attributes and metadata from the diagram. |
+| **Diagram & visual editing** | Class hierarchy, relationships of a module, everything around one class. Expand / collapse branches (or all at once), show / hide attributes, maximise to the full window. Click a box or a line to edit; add classes, subclasses, relationships, attributes and metadata from the diagram. |
 | **Use cases** | Required (yours), AI-written, manual. Each with a diagram of the part of the model that answers it, the path, SPARQL and an example answer. |
 | **Test bed** | Enter any use case → requirement-by-requirement coverage, verdict, gaps, a picture with the proposed additions, one click to add them and re-test. The application verifies the model's claims and computes the score itself. |
 | **Quality & reasoning** | Automatic modelling checks (score / 100) · OWL reasoner: built-in OWL 2 RL, and HermiT when Java is present · AI gap review by any configured model, applied only on request. |
@@ -56,13 +56,14 @@ A sample ontology is already in the library, so every screen can be tried before
 | `ONTO_ADMIN_EMAIL` / `ONTO_ADMIN_PASSWORD` | `admin@example.com` / generated | First-run administrator. |
 | `ONTO_COOKIE_SECURE` | `0` | Set to `1` when served over HTTPS. |
 | `ONTO_DATABASE_URL` | SQLite in the data folder | e.g. a PostgreSQL URL. |
+| `ONTO_HERMIT_MEMORY_MB` | `1024` | Memory HermiT asks Java for first; it steps down to 512 and 256 MB automatically if Java cannot reserve it. |
 | `ONTO_APP_NAME` | `OntoStudio` | Default name (can also be changed in Admin › Appearance). |
 
 Optional extras:
 
 - **Live database reading** needs the driver for that database: see `requirements-drivers.txt`
   (`pip install psycopg2-binary` for PostgreSQL, and so on). Schema scripts and SQLite files need nothing extra.
-- **HermiT reasoner** needs Java on the server. Without it the built-in reasoner is used and the HermiT button is greyed out.
+- **HermiT reasoner** needs Java on the server — a 64-bit Java is recommended (a 32-bit Java can reserve only a little memory). Without it the built-in reasoner is used and the HermiT button is greyed out.
 
 ### Updating
 

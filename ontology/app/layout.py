@@ -23,8 +23,10 @@ def _legend(c: dict, used: set) -> list:
     return [{"group": i, "name": m["name"]} for i, m in enumerate(c["modules"]) if i in used]
 
 
-def hierarchy(c: dict, module: str | None = None, max_depth: int | None = None) -> dict:
-    """Left-to-right tree of the class hierarchy. With `module`, that module's classes plus their ancestors."""
+def hierarchy(c: dict, module: str | None = None, max_depth: int | None = None, collapsed: set | None = None) -> dict:
+    """Left-to-right tree of the class hierarchy. With `module`, that module's classes plus their ancestors.
+    Branches deeper than `max_depth`, and the classes in `collapsed`, are folded: their subclasses are hidden and
+    the box says how many. Each node carries `kids` and `collapsed` so a viewer can offer expand / collapse."""
     ix, grp = onto.index(c), _groups(c)
     keep = {k["id"] for k in c["classes"] if not module or k["module"] == module}
     if module:
@@ -38,10 +40,10 @@ def hierarchy(c: dict, module: str | None = None, max_depth: int | None = None) 
     def place(cid, depth):
         k = ix["classes"][cid]
         ch = kids.get(cid, [])
-        hidden = max_depth is not None and depth >= max_depth and ch
+        hidden = bool(ch) and ((max_depth is not None and depth >= max_depth) or cid in (collapsed or ()))
         sub = f"+{len(onto.descendants(ix, cid))} more" if hidden else ""
         label = k["label"]
-        node = {"id": cid, "label": label, "depth": depth, "group": grp.get(k["module"], 0), "sub": sub, "attrs": [],
+        node = {"id": cid, "label": label, "depth": depth, "group": grp.get(k["module"], 0), "sub": sub, "attrs": [], "kids": len(ch), "collapsed": hidden,
                 "style": "dim" if module and k["module"] != module else "class", "w": _w(label + ("  " + sub if sub else "")), "h": 28}
         nodes[cid] = node
         widths[depth] = max(widths.get(depth, 0), node["w"])
@@ -56,7 +58,7 @@ def hierarchy(c: dict, module: str | None = None, max_depth: int | None = None) 
 
     for r in roots:
         place(r, 1)
-    root = {"id": "__root", "label": title, "depth": 0, "group": -1, "sub": "", "attrs": [], "style": "root", "w": _w(title), "h": 30,
+    root = {"id": "__root", "label": title, "depth": 0, "group": -1, "sub": "", "attrs": [], "kids": 0, "collapsed": False, "style": "root", "w": _w(title), "h": 30,
             "row": (nodes[roots[0]]["row"] + nodes[roots[-1]]["row"]) / 2 if roots else 0}
     widths[0] = root["w"]
     edges += [{"a": "__root", "b": r, "label": "", "style": "sub"} for r in roots]

@@ -317,11 +317,11 @@ def template(tid: str, _: User = Depends(current_user)):
 
 
 @router.get("/templates/{tid}/diagram")
-def template_diagram(tid: str, view: str = "hierarchy", module: str = "", _: User = Depends(current_user)):
+def template_diagram(tid: str, view: str = "hierarchy", module: str = "", collapsed: str = "", _: User = Depends(current_user)):
     c = _template(tid)["content"]
     if view == "module" and any(m["id"] == module for m in c["modules"]):
         return layout.module_map(c, module)
-    return layout.hierarchy(c, module or None)
+    return layout.hierarchy(c, module or None, collapsed=_ids(collapsed))
 
 
 def _new_copy(db, user: User, content: dict, name: str, folder_id: int | None, based_on: str, note: str, src: Ontology | None = None) -> Ontology:
@@ -709,14 +709,19 @@ def _content(db, o: Ontology, version: int | None) -> dict:
     return o.content
 
 
+def _ids(s: str) -> set:
+    return {x for x in s.split(",") if x}
+
+
 @router.get("/ontologies/{oid}/diagram")
 def diagram(oid: int, view: str = "hierarchy", module: str = "", uc: str = "", cls: str = "", depth: int = 0, version: int = 0,
+            collapsed: str = "", attrs: int = 1,
             user: User = Depends(current_user), db: Session = Depends(get_db)):
     o = get_ontology(db, user, oid)
     c = _content(db, o, version)
     ix = onto.index(c)
     if view == "hierarchy":
-        return layout.hierarchy(c, module or None, depth or None)
+        return layout.hierarchy(c, module or None, depth or None, _ids(collapsed))
     if view == "module":
         if not any(m["id"] == module for m in c["modules"]):
             raise HTTPException(404, "Module not found")
@@ -732,7 +737,7 @@ def diagram(oid: int, view: str = "hierarchy", module: str = "", uc: str = "", c
         line = [cls] + onto.ancestors(ix, cls)
         near = [cls] + [p["range"] for p in c["properties"] if p["kind"] == "object" and p["domain"] in line] + \
                [p["domain"] for p in c["properties"] if p["kind"] == "object" and p["range"] in line] + line[1:2] + ix["children"].get(cls, [])
-        return layout.relations(c, list(dict.fromkeys(near))[:24], hit={cls}, focus=set(line))
+        return layout.relations(c, list(dict.fromkeys(near))[:24], hit={cls}, focus=set(line), attrs=bool(attrs))
     raise HTTPException(404, "Unknown view")
 
 

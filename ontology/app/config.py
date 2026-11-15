@@ -11,7 +11,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 DATABASE_URL = os.environ.get("ONTO_DATABASE_URL", f"sqlite:///{DATA_DIR / 'ontostudio.db'}")
 
 APP_NAME = os.environ.get("ONTO_APP_NAME", "OntoStudio")
-VERSION = "1.1"
+VERSION = "1.2"
 COOKIE_NAME = "onto_session"
 COOKIE_SECURE = os.environ.get("ONTO_COOKIE_SECURE", "0") == "1"   # set to 1 behind HTTPS
 

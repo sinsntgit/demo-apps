@@ -96,6 +96,28 @@ const waitJob = async () => { await page.waitForSelector('.joblog', { timeout: 8
     await page.keyboard.press('Escape');
     await page.selectOption('.row.wrap select >> nth=0', 'module'); await page.waitForTimeout(500); await shot('diagram-module');
     ok('module relationship view is drawn', (await drawn()) >= 5);
+    // expand / collapse and maximise
+    await page.selectOption('.row.wrap select >> nth=0', 'hierarchy'); await page.waitForTimeout(400);
+    await page.selectOption('.row.wrap select >> nth=1', ''); await page.waitForTimeout(500);
+    const before = await drawn();
+    await page.locator('.dg-toggle[data-id="Party"]').click(); await page.waitForTimeout(500);
+    const folded = await drawn();
+    ok('collapsing a branch hides its subclasses', folded === before - 5 && (await page.locator('.dg-node[data-id="Party"] text').allTextContents()).join(' ').includes('+5 more'), `${before} → ${folded}`);
+    await page.click('button:has-text("Collapse all")'); await page.waitForTimeout(500);
+    const top = await drawn();
+    ok('collapse all shows only the top-level classes', top < folded && (await page.locator('.dg-node[data-id="Customer"]').count()) === 0, `${top} boxes`);
+    await shot('diagram-collapsed');
+    await page.locator('.dg-toggle[data-id="Party"]').click(); await page.waitForTimeout(500);
+    ok('expanding one branch shows its subclasses again', (await page.locator('.dg-node[data-id="Customer"]').count()) === 1);
+    await page.click('button:has-text("Expand all")'); await page.waitForTimeout(500);
+    ok('expand all restores every class', (await drawn()) === before);
+    await page.click('button:has-text("Maximise")');
+    const box = await page.locator('.dg-wrap').boundingBox();
+    ok('maximise fills the window, side panel included', box.width >= 1400 && box.height >= 880 && await page.locator('.dg-wrap .side').isVisible(), `${Math.round(box.width)}×${Math.round(box.height)}`);
+    await page.locator('.dg-node[data-id="Shipment"]').click(); await page.waitForSelector('.side h3:text-is("Shipment")');
+    await shot('diagram-maximised');
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    ok('Esc restores the normal size', (await page.locator('.dg-max').count()) === 0 && (await page.locator('button:has-text("Maximise")').count()) === 1);
   });
 
   await step('classes & properties', async () => {
