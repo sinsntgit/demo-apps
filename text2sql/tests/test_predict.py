@@ -189,3 +189,23 @@ def test_predictive_answer_in_a_report(admin):
     client.put(f"/api/reports/{rep['id']}", headers=H, json={"title": "Outlook", "components": comps})
     assert client.get(f"/api/reports/{rep['id']}/render").json()["components"][0]["analysis"] is None
     client.delete(f"/api/reports/{rep['id']}", headers=H)
+
+
+def test_whole_number_series_and_weekday_pattern():
+    """Integer measures work, and a weekday pattern is not mistaken for anomalies - only the real shocks are."""
+    import datetime as dt
+    from app import predict
+    from app.connectors import _package
+    base = dt.date(2025, 11, 1)
+    weekday = [1.05, 1.08, 1.06, 1.04, 1.12, 0.78, 0.62]
+    shocks = {20: 3.2, 150: 0.1, 300: 2.4}
+    rows = [[base + dt.timedelta(days=i), int(8000 * weekday[(base + dt.timedelta(days=i)).weekday()] * (1 + (i * 7919 % 13 - 6) / 200) * shocks.get(i, 1))]
+            for i in range(365)]
+    r = _package(["day", "revenue"], rows, 10000, 1)
+    out = predict.run({"type": "anomaly", "date": "day", "target": "revenue"}, r["columns"], r["rows"])
+    flagged = sorted(row[0] for row in out["tables"][0]["rows"])
+    assert flagged == sorted((base + dt.timedelta(days=i)).isoformat() for i in shocks), flagged
+    assert "same weekday" in " ".join(out["narrative"])
+    monthly = _package(["month", "revenue"], [[dt.date(2023 + t // 12, t % 12 + 1, 1), 100_000 + t * 1000 + (t % 12) * 3000] for t in range(40)], 10000, 1)
+    fc = predict.run({"type": "forecast", "date": "month", "target": "revenue", "horizon": 6}, monthly["columns"], monthly["rows"])
+    assert fc["params"] == {"horizon": 6} and fc["tables"][0]["row_count"] == 6

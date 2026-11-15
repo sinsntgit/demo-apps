@@ -44,7 +44,7 @@ elif gap <= 100: FREQ, SEASON = "QS", 4
 else:            FREQ, SEASON = "YS", 1
 y = s.resample(FREQ).sum(min_count=1)
 missing = int(y.isna().sum())                                        # periods with no data at all
-y = y.interpolate(limit_direction="both")                            # fill gaps by straight line
+y = y.interpolate(limit_direction="both").astype(float)                      # fill gaps by straight line (and use decimals throughout)
 '''
 
 FORECAST = '''import numpy as np
@@ -104,11 +104,17 @@ ANOMALY_SERIES = '''import numpy as np
 import pandas as pd
 
 # df = the rows returned by the SQL query above
-DATE, TARGET, THRESHOLD = __DATE__, __TARGET__, 3.5
+DATE, TARGET, THRESHOLD = __DATE__, __TARGET__, 5.0
 ''' + _SERIES_PREP + '''
-# 3. Expected level: rolling median (robust to the very outliers we are looking for) ------
-window = min(max(5, SEASON if SEASON <= 12 else 9), max(3, len(y) // 2)) | 1   # odd-length window
-expected = y.rolling(window, center=True, min_periods=2).median()
+# 3. Expected level: a rolling median, which is robust to the very outliers we are looking for
+if SEASON > 1 and len(y) >= 3 * SEASON:                              # a repeating pattern (e.g. weekdays are busier than weekends):
+    expected = y.copy()                                              # compare each point with the same point in neighbouring cycles
+    for p in range(SEASON):
+        lane = y.iloc[p::SEASON]
+        expected.iloc[p::SEASON] = lane.rolling(5, center=True, min_periods=2).median().values
+else:                                                                # otherwise compare with the neighbouring periods
+    window = min(max(5, SEASON if SEASON <= 12 else 9), max(3, len(y) // 2)) | 1   # odd-length window
+    expected = y.rolling(window, center=True, min_periods=2).median()
 residual = y - expected
 
 # 4. Robust z-score: distance from expected in units of typical deviation (MAD) -----------
@@ -780,8 +786,9 @@ def _anomaly(spec, columns, rows):
         narrative = [f"{len(hits)} of {len(y)} {unit}s look unusual for {target.replace('_', ' ')}." if hits else
                      f"No unusual {unit}s were found in {len(y)} {unit}s of {target.replace('_', ' ')}.",
                      *[f"{lbl}: {_fmt(v)} against an expected {_fmt(e)} ({'above' if v > e else 'below'} by {_fmt(abs(v - e))})." for lbl, v, e, _ in hits[:5]],
-                     f"Method: each {unit} is compared with the median of its neighbours; a point is flagged when it is more than 3.5 "
-                     "robust standard deviations away (modified z-score)."]
+                     f"Method: each {unit} is compared with its usual level — the median of the same point in neighbouring cycles when there is "
+                     f"a repeating pattern (such as the same weekday), otherwise of the neighbouring {unit}s. A point is flagged when it is more "
+                     "than 5 robust standard deviations away (modified z-score)."]
         table = _table("anomalies", f"Unusual {unit}s", [date, target, "expected", "difference", "score"],
                        [[lbl, _num(v, 2), _num(e, 2), _num(v - e, 2), _num(s, 2)] for lbl, v, e, s in hits],
                        numeric=(target, "expected", "difference", "score"))
@@ -790,7 +797,7 @@ def _anomaly(spec, columns, rows):
                         for i in range(len(y))], numeric=(target, "expected", "score"))
         metrics = [{"label": f"Unusual {unit}s", "value": str(len(hits)), "hint": f"of {len(y)}"},
                    {"label": "Largest deviation", "value": f"{abs(hits[0][3]):.1f}σ" if hits else "–", "hint": hits[0][0] if hits else "none found"},
-                   {"label": "Threshold", "value": "3.5σ", "hint": "robust z-score"}]
+                   {"label": "Threshold", "value": "5σ", "hint": "robust z-score"}]
         warn = [f"{o['missing']} {unit}s had no data and were filled in before checking."] if o["missing"] else []
         return {"method": "Rolling median + robust z-score", "narrative": narrative, "metrics": metrics, "plots": plots,
                 "tables": [table], "stats": [every], "warnings": warn, "code": code, "params": {}}

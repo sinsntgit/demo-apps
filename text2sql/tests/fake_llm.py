@@ -5,7 +5,10 @@ records every request body so tests can prove no result data is ever sent to the
 
     python -m tests.fake_llm            # serves http://127.0.0.1:8765/v1
 """
+import asyncio
 import json
+import os
+import random
 
 from fastapi import FastAPI, Request
 
@@ -21,6 +24,13 @@ ORDERS = ("SELECT o.order_id, o.status, o.channel, c.segment, c.region, COUNT(*)
           "GROUP BY o.order_id, o.status, o.channel, c.segment, c.region")
 # Predictive questions: SQL for the input data set + which analysis to run on it.
 PREDICTIVE = [
+    # demo-video data sets (see demo/make_data.py)
+    ("forecast monthly revenue", "SELECT month, revenue FROM monthly_revenue ORDER BY month",
+     {"type": "forecast", "date": "month", "target": "revenue", "horizon": 6}),
+    ("segment our customers by", "SELECT customer_id, recency_days, orders_12m, revenue_12m, avg_order_value, region FROM customer_rfm",
+     {"type": "clustering", "id": "customer_id", "k": 4}),
+    ("unusual days in daily revenue", "SELECT day, revenue FROM daily_revenue ORDER BY day",
+     {"type": "anomaly", "date": "day", "target": "revenue"}),
     ("forecast", f"SELECT CAST(date_trunc('month', o.order_date) AS DATE) AS month, {REVENUE} AS revenue {JOIN} "
                  "WHERE o.status = 'completed' AND o.order_date < DATE '2025-10-01' GROUP BY 1 ORDER BY 1",
      {"type": "forecast", "date": "month", "target": "revenue", "horizon": 6}),
@@ -37,6 +47,7 @@ PREDICTIVE = [
 ]
 
 RULES = [
+    ("budget", "SELECT department, SUM(amount) AS budget FROM budget_2025 GROUP BY 1 ORDER BY 2 DESC"),
     ("weather", None),
     ("delete", "DELETE FROM orders"),
     ("email", "SELECT customer_name, email FROM customers ORDER BY customer_name LIMIT 20"),
@@ -84,10 +95,18 @@ def answer(system: str, user: str) -> dict:
             "followups": ["How many orders by status?", "What is revenue by category?"]}
 
 
+async def _latency():
+    """FAKE_LLM_DELAY=1.5 makes the stand-in answer in about that many seconds (used for the demo video)."""
+    delay = float(os.environ.get("FAKE_LLM_DELAY", "0"))
+    if delay:
+        await asyncio.sleep(delay * random.uniform(0.75, 1.25))
+
+
 @app.post("/v1/chat/completions")
 async def completions(request: Request):
     body = await request.json()
     REQUESTS.append(body)
+    await _latency()
     msgs = {m["role"]: m["content"] for m in body["messages"]}
     ans = answer(msgs.get("system", ""), msgs.get("user", ""))
     content = ans.get("raw") or json.dumps(ans)
@@ -102,6 +121,7 @@ async def anthropic_messages(request: Request):
     """Anthropic Messages API shape, so the Claude provider path can be exercised offline."""
     body = await request.json()
     REQUESTS.append(body)
+    await _latency()
     system = body.get("system") if isinstance(body.get("system"), str) else json.dumps(body.get("system"))
     user = body["messages"][-1]["content"]
     user = user if isinstance(user, str) else " ".join(b.get("text", "") for b in user)
