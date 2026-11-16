@@ -209,6 +209,23 @@ def pdf(report_id: int, request: Request, user: User = Depends(current_user), db
     return Response(data, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'})
 
 
+@router.get("/{report_id}/pptx")
+def pptx(report_id: int, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """The report as a PowerPoint deck, refreshed with this viewer's access (like the PDF)."""
+    from .. import pptx_export
+    from ..models import Company
+    r = _get(db, user, report_id)
+    company = db.get(Company, r.company_id) if r.company_id else None
+    from .companies import template_path
+    tpl = template_path(db, r.company_id)
+    data = pptx_export.build_pptx(reporting.render(db, r, user), company.name if company else "", str(tpl) if tpl else None)
+    audit(db, request, user, "report.exported", r.title, "PowerPoint")
+    db.commit()
+    name = re.sub(r"[^\w\- ]", "", r.title).strip()[:60] or "report"
+    return Response(data, media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    headers={"Content-Disposition": f'attachment; filename="{name}.pptx"'})
+
+
 @router.put("/{report_id}/schedule")
 def set_schedule(report_id: int, body: ScheduleIn, request: Request, user: User = Depends(current_user),
                  db: Session = Depends(get_db)):

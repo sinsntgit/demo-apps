@@ -46,6 +46,7 @@ def _summary(db: Session, c: Company, me: User) -> dict:
     reph = db.scalar(select(func.coalesce(func.sum(RephraseLog.cost), 0.0)).where(
         RephraseLog.connection_id.in_(conn_ids), RephraseLog.created_at >= since)) if conn_ids else 0.0
     return {"id": c.id, "name": c.name, "is_active": c.is_active, "is_mine": c.id == me.company_id, "has_logo": bool(c.logo_file),
+            "pptx_template": c.pptx_template or "",
             "users": len(users), "data_models": len(conn_ids),
             "reports": db.scalar(select(func.count()).where(Report.company_id == c.id)),
             "admins": [{"id": u.id, "email": u.email, "name": u.name, "is_active": u.is_active} for u in users if u.role == "admin"],
@@ -217,3 +218,85 @@ def logo_path(db: Session, company_id: int | None) -> Path | None:
     c = db.get(Company, company_id) if company_id else None
     p = LOGOS / c.logo_file if c and c.logo_file else None
     return p if p and p.is_file() else None
+
+
+# ---- PowerPoint templates ---------------------------------------------------------------------
+TEMPLATES = config.DATA_DIR / "templates"
+MAX_TEMPLATE = 25 * 1024 * 1024
+_POTX = b"application/vnd.openxmlformats-officedocument.presentationml.template.main+xml"
+_PPTX = b"application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"
+
+
+async def _save_template(c: Company, upload: UploadFile) -> None:
+    """Accept a .pptx or .potx; check it really is one (and not a zip bomb); store it as <id>.pptx."""
+    import io
+    import zipfile
+    data = await upload.read(MAX_TEMPLATE + 1)
+    if len(data) > MAX_TEMPLATE:
+        raise HTTPException(400, "The template must be at most 25 MB.")
+    try:
+        zin = zipfile.ZipFile(io.BytesIO(data))
+        if "ppt/presentation.xml" not in zin.namelist() or sum(i.file_size for i in zin.infolist()) > 300 * 1024 * 1024:
+            raise ValueError
+        out = io.BytesIO()
+        with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:     # a .potx becomes a .pptx
+            for item in zin.infolist():
+                blob = zin.read(item.filename)
+                if item.filename == "[Content_Types].xml":
+                    blob = blob.replace(_POTX, _PPTX)
+                zout.writestr(item, blob)
+        data = out.getvalue()
+        from pptx import Presentation
+        Presentation(io.BytesIO(data))                 # it must open
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(400, "That is not a PowerPoint file. Upload a .pptx or .potx template.")
+    TEMPLATES.mkdir(parents=True, exist_ok=True)
+    (TEMPLATES / f"{c.id}.pptx").write_bytes(data)
+    c.pptx_template = Path(upload.filename or "template.pptx").name[:255]
+
+
+def template_path(db: Session, company_id: int | None) -> Path | None:
+    c = db.get(Company, company_id) if company_id else None
+    p = TEMPLATES / f"{c.id}.pptx" if c and c.pptx_template else None
+    return p if p and p.is_file() else None
+
+
+@router.post("/admin/companies/{company_id}/template")
+async def upload_template(company_id: int, request: Request, upload: UploadFile = File(...), me: User = Depends(platform_admin),
+                          db: Session = Depends(get_db)):
+    c = _get(db, company_id)
+    await _save_template(c, upload)
+    audit(db, request, me, "company.template_changed", c.name, c.pptx_template, company_id=None)
+    db.commit()
+    return {"ok": True, "pptx_template": c.pptx_template}
+
+
+@router.delete("/admin/companies/{company_id}/template")
+def remove_template(company_id: int, request: Request, me: User = Depends(platform_admin), db: Session = Depends(get_db)):
+    c = _get(db, company_id)
+    (TEMPLATES / f"{c.id}.pptx").unlink(missing_ok=True)
+    c.pptx_template = ""
+    audit(db, request, me, "company.template_removed", c.name, company_id=None)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/company/template")
+async def upload_my_template(request: Request, upload: UploadFile = File(...), admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    c = _get(db, admin.company_id)
+    await _save_template(c, upload)
+    audit(db, request, admin, "company.template_changed", c.name, c.pptx_template)
+    db.commit()
+    return {"ok": True, "pptx_template": c.pptx_template}
+
+
+@router.delete("/company/template")
+def remove_my_template(request: Request, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    c = _get(db, admin.company_id)
+    (TEMPLATES / f"{c.id}.pptx").unlink(missing_ok=True)
+    c.pptx_template = ""
+    audit(db, request, admin, "company.template_removed", c.name)
+    db.commit()
+    return {"ok": True}

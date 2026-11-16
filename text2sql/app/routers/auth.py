@@ -59,7 +59,8 @@ def _me(user: User, db: Session, scope: str) -> dict:
             "totp_enabled": user.totp_enabled, "recovery_codes_left": len(user.recovery_codes or []),
             "requirements": _requirements(user, settings), "scope": scope, "app_name": config.APP_NAME,
             "enforce_2fa": settings["enforce_2fa"], "sees_sql": sees_sql(user),
-            "company": {"id": company.id, "name": company.name, "has_logo": bool(company.logo_file)} if company else None,
+            "company": {"id": company.id, "name": company.name, "has_logo": bool(company.logo_file),
+                        "pptx_template": company.pptx_template or ""} if company else None,
             "is_platform_admin": bool(user.is_platform_admin)}
 
 

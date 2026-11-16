@@ -328,7 +328,20 @@
 <ul>
 <li><b>⟳ Refresh</b> runs everything again.</li>
 <li><b>⬇ PDF</b> downloads the report as a PDF with header, footer and page numbers, using the data as you are allowed to see it.</li>
+<li><b>⬇ PowerPoint</b> downloads it as a presentation (.pptx), also with the data as you are allowed to see it.</li>
 </ul>
+<h3>The PowerPoint deck</h3>
+<p>The deck is laid out to fit the content rather than copying the page:</p>
+<ul>
+<li>A <b>title slide</b> with your company logo, the report title and description, the company, who it was prepared for and when the data was refreshed.</li>
+<li>Each main heading (<i>Heading 1</i>) becomes a <b>section slide</b>; a sub-heading becomes the small label above the next slide's title. Text blocks become a slide of points.</li>
+<li>Each result gets a slide with its <b>chart</b> on the left and its <b>key points</b> on the right; a short table (up to 6 rows) sits under the key points on the same slide. Longer tables follow on their own slides, at most 16 rows each, spread evenly, with a note when rows or columns were left out.</li>
+<li>Results placed <b>side by side</b> in the report share one slide, and their small tables share the next.</li>
+<li>Predictive answers show their key figures as cards, the main chart beside the explanation, further charts two per slide, and their tables.</li>
+<li>Every slide carries the logo, the report's header and footer text, the company name and the slide number. The accent colour is taken from your logo.</li>
+</ul>
+<figure><img src="/static/help/img/pptx-slide.png" alt="A slide titled Revenue and orders by region with a bar chart on the left, key points on the right and a small table below them, and the Northwind logo at the top right"><figcaption>A result slide in the built-in design: chart, key points and a short table, with the company logo.</figcaption></figure>
+<p>If your company has a <b>PowerPoint template</b> (see below), the deck is built on it instead.</p>
 <h3>Sharing</h3>
 <p>A report is private until its owner shares it. Press <b>👥 Share</b> and choose <i>Can view</i> or <i>Can view and edit</i> for:</p>
 <ul>
@@ -707,6 +720,10 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 <li>A company's administrator can switch a shared model or sender off for their company, add their own, and choose their company's default.</li>
 <li><b>Names never clash:</b> within what one company sees, every model (and sender) name is unique. A company cannot add a model named like a shared one it is offered, and a shared model cannot be offered to a company that already has one with the same name — you are asked to choose another name. In the Ask page the picker groups them as <i>Your company</i> and <i>Shared</i>.</li>
 </ul>
+<h3>PowerPoint template</h3>
+<p>Upload the company's corporate template (.pptx or .potx, at most 25 MB) under <b>Admin → Companies → Edit</b>, or — as the company's administrator — under <b>Admin → Settings → Company</b>. From then on, report PowerPoint exports for that company are built on it: its slide masters and backgrounds, theme colours and fonts, and slide size (16:9 or 4:3). The template's <i>Title Slide</i>, <i>Section Header</i> and <i>Title Only</i> layouts are used (or the closest ones it has); any sample slides in the template are left out, and placeholders that would stay empty are removed. Remove the template to go back to the built-in design.</p>
+<figure><img src="/static/help/img/company-template.png" alt="Edit Northwind Traders with Logo and PowerPoint template file fields"><figcaption>Uploading a company's PowerPoint template.</figcaption></figure>
+<figure><img src="/static/help/img/pptx-template.png" alt="The same result slide built on a 4:3 corporate template with its own title style and a coloured footer band"><figcaption>The same slide on a corporate template: its title style, colours, size and footer band.</figcaption></figure>
 <h3>Company logo</h3>
 <p>A company's administrator uploads the logo under <b>Admin → Settings → Company</b> (a platform administrator can also do it from Companies → Edit). PNG, JPEG or WebP, at most 512 KB; SVG is not accepted because it can carry scripts. The logo is shown at the top of the menu for everyone in that company and at the top of every page of the company's report PDFs.</p>
 <figure><img src="/static/help/img/company-ask.png" alt="The Ask page of Northwind Traders with its logo and name at the top of the menu and the shared model selected"><figcaption>A company's own logo and name in the menu.</figcaption></figure>

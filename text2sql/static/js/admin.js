@@ -162,12 +162,19 @@ function companiesTab(el) {
     const name = h('input', { type: 'text', value: c.name });
     const active = check('Active — its people can sign in', c.is_active);
     const file = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp' });
+    const tpl = h('input', { type: 'file', accept: '.pptx,.potx' });
+    let dropTpl = false;
+    const tplNow = h('div', { class: 'small dim' }, c.pptx_template ? ['Current template: ', h('b', {}, c.pptx_template), ' ',
+      h('button', { class: 'btn ghost sm', type: 'button', onclick: e => { dropTpl = true; e.target.parentNode.textContent = 'The template will be removed when you save.'; } }, 'Remove')] : 'No template: PowerPoint exports use the built-in design with the logo.');
     modal(`Edit ${c.name}`, h('div', { class: 'stack' }, field('Company name', name), c.is_mine ? null : active,
       field('Logo', file, 'PNG, JPEG or WebP, at most 512 KB — leave empty to keep the current one'),
+      field('PowerPoint template', tpl, 'the company’s corporate .pptx or .potx — report exports are built on it'), tplNow,
       c.is_mine ? null : h('p', { class: 'small dim', style: 'margin:0' }, 'Making a company inactive signs all its people out at once; nothing is deleted.')), {
       actions: close => [h('button', { class: 'btn', onclick: close }, 'Cancel'), h('button', { class: 'btn primary', onclick: e => busy(e.target, async () => {
         await api('PUT', `/api/admin/companies/${c.id}`, { name: name.value, is_active: c.is_mine ? true : active.input.checked });
         if (file.files[0]) { const fd = new FormData(); fd.append('upload', file.files[0]); await api('POST', `/api/admin/companies/${c.id}/logo`, fd); if (c.is_mine) state.logoChanged = true; }
+        if (tpl.files[0]) { const fd = new FormData(); fd.append('upload', tpl.files[0]); await api('POST', `/api/admin/companies/${c.id}/template`, fd); }
+        else if (dropTpl) await api('DELETE', `/api/admin/companies/${c.id}/template`);
         close(); toast('Saved'); draw();
       }) }, 'Save')] });
   };
@@ -190,7 +197,8 @@ function companiesTab(el) {
       h('div', { class: 'tbl-wrap', style: 'max-height:none' }, h('table', { class: 'tbl' },
         h('thead', {}, h('tr', {}, ['Company', 'Administrators', 'Users', 'Data models', 'Reports', 'Questions (30 days)', 'AI spend (30 days)', ''].map(t => h('th', {}, t)))),
         h('tbody', {}, list.map(c => h('tr', {},
-          h('td', {}, h('b', {}, c.name), ' ', c.is_mine ? h('span', { class: 'badge info' }, 'yours') : null, ' ', c.is_active ? null : h('span', { class: 'badge bad' }, 'inactive'), c.has_logo ? h('div', { class: 'small dim' }, 'has a logo') : null),
+          h('td', {}, h('b', {}, c.name), ' ', c.is_mine ? h('span', { class: 'badge info' }, 'yours') : null, ' ', c.is_active ? null : h('span', { class: 'badge bad' }, 'inactive'),
+            c.has_logo || c.pptx_template ? h('div', { class: 'small dim' }, [c.has_logo ? 'logo' : null, c.pptx_template ? 'PowerPoint template' : null].filter(Boolean).join(' · ')) : null),
           h('td', { class: 'small' }, c.admins.length ? c.admins.map(a => h('div', { class: 'row', style: 'gap:6px' }, h('span', {}, a.name || a.email, h('span', { class: 'dim' }, ' · ' + a.email)),
             c.is_mine ? null : h('button', { class: 'btn ghost sm', title: 'Reset this administrator’s password', onclick: reset(c, a) }, '↺'))) : h('span', { class: 'badge warn' }, 'none')),
           h('td', { class: 'num' }, c.users), h('td', { class: 'num' }, c.data_models), h('td', { class: 'num' }, c.reports), h('td', { class: 'num' }, c.questions_30d),
@@ -214,12 +222,21 @@ function settingsTab(el) {
       const fd = new FormData(); fd.append('upload', e.target.files[0]);
       try { await api('POST', '/api/company/logo', fd); state.logoChanged = true; state.logoVersion = Date.now(); toast('Logo saved'); location.reload(); } catch (ex) { fail(ex); }
     } });
+    const tplFile = h('input', { type: 'file', accept: '.pptx,.potx', class: 'hidden', onchange: async e => {
+      const fd = new FormData(); fd.append('upload', e.target.files[0]);
+      try { await api('POST', '/api/company/template', fd); toast('Template saved'); location.reload(); } catch (ex) { fail(ex); }
+    } });
     fill(el, h('div', { class: 'stack', style: 'max-width:680px' },
       co ? h('div', { class: 'card stack' }, h('h2', {}, 'Company'), h('div', {}, h('b', {}, co.name), h('span', { class: 'small dim' }, state.me.is_platform_admin ? ' — rename it under Companies' : ' — the platform administrator can rename it')),
         h('div', { class: 'row wrap', style: 'align-items:center' }, logoBox, h('div', { class: 'stack', style: 'gap:6px' },
           h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => logoFile.click() }, '⬆ Upload logo'),
             co.has_logo ? h('button', { class: 'btn ghost', onclick: async () => { await api('DELETE', '/api/company/logo').catch(fail); state.logoChanged = true; location.reload(); } }, 'Remove') : null),
-          h('span', { class: 'small dim' }, 'PNG, JPEG or WebP, at most 512 KB. Shown in the menu for everyone in your company and at the top of report PDFs.')), logoFile)) : null,
+          h('span', { class: 'small dim' }, 'PNG, JPEG or WebP, at most 512 KB. Shown in the menu for everyone in your company and at the top of report PDFs.')), logoFile),
+        h('div', { class: 'row wrap', style: 'align-items:center;margin-top:6px' }, h('b', { class: 'small' }, 'PowerPoint template: '),
+          h('span', { class: 'small' }, co.pptx_template || 'none — exports use the built-in design with your logo'),
+          h('button', { class: 'btn sm', onclick: () => tplFile.click() }, co.pptx_template ? 'Replace' : '⬆ Upload template'),
+          co.pptx_template ? h('button', { class: 'btn sm ghost', onclick: async () => { await api('DELETE', '/api/company/template').catch(fail); location.reload(); } }, 'Remove') : null, tplFile),
+        h('span', { class: 'small dim' }, 'Your corporate .pptx or .potx: report PowerPoint exports are built on its masters, layouts, colours and fonts.')) : null,
       h('div', { class: 'card stack' }, h('h2', {}, 'Security'), bool('enforce_2fa', 'Require two-factor authentication for everyone', 'Users without 2FA are sent to enrolment on their next request — including you.'),
         h('div', { class: 'grid2' }, field('Questions per user per minute', num('rate_limit_per_min')),
           ...(s.platform_keys.length ? [field('Session length (hours)', num('session_hours'), 'all companies'), field('Failed sign-ins before lockout', num('lockout_attempts'), 'all companies'), field('Lockout duration (minutes)', num('lockout_minutes'), 'all companies')] : [])),

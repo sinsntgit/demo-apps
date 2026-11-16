@@ -24,6 +24,7 @@ class Company(Base):
     hidden_models: Mapped[list] = mapped_column(JSON, default=list)      # shared platform models switched off here
     hidden_senders: Mapped[list] = mapped_column(JSON, default=list)
     logo_file: Mapped[str] = mapped_column(String(100), default="")          # in DATA_DIR/logos; shown in the menu and PDFs
+    pptx_template: Mapped[str] = mapped_column(String(255), default="")      # original file name; stored as DATA_DIR/templates/<id>.pptx
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 

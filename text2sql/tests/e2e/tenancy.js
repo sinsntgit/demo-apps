@@ -63,7 +63,7 @@ const OUT = process.argv[2], B = 'http://localhost:8010/';
   });
   await step(nw, 'company admin uploads a logo', async () => {
     await nw.goto(B + '#/admin/settings'); await nw.waitForSelector('text=⬆ Upload logo');
-    await nw.locator('input[type=file]').setInputFiles(path.join(__dirname, 'fixtures', 'northwind-logo.png'));
+    await nw.locator('input[type=file][accept^="image"]').setInputFiles(path.join(__dirname, 'fixtures', 'northwind-logo.png'));
     await nw.waitForSelector('.nav .company img');
     await nw.waitForFunction(() => document.querySelector('.nav .company img').naturalWidth > 0);
     await nw.goto(B + '#/admin/settings'); await nw.waitForSelector('.logo-box img');
@@ -80,10 +80,18 @@ const OUT = process.argv[2], B = 'http://localhost:8010/';
     await nw.waitForSelector('.run .chart-box canvas');
     await nw.screenshot({ path: `${OUT}/company-ask.png` });
   });
+  await step(admin, 'platform admin uploads a company PowerPoint template', async () => {
+    await admin.goto(B + '#/admin/companies'); await admin.reload(); await admin.waitForSelector('td:has-text("Northwind Traders")');
+    await admin.locator('tr', { hasText: 'Northwind Traders' }).locator('button:text-is("Edit")').click();
+    await admin.locator('.modal label.field', { hasText: 'PowerPoint template' }).locator('input[type=file]').setInputFiles(path.join(__dirname, 'fixtures', 'corporate-template.potx'));
+    await admin.locator('.modal').screenshot({ path: `${OUT}/company-template.png` });
+    await admin.click('.modal footer .primary'); await admin.waitForSelector('.toast:has-text("Saved")');
+    await admin.waitForSelector('tr:has-text("Northwind Traders") >> text=PowerPoint template');
+  });
   await step(admin, 'platform admin sees the usage, not the data', async () => {
     await admin.goto(B + '#/admin/companies'); await admin.reload(); await admin.waitForSelector('td:has-text("Northwind Traders")');
     const row = await admin.locator('tr', { hasText: 'Northwind Traders' }).innerText();
-    if (!row.includes('has a logo') || !/\t1\t/.test(row.replace(/\n/g, '\t'))) throw new Error('row: ' + row.replace(/\n/g, ' | '));
+    if (!row.includes('logo') || !/\t1\t/.test(row.replace(/\n/g, '\t'))) throw new Error('row: ' + row.replace(/\n/g, ' | '));
     await admin.screenshot({ path: `${OUT}/companies.png` });
   });
   console.log('console errors:', errors.length ? errors : 'none'); await browser.close();

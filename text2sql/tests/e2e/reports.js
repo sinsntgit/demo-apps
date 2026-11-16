@@ -83,6 +83,13 @@ const OUT = process.argv[2], MAIL = process.argv[3], B = 'http://localhost:8010/
     await page.locator('.main').evaluate(e => e.scrollTo(0, 0)); await shot('report-view');
   });
   await step('pdf keeps the layout', async () => { const [dl] = await Promise.all([page.waitForEvent('download'), page.click('text=⬇ PDF')]); await dl.saveAs(`${OUT}/report.pdf`); });
+  await step('powerpoint export', async () => {
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('text=⬇ PowerPoint')]);
+    if (!dl.suggestedFilename().endsWith('.pptx')) throw new Error('file: ' + dl.suggestedFilename());
+    await dl.saveAs(`${OUT}/report.pptx`);
+    const head = require('fs').readFileSync(`${OUT}/report.pptx`).subarray(0, 2).toString();
+    if (head !== 'PK') throw new Error('not a pptx');
+  });
   await step('share with a group', async () => {
     await page.click('text=👥 Share'); await page.locator('.modal .item:has-text("Sales leadership") select').selectOption('view'); await shot('report-share', '.modal');
     await page.click('.modal footer .primary'); await page.waitForSelector('.toast:has-text("Sharing updated")');

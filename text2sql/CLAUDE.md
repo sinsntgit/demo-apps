@@ -105,6 +105,7 @@ Python 3.11+ · FastAPI · SQLAlchemy 2 (metadata store: SQLite by default, Post
 | `summarize.py` | Shape-aware summary (single / trend / ranking / cross / pivot / listing / values) and default chart suggestion. Measures vs dimensions; additive vs averaged. |
 | `docparse.py` | Text extraction from uploaded training documents. |
 | `mailer.py` | Email senders: connect/verify/send, simulation mode, email log. |
+| `pptx_export.py` | Report → PowerPoint (python-pptx), fed by `reporting.render` and its chart PNGs. Built-in 16:9 design with the company logo and an accent colour taken from it, or the company's template (`routers/companies.py::template_path`): its layouts are used, sample slides dropped, empty placeholders removed, geometry taken from the template. Check visually: `soffice --headless --convert-to pdf` then `pdftoppm`. |
 | `reporting.py` | Report access, component validation, live `render` per viewer, server-side charts (`chart_panels`, `draw_panel`), `build_pdf` (row/column layout), schedules (`next_run`, `make_snapshot`, `run_due`, scheduler thread). |
 | `routers/` | `auth`, `connections`, `training`, `chat`, `reports`, `analytics`, `admin` (users, groups, senders, email log, data access, filters, models, settings, audit). |
 

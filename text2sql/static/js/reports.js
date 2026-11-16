@@ -61,6 +61,7 @@ async function openReport(root, id) {
     const refreshBtn = h('button', { class: 'btn', onclick: () => view() }, '⟳ Refresh');
     fill(page, h('div', { class: 'page-head' }, h('a', { class: 'btn ghost', href: '#/reports' }, '← Reports'), h('span', { class: 'spacer' }), refreshBtn,
       h('button', { class: 'btn', onclick: e => { toast('Preparing PDF…'); location.href = `/api/reports/${id}/pdf`; } }, '⬇ PDF'),
+      h('button', { class: 'btn', title: 'Download as a PowerPoint deck with your company logo', onclick: () => { toast('Preparing PowerPoint…'); location.href = `/api/reports/${id}/pptx`; } }, '⬇ PowerPoint'),
       def.can_edit ? h('button', { class: 'btn primary', onclick: edit }, '✎ Edit') : null,
       def.is_owner ? [h('button', { class: 'btn', onclick: schedule }, def.scheduled ? '🕒 Scheduled' : '🕒 Schedule'), h('button', { class: 'btn', onclick: share }, '👥 Share'),
         h('button', { class: 'btn', onclick: snapshots }, '🗂 Saved copies'),
