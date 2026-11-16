@@ -145,6 +145,7 @@ class QueryRun(Base):
     attempts: Mapped[int] = mapped_column(Integer, default=0)      # model calls incl. repairs
     context: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # what was sent to the model
     analysis: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # predictive: {"spec", "result" | "error"}
+    rephrase_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)   # asked using this rephrased wording
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
     conversation: Mapped[Conversation] = relationship(back_populates="runs")
 
@@ -282,3 +283,23 @@ class ConversationShare(Base):
     role: Mapped[str] = mapped_column(String(20), default="")
     group_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)     # scope == "group"
     can_edit: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class RephraseLog(Base):
+    """One press of "Rephrase": the wording asked for, what the model suggested, and what it cost."""
+    __tablename__ = "rephrase_log"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    connection_id: Mapped[int] = mapped_column(ForeignKey("connections.id", ondelete="CASCADE"), index=True)
+    model_id: Mapped[Optional[int]] = mapped_column(ForeignKey("llm_models.id", ondelete="SET NULL"), nullable=True)
+    model_label: Mapped[str] = mapped_column(String(255), default="")
+    question: Mapped[str] = mapped_column(Text)
+    rephrased: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="ok")         # ok | error
+    error: Mapped[str] = mapped_column(Text, default="")
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cost: Mapped[float] = mapped_column(Float, default=0.0)
+    llm_ms: Mapped[int] = mapped_column(Integer, default=0)
+    used: Mapped[bool] = mapped_column(Boolean, default=False)            # a question was then asked with it
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)

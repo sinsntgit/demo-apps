@@ -50,6 +50,8 @@ DEFAULT_SETTINGS = {
     "lockout_minutes": 15,
     "predictive_enabled": True,    # forecasts, predictions, segmentation, anomaly detection
     "analysis_max_rows": 50000,    # rows a predictive question may pull from the source
+    "rephrase_enabled": True,      # "✨ Rephrase" on the Ask page: tidy a question before it is asked
+    "rephrase_model_id": 0,        # AI model that rephrases; 0 = the model the user picked for the question
     # outgoing email, for scheduled reports
     "smtp_host": "",
     "smtp_port": 587,

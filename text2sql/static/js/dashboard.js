@@ -17,7 +17,7 @@ export async function dashboardView(root) {
     h('h2', { style: 'margin-top:26px' }, 'Query log'), logBody));
   const qs = extra => new URLSearchParams(Object.entries({ ...f, ...extra }).filter(([, v]) => v !== '' && v != null)).toString();
 
-  const tile = (label, value, sub) => h('div', { class: 'kpi' }, h('div', { class: 'l' }, label), h('div', { class: 'v' }, value), sub ? h('div', { class: 's' }, sub) : null);
+  const tile = (label, value, sub, note) => h('div', { class: 'kpi' }, h('div', { class: 'l' }, label), h('div', { class: 'v' }, value), sub ? h('div', { class: 's' }, sub) : null, note ? h('div', { class: 's' }, note) : null);
   const breakdown = (title, rows, first) => h('div', { class: 'card' }, h('h2', {}, title), rows.length ? h('div', { class: 'tbl-wrap', style: 'max-height:300px' }, h('table', { class: 'tbl' },
     h('thead', {}, h('tr', {}, [first, 'Queries', 'Success', 'Accuracy', 'Avg write', 'Tokens', 'Cost'].map((t, i) => h('th', { class: i ? 'num' : '' }, t)))),
     h('tbody', {}, rows.map(r => h('tr', {}, h('td', {}, r.label), h('td', { class: 'num' }, fmtNum(r.queries)), h('td', { class: 'num' }, pct(r.success_rate)),
@@ -42,7 +42,9 @@ export async function dashboardView(root) {
         tile('SQL accuracy', pct(t.accuracy), t.rated ? `${t.correct} correct, ${t.corrected} corrected, ${t.incorrect} wrong of ${t.rated} rated` : 'no user ratings yet'),
         tile('Auto-corrected', fmtNum(t.self_repaired), 'fixed by the model after a database error'),
         tile('Avg time to write SQL', (t.avg_llm_ms / 1000).toFixed(1) + 's', `+ ${t.avg_db_ms} ms to run`),
-        tile('Model spend', '$' + t.cost.toFixed(2), `${fmtCompact(t.input_tokens)} in · ${fmtCompact(t.output_tokens)} out tokens`)),
+        tile('Model spend', '$' + (t.cost + s.rephrase.cost).toFixed(2), `${fmtCompact(t.input_tokens + s.rephrase.input_tokens)} in · ${fmtCompact(t.output_tokens + s.rephrase.output_tokens)} out tokens` + (s.rephrase.count ? ` · incl. $${s.rephrase.cost.toFixed(s.rephrase.cost < 0.01 ? 4 : 2)} rephrasing` : '')),
+        tile('Rephrased', fmtNum(s.rephrase.count), s.rephrase.count ? `${s.rephrase.used} used · avg ${fmtCompact(s.rephrase.avg_tokens)} tokens each` : 'no questions rephrased yet',
+          s.rephrase.rephrased.questions && s.rephrase.as_typed.questions ? `Right first time: ${pct(s.rephrase.rephrased.first_time_rate)} of rephrased questions vs ${pct(s.rephrase.as_typed.first_time_rate)} of questions asked as typed` : '')),
       h('div', { class: 'dash-grid' },
         h('div', { class: 'card' }, h('h2', {}, 'Questions per day'), h('div', { class: 'chart-box', style: 'height:260px' }, c1)),
         h('div', { class: 'card' }, h('h2', {}, 'User verdicts by AI model'), s.by_model.some(m => m.rated) ? h('div', { class: 'chart-box', style: 'height:260px' }, c2)

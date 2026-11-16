@@ -1,6 +1,6 @@
 """The question -> SQL -> result pipeline.
 
-Privacy boundary: `build_prompt` is the only place content is assembled for the model.
+Privacy boundary: `build_prompt` (and the smaller `build_rephrase_prompt`) are the only places content is assembled for the model.
 It contains schema metadata, approved training text, earlier questions + SQL, and the
 new question. Query results are never included. Database error text used for automatic
 repair is scrubbed of literals first (`scrub_error`).
@@ -44,6 +44,87 @@ When - and only when - the question asks to forecast or project something, predi
 - Anomalies: unusual periods -> {{"type": "anomaly", "date": "<period column>", "target": "<measure>"}} with one row per period; unusual items -> {{"type": "anomaly", "id": "<row identifier>"}} with one row per item.
 Column names inside "analysis" must be exactly the aliases your SQL returns. Add "features": [...] only to restrict the inputs to specific columns. For every other question "analysis" must be null.
 """
+
+
+REPHRASE_SYSTEM = """You rewrite a business user's question so that a text-to-SQL assistant can answer it precisely and on the first attempt. You do not answer the question and you do not write SQL.
+
+Make the question self-contained and specific:
+- Name the measure, the grouping, any filters and the time period the user means, using the business terms and the names of things listed below.
+- Turn references to the conversation so far ("that", "same for last year", "split it by region") into a complete question.
+- Fix spelling, expand abbreviations, remove filler words.
+- Keep the user's intent and language. Never add a filter, period, ranking or limit the user did not ask for or clearly imply. If something important is missing (for example which period), keep that part general and say so in "unclear".
+- One or two sentences at most.
+
+Reply with a single JSON object and nothing else:
+{"question": "<the rewritten question>", "changes": "<a few words on what you changed>", "unclear": "<what the user may still want to specify, or empty>"}"""
+
+REPHRASE_SCHEMA_BUDGET = 4000
+
+
+def build_rephrase_prompt(db: Session, conn: Connection, question: str, history: list[str], similar: list[str]):
+    """A deliberately small prompt: table and column names (no types, DDL or comments), the titles of the
+    business documentation, a few similar verified questions and earlier questions - never SQL, data or results.
+    Returns (system, user)."""
+    tables = (conn.schema_json or {}).get("tables", [])
+    lines = [f"{connectors.table_fqn(t)}({', '.join(c['name'] for c in t['columns'])})" for t in tables]
+    if sum(len(x) for x in lines) > REPHRASE_SCHEMA_BUDGET:
+        lines = retrieval.top(question + " " + " ".join(history[-2:]), lines, lambda x: x.replace("_", " "), 25)
+    out, used = [], 0
+    for x in lines:
+        if used + len(x) > REPHRASE_SCHEMA_BUDGET:
+            break
+        out.append(x)
+        used += len(x)
+    terms = [d.title for d in _approved(db, conn.id, "documentation") if d.title][:40]
+    parts = [f"## Data model\n{conn.name}" + (f" - {conn.description}" if conn.description else ""),
+             "## Tables and columns\n" + ("\n".join(out) or "(not synced)")]
+    if terms:
+        parts.append("## Business terms defined for this data\n" + "; ".join(terms))
+    if similar:
+        parts.append("## Verified questions that are similar (reuse their wording where it fits)\n" + "\n".join(f"- {q}" for q in similar))
+    if history:
+        parts.append("## Earlier questions in this conversation\n" + "\n".join(f"- {q}" for q in history[-2:]))
+    parts.append(f"## Question to rewrite\n{question}")
+    return REPHRASE_SYSTEM, "\n\n".join(parts)
+
+
+def similar_questions(db: Session, conn_id: int, question: str, k: int = 3) -> list[str]:
+    """Verified example questions close to this one - found locally, no model call."""
+    pairs = _approved(db, conn_id, "sql_pair")
+    want = set(retrieval.tokens(question))
+    if not want:
+        return []
+    hits = retrieval.top(question, pairs, lambda p: p.question, k * 3)
+    out = []
+    for p in hits:      # at least half of the question's words must appear in the example
+        if len(want & set(retrieval.tokens(p.question))) / len(want) >= 0.5 and p.question not in out:
+            out.append(p.question)
+    return out[:k]
+
+
+def rephrase(db: Session, conn: Connection, model: LLMModel, question: str, history: list[str], log) -> dict:
+    """Ask the model for a better wording; fills the RephraseLog `log` with tokens and cost."""
+    similar = similar_questions(db, conn.id, question)
+    system, user = build_rephrase_prompt(db, conn, question, history, similar)
+    log.model_id, log.model_label = model.id, model.name
+    try:
+        res = llm.complete(model, system, user)
+    except llm.LLMError as e:
+        log.status, log.error = "error", str(e)
+        return {"similar": similar, "error": str(e)}
+    log.input_tokens, log.output_tokens, log.llm_ms = res.input_tokens, res.output_tokens, res.ms
+    log.cost = (res.input_tokens * model.price_in + res.output_tokens * model.price_out) / 1_000_000
+    obj = llm.parse_json(res.text)
+    new = " ".join(str(obj.get("question") or "").split())[:4000]
+    if not new:
+        log.status, log.error = "error", "The model did not return a rewritten question."
+        return {"similar": similar, "error": "The AI model did not suggest a new wording. Try again or ask as written."}
+    log.rephrased = new
+    for q in similar_questions(db, conn.id, new):     # the clearer wording often matches verified questions the original did not
+        if q not in similar and q.strip().lower() != new.strip().lower():
+            similar.append(q)
+    return {"question": new, "changes": str(obj.get("changes") or "").strip()[:300],
+            "unclear": str(obj.get("unclear") or "").strip()[:300], "similar": similar[:3]}
 
 
 def scrub_error(msg: str) -> str:

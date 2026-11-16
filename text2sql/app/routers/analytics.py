@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db, now
 from ..deps import steward_up
-from ..models import Connection, QueryRun, TrainingItem, User
+from ..models import Connection, QueryRun, RephraseLog, TrainingItem, User
 from .chat import run_dto
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
@@ -80,8 +80,28 @@ def summary(days: int = 30, connection_id: int | None = None, model_id: int | No
 
     errors = Counter((r.error or "")[:160] for r in runs if r.status in ("error", "blocked"))
     pending = db.scalar(select(TrainingItem.id).where(TrainingItem.status == "pending").limit(1)) is not None
+    stmt = select(RephraseLog).where(RephraseLog.created_at >= now() - timedelta(days=days))
+    if connection_id:
+        stmt = stmt.where(RephraseLog.connection_id == connection_id)
+    if model_id:
+        stmt = stmt.where(RephraseLog.model_id == model_id)
+    if user_id:
+        stmt = stmt.where(RephraseLog.user_id == user_id)
+    logs = list(db.scalars(stmt))
+
+    def outcome(rs):        # how often the first model answer worked, without a clarification or a repair
+        done = [r for r in rs if r.status in ("success", "error", "blocked", "clarification")]
+        first = [r for r in done if r.status == "success" and r.attempts <= 1]
+        return {"questions": len(rs), "first_time_rate": len(first) / len(done) if done else None,
+                "avg_tokens": round(sum(r.input_tokens + r.output_tokens for r in rs) / len(rs)) if rs else 0}
+    rephrase = {"count": len(logs), "used": sum(x.used for x in logs), "errors": sum(x.status == "error" for x in logs),
+                "input_tokens": sum(x.input_tokens for x in logs), "output_tokens": sum(x.output_tokens for x in logs),
+                "cost": round(sum(x.cost for x in logs), 4),
+                "avg_tokens": round(sum(x.input_tokens + x.output_tokens for x in logs) / len(logs)) if logs else 0,
+                "rephrased": outcome([r for r in runs if r.rephrase_id]), "as_typed": outcome([r for r in runs if not r.rephrase_id])}
     return {
         "totals": {**_agg(runs), "active_users": len({r.user_id for r in runs})},
+        "rephrase": rephrase,
         "series": series,
         "by_model": group(lambda r: r.model_label or "(deleted model)", lambda k: k),
         "by_connection": group(lambda r: r.connection_id, lambda k: conns.get(k, f"#{k}")),

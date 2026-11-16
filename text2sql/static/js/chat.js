@@ -5,7 +5,7 @@ import { runCard } from './results.js';
 const prefs = { get(k) { try { return localStorage.getItem('t2s-' + k); } catch { return null; } }, set(k, v) { try { localStorage.setItem('t2s-' + k, v); } catch { /* blocked */ } } };
 
 export async function chatView(root, convId) {
-  const [conns, models, convs] = await Promise.all([api('GET', '/api/connections'), api('GET', '/api/models'), api('GET', '/api/chat/conversations')]);
+  const [conns, models, convs, opts] = await Promise.all([api('GET', '/api/connections'), api('GET', '/api/models'), api('GET', '/api/chat/conversations'), api('GET', '/api/chat/options')]);
   const active = conns.filter(c => c.is_active);
   let conv = null;                                   // {id, title, connection_id}
   let connId = Number(prefs.get('conn')) || active[0]?.id;
@@ -22,6 +22,42 @@ export async function chatView(root, convId) {
   const thread = h('div', { class: 'thread' }, inner);
   const input = h('textarea', { placeholder: 'Ask a question about your data…', rows: 1 });
   const sendBtn = h('button', { class: 'btn primary', onclick: () => ask(input.value) }, 'Ask');
+  let pendingRephrase = null;                        // id of the suggestion the question in the box is based on
+  const rephraseBox = h('div', { class: 'rephrase hidden' });
+  const rephraseBtn = h('button', { class: 'btn' + (opts.rephrase ? '' : ' hidden'), title: 'Let the AI model tidy up this question before you ask it: clearer wording, the right business terms, nothing guessed', onclick: () => rephrase() }, '✨ Rephrase');
+  const onRephrase = q => { input.value = q; input.dispatchEvent(new Event('input')); rephrase(); };
+
+  function closeRephrase() { rephraseBox.classList.add('hidden'); fill(rephraseBox); }
+
+  async function rephrase() {
+    const question = input.value.trim();
+    if (!question) return toast('Type a question first, then press Rephrase.', true);
+    if (!connId || !modelId) return toast('Choose a data model and an AI model first.', true);
+    let r;
+    await busy(rephraseBtn, async () => {
+      r = await api('POST', '/api/chat/rephrase', { connection_id: connId, model_id: modelId, question,
+        conversation_id: conv && conv.connection_id === connId ? conv.id : null });
+    });
+    if (!r) return;
+    const ta = h('textarea', { rows: 2, 'aria-label': 'Suggested wording' }, r.question || question);
+    const use = text => { input.value = text; input.dispatchEvent(new Event('input')); pendingRephrase = r.id; closeRephrase(); input.focus(); };
+    const meta = r.model_label ? `${r.model_label} · ${(r.llm_ms / 1000).toFixed(1)}s · ${(r.input_tokens + r.output_tokens).toLocaleString()} tokens · $${r.cost.toFixed(4)}` : '';
+    fill(rephraseBox, h('div', { class: 'card' },
+      h('div', { class: 'row', style: 'margin-bottom:6px' }, h('b', {}, '✨ Suggested wording'), h('span', { class: 'small dim' }, meta), h('span', { class: 'spacer' }),
+        h('button', { class: 'btn ghost sm', title: 'Close', 'aria-label': 'Close', onclick: () => { pendingRephrase = null; closeRephrase(); } }, '✕')),
+      r.error ? h('div', { class: 'banner warn small', style: 'margin-bottom:8px' }, r.error) : [ta,
+        r.changes ? h('div', { class: 'small muted', style: 'margin-top:4px' }, 'What changed: ' + r.changes) : null,
+        r.unclear ? h('div', { class: 'small', style: 'margin-top:4px;color:var(--warn-ink, #8a5a00)' }, '💡 You may want to say: ' + r.unclear) : null],
+      r.similar?.length ? h('div', { style: 'margin-top:8px' }, h('div', { class: 'small dim', style: 'margin-bottom:4px' }, 'Verified questions like yours (these have checked SQL):'),
+        h('div', { class: 'chips' }, r.similar.map(q => h('button', { class: 'chip', title: 'Use this verified question', onclick: () => use(q) }, q)))) : null,
+      h('div', { class: 'row', style: 'margin-top:10px' },
+        r.error ? null : h('button', { class: 'btn primary sm', onclick: () => { pendingRephrase = r.id; closeRephrase(); ask(ta.value); } }, 'Use and ask'),
+        r.error ? null : h('button', { class: 'btn sm', onclick: () => use(ta.value) }, 'Use this wording'),
+        h('button', { class: 'btn sm ghost', onclick: () => { pendingRephrase = null; closeRephrase(); input.focus(); } }, 'Keep mine'))));
+    rephraseBox.classList.remove('hidden');
+    if (!r.error) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+  }
+
   const connSel = select(active.map(c => [c.id, `${c.name}  ·  ${c.db_label}`]), connId, v => { connId = Number(v); prefs.set('conn', v); if (conv && conv.connection_id !== connId) newChat(); else welcome(); });
   const modelSel = select(models.map(m => [m.id, m.name]), modelId, v => { modelId = Number(v); prefs.set('model', v); });
   const predictChk = h('input', { type: 'checkbox', checked: predictive, onchange: e => { predictive = e.target.checked; prefs.set('predictive', predictive ? '1' : '0'); } });
@@ -111,7 +147,8 @@ export async function chatView(root, convId) {
 
   function setMode() {           // composer and header follow what this person may do in the open chat
     const viewOnly = !!conv && !conv.can_edit;
-    input.disabled = sendBtn.disabled = viewOnly;
+    input.disabled = sendBtn.disabled = rephraseBtn.disabled = viewOnly;
+    if (viewOnly) closeRephrase();
     input.placeholder = viewOnly ? 'View only — this chat was shared with you. Ask its owner for edit access to add questions.' : 'Ask a question about your data…';
     connSel.disabled = !!conv && !conv.mine;
     shareBtn.classList.toggle('hidden', !(conv && conv.mine));
@@ -143,7 +180,7 @@ export async function chatView(root, convId) {
       history.replaceState(null, '', `#/ask/${id}`);
       setMode();
       fill(inner, sharedNote, ...(data.no_access ? [h('div', { class: 'banner warn' }, 'This chat uses a data model you do not have access to, so its questions and results are not shown. Ask an administrator for access.')]
-        : data.runs.map(r => runCard(r, { readonly: !!r.shared_view, onFollowup: data.can_edit ? ask : null }))));
+        : data.runs.map(r => runCard(r, { readonly: !!r.shared_view, onFollowup: data.can_edit ? ask : null, onRephrase: data.can_edit && opts.rephrase ? onRephrase : null }))));
       drawList();
       thread.scrollTop = thread.scrollHeight;
     } catch (e) { fail(e); newChat(); }
@@ -160,14 +197,15 @@ export async function chatView(root, convId) {
     inner.append(pending);
     thread.scrollTop = thread.scrollHeight;
     try {
-      const out = await api('POST', '/api/chat/ask', { connection_id: connId, model_id: modelId, conversation_id: conv?.id, question, review_first: review, predictive });
+      const rephrase_id = pendingRephrase; pendingRephrase = null; closeRephrase();
+      const out = await api('POST', '/api/chat/ask', { connection_id: connId, model_id: modelId, conversation_id: conv?.id, question, review_first: review, predictive, rephrase_id });
       if (!conv) { conv = { ...out.conversation, connection_id: connId, mine: true, can_edit: true }; history.replaceState(null, '', `#/ask/${conv.id}`); setMode(); }
       const name = active.find(c => c.id === connId)?.name || '';
       const existing = convs.find(c => c.id === conv.id);
       if (existing) convs.splice(convs.indexOf(existing), 1);
       convs.unshift({ mine: true, can_edit: true, ...existing, id: conv.id, title: out.conversation.title, connection_id: connId, connection_name: name, updated_at: new Date().toISOString().replace('Z', '') });
       drawList();
-      const card = runCard(out.run, { onFollowup: ask });
+      const card = runCard(out.run, { onFollowup: ask, onRephrase: opts.rephrase ? onRephrase : null });
       pending.replaceWith(card);
       card.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (e) {
@@ -187,7 +225,7 @@ export async function chatView(root, convId) {
         h('a', { class: 'small', href: '#/help/predictive', target: '_blank', rel: 'noopener', style: 'margin-top:14px' }, '?'),
         h('span', { class: 'spacer' }), shareBtn),
       thread,
-      h('div', { class: 'composer' }, h('div', { class: 'box' }, input, sendBtn),
+      h('div', { class: 'composer' }, rephraseBox, h('div', { class: 'box' }, input, rephraseBtn, sendBtn),
         h('div', { class: 'privacy-note' }, '🔒 The AI model only sees your question and the schema & training notes. Query results stay between this server and your database.')))));
   drawList();
   if (convId) await open(convId); else welcome();

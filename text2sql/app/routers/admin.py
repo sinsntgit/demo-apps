@@ -212,7 +212,8 @@ def test_model(model_id: int, _: User = Depends(admin_only), db: Session = Depen
 # ---- settings ----------------------------------------------------------------------
 _LIMITS = {"max_rows": (1, 50000), "query_timeout_s": (5, 900), "rate_limit_per_min": (1, 600),
            "session_hours": (1, 168), "max_repair_attempts": (0, 5), "lockout_attempts": (3, 20),
-           "lockout_minutes": (1, 1440), "smtp_port": (1, 65535), "analysis_max_rows": (100, 500000)}
+           "lockout_minutes": (1, 1440), "smtp_port": (1, 65535), "analysis_max_rows": (100, 500000),
+           "rephrase_model_id": (0, 2**31 - 1)}
 
 
 def _public_settings(db: Session) -> dict:
@@ -241,6 +242,8 @@ def save_settings(body: dict, request: Request, admin: User = Depends(admin_only
             lo, hi = _LIMITS[key]
             if not lo <= val <= hi:
                 raise HTTPException(400, f"{key} must be between {lo} and {hi}.")
+            if key == "rephrase_model_id" and val and not db.get(LLMModel, val):
+                raise HTTPException(400, "The AI model chosen for rephrasing no longer exists.")
         elif key == "feedback_mode" and val not in ("approval", "instant"):
             raise HTTPException(400, "feedback_mode must be 'approval' or 'instant'.")
         elif key == "smtp_security" and val not in ("starttls", "ssl", "none"):

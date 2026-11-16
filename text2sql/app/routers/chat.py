@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .. import connectors, engine, predict, reporting, security, sqlguard, summarize
 from ..db import get_db, now
 from ..deps import audit, can_use, current_user, get_connection, get_settings
-from ..models import ROLES, Connection, Conversation, ConversationShare, LLMModel, QueryRun, User, UserGroup
+from ..models import ROLES, Connection, Conversation, ConversationShare, LLMModel, QueryRun, RephraseLog, User, UserGroup
 from .training import upsert_pair
 
 router = APIRouter(prefix="/api", tags=["chat"])
@@ -22,6 +22,14 @@ class AskIn(BaseModel):
     question: str
     review_first: bool = False
     predictive: bool = False        # "Use predictive capability": forecasts, predictions, segments, anomalies
+    rephrase_id: int | None = None  # the question is (based on) this rephrase suggestion
+
+
+class RephraseIn(BaseModel):
+    connection_id: int
+    model_id: int | None = None
+    conversation_id: int | None = None
+    question: str
 
 
 class ExecIn(BaseModel):
@@ -154,6 +162,10 @@ def ask(body: AskIn, request: Request, user: User = Depends(current_user), db: S
     run = QueryRun(conversation_id=conv.id, user_id=user.id, connection_id=conn.id, model_id=model.id,
                    model_label=model.name, question=question, attempts=0, input_tokens=0, output_tokens=0,
                    llm_ms=0, cost=0.0)
+    if body.rephrase_id:
+        log = db.get(RephraseLog, body.rephrase_id)
+        if log and log.user_id == user.id:
+            log.used, run.rephrase_id = True, log.id
     db.add(run)
     # predictive analysis is used only when the user ticked it for this question and an admin allows it
     prompt = engine.generate(db, run, conn, model, history,
@@ -164,6 +176,44 @@ def ask(body: AskIn, request: Request, user: User = Depends(current_user), db: S
     audit(db, request, user, "query.asked", conn.name, f"run status={run.status}")
     db.commit()
     return {"conversation": {"id": conv.id, "title": conv.title}, "run": run_dto(run)}
+
+
+@router.get("/chat/options")
+def options(_: User = Depends(current_user), db: Session = Depends(get_db)):
+    """What the Ask page offers to everyone (admin settings that are not secret)."""
+    return {"rephrase": bool(get_settings(db)["rephrase_enabled"])}
+
+
+@router.post("/chat/rephrase")
+def rephrase(body: RephraseIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Suggest a clearer wording for a question before it is asked. Small prompt (names, not DDL);
+    the model can be a cheaper one chosen by an admin. Every call is logged with its tokens and cost."""
+    question = body.question.strip()
+    if not question:
+        raise HTTPException(400, "Type a question first.")
+    if len(question) > 4000:
+        raise HTTPException(400, "Question is too long.")
+    cfg = get_settings(db)
+    if not cfg["rephrase_enabled"]:
+        raise HTTPException(400, "Rephrasing is switched off. An administrator can turn it on under Admin → Settings.")
+    if not security.limiter.allow(f"rephrase:{user.id}", cfg["rate_limit_per_min"]):
+        raise HTTPException(429, "You are rephrasing too quickly. Wait a moment and try again.")
+    conn = get_connection(db, user, body.connection_id)
+    if not conn.is_active:
+        raise HTTPException(400, "This data model is disabled.")
+    chosen = db.get(LLMModel, cfg["rephrase_model_id"]) if cfg["rephrase_model_id"] else None
+    model = chosen if chosen and chosen.enabled else _pick_model(db, body.model_id)
+    history = []
+    if body.conversation_id:
+        conv = _conv(db, user, body.conversation_id)
+        if conv.connection_id == conn.id:
+            history = [r.question for r in conv.runs]
+    log = RephraseLog(user_id=user.id, connection_id=conn.id, question=question)
+    out = engine.rephrase(db, conn, model, question, history, log)
+    db.add(log)
+    db.commit()
+    return {"id": log.id, "original": question, "model_label": log.model_label, "input_tokens": log.input_tokens,
+            "output_tokens": log.output_tokens, "cost": round(log.cost, 6), "llm_ms": log.llm_ms, **out}
 
 
 @router.post("/chat/runs/{run_id}/execute")

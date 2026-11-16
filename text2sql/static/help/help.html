@@ -34,6 +34,17 @@
 <li><b>Use your business's own words</b> if they have been taught to the model under Training (for example “AOV”, “active customer”).</li>
 <li><b>One question at a time.</b> Ask the second part as a follow-up.</li>
 </ul>
+<h3>✨ Rephrase: tidy a question before you ask it</h3>
+<p>Type your question as it comes — “rev by cat pls” is fine — and press <b>✨ Rephrase</b> next to <b>Ask</b>. The AI model suggests a clearer wording that names the measure, grouping, filters and period you mean, in the business terms of the data model. Nothing is asked yet. Then choose:</p>
+<ul>
+<li><b>Use and ask</b> — ask the suggested wording (you can edit it in the box first);</li>
+<li><b>Use this wording</b> — put it in the question box so you can change it further;</li>
+<li><b>Keep mine</b> — ignore the suggestion.</li>
+</ul>
+<figure><img src="/static/help/img/rephrase.png" alt="The suggested wording panel above the question box with what changed, a hint about the time period, a matching verified question and Use and ask, Use this wording and Keep mine buttons"><figcaption>A suggestion, what changed, what you may still want to specify, and verified questions like yours.</figcaption></figure>
+<p><b>💡 You may want to say</b> points out something the model would otherwise have to guess, such as the time period — it never adds a filter or period you did not ask for. <b>Verified questions like yours</b> are found on the server without any AI call; their SQL has been checked, so picking one is the most reliable choice. In a chat, the suggestion takes your earlier questions into account, so “same for last year” becomes a complete question.</p>
+<p>To improve a question you already asked, hover over it and press <b>✨ Rephrase</b> beside it: it is copied into the box with a suggestion, ready to ask again.</p>
+<p><b>Why it saves cost.</b> A rephrase sends a much smaller prompt than a question — table and column names, the titles of business terms and a few similar verified questions, but no column types, documentation text, SQL or data. On the SAP sample it is about a sixth of a full question's prompt (about 900 against 5,400 tokens), and the administrator can let a cheaper model do it. It pays for itself when the clearer question avoids a wasted attempt: a clarifying question, an automatic repair, or a wrong answer asked again. The dashboard shows how often rephrased questions are answered right the first time compared with questions asked as typed, so you can see whether it does.</p>
 <h3>Follow-up questions</h3>
 <p>Within one chat the model remembers your last three answered questions and their SQL, so you can say “and by region?” or “only for laptops”. Under each answer you also get suggested follow-ups — click one to ask it.</p>
 <p>A chat belongs to one data model. Changing the data model starts a new chat.</p>
@@ -679,6 +690,8 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 <tr><td>Maximum rows returned</td><td>1,000</td><td>Rows fetched per query. Larger values slow the browser.</td></tr>
 <tr><td>Query timeout</td><td>60 s</td><td>Longer queries are cancelled.</td></tr>
 <tr><td>Automatic SQL repair attempts</td><td>2</td><td>How many times the model may retry after a database error. 0 switches repair off.</td></tr>
+<tr><td>Show “✨ Rephrase”</td><td>On</td><td>Lets users ask the AI model for a clearer wording before asking. See <a href="#/help/asking">Asking questions</a>.</td></tr>
+<tr><td>AI model that rephrases</td><td>The user's model</td><td>Pick a smaller, cheaper model here to keep rephrasing cheap; rewording does not need the most capable model.</td></tr>
 <tr><td>Allow predictive questions</td><td>On</td><td>Master switch for forecasts, predictions, segmentation, key drivers and anomalies. Users still opt in per question with <i>Use predictive capability</i>. See <a href="#/help/predictive">Predictive questions</a>.</td></tr>
 <tr><td>Rows a predictive question may read</td><td>50,000</td><td>Models need history, so predictive questions use this larger limit instead of <i>Maximum rows returned</i>.</td></tr>
 <tr><td>Keep result snapshots in chat history</td><td>On</td><td>Off = results are never stored by AskData; users re-run to see them again.</td></tr>
@@ -701,7 +714,8 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 <tr><td>SQL accuracy</td><td>Of the answers users rated, the share marked <i>Correct</i> exactly as the model wrote them. Corrected and Incorrect count against it. It only reflects rated answers, so encourage people to rate.</td></tr>
 <tr><td>Auto-corrected</td><td>Questions where the model's first SQL failed and its retry succeeded.</td></tr>
 <tr><td>Avg time to write SQL / to run</td><td>Model response time and database time, separately — so you can tell which one is slow.</td></tr>
-<tr><td>Model spend</td><td>Tokens used × the prices entered for each model. An estimate.</td></tr>
+<tr><td>Model spend</td><td>Tokens used × the prices entered for each model, including rephrasing. An estimate.</td></tr>
+<tr><td>Rephrased</td><td>How often <b>✨ Rephrase</b> was pressed, how many suggestions were then asked, and the average tokens per rephrase. Once there are both kinds of questions it compares how often rephrased questions were answered right the first time (no clarification, no repair) with questions asked as typed.</td></tr>
 </table>
 <p>The breakdown tables give the same figures per AI model, per data model and per user. <b>Most common failures</b> lists the errors seen most often.</p>
 <h3>Query log</h3>

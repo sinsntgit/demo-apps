@@ -13,7 +13,9 @@ SMTP_PORT = 8792
 def _login(client, email, role="analyst", name=""):
     from fastapi.testclient import TestClient
     from app.main import app
+    from app import security
     made = client.post("/api/admin/users", headers=H, json={"email": email, "role": role, "name": name}).json()
+    security.limiter._hits.pop("login:testclient", None)     # every test user signs in from the same address
     u = TestClient(app)
     u.post("/api/auth/login", headers=H, json={"email": email, "password": made["temporary_password"]})
     u.post("/api/auth/change-password", headers=H, json={"current": made["temporary_password"], "new": "Report-Passw0rd"})

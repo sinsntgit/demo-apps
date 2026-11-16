@@ -450,7 +450,7 @@ async function addToReport(run) {
 }
 
 /**
- * ctx: { readonly, onFollowup(question), onChange(run) }
+ * ctx: { readonly, onFollowup(question), onRephrase(question), onChange(run) }
  */
 export function runCard(run, ctx = {}) {
   const root = h('div', {});
@@ -599,7 +599,7 @@ export function runCard(run, ctx = {}) {
       card.append(h('div', { class: 'sec' }, h('div', { class: 'sec-head' }, h('h3', {}, 'Follow-up questions')),
         h('div', { class: 'chips' }, run.followups.map(f => h('button', { class: 'chip', onclick: () => ctx.onFollowup(f) }, f)))));
     }
-    fill(root, h('div', { class: 'q' }, h('div', {}, run.asked_by ? h('span', { class: 'small', style: 'display:block;opacity:.8;margin-bottom:2px' }, `Asked by ${run.asked_by}`) : null, run.question)), card);
+    fill(root, h('div', { class: 'q' }, ctx.onRephrase ? h('button', { class: 'btn ghost sm q-re', title: 'Rephrase this question and ask it again', onclick: () => ctx.onRephrase(run.question) }, '✨ Rephrase') : null, h('div', {}, run.asked_by ? h('span', { class: 'small', style: 'display:block;opacity:.8;margin-bottom:2px' }, `Asked by ${run.asked_by}`) : null, run.question)), card);
   }
   const onTheme = () => { if (!root.isConnected) return window.removeEventListener('themechange', onTheme); resultSec?._repaint?.(); ablock?.repaint(); };
   window.addEventListener('themechange', onTheme);

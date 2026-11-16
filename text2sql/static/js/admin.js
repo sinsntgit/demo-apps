@@ -95,7 +95,7 @@ function modelsTab(el) {
 }
 
 function settingsTab(el) {
-  api('GET', '/api/admin/settings').then(s => {
+  Promise.all([api('GET', '/api/admin/settings'), api('GET', '/api/models')]).then(([s, models]) => {
     const num = k => h('input', { type: 'number', value: s[k], style: 'max-width:140px', oninput: e => { s[k] = e.target.value; } });
     const bool = (k, label, hint) => check(label, s[k], v => { s[k] = v; }, hint);
     const text = (k, ph) => h('input', { type: 'text', value: s[k] || '', placeholder: ph, oninput: e => { s[k] = e.target.value; } });
@@ -111,6 +111,10 @@ function settingsTab(el) {
       h('div', { class: 'card stack' }, h('h2', {}, 'Predictive analysis'),
         bool('predictive_enabled', 'Allow predictive questions (forecast, prediction, segmentation, key drivers, anomalies)', 'Users still choose it per question with “Use predictive capability” on the Ask page. The statistics run on this server; the AI model only names the method and never sees the data.'),
         h('div', { class: 'grid2' }, field('Rows a predictive question may read', num('analysis_max_rows'), 'models need history; normal answers keep the smaller limit above'))),
+      h('div', { class: 'card stack' }, h('h2', {}, 'Rephrasing questions'),
+        bool('rephrase_enabled', 'Show “✨ Rephrase” on the Ask page', 'Users can let the AI model tidy a question before asking it. The rephrasing prompt is small (table and column names, business-term titles, similar verified questions) and every use is logged with its cost on the Dashboard.'),
+        field('AI model that rephrases', select([[0, 'The model the user picked for the question'], ...models.map(m => [m.id, m.name])], s.rephrase_model_id || 0, v => { s.rephrase_model_id = Number(v); }, { style: 'max-width:340px' }),
+          'a smaller, cheaper model is usually enough for rewording')),
       h('div', { class: 'card stack' }, h('h2', {}, 'Training from user feedback'), field('When an analyst confirms or corrects SQL', fb, 'admins and data stewards are always trusted')),
       h('div', { class: 'card stack' }, h('h2', {}, 'Email'),
         field('Web address of this app', text('public_url', 'https://askdata.yourcompany.com'), 'used for the “open the live report” link in report emails'),

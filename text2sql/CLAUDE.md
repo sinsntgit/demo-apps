@@ -40,8 +40,9 @@ sync) · `admin` (everything; never row-filtered; sees all reports).
 
 These are the product's promises. A change that weakens one is wrong even if the feature "works".
 
-1. **No result data goes to the AI model.** `app/engine.py::build_prompt` is the *only* place content
-   is assembled for a model: schema metadata, approved training text, earlier questions + SQL, the new
+1. **No result data goes to the AI model.** `app/engine.py::build_prompt` (and the smaller
+   `build_rephrase_prompt` for ✨ Rephrase: table/column names, documentation titles, similar verified
+   questions, earlier questions — no SQL) are the *only* places content is assembled for a model: schema metadata, approved training text, earlier questions + SQL, the new
    question. Summaries, chart suggestions and report text are computed locally (`app/summarize.py`).
    Database error text sent for auto-repair is scrubbed of literals (`scrub_error`). The only opt-in
    exception is per-connection sample values of admin-listed columns. `tests/test_platform.py` records
@@ -116,6 +117,14 @@ still shows/stores at most `max_rows`. A failed analysis never fails the answer.
 
 `QueryRun` is at once the chat message, the audit record and the dashboard row. `run_dto` recomputes
 the summary on read so old chats benefit from summary improvements.
+
+### Rephrase
+
+`POST /api/chat/rephrase` → `engine.rephrase` with the admin's `rephrase_model_id` (0 = the user's model).
+Every call is a `RephraseLog` row (tokens, cost, used); a question asked from a suggestion carries
+`QueryRun.rephrase_id`. `similar_questions` finds verified examples locally (BM25, ≥ half the words), on the
+original and on the new wording. The dashboard adds rephrase cost to Model spend and compares "right first
+time" for rephrased vs typed questions. Real-model quality of the rewording is unmeasured.
 
 ### Shared chats
 

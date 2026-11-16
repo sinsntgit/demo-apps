@@ -108,6 +108,21 @@ def _openai(model, key, system, user) -> LLMResult:
                      output_tokens=getattr(u, "completion_tokens", 0) or 0)
 
 
+def parse_json(text: str) -> dict:
+    """The first JSON object in a model reply ({} if there is none)."""
+    text = re.sub(r"<think>.*?</think>", "", (text or "").strip(), flags=re.S).strip()
+    m = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.S)
+    a, b = text.find("{"), text.rfind("}")
+    for c in ([m.group(1)] if m else []) + ([text[a:b + 1]] if a != -1 and b > a else []):
+        try:
+            obj = json.loads(c)
+        except ValueError:
+            continue
+        if isinstance(obj, dict):
+            return obj
+    return {}
+
+
 def parse_answer(text: str) -> dict:
     """Tolerant parse of the model's JSON answer -> {sql, explanation, followups, clarification, analysis}."""
     text = (text or "").strip()

@@ -72,7 +72,25 @@ RULES = [
 ]
 
 
+WORDS = {"rev": "revenue", "regn": "region", "rgn": "region", "cust": "customers", "custs": "customers", "qty": "quantity",
+         "cat": "category", "cats": "categories", "mth": "month", "yr": "year", "pls": "", "plz": "", "pls.": "", "u": "you"}
+
+
+def rephrase(text: str) -> dict:
+    """Stand-in for "Rephrase": expand abbreviations, drop filler, make it a complete question."""
+    if "unrephrasable" in text:
+        return {"raw": "Sorry, I cannot help with that."}
+    words = [WORDS.get(w.lower().strip("?,."), w) for w in text.strip().rstrip("?").split()]
+    q = " ".join(w for w in words if w)
+    if not q.lower().startswith(("what", "which", "who", "how", "show", "list", "forecast", "segment", "any")):
+        q = "What is the total " + q
+    return {"raw": json.dumps({"question": q[0].upper() + q[1:] + "?", "changes": "expanded abbreviations; made it a full question",
+                               "unclear": "which time period" if not any(t in q.lower() for t in ("month", "year", "202", "week", "day")) else ""})}
+
+
 def answer(system: str, user: str) -> dict:
+    if "rewrite a business user's question" in system:
+        return rephrase(user.split("## Question to rewrite")[-1])
     question = user.split("## Question")[-1].split("## Your previous attempt failed")[0].lower()
     repairing = "previous attempt failed" in user
     if "ping" == user.strip():
