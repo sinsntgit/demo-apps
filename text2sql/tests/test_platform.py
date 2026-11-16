@@ -197,9 +197,10 @@ def test_analyst_feedback_needs_approval_and_restricted_models(admin):
     # restricted data model: hidden until granted
     c = next(x for x in client.get("/api/connections").json() if x["id"] == conn)
     client.put(f"/api/connections/{conn}", headers=H, json={**c, "restricted": True})
-    assert u.get("/api/connections").json() == []
+    sees = lambda: conn in [x["id"] for x in u.get("/api/connections").json()]     # noqa: E731
+    assert not sees()
     client.put(f"/api/connections/{conn}/access", headers=H, json={"user_ids": [made["id"]]})
-    assert len(u.get("/api/connections").json()) == 1
+    assert sees()
     client.put(f"/api/connections/{conn}", headers=H, json={**c, "restricted": False})
 
 

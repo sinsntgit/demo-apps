@@ -16,8 +16,10 @@ python -m uvicorn app.main:app --port 8000
 ```
 
 Open http://localhost:8000. The first-run admin password is printed in the server log (you must change it
-at first sign-in). A sample data model, **Sample: Retail sales** (CSV files), is created so you can try
-it immediately. Then:
+at first sign-in). Two sample data models are created so you can try it immediately: **Sample: Retail sales**
+and **Sample: SAP Sales & Finance** — SAP SD and FI tables (VBAK, VBRK, BKPF, BSEG, KNA1 …) with real SAP
+names and fields, invented numbers, and ready-made training (field dictionary, business rules, 19 verified
+queries). See Help → Data models. Then:
 
 1. **Admin → AI models** — add your Anthropic / OpenAI key, or a self-hosted OpenAI-compatible endpoint.
 2. **Data models → Connect a data source** — add a database; press **Sync schema**.
@@ -42,6 +44,7 @@ answers a few questions about the sample data (add it as a *Self-hosted* model, 
 | **Summary** | Explains the result by its shape (trend, ranking, two-way breakdown, pivot, listing): leaders and shares, highs and lows, change over the period, concentration. Averages, rates and prices are never totalled. Computed on the server. |
 | **Output** | Chart (bar, horizontal, stacked, line, area, pie, doughnut, scatter, big numbers) with selectable axes, extra measure and split-by. IDs, codes and years are treated as categories, never summed; two measures on different scales get a panel each; sortable table; locally computed summary. Export **PDF report**, CSV, Excel, chart PNG. |
 | **Follow-ups & history** | Suggested follow-up questions; conversations keep context (earlier questions + SQL); chats and results are saved, searchable, renamable and grouped by date. |
+| **Shared chats** | Share a chat with user groups, roles or people — to view, or to view and add questions. Others' answers are re-run with the viewer's own data access and filters; nobody sees rows they may not. Only the owner shares or deletes. |
 | **Reports** | Drag-and-drop designer: place results from any number of chats (chart, table, summary each optional), headings, text, dividers and page breaks; set widths (full, ⅔, ½, ⅓) to put objects side by side; header, footer and page numbers. Stores queries, not data: refreshed live for whoever opens it. Live text placeholders. PDF export with the same layout. Share with user groups, roles or people (view / edit). Schedule daily / weekdays / weekly / monthly and email the PDF to groups, any number of people and outside addresses — each account holder receives a copy rendered with their own data access. |
 | **Email senders** | Admin → Email senders: one or more mailboxes with provider presets (Titan / GoDaddy, Google, Microsoft 365, Zoho, any SMTP), Verify, Send test, simulation mode, default sender, and an email log. |
 | **User groups** | Admin → User groups: named lists of users, used for data-model access, data filters, and sharing and emailing reports. |

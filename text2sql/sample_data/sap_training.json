@@ -1,0 +1,157 @@
+{
+ "name": "Sample: SAP Sales & Finance",
+ "description": "SAP-style SD and FI tables (orders, deliveries, billing, accounting documents) for a demo manufacturer - 3 company codes, Jan 2024 to Nov 2026.",
+ "folder": "sap",
+ "dictionary": [
+  {
+   "title": "SAP field dictionary - Sales & Distribution (SD)",
+   "content": "-- Table names are the SAP names in lower case; field names are the SAP technical names. Text tables have one row per language (SPRAS): always filter SPRAS = 'E'.\n-- kna1  Customer master (general): KUNNR customer number (10 digits, leading zeros, e.g. '0000100001'); NAME1 customer name; LAND1 country (ISO 2); ORT01 city; PSTLZ postcode; BRSCH industry (join t016t); KTOKD account group; ERDAT created on; LOEVM deletion flag ('X' = flagged).\n-- knvv  Customer sales-area data: KUNNR; VKORG sales organisation; VTWEG distribution channel; SPART division ('00' = cross-division); KDGRP customer group (join t151t: 01 Key account, 02 Standard, 03 Small customer); BZIRK sales district; ZTERM payment terms (join tvzbt); WAERS currency.\n-- mara  Material master: MATNR material number (e.g. 'PMP-1001'); MTART material type (FERT finished product, HAWA trading goods / spare parts, DIEN service); MATKL material group = product line (join t023t: PUMPS, VALVES, MOTORS, SPARES, SERVICE); MEINS base unit; BRGEW gross weight; GEWEI weight unit; ERSDA created on; LVORM deletion flag.\n-- makt  Material descriptions: MATNR, SPRAS language, MAKTX description.\n-- mbew  Material valuation: MATNR, BWKEY valuation area = plant, VPRSV price control (S standard), STPRS standard cost per PEINH units, WAERS.\n-- vbak  Sales document header (quotations, orders, returns): VBELN document number; ERDAT created on (= order date); AUART document type (QT quotation, OR standard order, RE returns, CR credit memo request; texts in tvakt); VBTYP category (B quotation, C order, H returns, K credit memo request); VKORG sales org; VTWEG channel; SPART division; KUNNR sold-to customer; NETWR net value in document currency (excludes rejected items); WAERK document currency; VDATU requested delivery date (for quotations: valid-to date); VGBEL reference document (for an order created from a quotation: the quotation number); GBSTK overall status (A not yet processed, B partially processed, C completely processed); BSTNK customer purchase order number; ERNAM created by.\n-- vbap  Sales document items: VBELN, POSNR item ('000010'); MATNR; KWMENG order quantity; VRKME sales unit; ARKTX item text; NETWR item net value; WAERK; WERKS delivering plant; ABGRU rejection reason (empty = not rejected; texts in tvagt); PSTYV item category; VGBEL/VGPOS reference quotation and item; MATKL material group.\n-- likp  Outbound delivery header: VBELN delivery number; ERDAT created on; LFART delivery type (LF); VKORG; VSTEL shipping point (= plant); KUNNR ship-to; LFDAT planned delivery date (promised to the customer); WADAT planned goods issue; WADAT_IST actual goods issue date (= shipped); WBSTK goods movement status (C = goods issued).\n-- lips  Delivery items: VBELN, POSNR, MATNR, LFIMG delivered quantity, VRKME, VGBEL sales order number, VGPOS sales order item, WERKS plant.\n-- vbrk  Billing document header: VBELN billing number; FKART billing type (F2 invoice, G2 credit memo, S1 invoice cancellation); VBTYP category (M invoice, O credit memo, N cancellation); FKDAT billing date (revenue date); ERDAT; VKORG; VTWEG; BUKRS company code; KUNAG sold-to; KUNRG payer; NETWR net value (always positive); MWSBK tax amount; WAERK currency; ZTERM payment terms; FKSTO 'X' = this invoice has been cancelled; SFAKN for an S1 document: the invoice it cancels.\n-- vbrp  Billing items: VBELN, POSNR, MATNR, ARKTX, FKIMG billed quantity, VRKME, NETWR item net value (always positive), WAVWR cost of the item in document currency (for margin), AUBEL/AUPOS sales order and item, VGBEL/VGPOS delivery and item, WERKS plant, MATKL material group, PRCTR profit centre.\n-- Organisation & texts: t001 company codes (BUKRS, BUTXT name, LAND1, WAERS currency, KTOPL chart of accounts, PERIV fiscal year variant); tvko sales org -> company code (VKORG, BUKRS, WAERS); tvkot sales org names (VKORG, SPRAS, VTEXT); tvtwt channel names (VTWEG, SPRAS, VTEXT: 10 Direct sales, 20 Distributors, 30 Online shop); t001w plants (WERKS, NAME1, BWKEY, BUKRS, LAND1); tvakt document type names (AUART, SPRAS, BEZEI); tvagt rejection reasons (ABGRU, SPRAS, BEZEI); t016t industries (BRSCH, SPRAS, BRTXT); t023t material groups (MATKL, SPRAS, WGBEZ); t151t customer groups (KDGRP, SPRAS, KTEXT); tvzbt payment terms (ZTERM, SPRAS, VTEXT)."
+  },
+  {
+   "title": "SAP field dictionary - Finance (FI / CO)",
+   "content": "-- bkpf  Accounting document header: BUKRS company code; BELNR document number (10 digits); GJAHR fiscal year (= calendar year, variant K4); BLART document type (RV billing/revenue from SD, DZ customer payment, WL goods issue cost of sales, KR vendor invoice, KZ vendor payment, SA G/L posting e.g. payroll); BLDAT document date; BUDAT posting date; MONAT posting period (= month 1-12); WAERS currency; XBLNR reference (for RV: the billing document number); AWTYP/AWKEY source object (VBRK + billing number for SD invoices); USNAM posted by; STBLG reversed by document (filled on a reversed document).\n-- bseg  Accounting line items. Key: BUKRS + BELNR + GJAHR (join to bkpf on all three) + BUZEI line. BSCHL posting key; KOART account type (D customer, K vendor, S general ledger); SHKZG debit/credit indicator (S = debit, H = credit); DMBTR amount in company-code currency, always positive - the sign comes from SHKZG; WRBTR amount in document currency; HKONT G/L account (10 digits with leading zeros, e.g. '0000400000'); KUNNR customer (customer lines); LIFNR vendor (vendor lines); KOSTL cost centre (expense lines); PRCTR profit centre (revenue lines); ZFBDT baseline date for payment; ZTERM payment terms; ZBD1T days until due (net due date = ZFBDT + ZBD1T days); AUGDT clearing date and AUGBL clearing document (both empty = open item, not yet paid); VBELN billing document (SD-originated lines); SGTXT line text.\n-- ska1  G/L account master (chart INT): KTOPL, SAKNR account (10 digits), XBILK 'X' = balance-sheet account (empty = P&L account), GVTYP P&L statement type, KTOKS account group (ASSETS, LIABILITIES, REVENUE, COGS, OPEX).\n-- skat  G/L account names: SPRAS, KTOPL, SAKNR, TXT20 short text, TXT50 long text.\n-- csks  Cost centres: KOKRS controlling area, KOSTL cost centre, BUKRS, KOSAR category, VERAK person responsible, PRCTR, DATAB/DATBI validity.  cskt  cost centre names: KOKRS, KOSTL, SPRAS, KTEXT.\n-- cepct Profit centre names: PRCTR (PC-PUMPS, PC-VALVES, PC-MOTORS, PC-SPARES, PC-SERVICE), SPRAS, KTEXT.\n-- lfa1  Vendor master: LIFNR vendor (10 digits), NAME1, LAND1, ORT01, KTOKK account group, ERDAT."
+  }
+ ],
+ "documentation": [
+  {
+   "title": "About this data",
+   "content": "This is a sample copy of SAP Sales & Distribution (SD) and Financial Accounting (FI) tables for Acme Industrial, a manufacturer of pumps, valves, motors, spare parts and services. Three company codes, each with one sales organisation of the same number: 1000 Acme Industrial GmbH (Germany, EUR), 2000 Acme Industrial Inc. (USA, USD), 3000 Acme Industrial Ltd (UK, GBP). Data runs from January 2024 and was extracted on 2026-11-15 - use DATE '2026-11-15' as \"today\" (for ageing, overdue items and \"last 30 days\") unless the user names another date. Company codes, sales orgs and channels are stored as numbers (BUKRS = 1000); customer, vendor and G/L account numbers are text with leading zeros."
+  },
+  {
+   "title": "Currencies - never add up different currencies",
+   "content": "Amounts are in the currency of their company code / sales organisation: EUR for 1000, USD for 2000, GBP for 3000 (VBAK.WAERK, VBRK.WAERK, BKPF.WAERS, T001.WAERS). Never sum amounts across company codes or currencies into one number. When a question covers several company codes, group by company code or sales organisation and show the currency next to the amount. There is no exchange-rate table in this data set."
+  },
+  {
+   "title": "Net sales (revenue) from billing documents",
+   "content": "Net sales = billed net value from VBRK (header) or VBRP (items) by billing date FKDAT. Invoices (VBTYP 'M', FKART F2) count positive; credit memos (VBTYP 'O', FKART G2) and invoice cancellations (VBTYP 'N', FKART S1) count negative: SUM(CASE WHEN VBTYP = 'M' THEN NETWR ELSE -NETWR END). NETWR is stored positive on every billing document. A cancelled invoice (FKSTO = 'X') is offset by its S1 document, so the signed sum is already correct. Sales orders (VBAK) are order intake / bookings, not revenue. Gross sales including tax = NETWR + MWSBK. \"Sales\", \"revenue\", \"turnover\" and \"Umsatz\" all mean net sales."
+  },
+  {
+   "title": "Gross margin and cost of sales",
+   "content": "Gross margin per billing item = VBRP.NETWR - VBRP.WAVWR (WAVWR is the cost of the goods sold, in the same currency). Margin % = 1 - SUM(WAVWR) / SUM(NETWR). Use the same sign rule as net sales (VBTYP from VBRK: M positive, O and N negative). In Finance the cost of sales is posted to G/L account 0000500000 (document type WL at goods issue)."
+  },
+  {
+   "title": "Order intake, backlog and order status",
+   "content": "Order intake = sales orders (VBAK.AUART = 'OR') by order date ERDAT, value VBAK.NETWR (already excludes rejected items). Quotations (AUART 'QT'), returns ('RE') and credit memo requests ('CR') are also in VBAK - filter AUART = 'OR' for orders. Open order backlog = standard orders with GBSTK in ('A', 'B') (not completely processed). Rejected items have VBAP.ABGRU filled (reason texts in TVAGT); they are never delivered or billed."
+  },
+  {
+   "title": "Quotations and conversion rate",
+   "content": "A quotation is VBAK with AUART = 'QT'. When an order is created from a quotation, the order's VBAK.VGBEL holds the quotation number (and VBAP.VGBEL / VGPOS on the items). Quote conversion rate = quotations referenced by at least one order / all quotations. Quotation GBSTK 'C' = converted (completely referenced), 'A' = open or lost. VDATU on a quotation is its valid-to date."
+  },
+  {
+   "title": "Document flow: order to delivery to invoice to accounting",
+   "content": "Sales order VBAK/VBAP -> delivery LIKP/LIPS (LIPS.VGBEL = order VBELN, LIPS.VGPOS = order POSNR) -> billing VBRK/VBRP (VBRP.AUBEL/AUPOS = order and item, VBRP.VGBEL/VGPOS = delivery and item) -> accounting document BKPF/BSEG (BKPF.BLART 'RV', BKPF.AWKEY = BKPF.XBLNR = billing VBELN, and BSEG.VBELN = billing VBELN on every line). Delivery header LIKP has no order number; go through LIPS."
+  },
+  {
+   "title": "Delivery performance (on-time delivery, OTD)",
+   "content": "A delivery is on time when the actual goods issue date LIKP.WADAT_IST is on or before the planned delivery date LIKP.LFDAT. On-time delivery % = share of deliveries on time, normally reported by month of WADAT_IST. Days late = WADAT_IST - LFDAT when positive. Order-to-ship lead time = LIKP.WADAT_IST - VBAK.ERDAT (via LIPS.VGBEL). Plant = LIKP.VSTEL or LIPS.WERKS (names in T001W)."
+  },
+  {
+   "title": "Debit / credit and signs in FI (BSEG)",
+   "content": "BSEG.DMBTR is always positive. SHKZG gives the side: 'S' = debit (Soll), 'H' = credit (Haben). Signed amount = CASE WHEN SHKZG = 'S' THEN DMBTR ELSE -DMBTR END. Revenue accounts are credited, so revenue = -(signed amount) = SUM(CASE WHEN SHKZG = 'H' THEN DMBTR ELSE -DMBTR END). Expenses and cost of sales are debited, so expense = signed amount. Every document balances: signed amounts of one BELNR sum to zero. Join BSEG to BKPF on BUKRS, BELNR and GJAHR (all three) to get posting date BUDAT, period MONAT and document type BLART."
+  },
+  {
+   "title": "Chart of accounts and P&L structure",
+   "content": "G/L accounts (SKA1 / SKAT, chart INT, numbers with leading zeros): 0000113100 Bank; 0000121000 Receivables (customer reconciliation account); 0000154000 Input tax; 0000790000 Finished goods inventory; 0000160000 Payables (vendor reconciliation account); 0000175000 Output tax; 0000400000 Sales revenue - domestic; 0000410000 Sales revenue - export; 0000500000 Cost of goods sold; 0000610000 Rent and facilities; 0000620000 Utilities; 0000630000 Travel; 0000640000 IT and software; 0000650000 Marketing; 0000660000 Salaries and wages; 0000670000 Professional services; 0000680000 Freight out. P&L accounts have SKA1.XBILK empty; SKA1.KTOKS groups them: REVENUE, COGS, OPEX. Gross profit = revenue - COGS; operating profit (EBIT) = gross profit - OPEX. Revenue accounts 0000400000-0000410000 carry PRCTR (profit centre = product line); expense lines carry KOSTL (cost centre)."
+  },
+  {
+   "title": "Accounts receivable: open items, overdue and ageing",
+   "content": "Customer items are BSEG lines with KOART = 'D' (KUNNR filled). An open item has AUGBL empty (NULL); a cleared (paid) item has AUGDT = payment date and AUGBL = payment document. Open receivables balance = SUM(CASE WHEN SHKZG = 'S' THEN DMBTR ELSE -DMBTR END) over open customer items. Net due date = ZFBDT + CAST(ZBD1T AS INTEGER) (ZFBDT is a DATE; ZBD1T days). Overdue = net due date before the key date DATE '2026-11-15'. Days overdue = DATE '2026-11-15' - net due date. Standard ageing buckets on days overdue: Not yet due, 1-30, 31-60, 61-90, over 90. Report receivables per company code (currencies differ)."
+  },
+  {
+   "title": "Payment behaviour and DSO",
+   "content": "Days to pay for a paid invoice = AUGDT - ZFBDT on the customer invoice line (KOART 'D', SHKZG 'S', AUGDT filled). Days late = AUGDT - (ZFBDT + ZBD1T). Payment terms: ZB30 net 30 days, ZB45 net 45, ZB60 net 60 (TVZBT). DSO (days sales outstanding) = open receivables / gross invoiced sales of the last 90 days * 90, per company code, as of DATE '2026-11-15'."
+  },
+  {
+   "title": "Costs: cost centres, vendors and payroll",
+   "content": "Operating expenses are debit lines (SHKZG 'S') on OPEX accounts with a cost centre KOSTL. Cost centre numbers: first digit = company code (1 = 1000, 2 = 2000, 3 = 3000), next two = function: 10 Sales, 20 Marketing, 30 Administration, 40 IT, 50 Logistics, 60 Service delivery (e.g. 11000 = Sales Germany, 24000 = IT USA). Names in CSKT (SPRAS 'E'). Vendor invoices are BKPF.BLART = 'KR'; the vendor line has KOART 'K' and LIFNR, credit side, gross amount incl. tax. Vendor spend (net) = expense lines of KR documents. Payroll is posted monthly with BLART 'SA' to 0000660000 per cost centre."
+  },
+  {
+   "title": "Customers, regions and segments",
+   "content": "Customer country = KNA1.LAND1. Industry = KNA1.BRSCH (texts T016T: CHEM Chemicals, OILG Oil & gas, WATR Water utilities, FOOD Food & beverage, MINE Mining, BLDG Building services). Customer group = KNVV.KDGRP (01 Key account, 02 Standard, 03 Small customer). Sales district = KNVV.BZIRK. Export sale = customer country different from the company code country (posted to revenue account 0000410000). Each customer belongs to exactly one sales organisation (KNVV.VKORG); on billing documents the payer is VBRK.KUNRG."
+  }
+ ],
+ "examples": [
+  {
+   "question": "What are net sales by month for each company code?",
+   "sql": "SELECT DATE_TRUNC('month', k.FKDAT) AS month, k.BUKRS AS company_code, k.WAERK AS currency,\n       ROUND(SUM(CASE WHEN k.VBTYP = 'M' THEN k.NETWR ELSE -k.NETWR END), 2) AS net_sales\nFROM vbrk k\nGROUP BY 1, 2, 3\nORDER BY 1, 2"
+  },
+  {
+   "question": "Net sales by sales organisation in 2025",
+   "sql": "SELECT k.VKORG AS sales_org, t.VTEXT AS sales_org_name, k.WAERK AS currency,\n       ROUND(SUM(CASE WHEN k.VBTYP = 'M' THEN k.NETWR ELSE -k.NETWR END), 2) AS net_sales\nFROM vbrk k\nJOIN tvkot t ON t.VKORG = k.VKORG AND t.SPRAS = 'E'\nWHERE k.FKDAT BETWEEN DATE '2025-01-01' AND DATE '2025-12-31'\nGROUP BY 1, 2, 3\nORDER BY 1"
+  },
+  {
+   "question": "Who were our top 10 customers by net sales in Germany in 2025?",
+   "sql": "SELECT c.KUNNR AS customer, c.NAME1 AS customer_name, c.LAND1 AS country,\n       ROUND(SUM(CASE WHEN k.VBTYP = 'M' THEN k.NETWR ELSE -k.NETWR END), 2) AS net_sales_eur\nFROM vbrk k\nJOIN kna1 c ON c.KUNNR = k.KUNRG\nWHERE k.VKORG = 1000 AND k.FKDAT BETWEEN DATE '2025-01-01' AND DATE '2025-12-31'\nGROUP BY 1, 2, 3\nORDER BY net_sales_eur DESC\nLIMIT 10"
+  },
+  {
+   "question": "Net sales and gross margin by product line for 2025",
+   "sql": "SELECT k.BUKRS AS company_code, k.WAERK AS currency, g.WGBEZ AS product_line,\n       ROUND(SUM(CASE WHEN k.VBTYP = 'M' THEN p.NETWR ELSE -p.NETWR END), 2) AS net_sales,\n       ROUND(SUM(CASE WHEN k.VBTYP = 'M' THEN p.NETWR - p.WAVWR ELSE -(p.NETWR - p.WAVWR) END), 2) AS gross_margin,\n       ROUND(100 * SUM(CASE WHEN k.VBTYP = 'M' THEN p.NETWR - p.WAVWR ELSE -(p.NETWR - p.WAVWR) END)\n             / NULLIF(SUM(CASE WHEN k.VBTYP = 'M' THEN p.NETWR ELSE -p.NETWR END), 0), 1) AS margin_pct\nFROM vbrp p\nJOIN vbrk k ON k.VBELN = p.VBELN\nJOIN t023t g ON g.MATKL = p.MATKL AND g.SPRAS = 'E'\nWHERE k.FKDAT BETWEEN DATE '2025-01-01' AND DATE '2025-12-31'\nGROUP BY 1, 2, 3\nORDER BY 1, net_sales DESC"
+  },
+  {
+   "question": "What is the open sales order backlog by sales organisation?",
+   "sql": "SELECT h.VKORG AS sales_org, t.VTEXT AS sales_org_name, h.WAERK AS currency,\n       COUNT(*) AS open_orders, ROUND(SUM(h.NETWR), 2) AS backlog_value\nFROM vbak h\nJOIN tvkot t ON t.VKORG = h.VKORG AND t.SPRAS = 'E'\nWHERE h.AUART = 'OR' AND h.GBSTK IN ('A', 'B')\nGROUP BY 1, 2, 3\nORDER BY 1"
+  },
+  {
+   "question": "What is our on-time delivery rate by month?",
+   "sql": "SELECT DATE_TRUNC('month', WADAT_IST) AS month,\n       COUNT(*) AS deliveries,\n       ROUND(100.0 * AVG(CASE WHEN WADAT_IST <= LFDAT THEN 1 ELSE 0 END), 1) AS on_time_pct\nFROM likp\nWHERE WADAT_IST IS NOT NULL\nGROUP BY 1\nORDER BY 1"
+  },
+  {
+   "question": "What is the quotation conversion rate by sales organisation?",
+   "sql": "SELECT q.VKORG AS sales_org,\n       COUNT(*) AS quotations,\n       COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM vbak o WHERE o.AUART = 'OR' AND o.VGBEL = q.VBELN)) AS converted,\n       ROUND(100.0 * COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM vbak o WHERE o.AUART = 'OR' AND o.VGBEL = q.VBELN)) / COUNT(*), 1) AS conversion_pct\nFROM vbak q\nWHERE q.AUART = 'QT'\nGROUP BY 1\nORDER BY 1"
+  },
+  {
+   "question": "Why are order items rejected?",
+   "sql": "SELECT r.BEZEI AS rejection_reason, COUNT(*) AS items, i.WAERK AS currency, ROUND(SUM(i.NETWR), 2) AS lost_value\nFROM vbap i\nJOIN vbak h ON h.VBELN = i.VBELN AND h.AUART = 'OR'\nJOIN tvagt r ON r.ABGRU = i.ABGRU AND r.SPRAS = 'E'\nWHERE i.ABGRU IS NOT NULL\nGROUP BY 1, 3\nORDER BY 3, lost_value DESC"
+  },
+  {
+   "question": "Show the accounts receivable ageing by company code",
+   "sql": "WITH open_items AS (\n  SELECT BUKRS, CASE WHEN SHKZG = 'S' THEN DMBTR ELSE -DMBTR END AS amount,\n         DATE '2026-11-15' - (ZFBDT + CAST(COALESCE(ZBD1T, 0) AS INTEGER)) AS days_overdue\n  FROM bseg\n  WHERE KOART = 'D' AND AUGBL IS NULL\n)\nSELECT o.BUKRS AS company_code, t.WAERS AS currency,\n       ROUND(SUM(amount) FILTER (WHERE days_overdue <= 0), 2) AS not_yet_due,\n       ROUND(SUM(amount) FILTER (WHERE days_overdue BETWEEN 1 AND 30), 2) AS overdue_1_30,\n       ROUND(SUM(amount) FILTER (WHERE days_overdue BETWEEN 31 AND 60), 2) AS overdue_31_60,\n       ROUND(SUM(amount) FILTER (WHERE days_overdue BETWEEN 61 AND 90), 2) AS overdue_61_90,\n       ROUND(SUM(amount) FILTER (WHERE days_overdue > 90), 2) AS overdue_over_90,\n       ROUND(SUM(amount), 2) AS total_open\nFROM open_items o\nJOIN t001 t ON t.BUKRS = o.BUKRS\nGROUP BY 1, 2\nORDER BY 1"
+  },
+  {
+   "question": "Which customers have the most overdue receivables?",
+   "sql": "SELECT b.BUKRS AS company_code, c.KUNNR AS customer, c.NAME1 AS customer_name,\n       ROUND(SUM(CASE WHEN b.SHKZG = 'S' THEN b.DMBTR ELSE -b.DMBTR END), 2) AS overdue_amount,\n       MAX(DATE '2026-11-15' - (b.ZFBDT + CAST(b.ZBD1T AS INTEGER))) AS max_days_overdue\nFROM bseg b\nJOIN kna1 c ON c.KUNNR = b.KUNNR\nWHERE b.KOART = 'D' AND b.AUGBL IS NULL\n  AND b.ZFBDT + CAST(COALESCE(b.ZBD1T, 0) AS INTEGER) < DATE '2026-11-15'\nGROUP BY 1, 2, 3\nORDER BY overdue_amount DESC\nLIMIT 15"
+  },
+  {
+   "question": "What is the average number of days customers take to pay, by customer group?",
+   "sql": "SELECT v.VKORG AS sales_org, g.KTEXT AS customer_group,\n       COUNT(*) AS paid_invoices,\n       ROUND(AVG(b.AUGDT - b.ZFBDT), 1) AS avg_days_to_pay,\n       ROUND(AVG(b.AUGDT - (b.ZFBDT + CAST(b.ZBD1T AS INTEGER))), 1) AS avg_days_late\nFROM bseg b\nJOIN knvv v ON v.KUNNR = b.KUNNR\nJOIN t151t g ON g.KDGRP = v.KDGRP AND g.SPRAS = 'E'\nWHERE b.KOART = 'D' AND b.SHKZG = 'S' AND b.AUGDT IS NOT NULL AND b.ZBD1T IS NOT NULL\nGROUP BY 1, 2\nORDER BY 1, 2"
+  },
+  {
+   "question": "Show the profit and loss statement for company code 1000 in 2025",
+   "sql": "SELECT a.KTOKS AS section, b.HKONT AS gl_account, s.TXT50 AS account_name,\n       ROUND(SUM(CASE WHEN b.SHKZG = 'H' THEN b.DMBTR ELSE -b.DMBTR END), 2) AS amount_eur\nFROM bseg b\nJOIN ska1 a ON a.SAKNR = b.HKONT\nJOIN skat s ON s.SAKNR = b.HKONT AND s.SPRAS = 'E'\nWHERE b.BUKRS = 1000 AND b.GJAHR = 2025 AND COALESCE(a.XBILK, '') = ''\nGROUP BY 1, 2, 3\nORDER BY CASE a.KTOKS WHEN 'REVENUE' THEN 1 WHEN 'COGS' THEN 2 ELSE 3 END, 2"
+  },
+  {
+   "question": "What is gross profit and operating profit by company code and year?",
+   "sql": "SELECT b.BUKRS AS company_code, b.GJAHR AS fiscal_year, t.WAERS AS currency,\n       ROUND(SUM(CASE WHEN a.KTOKS = 'REVENUE' THEN x END), 2) AS revenue,\n       ROUND(-SUM(CASE WHEN a.KTOKS = 'COGS' THEN x END), 2) AS cost_of_sales,\n       ROUND(SUM(CASE WHEN a.KTOKS IN ('REVENUE', 'COGS') THEN x END), 2) AS gross_profit,\n       ROUND(-SUM(CASE WHEN a.KTOKS = 'OPEX' THEN x END), 2) AS operating_expenses,\n       ROUND(SUM(x), 2) AS operating_profit\nFROM (SELECT BUKRS, GJAHR, HKONT, CASE WHEN SHKZG = 'H' THEN DMBTR ELSE -DMBTR END AS x FROM bseg) b\nJOIN ska1 a ON a.SAKNR = b.HKONT AND COALESCE(a.XBILK, '') = ''\nJOIN t001 t ON t.BUKRS = b.BUKRS\nGROUP BY 1, 2, 3\nORDER BY 1, 2"
+  },
+  {
+   "question": "Operating expenses by cost centre for 2025",
+   "sql": "SELECT b.BUKRS AS company_code, b.KOSTL AS cost_centre, c.KTEXT AS cost_centre_name, t.WAERS AS currency,\n       ROUND(SUM(CASE WHEN b.SHKZG = 'S' THEN b.DMBTR ELSE -b.DMBTR END), 2) AS expenses\nFROM bseg b\nJOIN ska1 a ON a.SAKNR = b.HKONT AND a.KTOKS = 'OPEX'\nJOIN cskt c ON c.KOSTL = b.KOSTL AND c.SPRAS = 'E'\nJOIN t001 t ON t.BUKRS = b.BUKRS\nWHERE b.GJAHR = 2025\nGROUP BY 1, 2, 3, 4\nORDER BY 1, expenses DESC"
+  },
+  {
+   "question": "Who are our top 10 vendors by spend?",
+   "sql": "SELECT v.LIFNR AS vendor, v.NAME1 AS vendor_name, b.BUKRS AS company_code, t.WAERS AS currency,\n       COUNT(DISTINCT b.BELNR) AS invoices, ROUND(SUM(b.DMBTR), 2) AS gross_spend\nFROM bseg b\nJOIN bkpf h ON h.BUKRS = b.BUKRS AND h.BELNR = b.BELNR AND h.GJAHR = b.GJAHR AND h.BLART = 'KR'\nJOIN lfa1 v ON v.LIFNR = b.LIFNR\nJOIN t001 t ON t.BUKRS = b.BUKRS\nWHERE b.KOART = 'K' AND b.SHKZG = 'H'\nGROUP BY 1, 2, 3, 4\nORDER BY gross_spend DESC\nLIMIT 10"
+  },
+  {
+   "question": "Do billing revenue in SD and revenue in FI reconcile by month?",
+   "sql": "WITH sd AS (\n  SELECT BUKRS, DATE_TRUNC('month', FKDAT) AS month, SUM(CASE WHEN VBTYP = 'M' THEN NETWR ELSE -NETWR END) AS sd_net_sales\n  FROM vbrk GROUP BY 1, 2\n), fi AS (\n  SELECT b.BUKRS, DATE_TRUNC('month', h.BUDAT) AS month, SUM(CASE WHEN b.SHKZG = 'H' THEN b.DMBTR ELSE -b.DMBTR END) AS fi_revenue\n  FROM bseg b\n  JOIN bkpf h ON h.BUKRS = b.BUKRS AND h.BELNR = b.BELNR AND h.GJAHR = b.GJAHR\n  WHERE b.HKONT IN ('0000400000', '0000410000')\n  GROUP BY 1, 2\n)\nSELECT sd.BUKRS AS company_code, sd.month, ROUND(sd_net_sales, 2) AS sd_net_sales, ROUND(fi_revenue, 2) AS fi_revenue,\n       ROUND(sd_net_sales - COALESCE(fi_revenue, 0), 2) AS difference\nFROM sd LEFT JOIN fi ON fi.BUKRS = sd.BUKRS AND fi.month = sd.month\nORDER BY 1, 2"
+  },
+  {
+   "question": "How long does it take from order to shipment, by plant?",
+   "sql": "SELECT d.VSTEL AS plant, w.NAME1 AS plant_name,\n       COUNT(DISTINCT d.VBELN) AS deliveries,\n       ROUND(AVG(d.WADAT_IST - o.ERDAT), 1) AS avg_days_order_to_ship\nFROM likp d\nJOIN (SELECT DISTINCT VBELN, VGBEL FROM lips) l ON l.VBELN = d.VBELN\nJOIN vbak o ON o.VBELN = l.VGBEL\nJOIN t001w w ON w.WERKS = d.VSTEL\nWHERE d.WADAT_IST IS NOT NULL\nGROUP BY 1, 2\nORDER BY 1"
+  },
+  {
+   "question": "How much of our sales were credit memos and cancellations?",
+   "sql": "SELECT BUKRS AS company_code, WAERK AS currency,\n       ROUND(SUM(NETWR) FILTER (WHERE VBTYP = 'M'), 2) AS invoiced,\n       ROUND(SUM(NETWR) FILTER (WHERE VBTYP = 'O'), 2) AS credit_memos,\n       ROUND(SUM(NETWR) FILTER (WHERE VBTYP = 'N'), 2) AS cancellations,\n       ROUND(100.0 * SUM(NETWR) FILTER (WHERE VBTYP IN ('O', 'N')) / SUM(NETWR) FILTER (WHERE VBTYP = 'M'), 2) AS reduction_pct\nFROM vbrk\nGROUP BY 1, 2\nORDER BY 1"
+  },
+  {
+   "question": "Forecast monthly net sales for Germany for the next 6 months",
+   "sql": "SELECT DATE_TRUNC('month', FKDAT) AS month,\n       ROUND(SUM(CASE WHEN VBTYP = 'M' THEN NETWR ELSE -NETWR END), 2) AS net_sales_eur\nFROM vbrk\nWHERE VKORG = 1000 AND FKDAT < DATE '2026-11-01'\nGROUP BY 1\nORDER BY 1",
+   "analysis": {
+    "type": "forecast",
+    "date": "month",
+    "target": "net_sales_eur",
+    "horizon": 6
+   }
+  }
+ ]
+}

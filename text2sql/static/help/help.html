@@ -248,7 +248,17 @@
 <li><b>New chat</b> starts a fresh conversation with no memory of earlier questions.</li>
 </ul>
 <p>The <b>History</b> page lists every individual question you have asked, grouped by month, with its status. Search it by words in the question or the SQL; click a row to open the chat it belongs to.</p>
-<p>Your chats are private to you. Administrators and stewards can see questions and SQL in the dashboard's query log for monitoring.</p>
+<p>Your chats are private to you until you share them. Administrators and stewards can see questions and SQL in the dashboard's query log for monitoring.</p>
+<h3>Sharing a chat</h3>
+<p>Open a chat you started and press <b>👥 Share chat</b> (top right of the Ask page, or hover over the chat in the list and click <b>👥</b>). For each user group, role or person choose:</p>
+<ul>
+<li><b>Can view</b> — they can open the chat and read the questions, SQL and results, but cannot change it.</li>
+<li><b>Can view and add questions</b> — they can also ask follow-up questions inside the chat (their questions are marked <i>Asked by …</i>) and rename it.</li>
+</ul>
+<figure><img src="/static/help/img/chat-share.png" alt="The Share chat window with user groups, roles and people, each with No access, Can view or Can view and add questions"><figcaption>Share with whole user groups, every analyst or steward, or individual people.</figcaption></figure>
+<p>Only you can share, un-share or delete a chat you started. A chat you share shows <b>👥</b> in front of its name. Chats shared with you appear under <b>Shared with me</b> at the top of the list, with the owner's name and whether you can add questions.</p>
+<figure><img src="/static/help/img/chat-shared-view.png" alt="A chat shared with Tom: a banner says Shared by Administrator, view only; the result shows only the North region; the question box is disabled"><figcaption>Tom has a North-only data filter, so the shared chat shows him North only — the owner sees all four regions.</figcaption></figure>
+<p><b>Everyone sees results with their own access.</b> Sharing a chat shares the questions and the SQL, not your rows: each answer someone else asked is run again for the person viewing it, with their data filters and masking. Someone who cannot use the chat's data model sees a notice and none of its content. Excel export of other people's answers is not offered (CSV and PDF export use the rows you are shown).</p>
 <p>If your administrator has switched off result storage, chats keep the question and SQL but not the rows; press <b>Run again</b> to fetch fresh results.</p>
 </section>
 
@@ -417,6 +427,35 @@
 <h2>Connecting data: data models</h2>
 <p>A data model is one database, or one folder of Excel / CSV files, together with its own training, access list and privacy settings. Create as many as you need — for example one per business area.</p>
 <figure><img src="/static/help/img/datamodels.png" alt="The Data models page listing connections with test, sync, files, training, edit and delete buttons"><figcaption>The Data models page.</figcaption></figure>
+<h3>The sample data models</h3>
+<p>Two ready-to-try data models come with the platform. Both are folders of CSV files; delete them under <b>Data models</b> when you no longer need them (they do not come back).</p>
+<ul>
+<li><b>Sample: Retail sales</b> — customers, products, orders and order items of a small shop.</li>
+<li><b>Sample: SAP Sales &amp; Finance</b> — a copy of SAP <b>SD</b> (sales &amp; distribution) and <b>FI</b> (financial accounting) tables with their real SAP names and fields, for demonstrating the platform on SAP-shaped data without an SAP connection. Acme Industrial, a maker of pumps, valves, motors, spare parts and services, with three company codes: <b>1000</b> Germany (EUR), <b>2000</b> USA (USD) and <b>3000</b> UK (GBP); January 2024 to 15 November 2026. The numbers are invented.</li>
+</ul>
+<table>
+<tr><th>Area</th><th>SAP tables included</th></tr>
+<tr><td>Sales documents</td><td><code>VBAK</code> / <code>VBAP</code> (quotations, orders, returns), <code>LIKP</code> / <code>LIPS</code> (deliveries), <code>VBRK</code> / <code>VBRP</code> (invoices, credit memos, cancellations)</td></tr>
+<tr><td>Accounting</td><td><code>BKPF</code> / <code>BSEG</code> (every invoice, payment, goods issue, vendor invoice and payroll posting), <code>SKA1</code> / <code>SKAT</code> (G/L accounts), <code>CSKS</code> / <code>CSKT</code> (cost centres), <code>CEPCT</code> (profit centres)</td></tr>
+<tr><td>Master data</td><td><code>KNA1</code> / <code>KNVV</code> (customers), <code>LFA1</code> (vendors), <code>MARA</code> / <code>MAKT</code> / <code>MBEW</code> (materials, descriptions, standard cost)</td></tr>
+<tr><td>Organisation &amp; texts</td><td><code>T001</code>, <code>TVKO</code>, <code>TVKOT</code>, <code>TVTWT</code>, <code>T001W</code>, <code>TVAKT</code>, <code>TVAGT</code>, <code>T016T</code>, <code>T023T</code>, <code>T151T</code>, <code>TVZBT</code></td></tr>
+</table>
+<p>It keeps the things that make SAP data hard to query, so the training visibly matters: leading-zero numbers (<code>0000100001</code>), text tables with one row per language, amounts that are always positive with a separate debit/credit indicator, cancelled invoices and credit memos, three currencies, and document flow through reference fields. Its training is ready under <b>Training</b>:</p>
+<ul>
+<li><b>Extra DDL</b> — an SAP field dictionary for SD and for FI that explains every table and field (sent to the AI model with every question).</li>
+<li><b>Documentation</b> — 14 business rules: net sales, gross margin, order backlog, quotation conversion, document flow, on-time delivery, debit/credit signs, chart of accounts and P&amp;L, receivables ageing, DSO, cost centres, currencies.</li>
+<li><b>Question → SQL</b> — 19 verified example queries, including one forecast.</li>
+</ul>
+<figure><img src="/static/help/img/sap-training.png" alt="The Training page for Sample: SAP Sales &amp; Finance with 19 verified example queries, 14 documentation notes and 2 field dictionaries"><figcaption>The SAP sample's training: verified examples, business rules and a field dictionary.</figcaption></figure>
+<p>Questions that demonstrate it well (pick the SAP data model and your Claude model first):</p>
+<ul>
+<li>Net sales by month for each company code · Top 10 customers in Germany last year · Gross margin by product line in 2025</li>
+<li>What is our on-time delivery rate by quarter? (there is a dip in summer 2025) · Why are order items rejected? · Quote conversion rate by sales org</li>
+<li>Show the receivables ageing by company code · Which customers pay late? · DSO per company code</li>
+<li>P&amp;L for the US company in 2025 · Operating expenses by cost centre · Top vendors by spend · Do SD billing and FI revenue reconcile?</li>
+<li>With 🔮 <b>Use predictive capability</b>: forecast monthly net sales for Germany; segment our customers by buying behaviour; any unusual days in daily billing?</li>
+</ul>
+<p>"Today" in this data is 15 November 2026 (the extract date); the training tells the model to use that date for ageing and overdue items. To rebuild the files, run <code>python sample_data/generate_sap.py</code>.</p>
 <h3>Adding a database</h3>
 <ol>
 <li><b>Data models → Connect a data source.</b></li>

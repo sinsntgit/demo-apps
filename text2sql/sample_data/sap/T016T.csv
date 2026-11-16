@@ -1,0 +1,13 @@
+BRSCH,SPRAS,BRTXT
+CHEM,E,Chemicals
+CHEM,D,Chemie
+OILG,E,Oil & gas
+OILG,D,Öl und Gas
+WATR,E,Water utilities
+WATR,D,Wasserversorgung
+FOOD,E,Food & beverage
+FOOD,D,Lebensmittel
+MINE,E,Mining
+MINE,D,Bergbau
+BLDG,E,Building services
+BLDG,D,Gebäudetechnik

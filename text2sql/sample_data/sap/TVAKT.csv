@@ -1,0 +1,9 @@
+AUART,SPRAS,BEZEI
+QT,E,Quotation
+QT,D,Angebot
+OR,E,Standard Order
+OR,D,Terminauftrag
+RE,E,Returns
+RE,D,Retoure
+CR,E,Credit Memo Request
+CR,D,Gutschriftsanforderung

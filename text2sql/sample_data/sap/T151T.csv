@@ -1,0 +1,7 @@
+KDGRP,SPRAS,KTEXT
+01,E,Key account
+02,E,Standard
+03,E,Small customer
+01,D,Großkunde
+02,D,Standard
+03,D,Kleinkunde

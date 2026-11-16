@@ -51,7 +51,9 @@ These are the product's promises. A change that weakens one is wrong even if the
    Never add a code path that executes SQL on a source without it.
 3. **Access control is enforced on the server.** Data-model access (`deps.can_use`), row filters
    (`app/rowfilter.py`), masking (`engine._mask`) and report access (`reporting.can_view/can_edit`) are
-   applied server-side on every path — chat, edited SQL, reports, PDFs, scheduled emails. The UI only
+   applied server-side on every path — chat, edited SQL, shared chats, reports, PDFs, scheduled emails.
+   In a shared chat, answers asked by someone else are never served from their stored rows: they are re-run
+   for the viewer (`routers/chat.py::_viewer_dto`), exactly as a shared report is. The UI only
    hides things. A viewer never gets more than their own access; SQL that cannot be analysed is refused
    for filtered users rather than run unfiltered.
 4. **SQL in reports is never taken from the browser.** `reporting.clean_components` copies SQL from one
@@ -80,7 +82,7 @@ Python 3.11+ · FastAPI · SQLAlchemy 2 (metadata store: SQLite by default, Post
 
 | File | Responsibility |
 |---|---|
-| `main.py` | App, security-header/CSRF middleware, `bootstrap()` (create tables, first admin, sample data), `upgrade_schema()` (adds new columns to existing tables; migrates legacy settings), starts the report scheduler. |
+| `main.py` | App, security-header/CSRF middleware, `bootstrap()` (create tables, first admin, retail sample), `add_sample_model()` (adds a bundled sample such as the SAP one once per installation, new or existing — a `sample_added:*` setting stops a deleted sample coming back), `upgrade_schema()` (adds new columns to existing tables; migrates legacy settings), starts the report scheduler. |
 | `config.py` | Env vars, data dirs, `DEFAULT_SETTINGS` (admin-editable settings and their defaults). |
 | `db.py` / `models.py` | Engine/session; all tables. `now()` is naive UTC everywhere. |
 | `security.py` | bcrypt passwords + policy, JWT session cookie, TOTP + recovery codes, Fernet encryption, lockout, in-memory rate limiter. |
@@ -114,6 +116,20 @@ still shows/stores at most `max_rows`. A failed analysis never fails the answer.
 
 `QueryRun` is at once the chat message, the audit record and the dashboard row. `run_dto` recomputes
 the summary on read so old chats benefit from summary improvements.
+
+### Shared chats
+
+`ConversationShare` (user / role / group, `can_edit`). The owner shares and deletes; "edit" lets others ask
+follow-up questions in the chat (their runs carry their own `user_id`) and rename it. `GET
+/api/chat/conversations/{id}` returns the viewer's own runs as stored and everyone else's re-run with the
+viewer's access; no access to the data model → `no_access` and no content. Admins do not see others' chats.
+
+### Sample data
+
+`sample_data/retail/` (first run only) and `sample_data/sap/` + `sap_training.json` (SAP SD/FI tables with SAP
+names, field dictionary as Extra DDL, 14 documentation notes, 19 verified examples). Regenerate the SAP CSVs
+with `python sample_data/generate_sap.py` (deterministic); `tests/test_sharing_sap.py` runs every example and
+checks that SD billing reconciles with FI revenue. Its key date ("today") is 2026-11-15.
 
 ### Reports
 
@@ -188,7 +204,7 @@ Design defaults that have served well:
 ```bash
 python -m pytest -q                       # API-level tests, a few seconds
 tests/e2e/run.sh                          # browser suites against a fresh instance (see file header)
-tests/e2e/run.sh reports                  # one suite: features | reports | groups | predictive | session
+tests/e2e/run.sh reports                  # one suite: features | reports | groups | predictive | sharing | session
 T2S_TEST_PG=user:pw@host:5432/db python -m pytest tests/test_postgres.py   # live Postgres, optional
 ```
 
@@ -301,6 +317,8 @@ No filler, no internal identifiers, no claiming more than the checks showed.
 - Predictive analysis is verified on the sample data with a stand-in model only: whether a real model
   reliably returns a good `analysis` spec and input data set is unmeasured. Statistical methods are
   general-purpose (Holt-Winters / naive, logistic + random forest, ridge, k-means, isolation forest).
+- The SAP sample's training has been checked by running its 19 example queries; how well a real model answers
+  *new* SAP questions with it has not been measured (stand-in model only).
 - Not built: free-form AI-written analysis code (deliberately), per-series forecasts in one question, SSO, scheduled data refresh of file models, report free-form (pixel) positioning,
   group selection in the Data models page's "Access" dialog (groups are set under Admin → Data access).
 

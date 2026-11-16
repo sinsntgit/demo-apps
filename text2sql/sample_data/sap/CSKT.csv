@@ -1,0 +1,37 @@
+KOKRS,KOSTL,SPRAS,KTEXT
+A000,11000,E,Sales DE
+A000,11000,D,Vertrieb DE
+A000,12000,E,Marketing DE
+A000,12000,D,Marketing DE
+A000,13000,E,Administration DE
+A000,13000,D,Verwaltung DE
+A000,14000,E,IT DE
+A000,14000,D,IT DE
+A000,15000,E,Logistics DE
+A000,15000,D,Logistik DE
+A000,16000,E,Service delivery DE
+A000,16000,D,Kundendienst DE
+A000,21000,E,Sales US
+A000,21000,D,Vertrieb US
+A000,22000,E,Marketing US
+A000,22000,D,Marketing US
+A000,23000,E,Administration US
+A000,23000,D,Verwaltung US
+A000,24000,E,IT US
+A000,24000,D,IT US
+A000,25000,E,Logistics US
+A000,25000,D,Logistik US
+A000,26000,E,Service delivery US
+A000,26000,D,Kundendienst US
+A000,31000,E,Sales GB
+A000,31000,D,Vertrieb GB
+A000,32000,E,Marketing GB
+A000,32000,D,Marketing GB
+A000,33000,E,Administration GB
+A000,33000,D,Verwaltung GB
+A000,34000,E,IT GB
+A000,34000,D,IT GB
+A000,35000,E,Logistics GB
+A000,35000,D,Logistik GB
+A000,36000,E,Service delivery GB
+A000,36000,D,Kundendienst GB

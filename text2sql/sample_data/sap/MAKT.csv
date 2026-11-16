@@ -1,0 +1,81 @@
+MATNR,SPRAS,MAKTX
+PMP-1001,E,Centrifugal pump CP-50
+PMP-1001,D,Centrifugal Pumpe CP-50
+PMP-1002,E,Centrifugal pump CP-80
+PMP-1002,D,Centrifugal Pumpe CP-80
+PMP-1003,E,Submersible pump SP-30
+PMP-1003,D,Submersible Pumpe SP-30
+PMP-1004,E,Dosing pump DP-10
+PMP-1004,D,Dosing Pumpe DP-10
+PMP-1005,E,Diaphragm pump DM-25
+PMP-1005,D,Diaphragm Pumpe DM-25
+PMP-1006,E,Booster set BS-200
+PMP-1006,D,Booster Satz BS-200
+PMP-1007,E,Multistage pump MS-120
+PMP-1007,D,Multistage Pumpe MS-120
+PMP-1008,E,Sewage pump SW-40
+PMP-1008,D,Sewage Pumpe SW-40
+PMP-1009,E,Fire pump FP-500
+PMP-1009,D,Fire Pumpe FP-500
+PMP-1010,E,Inline pump IL-65
+PMP-1010,D,Inline Pumpe IL-65
+VLV-1001,E,Ball valve BV-50
+VLV-1001,D,Ball Ventil BV-50
+VLV-1002,E,Butterfly valve BF-150
+VLV-1002,D,Butterfly Ventil BF-150
+VLV-1003,E,Gate valve GV-100
+VLV-1003,D,Gate Ventil GV-100
+VLV-1004,E,Check valve CV-80
+VLV-1004,D,Check Ventil CV-80
+VLV-1005,E,Control valve CTL-40
+VLV-1005,D,Control Ventil CTL-40
+VLV-1006,E,Pressure relief valve PR-25
+VLV-1006,D,Pressure relief Ventil PR-25
+VLV-1007,E,Solenoid valve SV-15
+VLV-1007,D,Solenoid Ventil SV-15
+VLV-1008,E,Globe valve GL-65
+VLV-1008,D,Globe Ventil GL-65
+MOT-1001,E,IE3 motor 7.5 kW
+MOT-1001,D,IE3 Motor 7.5 kW
+MOT-1002,E,IE3 motor 15 kW
+MOT-1002,D,IE3 Motor 15 kW
+MOT-1003,E,IE4 motor 22 kW
+MOT-1003,D,IE4 Motor 22 kW
+MOT-1004,E,Frequency drive FD-11
+MOT-1004,D,Frequency Umrichter FD-11
+MOT-1005,E,Frequency drive FD-30
+MOT-1005,D,Frequency Umrichter FD-30
+MOT-1006,E,Soft starter SS-45
+MOT-1006,D,Soft starter SS-45
+MOT-1007,E,Gear motor GM-4
+MOT-1007,D,Gear Motor GM-4
+SPR-1001,E,Mechanical seal kit
+SPR-1001,D,Mechanical seal Satz
+SPR-1002,E,Impeller CP-50
+SPR-1002,D,Impeller CP-50
+SPR-1003,E,Bearing set 6308
+SPR-1003,D,Bearing Satz 6308
+SPR-1004,E,O-ring kit
+SPR-1004,D,O-ring Satz
+SPR-1005,E,Coupling insert
+SPR-1005,D,Coupling insert
+SPR-1006,E,Valve seat BV-50
+SPR-1006,D,Ventil seat BV-50
+SPR-1007,E,Gasket set
+SPR-1007,D,Gasket Satz
+SPR-1008,E,Pressure gauge 0-16 bar
+SPR-1008,D,Pressure gauge 0-16 bar
+SPR-1009,E,Filter cartridge
+SPR-1009,D,Filter cartridge
+SPR-1010,E,Shaft sleeve
+SPR-1010,D,Shaft sleeve
+SRV-1001,E,Commissioning (day)
+SRV-1001,D,Commissioning (day)
+SRV-1002,E,Annual maintenance contract
+SRV-1002,D,Annual maintenance contract
+SRV-1003,E,Pump overhaul
+SRV-1003,D,Pumpe overhaul
+SRV-1004,E,Energy audit
+SRV-1004,D,Energy audit
+SRV-1005,E,On-site repair (hour)
+SRV-1005,D,On-site repair (hour)

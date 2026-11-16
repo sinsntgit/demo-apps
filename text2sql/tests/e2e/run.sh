@@ -3,7 +3,7 @@
 # stand-in AI model (tests/fake_llm.py, port 8765) and a local mail sink (port 2525).
 #
 #   tests/e2e/run.sh              run every suite
-#   tests/e2e/run.sh reports      run one suite (features | reports | groups | predictive | session)
+#   tests/e2e/run.sh reports      run one suite (features | reports | groups | predictive | sharing | session)
 #
 # Needs Node with Playwright + Chromium, and the Python dev requirements.
 # Screenshots land in $OUT (default: a temp dir, printed at the end). The Help page's images
@@ -39,6 +39,7 @@ want="${1:-all}"
 [ "$want" = all ] || [ "$want" = reports ]  && suite reports "$OUT" "$WORK/mail.jsonl"
 [ "$want" = all ] || [ "$want" = groups ]   && suite groups "$OUT"
 [ "$want" = all ] || [ "$want" = predictive ] && suite predictive "$OUT"
+[ "$want" = all ] || [ "$want" = sharing ]  && suite sharing "$OUT"
 [ "$want" = all ] || [ "$want" = session ]  && suite session
 echo; echo "screenshots: $OUT"
 [ $fail = 0 ] && echo "ALL BROWSER CHECKS PASSED" || { echo "SOME BROWSER CHECKS FAILED"; exit 1; }

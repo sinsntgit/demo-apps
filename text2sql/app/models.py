@@ -270,3 +270,15 @@ class EmailLog(Base):
     status: Mapped[str] = mapped_column(String(20))                      # sent | failed | simulated
     error: Mapped[str] = mapped_column(Text, default="")
     context: Mapped[str] = mapped_column(String(200), default="")        # e.g. "report: Monthly sales"
+
+
+class ConversationShare(Base):
+    """A chat shared by its owner with a person, a role or a user group, to view or to add questions."""
+    __tablename__ = "conversation_shares"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("conversations.id", ondelete="CASCADE"), index=True)
+    scope: Mapped[str] = mapped_column(String(10))                     # user | role | group
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    role: Mapped[str] = mapped_column(String(20), default="")
+    group_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)     # scope == "group"
+    can_edit: Mapped[bool] = mapped_column(Boolean, default=False)

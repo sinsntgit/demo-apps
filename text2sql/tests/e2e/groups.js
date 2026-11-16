@@ -11,8 +11,8 @@ const OUT = process.argv[2], B = 'http://localhost:8010/';
   await post('/api/admin/groups', { name: 'Finance', user_ids: [ids[0]] });
   await step('grant access to a group', async () => {
     await page.goto(B + '#/admin/access'); await page.waitForSelector('text=Data filters');
-    await page.locator('label.check:has-text("Only selected groups and users")').click();
-    await page.locator('label.check:has-text("North sales team")').click();
+    await page.locator('label.check:has-text("Only selected groups and users")').first().click();       // the first data model: the retail sample
+    await page.locator('label.check:has-text("North sales team")').first().click();
     await page.waitForSelector('text=already has access via North sales team');
     await page.click('text=Save access'); await page.waitForSelector('.badge.warn:has-text("1 group(s) + 0 user(s)")');
   });

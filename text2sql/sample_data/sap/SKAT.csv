@@ -1,0 +1,35 @@
+SPRAS,KTOPL,SAKNR,TXT20,TXT50
+E,INT,0000113100,Bank - current accou,Bank - current account
+D,INT,0000113100,Bank - Girokonto,Bank - Girokonto
+E,INT,0000121000,Receivables - domest,Receivables - domestic
+D,INT,0000121000,Forderungen Inland,Forderungen Inland
+E,INT,0000154000,Input tax,Input tax
+D,INT,0000154000,Vorsteuer,Vorsteuer
+E,INT,0000790000,Finished goods inven,Finished goods inventory
+D,INT,0000790000,Fertigerzeugnisse,Fertigerzeugnisse
+E,INT,0000160000,Payables - domestic,Payables - domestic
+D,INT,0000160000,Verbindlichkeiten In,Verbindlichkeiten Inland
+E,INT,0000175000,Output tax,Output tax
+D,INT,0000175000,Umsatzsteuer,Umsatzsteuer
+E,INT,0000400000,Sales revenue - dome,Sales revenue - domestic
+D,INT,0000400000,Umsatzerlöse Inland,Umsatzerlöse Inland
+E,INT,0000410000,Sales revenue - expo,Sales revenue - export
+D,INT,0000410000,Umsatzerlöse Ausland,Umsatzerlöse Ausland
+E,INT,0000500000,Cost of goods sold,Cost of goods sold
+D,INT,0000500000,Herstellkosten des U,Herstellkosten des Umsatzes
+E,INT,0000610000,Rent and facilities,Rent and facilities
+D,INT,0000610000,Miete und Gebäude,Miete und Gebäude
+E,INT,0000620000,Utilities,Utilities
+D,INT,0000620000,Energie,Energie
+E,INT,0000630000,Travel expenses,Travel expenses
+D,INT,0000630000,Reisekosten,Reisekosten
+E,INT,0000640000,IT and software,IT and software
+D,INT,0000640000,IT und Software,IT und Software
+E,INT,0000650000,Marketing,Marketing
+D,INT,0000650000,Marketing,Marketing
+E,INT,0000660000,Salaries and wages,Salaries and wages
+D,INT,0000660000,Löhne und Gehälter,Löhne und Gehälter
+E,INT,0000670000,Professional service,Professional services
+D,INT,0000670000,Beratung,Beratung
+E,INT,0000680000,Freight out,Freight out
+D,INT,0000680000,Ausgangsfracht,Ausgangsfracht

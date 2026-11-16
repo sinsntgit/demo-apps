@@ -47,46 +47,95 @@ def bootstrap():
     Base.metadata.create_all(engine)
     upgrade_schema()
     with SessionLocal() as db:
-        if db.scalar(select(User.id).limit(1)):
+        if not db.scalar(select(User.id).limit(1)):
+            _first_run(db)
+    add_sample_model("sap_training.json")
+
+
+def add_sample_model(spec_file: str):
+    """Add a bundled sample data model with its training - once per installation, so a data model the
+    admin deleted does not come back. Runs on new and on existing installations (after an update)."""
+    import json
+    from .db import now
+    from .models import Setting
+    spec_path = config.BASE_DIR / "sample_data" / spec_file
+    flag = "sample_added:" + spec_file
+    if not spec_path.is_file():
+        return
+    with SessionLocal() as db:
+        if db.get(Setting, flag):
             return
-        password = config.ADMIN_PASSWORD or security.random_password()
-        db.add(User(email=config.ADMIN_EMAIL.lower(), name="Administrator", role="admin",
-                    password_hash=security.hash_password(password),
-                    must_change_password=not config.ADMIN_PASSWORD))
-        if not config.ADMIN_PASSWORD:
-            banner = f"\n{'=' * 64}\n First-run admin account\n   email:    {config.ADMIN_EMAIL}\n" \
-                     f"   password: {password}\n (you will be asked to change it at first sign-in)\n{'=' * 64}"
-            print(banner, flush=True)
-        db.add(LLMModel(name="Claude Opus 5.5", provider="anthropic", model_id="claude-opus-5-5",
-                        enabled=False, is_default=True, price_in=4.0, price_out=20.0))
-        sample = config.BASE_DIR / "sample_data" / "retail"
-        if sample.is_dir():
-            conn = Connection(name="Sample: Retail sales", db_type="files",
-                              description="Demo data model built from CSV files (customers, products, orders).",
-                              config_enc=security.encrypt_json({}))
-            db.add(conn)
-            db.flush()
-            dest = config.FILES_DIR / str(conn.id)
-            dest.mkdir(parents=True, exist_ok=True)
-            for f in sample.glob("*.csv"):
-                shutil.copy(f, dest / f.name)
-            from . import connectors
-            try:
-                conn.schema_json = connectors.introspect(conn, {})
-                from .db import now
-                conn.schema_synced_at = now()
-            except Exception as e:      # sample data is a convenience, never a startup blocker
-                log.warning("Sample data model could not be loaded: %s", e)
-            db.add(TrainingItem(connection_id=conn.id, kind="documentation", title="Revenue definition",
-                                content="Revenue (also called sales) = quantity * unit_price * (1 - discount) on "
-                                        "order_items, counting only orders whose status is 'completed'. "
-                                        "An order's month is taken from orders.order_date."))
-            db.add(TrainingItem(connection_id=conn.id, kind="sql_pair", question="What is total revenue by product category?",
-                                sql="SELECT p.category, ROUND(SUM(oi.quantity * oi.unit_price * (1 - oi.discount)), 2) AS revenue\n"
-                                    "FROM order_items oi\nJOIN orders o ON o.order_id = oi.order_id\n"
-                                    "JOIN products p ON p.product_id = oi.product_id\n"
-                                    "WHERE o.status = 'completed'\nGROUP BY p.category\nORDER BY revenue DESC"))
+        spec = json.loads(spec_path.read_text(encoding="utf-8"))
+        folder = config.BASE_DIR / "sample_data" / spec["folder"]
+        if db.scalar(select(Connection.id).where(Connection.name == spec["name"])) or not folder.is_dir():
+            db.add(Setting(key=flag, value={"v": True}))
+            db.commit()
+            return
+        conn = Connection(name=spec["name"], db_type="files", description=spec["description"], config_enc=security.encrypt_json({}))
+        db.add(conn)
+        db.flush()
+        dest = config.FILES_DIR / str(conn.id)
+        dest.mkdir(parents=True, exist_ok=True)
+        for f in folder.glob("*.csv"):
+            shutil.copy(f, dest / f.name)
+        from . import connectors
+        try:
+            conn.schema_json = connectors.introspect(conn, {})
+            conn.schema_synced_at = now()
+        except Exception as e:      # sample data is a convenience, never a startup blocker
+            log.warning("Sample data model %s could not be loaded: %s", spec["name"], e)
+        for d in spec.get("dictionary", []):        # field meanings: always sent with the schema
+            db.add(TrainingItem(connection_id=conn.id, kind="ddl", title=d["title"], content=d["content"]))
+        for d in spec.get("documentation", []):
+            db.add(TrainingItem(connection_id=conn.id, kind="documentation", title=d["title"], content=d["content"]))
+        for e in spec.get("examples", []):
+            db.add(TrainingItem(connection_id=conn.id, kind="sql_pair", question=e["question"], sql=e["sql"],
+                                content=json.dumps(e["analysis"]) if e.get("analysis") else ""))
+        db.add(Setting(key=flag, value={"v": True}))
         db.commit()
+        log.info("Added sample data model: %s", spec["name"])
+
+
+def _first_run(db):
+    """First start: the admin account, a placeholder AI model and the retail sample data model."""
+    password = config.ADMIN_PASSWORD or security.random_password()
+    db.add(User(email=config.ADMIN_EMAIL.lower(), name="Administrator", role="admin",
+                password_hash=security.hash_password(password),
+                must_change_password=not config.ADMIN_PASSWORD))
+    if not config.ADMIN_PASSWORD:
+        banner = f"\n{'=' * 64}\n First-run admin account\n   email:    {config.ADMIN_EMAIL}\n" \
+                 f"   password: {password}\n (you will be asked to change it at first sign-in)\n{'=' * 64}"
+        print(banner, flush=True)
+    db.add(LLMModel(name="Claude Opus 5.5", provider="anthropic", model_id="claude-opus-5-5",
+                    enabled=False, is_default=True, price_in=4.0, price_out=20.0))
+    sample = config.BASE_DIR / "sample_data" / "retail"
+    if sample.is_dir():
+        conn = Connection(name="Sample: Retail sales", db_type="files",
+                          description="Demo data model built from CSV files (customers, products, orders).",
+                          config_enc=security.encrypt_json({}))
+        db.add(conn)
+        db.flush()
+        dest = config.FILES_DIR / str(conn.id)
+        dest.mkdir(parents=True, exist_ok=True)
+        for f in sample.glob("*.csv"):
+            shutil.copy(f, dest / f.name)
+        from . import connectors
+        try:
+            conn.schema_json = connectors.introspect(conn, {})
+            from .db import now
+            conn.schema_synced_at = now()
+        except Exception as e:      # sample data is a convenience, never a startup blocker
+            log.warning("Sample data model could not be loaded: %s", e)
+        db.add(TrainingItem(connection_id=conn.id, kind="documentation", title="Revenue definition",
+                            content="Revenue (also called sales) = quantity * unit_price * (1 - discount) on "
+                                    "order_items, counting only orders whose status is 'completed'. "
+                                    "An order's month is taken from orders.order_date."))
+        db.add(TrainingItem(connection_id=conn.id, kind="sql_pair", question="What is total revenue by product category?",
+                            sql="SELECT p.category, ROUND(SUM(oi.quantity * oi.unit_price * (1 - oi.discount)), 2) AS revenue\n"
+                                "FROM order_items oi\nJOIN orders o ON o.order_id = oi.order_id\n"
+                                "JOIN products p ON p.product_id = oi.product_id\n"
+                                "WHERE o.status = 'completed'\nGROUP BY p.category\nORDER BY revenue DESC"))
+    db.commit()
 
 
 @asynccontextmanager

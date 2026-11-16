@@ -3,13 +3,13 @@ import io
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
-from .. import engine, predict, security, sqlguard, summarize
+from .. import connectors, engine, predict, reporting, security, sqlguard, summarize
 from ..db import get_db, now
-from ..deps import audit, current_user, get_connection, get_settings
-from ..models import Connection, Conversation, LLMModel, QueryRun, User
+from ..deps import audit, can_use, current_user, get_connection, get_settings
+from ..models import ROLES, Connection, Conversation, ConversationShare, LLMModel, QueryRun, User, UserGroup
 from .training import upsert_pair
 
 router = APIRouter(prefix="/api", tags=["chat"])
@@ -64,11 +64,51 @@ def _own_run(db: Session, user: User, run_id: int) -> QueryRun:
     return run
 
 
-def _own_conv(db: Session, user: User, conv_id: int) -> Conversation:
+def _shares_for(db: Session, user: User):
+    """SQL condition: a chat share that applies to this user (directly, by role, or through a group)."""
+    cond = or_((ConversationShare.scope == "user") & (ConversationShare.user_id == user.id),
+               (ConversationShare.scope == "role") & (ConversationShare.role == user.role))
+    groups = reporting.group_ids(db, user)
+    return or_(cond, (ConversationShare.scope == "group") & ConversationShare.group_id.in_(groups)) if groups else cond
+
+
+def _share(db: Session, user: User, conv: Conversation) -> ConversationShare | None:
+    rows = db.scalars(select(ConversationShare).where(ConversationShare.conversation_id == conv.id, _shares_for(db, user)))
+    return max(rows, key=lambda s: s.can_edit, default=None)
+
+
+def _conv(db: Session, user: User, conv_id: int, edit: bool = False, owner: bool = False) -> Conversation:
+    """The chat if this user may open it: their own, or shared with them (to view, or to add questions)."""
     conv = db.get(Conversation, conv_id)
-    if not conv or conv.user_id != user.id:
+    if conv and conv.user_id == user.id:
+        return conv
+    share = _share(db, user, conv) if conv else None
+    if not share:
         raise HTTPException(404, "Conversation not found")
+    if owner:
+        raise HTTPException(403, "Only the person who started this chat can do this.")
+    if edit and not share.can_edit:
+        raise HTTPException(403, "This chat was shared with you to view only. Ask its owner for edit access to add questions.")
     return conv
+
+
+def _viewer_dto(db: Session, viewer: User, conn: Connection, run: QueryRun, cfg: dict, names: dict) -> dict:
+    """Someone else's answer in a shared chat: their stored rows are never shown. The query is run again
+    with the viewer's own data access and filters (as a shared report is), so nobody sees rows they may not."""
+    dto = run_dto(run, rows=False)
+    dto.update(asked_by=names.get(run.user_id, "someone else"), shared_view=True, rows=None, rows_stored=False,
+               context={"filters": []}, analysis=None)
+    if run.status != "success" or not run.final_sql:
+        return dto
+    spec = (run.analysis or {}).get("spec") if cfg["predictive_enabled"] else None
+    try:
+        res = engine.run_sql(db, conn, run.final_sql, cfg, viewer, spec)
+    except (sqlguard.SQLBlocked, connectors.ConnectorError) as e:
+        dto.update(status="error", error=f"Could not be run with your access: {e}")
+        return dto
+    dto.update(columns=res["columns"], rows=res["rows"], row_count=res["row_count"], truncated=res["truncated"],
+               summary=res["summary"], analysis=res.get("analysis"), rows_stored=True, context={"filters": res["filters"]})
+    return dto
 
 
 def _pick_model(db: Session, model_id: int | None) -> LLMModel:
@@ -101,7 +141,7 @@ def ask(body: AskIn, request: Request, user: User = Depends(current_user), db: S
     model = _pick_model(db, body.model_id)
 
     if body.conversation_id:
-        conv = _own_conv(db, user, body.conversation_id)
+        conv = _conv(db, user, body.conversation_id, edit=True)
         if conv.connection_id != conn.id:
             raise HTTPException(400, "This conversation belongs to a different data model. Start a new chat.")
         history = [r for r in conv.runs if r.status == "success"]
@@ -238,22 +278,82 @@ def export_xlsx(run_id: int, user: User = Depends(current_user), db: Session = D
 # ---- conversations & history ------------------------------------------------------
 @router.get("/chat/conversations")
 def conversations(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """The user's own chats and the chats shared with them."""
+    shared_ids = select(ConversationShare.conversation_id).where(_shares_for(db, user))
     rows = db.execute(select(Conversation, Connection.name).join(Connection, Connection.id == Conversation.connection_id)
-                      .where(Conversation.user_id == user.id).order_by(Conversation.updated_at.desc()).limit(300)).all()
-    return [{"id": c.id, "title": c.title, "connection_id": c.connection_id, "connection_name": name,
-             "updated_at": c.updated_at.isoformat()} for c, name in rows]
+                      .where(or_(Conversation.user_id == user.id, Conversation.id.in_(shared_ids)))
+                      .order_by(Conversation.updated_at.desc()).limit(400)).all()
+    mine_shared = set(db.scalars(select(ConversationShare.conversation_id).join(Conversation, Conversation.id == ConversationShare.conversation_id)
+                                 .where(Conversation.user_id == user.id)))
+    names = {u.id: u.name or u.email for u in db.scalars(select(User))}
+    out = []
+    for c, name in rows:
+        mine = c.user_id == user.id
+        share = None if mine else _share(db, user, c)
+        out.append({"id": c.id, "title": c.title, "connection_id": c.connection_id, "connection_name": name,
+                    "updated_at": c.updated_at.isoformat(), "mine": mine, "owner": names.get(c.user_id, ""),
+                    "can_edit": mine or bool(share and share.can_edit), "shared": mine and c.id in mine_shared})
+    return out
 
 
 @router.get("/chat/conversations/{conv_id}")
 def conversation(conv_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    conv = _own_conv(db, user, conv_id)
-    return {"id": conv.id, "title": conv.title, "connection_id": conv.connection_id,
-            "runs": [run_dto(r) for r in conv.runs]}
+    conv = _conv(db, user, conv_id)
+    mine = conv.user_id == user.id
+    share = None if mine else _share(db, user, conv)
+    names = {u.id: u.name or u.email for u in db.scalars(select(User))}
+    conn = db.get(Connection, conv.connection_id)
+    out = {"id": conv.id, "title": conv.title, "connection_id": conv.connection_id, "mine": mine,
+           "owner": names.get(conv.user_id, ""), "can_edit": mine or bool(share and share.can_edit), "runs": []}
+    if not conn or not conn.is_active or not can_use(db, user, conn):
+        # shared with someone who cannot use its data model: say so, reveal no questions, SQL or results
+        out.update(no_access=True, can_edit=False)
+        return out
+    cfg = get_settings(db)
+    out["runs"] = [run_dto(r) if r.user_id == user.id else _viewer_dto(db, user, conn, r, cfg, names) for r in conv.runs]
+    return out
+
+
+@router.get("/chat/conversations/{conv_id}/shares")
+def get_shares(conv_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    conv = _conv(db, user, conv_id, owner=True)
+    return [{"scope": s.scope, "user_id": s.user_id, "role": s.role, "group_id": s.group_id, "can_edit": s.can_edit}
+            for s in db.scalars(select(ConversationShare).where(ConversationShare.conversation_id == conv.id))]
+
+
+class SharesIn(BaseModel):
+    shares: list[dict]
+
+
+@router.put("/chat/conversations/{conv_id}/shares")
+def set_shares(conv_id: int, body: SharesIn, request: Request, user: User = Depends(current_user),
+               db: Session = Depends(get_db)):
+    """Share a chat with people, roles or user groups - to view, or to view and add questions."""
+    conv = _conv(db, user, conv_id, owner=True)
+    db.execute(delete(ConversationShare).where(ConversationShare.conversation_id == conv.id))
+    added = []
+    for s in body.shares[:200]:
+        edit = bool(s.get("can_edit"))
+        if s.get("scope") == "role" and s.get("role") in ROLES:
+            db.add(ConversationShare(conversation_id=conv.id, scope="role", role=s["role"], can_edit=edit))
+            added.append(f"role {s['role']}")
+        elif s.get("scope") == "group" and (g := db.get(UserGroup, int(s.get("group_id") or 0))):
+            db.add(ConversationShare(conversation_id=conv.id, scope="group", group_id=g.id, can_edit=edit))
+            added.append(f"group {g.name}")
+        elif s.get("scope") == "user" and (u := db.get(User, int(s.get("user_id") or 0))) and u.id != user.id:
+            db.add(ConversationShare(conversation_id=conv.id, scope="user", user_id=u.id, can_edit=edit))
+            added.append(u.email)
+        else:
+            continue
+        added[-1] += " (edit)" if edit else " (view)"
+    audit(db, request, user, "conversation.sharing_changed", conv.title, "; ".join(added) or "not shared")
+    db.commit()
+    return {"ok": True, "count": len(added)}
 
 
 @router.put("/chat/conversations/{conv_id}")
 def rename(conv_id: int, body: TitleIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    conv = _own_conv(db, user, conv_id)
+    conv = _conv(db, user, conv_id, edit=True)
     conv.title = body.title.strip()[:200] or conv.title
     db.commit()
     return {"ok": True}
@@ -262,8 +362,9 @@ def rename(conv_id: int, body: TitleIn, user: User = Depends(current_user), db: 
 @router.delete("/chat/conversations/{conv_id}")
 def delete_conversation(conv_id: int, request: Request, user: User = Depends(current_user),
                         db: Session = Depends(get_db)):
-    conv = _own_conv(db, user, conv_id)
+    conv = _conv(db, user, conv_id, owner=True)
     audit(db, request, user, "conversation.deleted", conv.title)
+    db.execute(delete(ConversationShare).where(ConversationShare.conversation_id == conv.id))
     db.delete(conv)
     db.commit()
     return {"ok": True}

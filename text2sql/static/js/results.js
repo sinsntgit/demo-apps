@@ -548,7 +548,7 @@ export function runCard(run, ctx = {}) {
       h('button', { onclick: () => { exportPDF(run, cfg.type === 'table' ? { ...cfg, type: 'kpi' } : cfg); } }, 'PDF report'),
       h('button', { onclick: () => download(`query-${run.id}.csv`, csvOf(run), 'text/csv') }, run.analysis ? 'Data used (CSV)' : 'CSV'),
       ...(run.analysis?.result?.tables || []).map(t => h('button', { onclick: () => download(`query-${run.id}-${t.key}.csv`, csvOf(t), 'text/csv') }, `${t.title} (CSV)`)),
-      h('button', { onclick: () => { location.href = `/api/chat/runs/${run.id}/export.xlsx`; } }, 'Excel (.xlsx)'),
+      run.shared_view ? null : h('button', { onclick: () => { location.href = `/api/chat/runs/${run.id}/export.xlsx`; } }, 'Excel (.xlsx)'),
       ctx.readonly ? null : h('button', { onclick: () => addToReport(run) }, '＋ Add to a report…'),
       canChart ? h('button', { onclick: () => { const imgs = cfg.type === 'table' || cfg.type === 'kpi' ? [] : chartPanels(run, cfg).map(p => chartImage(run, p)).filter(Boolean); if (!imgs.length) return toast('Open the Chart view and choose a chart first', true); imgs.forEach((img, i) => fetch(img).then(r => r.blob()).then(b => download(`query-${run.id}${imgs.length > 1 ? '-' + (i + 1) : ''}.png`, b))); } }, 'Chart image (PNG)') : null);
     pop.addEventListener('click', () => pop.classList.add('hidden'));
@@ -599,7 +599,7 @@ export function runCard(run, ctx = {}) {
       card.append(h('div', { class: 'sec' }, h('div', { class: 'sec-head' }, h('h3', {}, 'Follow-up questions')),
         h('div', { class: 'chips' }, run.followups.map(f => h('button', { class: 'chip', onclick: () => ctx.onFollowup(f) }, f)))));
     }
-    fill(root, h('div', { class: 'q' }, h('div', {}, run.question)), card);
+    fill(root, h('div', { class: 'q' }, h('div', {}, run.asked_by ? h('span', { class: 'small', style: 'display:block;opacity:.8;margin-bottom:2px' }, `Asked by ${run.asked_by}`) : null, run.question)), card);
   }
   const onTheme = () => { if (!root.isConnected) return window.removeEventListener('themechange', onTheme); resultSec?._repaint?.(); ablock?.repaint(); };
   window.addEventListener('themechange', onTheme);

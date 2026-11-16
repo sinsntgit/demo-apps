@@ -1,0 +1,11 @@
+PRCTR,SPRAS,KTEXT
+PC-PUMPS,E,Pumps profit centre
+PC-PUMPS,D,Profitcenter Pumpen
+PC-VALVES,E,Valves profit centre
+PC-VALVES,D,Profitcenter Ventile
+PC-MOTORS,E,Motors & drives profit centre
+PC-MOTORS,D,Profitcenter Motoren & Antriebe
+PC-SPARES,E,Spare parts profit centre
+PC-SPARES,D,Profitcenter Ersatzteile
+PC-SERVICE,E,Services profit centre
+PC-SERVICE,D,Profitcenter Dienstleistungen
