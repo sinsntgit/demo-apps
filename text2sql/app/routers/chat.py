@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
-from .. import connectors, engine, predict, reporting, security, sqlguard, summarize
+from .. import connectors, engine, predict, reporting, security, sqlguard, summarize, tenancy
 from ..db import get_db, now
 from ..deps import audit, can_use, current_user, get_connection, get_settings, sees_sql
 from ..models import ISSUE_TYPES, ROLES, Connection, Conversation, ConversationShare, LLMModel, QueryRun, RephraseLog, User, UserGroup
@@ -106,7 +106,8 @@ def _conv(db: Session, user: User, conv_id: int, edit: bool = False, owner: bool
     conv = db.get(Conversation, conv_id)
     if conv and conv.user_id == user.id:
         return conv
-    share = _share(db, user, conv) if conv else None
+    conn = db.get(Connection, conv.connection_id) if conv else None
+    share = _share(db, user, conv) if conv and conn and conn.company_id == user.company_id else None
     if not share:
         raise HTTPException(404, "Conversation not found")
     if owner:
@@ -135,18 +136,25 @@ def _viewer_dto(db: Session, viewer: User, conn: Connection, run: QueryRun, cfg:
     return dto
 
 
-def _pick_model(db: Session, model_id: int | None) -> LLMModel:
-    model = db.get(LLMModel, model_id) if model_id else db.scalar(
-        select(LLMModel).where(LLMModel.enabled).order_by(LLMModel.is_default.desc(), LLMModel.id))
+def _pick_model(db: Session, user: User, model_id: int | None) -> LLMModel:
+    """The chosen AI model if this person's company may use it, else the company's default."""
+    usable = {m.id: m for m in tenancy.models_for(db, user.company_id) if m.enabled}
+    model = usable.get(model_id) if model_id else tenancy.default_model(db, user.company_id)
+    if model_id and not model:
+        raise HTTPException(400, "That AI model is not available to your company. Choose another one.")
     if not model or not model.enabled:
         raise HTTPException(400, "No AI model is available. Ask an admin to add one under Admin > Models.")
     return model
 
 
 @router.get("/models")
-def models(_: User = Depends(current_user), db: Session = Depends(get_db)):
-    return [{"id": m.id, "name": m.name, "provider": m.provider, "is_default": m.is_default}
-            for m in db.scalars(select(LLMModel).where(LLMModel.enabled).order_by(LLMModel.is_default.desc(), LLMModel.name))]
+def models(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """The AI models this person's company may use: its own first, then the shared ones; the default first."""
+    default = tenancy.default_model(db, user.company_id)
+    usable = [m for m in tenancy.models_for(db, user.company_id) if m.enabled]
+    usable.sort(key=lambda m: (m.id != (default.id if default else None), m.company_id is None, m.name.lower()))
+    return [{"id": m.id, "name": m.name, "provider": m.provider, "is_default": bool(default and m.id == default.id),
+             "group": "shared" if m.company_id is None else "company"} for m in usable]
 
 
 @router.post("/chat/ask")
@@ -156,13 +164,13 @@ def ask(body: AskIn, request: Request, user: User = Depends(current_user), db: S
         raise HTTPException(400, "Type a question first.")
     if len(question) > 4000:
         raise HTTPException(400, "Question is too long.")
-    cfg = get_settings(db)
+    cfg = get_settings(db, user.company_id)
     if not security.limiter.allow(f"ask:{user.id}", cfg["rate_limit_per_min"]):
         raise HTTPException(429, "You are asking questions too quickly. Wait a moment and try again.")
     conn = get_connection(db, user, body.connection_id)
     if not conn.is_active:
         raise HTTPException(400, "This data model is disabled.")
-    model = _pick_model(db, body.model_id)
+    model = _pick_model(db, user, body.model_id)
     review_first = body.review_first and sees_sql(user)      # reviewing SQL needs to see it
 
     if body.conversation_id:
@@ -176,7 +184,7 @@ def ask(body: AskIn, request: Request, user: User = Depends(current_user), db: S
         db.flush()
         history = []
 
-    run = QueryRun(conversation_id=conv.id, user_id=user.id, connection_id=conn.id, model_id=model.id,
+    run = QueryRun(conversation_id=conv.id, user_id=user.id, connection_id=conn.id, model_id=model.id, company_id=conn.company_id,
                    model_label=model.name, question=question, attempts=0, input_tokens=0, output_tokens=0,
                    llm_ms=0, cost=0.0)
     if body.rephrase_id:
@@ -196,9 +204,9 @@ def ask(body: AskIn, request: Request, user: User = Depends(current_user), db: S
 
 
 @router.get("/chat/options")
-def options(_: User = Depends(current_user), db: Session = Depends(get_db)):
+def options(user: User = Depends(current_user), db: Session = Depends(get_db)):
     """What the Ask page offers to everyone (admin settings that are not secret)."""
-    return {"rephrase": bool(get_settings(db)["rephrase_enabled"])}
+    return {"rephrase": bool(get_settings(db, user.company_id)["rephrase_enabled"])}
 
 
 @router.post("/chat/rephrase")
@@ -210,7 +218,7 @@ def rephrase(body: RephraseIn, user: User = Depends(current_user), db: Session =
         raise HTTPException(400, "Type a question first.")
     if len(question) > 4000:
         raise HTTPException(400, "Question is too long.")
-    cfg = get_settings(db)
+    cfg = get_settings(db, user.company_id)
     if not cfg["rephrase_enabled"]:
         raise HTTPException(400, "Rephrasing is switched off. An administrator can turn it on under Admin → Settings.")
     if not security.limiter.allow(f"rephrase:{user.id}", cfg["rate_limit_per_min"]):
@@ -218,8 +226,8 @@ def rephrase(body: RephraseIn, user: User = Depends(current_user), db: Session =
     conn = get_connection(db, user, body.connection_id)
     if not conn.is_active:
         raise HTTPException(400, "This data model is disabled.")
-    chosen = db.get(LLMModel, cfg["rephrase_model_id"]) if cfg["rephrase_model_id"] else None
-    model = chosen if chosen and chosen.enabled else _pick_model(db, body.model_id)
+    chosen = next((m for m in tenancy.models_for(db, user.company_id) if m.id == cfg["rephrase_model_id"]), None)
+    model = chosen if chosen and chosen.enabled else _pick_model(db, user, body.model_id)
     history = []
     if body.conversation_id:
         conv = _conv(db, user, body.conversation_id)
@@ -239,7 +247,7 @@ def execute(run_id: int, body: ExecIn, request: Request, user: User = Depends(cu
     """Run the reviewed SQL, or a user-edited version of it."""
     run = _own_run(db, user, run_id)
     conn = get_connection(db, user, run.connection_id)
-    cfg = get_settings(db)
+    cfg = get_settings(db, user.company_id)
     if body.sql is not None:
         if not sees_sql(user):
             raise HTTPException(403, "Your account shows results only, so SQL cannot be edited. Use “Incorrect” to report a problem.")
@@ -278,7 +286,7 @@ def rerun_analysis(run_id: int, body: AnalysisIn, request: Request, user: User =
     elif "k" in body.model_fields_set:
         spec.pop("k", None)                     # back to automatic
     run.analysis = {"spec": predict.clean_spec(spec)}
-    engine.execute(db, run, conn, get_settings(db), user=user)
+    engine.execute(db, run, conn, get_settings(db, user.company_id), user=user)
     audit(db, request, user, "query.analysis_rerun", conn.name, f"run #{run.id} {spec.get('type')}")
     db.commit()
     return shaped(run_dto(run), user)
@@ -314,7 +322,7 @@ def feedback(run_id: int, body: FeedbackIn, request: Request, user: User = Depen
     if run.issue_status == "open":
         run.issue_status, run.issue_type = "", ""
     run.feedback = "corrected" if run.edited else "correct"
-    trusted = user.role in ("admin", "steward") or get_settings(db)["feedback_mode"] == "instant"
+    trusted = user.role in ("admin", "steward") or get_settings(db, user.company_id)["feedback_mode"] == "instant"
     status = "approved" if trusted else "pending"
     upsert_pair(db, conn, run.question, run.final_sql, "correction" if run.edited else "confirmed", status, user.id,
                 analysis=(run.analysis or {}).get("spec"))
@@ -364,7 +372,7 @@ def conversations(user: User = Depends(current_user), db: Session = Depends(get_
     """The user's own chats and the chats shared with them."""
     shared_ids = select(ConversationShare.conversation_id).where(_shares_for(db, user))
     rows = db.execute(select(Conversation, Connection.name).join(Connection, Connection.id == Conversation.connection_id)
-                      .where(or_(Conversation.user_id == user.id, Conversation.id.in_(shared_ids)))
+                      .where(or_(Conversation.user_id == user.id, Conversation.id.in_(shared_ids)), Connection.company_id == user.company_id)
                       .order_by(Conversation.updated_at.desc()).limit(400)).all()
     mine_shared = set(db.scalars(select(ConversationShare.conversation_id).join(Conversation, Conversation.id == ConversationShare.conversation_id)
                                  .where(Conversation.user_id == user.id)))
@@ -392,7 +400,7 @@ def conversation(conv_id: int, user: User = Depends(current_user), db: Session =
         # shared with someone who cannot use its data model: say so, reveal no questions, SQL or results
         out.update(no_access=True, can_edit=False)
         return out
-    cfg = get_settings(db)
+    cfg = get_settings(db, user.company_id)
     out["runs"] = [shaped(run_dto(r) if r.user_id == user.id else _viewer_dto(db, user, conn, r, cfg, names), user) for r in conv.runs]
     return out
 
@@ -420,10 +428,10 @@ def set_shares(conv_id: int, body: SharesIn, request: Request, user: User = Depe
         if s.get("scope") == "role" and s.get("role") in ROLES:
             db.add(ConversationShare(conversation_id=conv.id, scope="role", role=s["role"], can_edit=edit))
             added.append(f"role {s['role']}")
-        elif s.get("scope") == "group" and (g := db.get(UserGroup, int(s.get("group_id") or 0))):
+        elif s.get("scope") == "group" and (g := db.get(UserGroup, int(s.get("group_id") or 0))) and g.company_id == user.company_id:
             db.add(ConversationShare(conversation_id=conv.id, scope="group", group_id=g.id, can_edit=edit))
             added.append(f"group {g.name}")
-        elif s.get("scope") == "user" and (u := db.get(User, int(s.get("user_id") or 0))) and u.id != user.id:
+        elif s.get("scope") == "user" and (u := db.get(User, int(s.get("user_id") or 0))) and u.id != user.id and u.company_id == user.company_id:
             db.add(ConversationShare(conversation_id=conv.id, scope="user", user_id=u.id, can_edit=edit))
             added.append(u.email)
         else:

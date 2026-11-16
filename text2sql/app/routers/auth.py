@@ -45,18 +45,22 @@ def _requirements(user: User, settings: dict) -> list[str]:
 
 
 def _finish(response: Response, db: Session, user: User) -> dict:
-    settings = get_settings(db)
+    settings = get_settings(db, user.company_id)
     req = _requirements(user, settings)
     _set_cookie(response, user, "setup" if req else "full", settings["session_hours"])
     return {"step": "done", "requirements": req}
 
 
 def _me(user: User, db: Session, scope: str) -> dict:
-    settings = get_settings(db)
+    from ..models import Company
+    settings = get_settings(db, user.company_id)
+    company = db.get(Company, user.company_id) if user.company_id else None
     return {"id": user.id, "email": user.email, "name": user.name, "role": user.role,
             "totp_enabled": user.totp_enabled, "recovery_codes_left": len(user.recovery_codes or []),
             "requirements": _requirements(user, settings), "scope": scope, "app_name": config.APP_NAME,
-            "enforce_2fa": settings["enforce_2fa"], "sees_sql": sees_sql(user)}
+            "enforce_2fa": settings["enforce_2fa"], "sees_sql": sees_sql(user),
+            "company": {"id": company.id, "name": company.name, "has_logo": bool(company.logo_file)} if company else None,
+            "is_platform_admin": bool(user.is_platform_admin)}
 
 
 @router.post("/login")
@@ -78,6 +82,10 @@ def login(body: LoginIn, request: Request, response: Response, db: Session = Dep
         else:
             security.verify_password(body.password, "$2b$12$" + "x" * 53)   # equalise timing
         raise HTTPException(401, "Incorrect email or password.")
+    from ..models import Company
+    company = db.get(Company, user.company_id) if user.company_id else None
+    if company is not None and not company.is_active:
+        raise HTTPException(403, "Your company's access has been suspended. Contact the platform administrator.")
     if user.totp_enabled:
         _set_cookie(response, user, "mfa", 0.17)
         db.commit()
@@ -184,7 +192,7 @@ def twofa_enable(body: CodeIn, request: Request, response: Response,
 @router.post("/2fa/disable")
 def twofa_disable(body: DisableIn, request: Request, user: User = Depends(current_user),
                   db: Session = Depends(get_db)):
-    if get_settings(db)["enforce_2fa"]:
+    if get_settings(db, user.company_id)["enforce_2fa"]:
         raise HTTPException(400, "Your organisation requires two-factor authentication.")
     if not user.totp_enabled:
         raise HTTPException(400, "Two-factor authentication is not enabled.")

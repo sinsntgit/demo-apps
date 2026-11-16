@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 
 from .. import connectors, security
 from ..db import get_db, now
-from ..deps import admin_only, audit, can_use, current_user, get_connection, steward_up
+from .. import config
+from ..deps import admin_only, audit, can_use, current_user, get_connection, same_company, steward_up
 from ..models import Connection, ConnectionAccess, TrainingItem, User
 
 router = APIRouter(prefix="/api/connections", tags=["connections"])
@@ -47,11 +48,29 @@ def _public(c: Connection, db: Session, full: bool) -> dict:
     return out
 
 
-def _validate(body: ConnIn):
+def _validate(body: ConnIn, user: User, old_folder: str = ""):
     if body.db_type not in connectors.DB_TYPES:
         raise HTTPException(400, "Unknown database type.")
     if not body.name.strip():
         raise HTTPException(400, "Name is required.")
+    folder = str((body.config or {}).get("folder") or "").strip()
+    if body.db_type == "files" and folder and folder != old_folder:
+        # a folder on the server could be another company's files: only the platform administrator may set one
+        if not user.is_platform_admin:
+            raise HTTPException(400, "Only the platform administrator can point a data model at a folder on the server. Leave the folder blank and upload the files instead.")
+        try:
+            inside = Path(folder).expanduser().resolve().is_relative_to(config.DATA_DIR.resolve())
+        except OSError:
+            inside = False
+        if inside:
+            raise HTTPException(400, "That folder is inside the application's own data folder. Choose a different folder.")
+
+
+def _mine(db: Session, user: User, conn_id: int) -> Connection:
+    c = db.get(Connection, conn_id)
+    if not same_company(user, c):
+        raise HTTPException(404, "Not found")
+    return c
 
 
 @router.get("/types")
@@ -62,16 +81,16 @@ def types(_: User = Depends(current_user)):
 @router.get("")
 def list_connections(user: User = Depends(current_user), db: Session = Depends(get_db)):
     full = user.role in ("admin", "steward")
-    return [_public(c, db, full) for c in db.scalars(select(Connection).order_by(Connection.name))
-            if can_use(db, user, c)]
+    return [_public(c, db, full) for c in db.scalars(select(Connection).where(Connection.company_id == user.company_id)
+                                                     .order_by(Connection.name)) if can_use(db, user, c)]
 
 
 @router.post("")
 def create(body: ConnIn, request: Request, user: User = Depends(admin_only), db: Session = Depends(get_db)):
-    _validate(body)
-    if db.scalar(select(Connection.id).where(Connection.name == body.name.strip())):
+    _validate(body, user)
+    if db.scalar(select(Connection.id).where(Connection.name == body.name.strip(), Connection.company_id == user.company_id)):
         raise HTTPException(400, "A data model with this name already exists.")
-    c = Connection(name=body.name.strip(), description=body.description, db_type=body.db_type,
+    c = Connection(company_id=user.company_id, name=body.name.strip(), description=body.description, db_type=body.db_type,
                    config_enc=security.encrypt_json(body.config), is_active=body.is_active,
                    restricted=body.restricted, allow_samples=body.allow_samples,
                    sample_columns=body.sample_columns, masked_columns=body.masked_columns, created_by=user.id)
@@ -85,11 +104,12 @@ def create(body: ConnIn, request: Request, user: User = Depends(admin_only), db:
 @router.put("/{conn_id}")
 def update(conn_id: int, body: ConnIn, request: Request, user: User = Depends(admin_only),
            db: Session = Depends(get_db)):
-    _validate(body)
-    c = db.get(Connection, conn_id)
-    if not c:
-        raise HTTPException(404, "Not found")
+    c = _mine(db, user, conn_id)
     old = security.decrypt_json(c.config_enc)
+    _validate(body, user, str(old.get("folder") or "").strip())
+    if db.scalar(select(Connection.id).where(Connection.name == body.name.strip(), Connection.company_id == user.company_id,
+                                             Connection.id != c.id)):
+        raise HTTPException(400, "A data model with this name already exists.")
     cfg = dict(body.config)
     for k in connectors.SECRET_FIELDS:        # blank secret = keep the stored one
         if not cfg.get(k) and old.get(k):
@@ -113,9 +133,7 @@ def update(conn_id: int, body: ConnIn, request: Request, user: User = Depends(ad
 
 @router.delete("/{conn_id}")
 def remove(conn_id: int, request: Request, user: User = Depends(admin_only), db: Session = Depends(get_db)):
-    c = db.get(Connection, conn_id)
-    if not c:
-        raise HTTPException(404, "Not found")
+    c = _mine(db, user, conn_id)
     connectors.forget(c.id)
     audit(db, request, user, "connection.deleted", c.name)
     db.delete(c)
@@ -154,7 +172,8 @@ def schema(conn_id: int, user: User = Depends(current_user), db: Session = Depen
 
 
 @router.get("/{conn_id}/access")
-def get_access(conn_id: int, _: User = Depends(admin_only), db: Session = Depends(get_db)):
+def get_access(conn_id: int, user: User = Depends(admin_only), db: Session = Depends(get_db)):
+    _mine(db, user, conn_id)
     return {"user_ids": list(db.scalars(select(ConnectionAccess.user_id).where(
         ConnectionAccess.connection_id == conn_id)))}
 
@@ -162,13 +181,12 @@ def get_access(conn_id: int, _: User = Depends(admin_only), db: Session = Depend
 @router.put("/{conn_id}/access")
 def set_access(conn_id: int, body: AccessIn, request: Request, user: User = Depends(admin_only),
                db: Session = Depends(get_db)):
-    c = db.get(Connection, conn_id)
-    if not c:
-        raise HTTPException(404, "Not found")
+    c = _mine(db, user, conn_id)
     db.execute(delete(ConnectionAccess).where(ConnectionAccess.connection_id == conn_id))
-    for uid in set(body.user_ids):
+    ids = {u.id for u in db.scalars(select(User).where(User.id.in_(set(body.user_ids)), User.company_id == user.company_id))}
+    for uid in ids:                       # only people of this company
         db.add(ConnectionAccess(connection_id=conn_id, user_id=uid))
-    audit(db, request, user, "connection.access_changed", c.name, f"{len(set(body.user_ids))} users")
+    audit(db, request, user, "connection.access_changed", c.name, f"{len(ids)} users")
     db.commit()
     return {"ok": True}
 

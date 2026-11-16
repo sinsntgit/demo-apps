@@ -40,7 +40,8 @@ async function recheck() {
   checking = true;
   try {
     const me = await api('GET', '/api/auth/me');
-    const changed = me.id !== state.me.id || me.role !== state.me.role || me.scope !== state.me.scope || me.requirements.length !== state.me.requirements.length;
+    const changed = me.id !== state.me.id || me.role !== state.me.role || me.scope !== state.me.scope || me.requirements.length !== state.me.requirements.length
+      || me.company?.name !== state.me.company?.name || me.company?.has_logo !== state.me.company?.has_logo || (state.logoChanged && !(state.logoChanged = false));
     if (changed) { document.querySelectorAll('.overlay').forEach(o => o.remove()); await boot(); }
     else state.me = me;
     return changed;
@@ -52,7 +53,10 @@ window.addEventListener('focus', () => { recheck(); });
 
 function shell() {
   const main = h('div', { class: 'main' });
-  const nav = h('nav', { class: 'nav' }, h('div', { class: 'brand' }, h('i', {}, '▮▮'), state.me.app_name),
+  const co = state.me.company;
+  const company = co ? h('div', { class: 'company', title: co.name },
+    co.has_logo ? h('img', { src: `/api/company/logo?v=${state.logoVersion || 0}`, alt: co.name + ' logo' }) : null, h('span', {}, co.name)) : null;
+  const nav = h('nav', { class: 'nav' }, h('div', { class: 'brand' }, h('i', {}, '▮▮'), state.me.app_name), company,
     ROUTES.filter(r => allowed(r) && !r.hidden).map(r => r.sect ? h('div', { class: 'sect' }, r.sect) : h('a', { href: '#/' + r.path, 'data-path': r.path }, h('span', {}, r.icon), r.label)),
     h('div', { class: 'who' }, h('a', { href: '#/account', 'data-path': 'account', style: 'padding:4px 0' }, h('div', {}, h('b', {}, state.me.name || state.me.email), h('div', { class: 'dim' }, state.me.role))),
       h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 'btn sm', onclick: toggleTheme, title: 'Switch light / dark theme' }, '◐ Theme'),

@@ -2,7 +2,7 @@
 import { h, fill, api, busy, fail, toast, modal, field, check, select, tabs, confirmDialog, fmtTime, state } from './core.js';
 
 export async function adminView(root, arg) {
-  const t = tabs([['users', 'Users', usersTab], ['groups', 'User groups', groupsTab], ['access', 'Data access', accessTab], ['models', 'AI models', modelsTab], ['senders', 'Email senders', sendersTab], ['settings', 'Settings', settingsTab], ['audit', 'Audit log', auditTab]], arg || 'users');
+  const t = tabs([...(state.me.is_platform_admin ? [['companies', 'Companies', companiesTab]] : []), ['users', 'Users', usersTab], ['groups', 'User groups', groupsTab], ['access', 'Data access', accessTab], ['models', 'AI models', modelsTab], ['senders', 'Email senders', sendersTab], ['settings', 'Settings', settingsTab], ['audit', 'Audit log', auditTab]], arg || 'users');
   fill(root, h('div', { class: 'page' }, h('div', { class: 'page-head' }, h('h1', {}, 'Admin')), t));
 }
 
@@ -24,9 +24,14 @@ function usersTab(el) {
       fill(viewNote, analyst ? 'Results only: answers show the chart, table and summary; the user can still say whether they are correct.' : 'Data stewards and administrators always see SQL and code — they review and fix it.'); };
     syncView();
     const active = check('Account enabled', u ? u.is_active : true);
-    modal(u ? `Edit ${u.email}` : 'Add user', h('div', { class: 'stack' }, field('Email', email), field('Name', name), field('Role', role), field('What answers show', view), h('div', { class: 'small dim', style: 'margin-top:-6px' }, viewNote), active), {
+    const pa = check('Platform administrator — also manages companies and the AI models / email senders shared with them', !!u?.is_platform_admin);
+    const paWrap = h('div', {}, state.me.is_platform_admin ? pa : null);
+    const syncPa = () => paWrap.classList.toggle('hidden', role.value !== 'admin');
+    role.addEventListener('change', syncPa); syncPa();
+    modal(u ? `Edit ${u.email}` : 'Add user', h('div', { class: 'stack' }, field('Email', email), field('Name', name), field('Role', role), field('What answers show', view), h('div', { class: 'small dim', style: 'margin-top:-6px' }, viewNote), paWrap, active), {
       actions: close => [h('button', { class: 'btn', onclick: close }, 'Cancel'), h('button', { class: 'btn primary', onclick: e => busy(e.target, async () => {
-        const payload = { email: email.value, name: name.value, role: role.value, is_active: active.input.checked, show_sql: view.value !== 'results' };
+        const payload = { email: email.value, name: name.value, role: role.value, is_active: active.input.checked, show_sql: view.value !== 'results',
+          ...(state.me.is_platform_admin ? { is_platform_admin: role.value === 'admin' && pa.input.checked } : {}) };
         const out = await (u ? api('PUT', `/api/admin/users/${u.id}`, payload) : api('POST', '/api/admin/users', payload));
         close(); draw(); if (out.temporary_password) showPassword(out.email, out.temporary_password);
       }) }, 'Save')] });
@@ -40,7 +45,8 @@ function usersTab(el) {
     fill(el, h('div', { class: 'stack' }, h('div', {}, h('button', { class: 'btn primary', onclick: () => edit(null) }, '＋ Add user')),
       h('div', { class: 'tbl-wrap', style: 'max-height:none' }, h('table', { class: 'tbl' },
         h('thead', {}, h('tr', {}, ['User', 'Role', 'Security', 'Last sign-in', ''].map(x => h('th', {}, x)))),
-        h('tbody', {}, users.map(u => h('tr', {}, h('td', {}, h('b', {}, u.name || u.email), h('div', { class: 'small dim' }, u.email)), h('td', {}, u.role, u.role === 'analyst' && u.show_sql === false ? h('div', {}, h('span', { class: 'badge' }, 'results only')) : null),
+        h('tbody', {}, users.map(u => h('tr', {}, h('td', {}, h('b', {}, u.name || u.email), h('div', { class: 'small dim' }, u.email)), h('td', {}, u.role, u.role === 'analyst' && u.show_sql === false ? h('div', {}, h('span', { class: 'badge' }, 'results only')) : null,
+            u.is_platform_admin ? h('div', {}, h('span', { class: 'badge info' }, 'platform admin')) : null),
           h('td', {}, h('div', { class: 'row wrap' }, u.is_active ? null : h('span', { class: 'badge bad' }, 'disabled'), h('span', { class: 'badge ' + (u.totp_enabled ? 'good' : 'warn') }, u.totp_enabled ? '2FA on' : '2FA off'),
             u.locked ? h('span', { class: 'badge bad' }, 'locked') : null, u.must_change_password ? h('span', { class: 'badge' }, 'temporary password') : null)),
           h('td', { class: 'nowrap' }, fmtTime(u.last_login_at)),
@@ -56,7 +62,7 @@ function usersTab(el) {
 function modelsTab(el) {
   const PRESETS = { anthropic: [['claude-opus-5-5', 'Claude Opus 5.5', 4, 20], ['claude-sonnet-5-5', 'Claude Sonnet 5.5', 2, 10], ['claude-haiku-5-5', 'Claude Haiku 5.5', 0.1, 0.5], ['claude-fable-5-2', 'Claude Fable 5.2', 8, 40]], openai: [], openai_compatible: [] };
   let providers = {};
-  const edit = m => {
+  const edit = (m, scope = 'company') => {
     const name = h('input', { type: 'text', value: m?.name || '', placeholder: 'Shown to users in the model picker' });
     const modelId = h('input', { type: 'text', value: m?.model_id || '', placeholder: 'e.g. claude-opus-5-5, gpt-5, llama3.3:70b', list: 'model-presets' });
     const presets = h('datalist', { id: 'model-presets' });
@@ -74,28 +80,121 @@ function modelsTab(el) {
     }
     modelId.addEventListener('change', () => { const hit = PRESETS[provider.value].find(x => x[0] === modelId.value); if (hit) { if (!name.value) name.value = hit[1]; pin.value = hit[2]; pout.value = hit[3]; } });
     sync();
-    modal(m ? `Edit ${m.name}` : 'Add AI model', h('div', { class: 'stack' }, field('Provider', provider), h('div', { class: 'grid2' }, field('Model ID', modelId), field('Display name', name)), presets, urlField,
+    modal(m ? `Edit ${m.name}` : (scope === 'platform' ? 'Add a shared AI model' : 'Add AI model'), h('div', { class: 'stack' },
+      (m?.scope || scope) === 'platform' ? h('div', { class: 'banner info small' }, 'A shared (platform) model. After saving, use “Companies…” to choose which companies may use it. Its key is never shown to them.') : null,
+      field('Provider', provider), h('div', { class: 'grid2' }, field('Model ID', modelId), field('Display name', name)), presets, urlField,
       field('API key', key, 'encrypted at rest; never shown again'), effortField,
       h('div', { class: 'grid2' }, field('Input price', pin, '$ per million tokens'), field('Output price', pout, '$ per million tokens')), enabled, def,
       h('p', { class: 'small dim' }, 'Whatever the provider, the model receives only the question, schema and training notes — never query results. Choose a self-hosted model if even schema names must stay on your network.')), {
       actions: close => [h('button', { class: 'btn', onclick: close }, 'Cancel'), h('button', { class: 'btn primary', onclick: e => busy(e.target, async () => {
         const payload = { name: name.value, provider: provider.value, model_id: modelId.value, base_url: provider.value === 'anthropic' ? '' : baseUrl.value, api_key: key.value, effort: provider.value === 'anthropic' ? effort.value : '',
-          enabled: enabled.input.checked, is_default: def.input.checked, price_in: Number(pin.value) || 0, price_out: Number(pout.value) || 0 };
+          enabled: enabled.input.checked, is_default: def.input.checked, price_in: Number(pin.value) || 0, price_out: Number(pout.value) || 0, scope: m ? m.scope : scope };
         await (m ? api('PUT', `/api/admin/models/${m.id}`, payload) : api('POST', '/api/admin/models', payload)); close(); toast('Saved'); draw();
       }) }, 'Save')] });
   };
+  const testBtn = m => { const status = h('span', { class: 'small' });
+    const b = h('button', { class: 'btn sm', onclick: () => busy(b, async () => { status.textContent = 'Testing…'; const r = await api('POST', `/api/admin/models/${m.id}/test`); fill(status, h('span', { class: 'badge ' + (r.ok ? 'good' : 'bad') }, r.ok ? '✓ ' : '✗ ', r.message)); }) }, 'Test');
+    return [status, b]; };
+  const info = m => h('div', { style: 'flex:1;min-width:220px' }, h('div', { class: 'row wrap' }, h('b', {}, m.name), m.is_default ? h('span', { class: 'badge info' }, 'default') : null,
+      m.enabled ? null : h('span', { class: 'badge bad' }, 'disabled'), m.has_key === false && m.provider !== 'openai_compatible' ? h('span', { class: 'badge warn' }, 'no API key') : null),
+    h('div', { class: 'small dim' }, `${providers[m.provider]?.label || m.provider} · ${m.model_id}${m.base_url ? ' · ' + m.base_url : ''} · $${m.price_in}/$${m.price_out} per MTok`));
+  const editable = m => [h('button', { class: 'btn sm', onclick: () => edit(m) }, 'Edit'),
+    h('button', { class: 'btn sm danger', onclick: async () => { if (await confirmDialog('Delete model?', `${m.name} will be removed. Past queries keep its name.`, 'Delete')) { await api('DELETE', `/api/admin/models/${m.id}`).catch(fail); draw(); } } }, 'Delete')];
   async function draw() {
     const data = await api('GET', '/api/admin/models'); providers = data.providers;
-    fill(el, h('div', { class: 'stack' }, h('div', {}, h('button', { class: 'btn primary', onclick: () => edit(null) }, '＋ Add model')),
-      data.models.length ? h('div', { class: 'card flush' }, data.models.map(m => {
-        const status = h('span', { class: 'small' });
-        const test = h('button', { class: 'btn sm', onclick: () => busy(test, async () => { status.textContent = 'Testing…'; const r = await api('POST', `/api/admin/models/${m.id}/test`); fill(status, h('span', { class: 'badge ' + (r.ok ? 'good' : 'bad') }, r.ok ? '✓ ' : '✗ ', r.message)); }) }, 'Test');
-        return h('div', { class: 'item' }, h('div', { class: 'row wrap' }, h('div', { style: 'flex:1;min-width:220px' }, h('div', { class: 'row wrap' }, h('b', {}, m.name), m.is_default ? h('span', { class: 'badge info' }, 'default') : null,
-          m.enabled ? null : h('span', { class: 'badge bad' }, 'disabled'), !m.has_key && m.provider !== 'openai_compatible' ? h('span', { class: 'badge warn' }, 'no API key') : null),
-        h('div', { class: 'small dim' }, `${providers[m.provider]?.label || m.provider} · ${m.model_id}${m.base_url ? ' · ' + m.base_url : ''} · $${m.price_in}/$${m.price_out} per MTok`)),
-        status, test, h('button', { class: 'btn sm', onclick: () => edit(m) }, 'Edit'),
-        h('button', { class: 'btn sm danger', onclick: async () => { if (await confirmDialog('Delete model?', `${m.name} will be removed. Past queries keep its name.`, 'Delete')) { await api('DELETE', `/api/admin/models/${m.id}`).catch(fail); draw(); } } }, 'Delete')));
-      })) : h('div', { class: 'empty' }, 'No models configured.')));
+    const save = async patch => { await api('PUT', '/api/admin/company/models', { hidden: data.shared.filter(m => !m.on).map(m => m.id), default_id: data.default_id, ...patch }); toast('Saved'); draw(); };
+    const usable = [...data.models, ...data.shared.filter(m => m.on)].filter(m => m.enabled);
+    const def = select([['', 'Automatic (first default model)'], ...usable.map(m => [m.id, m.name + (m.scope === 'platform' ? ' — shared' : '')])], data.default_id || '', v => save({ default_id: v ? Number(v) : null }), { style: 'max-width:380px' });
+    fill(el, h('div', { class: 'stack' },
+      h('div', { class: 'card stack' }, field('Default AI model for your company', def, 'pre-selected for everyone on the Ask page')),
+      h('h2', { style: 'margin:6px 0 0' }, 'Your company’s own models'),
+      h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: () => edit(null, 'company') }, '＋ Add model'), h('span', { class: 'small dim' }, 'Only people in your company see these, with your own API keys.')),
+      data.models.length ? h('div', { class: 'card flush' }, data.models.map(m => h('div', { class: 'item' }, h('div', { class: 'row wrap' }, info(m), ...testBtn(m), ...editable(m)))))
+        : h('div', { class: 'empty small' }, 'No models of your own.' + (data.shared.length ? ' Your company uses the shared models below.' : '')),
+      data.shared.length && !data.is_platform_admin ? [h('h2', { style: 'margin:6px 0 0' }, 'Shared with your company by the platform'),
+        h('p', { class: 'small dim', style: 'margin:0' }, 'Set up and paid for by the platform administrator. Untick one to hide it from your users.'),
+        h('div', { class: 'card flush' }, data.shared.map(m => h('div', { class: 'item' }, h('div', { class: 'row wrap' }, info(m), ...testBtn(m),
+          check('Available to our users', m.on, v => { m.on = v; save({}); })))))] : null,
+      data.is_platform_admin ? [h('h2', { style: 'margin:14px 0 0' }, 'Platform models — shared with companies'),
+        h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => edit(null, 'platform') }, '＋ Add shared model'), h('span', { class: 'small dim' }, 'You decide, per model, which companies may use it.')),
+        (data.platform || []).length ? h('div', { class: 'card flush' }, data.platform.map(m => h('div', { class: 'item' }, h('div', { class: 'row wrap' }, info(m),
+          h('span', { class: 'badge' }, shareLabel(m, data.companies)), h('button', { class: 'btn sm', onclick: () => sharingDialog(m, data.companies, `/api/admin/models/${m.id}/sharing`, draw) }, 'Companies…'),
+          (sh => sh ? check('Available in our company', sh.on, v => { sh.on = v; save({}); }) : null)(data.shared.find(x => x.id === m.id)),
+          ...testBtn(m), ...editable(m))))) : h('div', { class: 'empty small' }, 'No shared models yet.')] : null));
+  }
+  draw().catch(fail);
+}
+
+const shareLabel = (x, companies) => x.share_all ? 'All companies'
+  : !(x.shared_companies || []).length ? 'Not shared'
+  : (x.shared_companies.length <= 2 ? x.shared_companies.map(id => companies.find(c => c.id === id)?.name || '#' + id).join(', ') : `${x.shared_companies.length} companies`);
+
+function sharingDialog(item, companies, url, done) {
+  const picked = new Set(item.shared_companies || []);
+  const all = check('All companies — including companies added later', !!item.share_all, () => sync());
+  const boxes = h('div', { class: 'card flush', style: 'max-height:40vh;overflow:auto' }, companies.map(c => h('div', { class: 'item' },
+    check(c.name, picked.has(c.id), v => { v ? picked.add(c.id) : picked.delete(c.id); }))));
+  const sync = () => boxes.classList.toggle('hidden', all.input.checked);
+  sync();
+  modal(`Which companies may use “${item.name || item.label}”?`, h('div', { class: 'stack' }, all, boxes,
+    h('p', { class: 'small dim', style: 'margin:0' }, 'Each company’s administrator can still switch it off for their company. A company never sees the API key, password or server details.')), {
+    actions: close => [h('button', { class: 'btn', onclick: close }, 'Cancel'), h('button', { class: 'btn primary', onclick: e => busy(e.target, async () => {
+      await api('PUT', url, { share_all: all.input.checked, company_ids: [...picked] }); close(); toast('Sharing saved'); done();
+    }) }, 'Save')] });
+}
+
+function companiesTab(el) {
+  const showPw = (email, pw) => showPassword(email, pw);
+  const add = () => {
+    const name = h('input', { type: 'text', placeholder: 'e.g. Acme Retail Ltd' });
+    const email = h('input', { type: 'email', placeholder: 'their administrator’s email' }), person = h('input', { type: 'text', placeholder: 'their name' });
+    const samples = check('Add the sample data models (Retail sales and SAP Sales & Finance) so they can try it at once', true);
+    modal('Add a company', h('div', { class: 'stack' }, field('Company name', name), h('div', { class: 'grid2' }, field('First administrator — email', email), field('Name', person)), samples,
+      h('p', { class: 'small dim', style: 'margin:0' }, 'The company’s data, users, chats, reports, training and audit log are separate from every other company’s. Its administrator manages everything inside it. To give it AI models or email senders, share them under AI models / Email senders — or its administrator adds their own.')), {
+      actions: close => [h('button', { class: 'btn', onclick: close }, 'Cancel'), h('button', { class: 'btn primary', onclick: e => busy(e.target, async () => {
+        const r = await api('POST', '/api/admin/companies', { name: name.value, admin_email: email.value, admin_name: person.value, samples: samples.input.checked });
+        close(); draw(); if (r.temporary_password) showPw(r.admin_email, r.temporary_password); else toast('Company added');
+      }) }, 'Add company')] });
+  };
+  const editCo = c => {
+    const name = h('input', { type: 'text', value: c.name });
+    const active = check('Active — its people can sign in', c.is_active);
+    const file = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp' });
+    modal(`Edit ${c.name}`, h('div', { class: 'stack' }, field('Company name', name), c.is_mine ? null : active,
+      field('Logo', file, 'PNG, JPEG or WebP, at most 512 KB — leave empty to keep the current one'),
+      c.is_mine ? null : h('p', { class: 'small dim', style: 'margin:0' }, 'Making a company inactive signs all its people out at once; nothing is deleted.')), {
+      actions: close => [h('button', { class: 'btn', onclick: close }, 'Cancel'), h('button', { class: 'btn primary', onclick: e => busy(e.target, async () => {
+        await api('PUT', `/api/admin/companies/${c.id}`, { name: name.value, is_active: c.is_mine ? true : active.input.checked });
+        if (file.files[0]) { const fd = new FormData(); fd.append('upload', file.files[0]); await api('POST', `/api/admin/companies/${c.id}/logo`, fd); if (c.is_mine) state.logoChanged = true; }
+        close(); toast('Saved'); draw();
+      }) }, 'Save')] });
+  };
+  const addAdmin = c => {
+    const email = h('input', { type: 'email' }), person = h('input', { type: 'text' });
+    modal(`Add an administrator to ${c.name}`, h('div', { class: 'stack' }, field('Email', email), field('Name', person)), {
+      actions: close => [h('button', { class: 'btn', onclick: close }, 'Cancel'), h('button', { class: 'btn primary', onclick: e => busy(e.target, async () => {
+        const r = await api('POST', `/api/admin/companies/${c.id}/admins`, { email: email.value, name: person.value }); close(); draw(); showPw(r.email, r.temporary_password);
+      }) }, 'Add')] });
+  };
+  const reset = (c, a) => async () => {
+    if (!await confirmDialog('Reset this administrator’s password?', `${a.email} (${c.name}) gets a new temporary password and is signed out.`, 'Reset', false)) return;
+    try { const r = await api('POST', `/api/admin/companies/${c.id}/admins/${a.id}/reset-password`); showPw(r.email, r.temporary_password); } catch (e) { fail(e); }
+  };
+  async function draw() {
+    const list = await api('GET', '/api/admin/companies');
+    fill(el, h('div', { class: 'stack' },
+      h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: add }, '＋ Add company'),
+        h('span', { class: 'small dim' }, 'Each company is a separate tenant: its own users, data models, training, chats, reports, settings and audit log. You see only these totals, not their data.')),
+      h('div', { class: 'tbl-wrap', style: 'max-height:none' }, h('table', { class: 'tbl' },
+        h('thead', {}, h('tr', {}, ['Company', 'Administrators', 'Users', 'Data models', 'Reports', 'Questions (30 days)', 'AI spend (30 days)', ''].map(t => h('th', {}, t)))),
+        h('tbody', {}, list.map(c => h('tr', {},
+          h('td', {}, h('b', {}, c.name), ' ', c.is_mine ? h('span', { class: 'badge info' }, 'yours') : null, ' ', c.is_active ? null : h('span', { class: 'badge bad' }, 'inactive'), c.has_logo ? h('div', { class: 'small dim' }, 'has a logo') : null),
+          h('td', { class: 'small' }, c.admins.length ? c.admins.map(a => h('div', { class: 'row', style: 'gap:6px' }, h('span', {}, a.name || a.email, h('span', { class: 'dim' }, ' · ' + a.email)),
+            c.is_mine ? null : h('button', { class: 'btn ghost sm', title: 'Reset this administrator’s password', onclick: reset(c, a) }, '↺'))) : h('span', { class: 'badge warn' }, 'none')),
+          h('td', { class: 'num' }, c.users), h('td', { class: 'num' }, c.data_models), h('td', { class: 'num' }, c.reports), h('td', { class: 'num' }, c.questions_30d),
+          h('td', { class: 'num' }, '$' + c.spend_30d.toFixed(2)),
+          h('td', { class: 'right nowrap' }, h('button', { class: 'btn sm', onclick: () => editCo(c) }, 'Edit'), ' ', h('button', { class: 'btn sm', onclick: () => addAdmin(c) }, '＋ Admin'))))))),
+      h('p', { class: 'small dim' }, 'AI spend is tokens × the prices set on each model, for questions and rephrasing. Shared models and email senders are offered to companies under AI models and Email senders.')));
   }
   draw().catch(fail);
 }
@@ -107,10 +206,22 @@ function settingsTab(el) {
     const text = (k, ph) => h('input', { type: 'text', value: s[k] || '', placeholder: ph, oninput: e => { s[k] = e.target.value; } });
     const fb = select([['approval', 'Send to a steward for approval first'], ['instant', 'Use immediately for training']], s.feedback_mode, v => { s.feedback_mode = v; }, { style: 'max-width:340px' });
     const save = h('button', { class: 'btn primary', onclick: () => busy(save, async () => { await api('PUT', '/api/admin/settings', s); toast('Settings saved'); }) }, 'Save settings');
+    const co = state.me.company;
+    const logoBox = h('div', { class: 'logo-box' }, co?.has_logo ? h('img', { src: `/api/company/logo?v=${Date.now()}`, alt: 'Current logo' }) : h('span', { class: 'small dim' }, 'No logo'));
+    const logoFile = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', class: 'hidden', onchange: async e => {
+      const fd = new FormData(); fd.append('upload', e.target.files[0]);
+      try { await api('POST', '/api/company/logo', fd); state.logoChanged = true; state.logoVersion = Date.now(); toast('Logo saved'); location.reload(); } catch (ex) { fail(ex); }
+    } });
     fill(el, h('div', { class: 'stack', style: 'max-width:680px' },
+      co ? h('div', { class: 'card stack' }, h('h2', {}, 'Company'), h('div', {}, h('b', {}, co.name), h('span', { class: 'small dim' }, state.me.is_platform_admin ? ' — rename it under Companies' : ' — the platform administrator can rename it')),
+        h('div', { class: 'row wrap', style: 'align-items:center' }, logoBox, h('div', { class: 'stack', style: 'gap:6px' },
+          h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => logoFile.click() }, '⬆ Upload logo'),
+            co.has_logo ? h('button', { class: 'btn ghost', onclick: async () => { await api('DELETE', '/api/company/logo').catch(fail); state.logoChanged = true; location.reload(); } }, 'Remove') : null),
+          h('span', { class: 'small dim' }, 'PNG, JPEG or WebP, at most 512 KB. Shown in the menu for everyone in your company and at the top of report PDFs.')), logoFile)) : null,
       h('div', { class: 'card stack' }, h('h2', {}, 'Security'), bool('enforce_2fa', 'Require two-factor authentication for everyone', 'Users without 2FA are sent to enrolment on their next request — including you.'),
-        h('div', { class: 'grid2' }, field('Session length (hours)', num('session_hours')), field('Questions per user per minute', num('rate_limit_per_min')),
-          field('Failed sign-ins before lockout', num('lockout_attempts')), field('Lockout duration (minutes)', num('lockout_minutes')))),
+        h('div', { class: 'grid2' }, field('Questions per user per minute', num('rate_limit_per_min')),
+          ...(s.platform_keys.length ? [field('Session length (hours)', num('session_hours'), 'all companies'), field('Failed sign-ins before lockout', num('lockout_attempts'), 'all companies'), field('Lockout duration (minutes)', num('lockout_minutes'), 'all companies')] : [])),
+        s.platform_keys.length ? null : h('p', { class: 'small dim', style: 'margin:0' }, 'Session length and account lockout are set by the platform administrator for all companies.')),
       h('div', { class: 'card stack' }, h('h2', {}, 'Query execution'), h('div', { class: 'grid2' }, field('Maximum rows returned', num('max_rows')), field('Query timeout (seconds)', num('query_timeout_s')),
         field('Automatic SQL repair attempts', num('max_repair_attempts'), 'after a database error')),
         bool('store_results', 'Keep result snapshots in chat history', 'Turn off if query results must never be stored outside the source database. Users can still re-run saved SQL.')),
@@ -272,7 +383,7 @@ const MAIL_PRESETS = {
 };
 
 function sendersTab(el) {
-  function edit(s, done) {
+  function edit(s, done, scope = 'company') {
     const v = s || { mode: 'smtp', port: 587, active: true };
     const input = (k, type, ph) => h('input', { type: type || 'text', value: v[k] ?? '', placeholder: ph || '', autocomplete: 'off' });
     const f = { label: input('label', 'text', 'e.g. Reports mailbox'), from_name: input('from_name', 'text', 'e.g. AskData Reports'), from_email: input('from_email', 'email', 'reports@yourcompany.com'),
@@ -299,7 +410,7 @@ function sendersTab(el) {
       h('p', { class: 'small dim', style: 'margin:0' }, 'Passwords are encrypted at rest and never shown again. After saving, use Verify to check the connection and Send test to send yourself a message.')), {
       wide: true, actions: close => [h('button', { class: 'btn', onclick: close }, 'Cancel'), h('button', { class: 'btn primary', onclick: e => busy(e.target, async () => {
         const body = { ...Object.fromEntries(Object.entries(f).map(([k, i]) => [k, i.value])), port: Number(f.port.value) || 587, mode: mode.value, password: password.value,
-          secure: secure.input.checked, active: active.input.checked, is_default: def.input.checked };
+          secure: secure.input.checked, active: active.input.checked, is_default: def.input.checked, scope: s ? s.scope : scope };
         await (s ? api('PUT', `/api/admin/senders/${s.id}`, body) : api('POST', '/api/admin/senders', body)); close(); toast('Sender saved'); done();
       }) }, 'Save sender')] });
   }
@@ -314,25 +425,41 @@ function sendersTab(el) {
       }) }, 'Send test')] });
   }
   async function draw() {
-    const [list, log] = await Promise.all([api('GET', '/api/admin/senders'), api('GET', '/api/admin/email-log')]);
+    const [data, log] = await Promise.all([api('GET', '/api/admin/senders'), api('GET', '/api/admin/email-log')]);
+    const list = data.senders;
     const STATUS = { sent: 'good', failed: 'bad', simulated: 'warn' };
+    const saveChoice = async patch => { await api('PUT', '/api/admin/company/senders', { hidden: data.shared.filter(x => !x.on).map(x => x.id), default_id: data.default_id, ...patch }); toast('Saved'); draw(); };
+    const usable = [...list, ...data.shared.filter(x => x.on)].filter(x => x.active);
+    const senderRows = (rows, platform) => h('div', { class: 'tbl-wrap', style: 'max-height:none' }, h('table', { class: 'tbl' },
+      h('thead', {}, h('tr', {}, ['Sender', 'Server', 'Status', ''].map(t => h('th', {}, t)))),
+      h('tbody', {}, rows.map(s => h('tr', {},
+        h('td', {}, h('b', {}, s.label), ' ', s.is_default ? h('span', { class: 'badge info' }, 'default') : null, h('div', { class: 'small dim' }, `${s.from_name ? s.from_name + ' ' : ''}<${s.from_email}>`),
+          platform ? h('div', {}, h('span', { class: 'badge' }, shareLabel(s, data.companies))) : null,
+          platform ? (sh => sh ? check('Available in our company', sh.on, v => { sh.on = v; saveChoice({}); }) : null)(data.shared.find(x => x.id === s.id)) : null),
+        h('td', { class: 'small' }, s.mode === 'smtp' ? [`${s.host}:${s.port} ${s.secure ? 'SSL/TLS' : 'STARTTLS'}`, h('div', { class: 'dim' }, s.username)] : h('span', { class: 'badge warn' }, 'simulation')),
+        h('td', {}, !s.active ? h('span', { class: 'badge bad' }, 'disabled') : s.mode === 'simulate' ? h('span', { class: 'dim small' }, '—')
+          : s.last_error ? [h('span', { class: 'badge bad' }, 'error'), h('div', { class: 'small', style: 'color:var(--bad);max-width:300px' }, s.last_error)]
+          : s.verified_at ? h('span', { class: 'badge good' }, `✓ verified ${fmtTime(s.verified_at)}`) : h('span', { class: 'badge' }, 'not verified yet')),
+        h('td', { class: 'right nowrap' }, platform ? [h('button', { class: 'btn sm', onclick: () => sharingDialog(s, data.companies, `/api/admin/senders/${s.id}/sharing`, draw) }, 'Companies…'), ' '] : null,
+          h('button', { class: 'btn sm', onclick: e => busy(e.target, async () => { e.target.textContent = 'Checking…'; const r = await api('POST', `/api/admin/senders/${s.id}/verify`); toast(r.message, !r.ok); draw(); }) }, 'Verify'), ' ',
+          h('button', { class: 'btn sm', onclick: () => sendTest(s, draw) }, 'Send test'), ' ', h('button', { class: 'btn sm', onclick: () => edit(s, draw) }, 'Edit'), ' ',
+          h('button', { class: 'btn sm danger', onclick: async () => { if (await confirmDialog('Delete sender?', `“${s.label}” — schedules that use it fall back to the default sender.`, 'Delete')) { await api('DELETE', `/api/admin/senders/${s.id}`).catch(fail); draw(); } } }, 'Delete')))))));
     fill(el, h('div', { class: 'stack' },
       h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: () => edit(null, draw) }, '＋ Add sender'),
         h('span', { class: 'small dim' }, 'Scheduled reports are emailed from these mailboxes. Add one sender per mailbox you send from.')),
-      !list.some(s => s.mode === 'smtp' && s.active) ? h('div', { class: 'banner warn' }, h('b', {}, 'No real sending is configured yet. '),
+      usable.length ? h('div', { class: 'card stack' }, field('Default sender for your company', select([['', 'Automatic'], ...usable.map(x => [x.id, x.label + (x.scope === 'platform' ? ' — shared' : '')])], data.default_id || '',
+        v => saveChoice({ default_id: v ? Number(v) : null }), { style: 'max-width:380px' }), 'used when a schedule says “Default sender”')) : null,
+      !usable.some(s => s.mode === 'smtp') ? h('div', { class: 'banner warn' }, h('b', {}, 'No real sending is configured yet. '),
         list.length ? 'Your senders are disabled or in simulation mode — ' : 'Add a sender, pick a provider preset, enter the username and password, then click Verify and Send test — until then ',
         'scheduled reports are saved in the app but no email leaves the server.') : null,
-      list.length ? h('div', { class: 'tbl-wrap', style: 'max-height:none' }, h('table', { class: 'tbl' },
-        h('thead', {}, h('tr', {}, ['Sender', 'Server', 'Status', ''].map(t => h('th', {}, t)))),
-        h('tbody', {}, list.map(s => h('tr', {},
-          h('td', {}, h('b', {}, s.label), ' ', s.is_default ? h('span', { class: 'badge info' }, 'default') : null, h('div', { class: 'small dim' }, `${s.from_name ? s.from_name + ' ' : ''}<${s.from_email}>`)),
-          h('td', { class: 'small' }, s.mode === 'smtp' ? [`${s.host}:${s.port} ${s.secure ? 'SSL/TLS' : 'STARTTLS'}`, h('div', { class: 'dim' }, s.username)] : h('span', { class: 'badge warn' }, 'simulation')),
-          h('td', {}, !s.active ? h('span', { class: 'badge bad' }, 'disabled') : s.mode === 'simulate' ? h('span', { class: 'dim small' }, '—')
-            : s.last_error ? [h('span', { class: 'badge bad' }, 'error'), h('div', { class: 'small', style: 'color:var(--bad);max-width:300px' }, s.last_error)]
-            : s.verified_at ? h('span', { class: 'badge good' }, `✓ verified ${fmtTime(s.verified_at)}`) : h('span', { class: 'badge' }, 'not verified yet')),
-          h('td', { class: 'right nowrap' }, h('button', { class: 'btn sm', onclick: e => busy(e.target, async () => { e.target.textContent = 'Checking…'; const r = await api('POST', `/api/admin/senders/${s.id}/verify`); toast(r.message, !r.ok); draw(); }) }, 'Verify'), ' ',
-            h('button', { class: 'btn sm', onclick: () => sendTest(s, draw) }, 'Send test'), ' ', h('button', { class: 'btn sm', onclick: () => edit(s, draw) }, 'Edit'), ' ',
-            h('button', { class: 'btn sm danger', onclick: async () => { if (await confirmDialog('Delete sender?', `“${s.label}” — schedules that use it fall back to the default sender.`, 'Delete')) { await api('DELETE', `/api/admin/senders/${s.id}`).catch(fail); draw(); } } }, 'Delete'))))))) : null,
+      list.length ? senderRows(list, false) : null,
+      data.shared.length && !data.is_platform_admin ? [h('h2', { style: 'margin:6px 0 0' }, 'Shared with your company by the platform'),
+        h('div', { class: 'card flush' }, data.shared.map(x => h('div', { class: 'item' }, h('div', { class: 'row wrap' },
+          h('div', { style: 'flex:1' }, h('b', {}, x.label), h('div', { class: 'small dim' }, `${x.from_name ? x.from_name + ' ' : ''}<${x.from_email}>${x.mode === 'simulate' ? ' · simulation' : ''}`)),
+          check('Available to our reports', x.on, v => { x.on = v; saveChoice({}); })))))] : null,
+      data.is_platform_admin ? [h('h2', { style: 'margin:14px 0 0' }, 'Platform senders — shared with companies'),
+        h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => edit(null, draw, 'platform') }, '＋ Add shared sender'), h('span', { class: 'small dim' }, 'You decide, per mailbox, which companies may send from it.')),
+        (data.platform || []).length ? senderRows(data.platform, true) : h('div', { class: 'empty small' }, 'No shared senders yet.')] : null,
       h('div', { class: 'dash-grid' },
         h('div', { class: 'card' }, h('h2', {}, 'How sending works'), h('div', { class: 'small stack' },
           h('div', {}, 'When a report’s schedule fires, the report is refreshed and emailed as a PDF through the sender chosen on the schedule (or the default sender). Each person with an account receives the report with ', h('b', {}, 'their own data access'), '; other addresses receive the owner’s view.'),

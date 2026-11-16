@@ -44,6 +44,7 @@ answers a few questions about the sample data (add it as a *Self-hosted* model, 
 | **Summary** | Explains the result by its shape (trend, ranking, two-way breakdown, pivot, listing): leaders and shares, highs and lows, change over the period, concentration. Averages, rates and prices are never totalled. Computed on the server. |
 | **Output** | Chart (bar, horizontal, stacked, line, area, pie, doughnut, scatter, big numbers) with selectable axes, extra measure and split-by. IDs, codes and years are treated as categories, never summed; two measures on different scales get a panel each; sortable table; locally computed summary. Export **PDF report**, CSV, Excel, chart PNG. |
 | **Follow-ups & history** | Suggested follow-up questions; conversations keep context (earlier questions + SQL); chats and results are saved, searchable, renamable and grouped by date. |
+| **Companies (multi-tenant)** | One installation, several fully separate companies: users, groups, data models and training, chats, reports, filters, settings, email and audit logs are per company and checked by the server on every request. Platform administrators add / rename / suspend companies, manage their administrators and see usage and AI spend per company (not their data). AI models and email senders can be a company's own or **shared by the platform** with all or selected companies; a company can switch shared ones off; names never clash. Company logo in the menu and on report PDFs. |
 | **Results-only users** | Per user (analysts): see results, SQL and code, or **results only**. Enforced by the server — SQL and Python code are left out of answers, shared chats, reports, PDFs and exports for those users. |
 | **Reported problems** | Anyone can mark an answer incorrect, choosing what is wrong and saying why (both required). It goes to the steward review queue, where a steward fixes the SQL (tested, then saved as a verified example), adds a business rule, or dismisses it; the user sees the outcome under the answer. |
 | **Rephrase** | ✨ Rephrase next to Ask (and on asked questions) suggests a clearer, self-contained wording before the question is sent: business terms, measure, grouping, period; never adds filters. Small prompt (names, not DDL or SQL — about a sixth of a full question on the SAP sample), an admin-chosen (cheaper) model, plus verified questions found locally for free. Every use is logged; the dashboard shows its cost and whether rephrased questions are answered right first time more often. |
@@ -117,6 +118,11 @@ T2S_TEST_PG=user:password@host:5432/dbname python -m pytest
 ```
 
 ## What has and has not been verified
+
+- Multi-company separation is enforced in the server and covered by tests (another company's users, data models,
+  training, chats, reports, audit log, models, senders, settings and logo are refused or invisible). The database
+  upgrade from a single-company version was tested on SQLite; on a **PostgreSQL metadata store** the step that makes
+  names unique per company instead of installation-wide was written but **not run** — back up first.
 
 - Verified end to end: Excel / CSV folders, PostgreSQL (live server, read-only role), all UI flows in a
   browser, 2FA, exports.

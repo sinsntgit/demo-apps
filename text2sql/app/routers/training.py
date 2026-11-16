@@ -263,7 +263,7 @@ def test_sql(conn_id: int, body: TestSqlIn, user: User = Depends(steward_up), db
     from ..deps import get_settings
     conn = get_connection(db, user, conn_id)
     try:
-        res = engine.run_sql(db, conn, body.sql, get_settings(db), user)
+        res = engine.run_sql(db, conn, body.sql, get_settings(db, user.company_id), user)
     except (sqlguard.SQLBlocked, connectors.ConnectorError) as e:
         raise HTTPException(400, str(e))
     return {"columns": res["columns"], "rows": res["rows"][:20], "row_count": res["row_count"]}
@@ -285,7 +285,7 @@ def resolve_issue(run_id: int, body: ResolveIn, request: Request, user: User = D
         question = body.question.strip() or run.question
         try:
             checked = sqlguard.check(body.sql, conn.db_type).sql
-            engine.run_sql(db, conn, checked, get_settings(db), user)          # it must actually run
+            engine.run_sql(db, conn, checked, get_settings(db, user.company_id), user)          # it must actually run
         except (sqlguard.SQLBlocked, connectors.ConnectorError) as e:
             raise HTTPException(400, f"The corrected SQL did not run: {e}")
         upsert_pair(db, conn, question, checked, "correction", "approved", user.id, analysis=(run.analysis or {}).get("spec"))

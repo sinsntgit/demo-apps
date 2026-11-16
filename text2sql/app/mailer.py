@@ -15,18 +15,23 @@ class MailError(Exception):
     pass
 
 
-def pick_sender(db, sender_id=None) -> EmailSender | None:
-    """The requested sender if it is active, otherwise the default, otherwise any active one."""
-    if sender_id:
-        s = db.get(EmailSender, int(sender_id))
-        if s and s.active:
-            return s
-    return db.scalar(select(EmailSender).where(EmailSender.active)
-                     .order_by(EmailSender.is_default.desc(), EmailSender.id))
+def pick_sender(db, sender_id=None, company_id=None) -> EmailSender | None:
+    """The requested sender if this company may use it and it is active; otherwise the company's default,
+    its own default, the platform default it is offered, or any sender it may use."""
+    from . import tenancy
+    from .models import Company
+    usable = [s for s in tenancy.senders_for(db, company_id) if s.active]
+    by_id = {s.id: s for s in usable}
+    company = db.get(Company, company_id) if company_id else None
+    for wanted in (int(sender_id) if sender_id else None, company.default_sender_id if company else None):
+        if wanted in by_id:
+            return by_id[wanted]
+    usable.sort(key=lambda s: (s.company_id is None, not s.is_default, s.id))
+    return usable[0] if usable else None
 
 
-def configured(db) -> bool:
-    return pick_sender(db) is not None
+def configured(db, company_id=None) -> bool:
+    return pick_sender(db, None, company_id) is not None
 
 
 def _connect(s: EmailSender) -> smtplib.SMTP:
@@ -70,7 +75,7 @@ def verify(db, s: EmailSender) -> str:
 
 
 def send(db, s: EmailSender | None, to: list[str], subject: str, body: str,
-         attachment: tuple[str, bytes] | None = None, context: str = "") -> str:
+         attachment: tuple[str, bytes] | None = None, context: str = "", company_id: int | None = None) -> str:
     """Send one message to all `to` addresses. Returns 'sent' or 'simulated'; raises MailError."""
     if s is None:
         raise MailError("No email sender is set up. An administrator can add one under Admin > Email senders.")
@@ -79,7 +84,7 @@ def send(db, s: EmailSender | None, to: list[str], subject: str, body: str,
 
     def record(status, error=""):
         for addr in to:
-            db.add(EmailLog(sender_label=s.label, to_addr=addr, subject=subject[:500], status=status,
+            db.add(EmailLog(company_id=company_id, sender_label=s.label, to_addr=addr, subject=subject[:500], status=status,
                             error=error[:1000], context=context[:200]))
 
     if s.mode == "simulate":

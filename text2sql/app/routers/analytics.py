@@ -14,8 +14,8 @@ from .chat import run_dto
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
 
-def _filtered(days: int, connection_id: int | None, model_id: int | None, user_id: int | None):
-    stmt = select(QueryRun).where(QueryRun.created_at >= now() - timedelta(days=days))
+def _filtered(days: int, connection_id: int | None, model_id: int | None, user_id: int | None, company_id: int | None):
+    stmt = select(QueryRun).where(QueryRun.created_at >= now() - timedelta(days=days), QueryRun.company_id == company_id)
     if connection_id:
         stmt = stmt.where(QueryRun.connection_id == connection_id)
     if model_id:
@@ -54,11 +54,11 @@ def _agg(runs: list[QueryRun]) -> dict:
 
 @router.get("/summary")
 def summary(days: int = 30, connection_id: int | None = None, model_id: int | None = None,
-            user_id: int | None = None, _: User = Depends(steward_up), db: Session = Depends(get_db)):
+            user_id: int | None = None, me: User = Depends(steward_up), db: Session = Depends(get_db)):
     days = min(max(days, 1), 365)
-    runs = list(db.scalars(_filtered(days, connection_id, model_id, user_id)))
-    users = {u.id: u.email for u in db.scalars(select(User))}
-    conns = {c.id: c.name for c in db.scalars(select(Connection))}
+    runs = list(db.scalars(_filtered(days, connection_id, model_id, user_id, me.company_id)))
+    users = {u.id: u.email for u in db.scalars(select(User).where(User.company_id == me.company_id))}
+    conns = {c.id: c.name for c in db.scalars(select(Connection).where(Connection.company_id == me.company_id))}
 
     by_day = defaultdict(list)
     for r in runs:
@@ -79,9 +79,9 @@ def summary(days: int = 30, connection_id: int | None = None, model_id: int | No
         return sorted(out, key=lambda x: -x["queries"])
 
     errors = Counter((r.error or "")[:160] for r in runs if r.status in ("error", "blocked"))
-    pending = db.scalar(select(TrainingItem.id).where(TrainingItem.status == "pending").limit(1)) is not None or \
-        db.scalar(select(QueryRun.id).where(QueryRun.issue_status == "open").limit(1)) is not None
-    stmt = select(RephraseLog).where(RephraseLog.created_at >= now() - timedelta(days=days))
+    pending = db.scalar(select(TrainingItem.id).where(TrainingItem.status == "pending", TrainingItem.connection_id.in_(list(conns))).limit(1)) is not None or \
+        db.scalar(select(QueryRun.id).where(QueryRun.issue_status == "open", QueryRun.company_id == me.company_id).limit(1)) is not None
+    stmt = select(RephraseLog).where(RephraseLog.created_at >= now() - timedelta(days=days), RephraseLog.connection_id.in_(list(conns)))
     if connection_id:
         stmt = stmt.where(RephraseLog.connection_id == connection_id)
     if model_id:
@@ -117,8 +117,8 @@ def summary(days: int = 30, connection_id: int | None = None, model_id: int | No
 @router.get("/queries")
 def queries(days: int = 30, connection_id: int | None = None, model_id: int | None = None,
             user_id: int | None = None, status: str = "", feedback: str = "", q: str = "", page: int = 1,
-            _: User = Depends(steward_up), db: Session = Depends(get_db)):
-    stmt = _filtered(min(max(days, 1), 365), connection_id, model_id, user_id)
+            me: User = Depends(steward_up), db: Session = Depends(get_db)):
+    stmt = _filtered(min(max(days, 1), 365), connection_id, model_id, user_id, me.company_id)
     if status:
         stmt = stmt.where(QueryRun.status == status)
     if feedback == "none":
@@ -130,8 +130,8 @@ def queries(days: int = 30, connection_id: int | None = None, model_id: int | No
         stmt = stmt.where(or_(QueryRun.question.ilike(like), QueryRun.final_sql.ilike(like)))
     size = 50
     rows = list(db.scalars(stmt.order_by(QueryRun.id.desc()).offset((max(page, 1) - 1) * size).limit(size + 1)))
-    users = {u.id: u.email for u in db.scalars(select(User))}
-    conns = {c.id: c.name for c in db.scalars(select(Connection))}
+    users = {u.id: u.email for u in db.scalars(select(User).where(User.company_id == me.company_id))}
+    conns = {c.id: c.name for c in db.scalars(select(Connection).where(Connection.company_id == me.company_id))}
     return {"more": len(rows) > size, "items": [
         {"id": r.id, "at": r.created_at.isoformat(), "user": users.get(r.user_id, ""),
          "connection": conns.get(r.connection_id, ""), "model": r.model_label, "question": r.question,
@@ -141,9 +141,9 @@ def queries(days: int = 30, connection_id: int | None = None, model_id: int | No
 
 
 @router.get("/queries/{run_id}")
-def query_detail(run_id: int, _: User = Depends(steward_up), db: Session = Depends(get_db)):
+def query_detail(run_id: int, me: User = Depends(steward_up), db: Session = Depends(get_db)):
     r = db.get(QueryRun, run_id)
-    if not r:
+    if not r or r.company_id != me.company_id:
         raise HTTPException(404, "Not found")
     user = db.get(User, r.user_id)
     conn = db.get(Connection, r.connection_id)

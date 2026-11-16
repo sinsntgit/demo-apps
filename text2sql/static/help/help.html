@@ -515,7 +515,7 @@
 <tr><td>SQL Server</td><td>Host, port (1433), database, username, password, schemas</td><td>SQL authentication. Schemas default to <code>dbo</code>.</td></tr>
 <tr><td>Oracle</td><td>Host, port (1521), service name, username, password, schemas / owners</td><td>Uses the service name (not SID). No Oracle client software is needed.</td></tr>
 <tr><td>Snowflake</td><td>Account identifier, username, password, database, warehouse, role, schemas</td><td>Account identifier looks like <code>orgname-accountname</code> (without <code>.snowflakecomputing.com</code>).</td></tr>
-<tr><td>Excel / CSV folder</td><td>Folder path on the server — or leave blank and upload files</td><td>See below.</td></tr>
+<tr><td>Excel / CSV folder</td><td>Folder path on the server — or leave blank and upload files</td><td>See below. Only a <b>platform administrator</b> can point a data model at a folder on the server (it could hold another company's files); company administrators upload the files instead.</td></tr>
 </table>
 <h3>Use a read-only database account</h3>
 <p>AskData refuses anything that is not a single SELECT, but the database account should also be unable to change anything. Create a dedicated account with SELECT on just the schemas you want exposed:</p>
@@ -584,7 +584,7 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 
 <section id="senders" data-title="Email senders (admin)" data-role="Administrators">
 <h2>Email senders</h2>
-<p><b>Admin → Email senders.</b> A sender is a mailbox that AskData sends scheduled reports from. Out of the box nothing is emailed: add at least one sender, verify it and send yourself a test.</p>
+<p><b>Admin → Email senders.</b> A sender is a mailbox that AskData sends scheduled reports from. Out of the box nothing is emailed: add at least one sender, verify it and send yourself a test. Like AI models, senders can be your company's own or <b>shared by the platform</b>; choose your company's default sender at the top and switch shared ones on or off. Your email log shows only your company's emails.</p>
 <figure><img src="/static/help/img/senders.png" alt="The Email senders tab with one verified sender and Verify, Send test, Edit and Delete buttons"><figcaption>Admin → Email senders.</figcaption></figure>
 <h3>Adding a sender</h3>
 <ol>
@@ -679,10 +679,44 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 <p>Every filter change is recorded in the audit log.</p>
 </section>
 
+<section id="companies" data-title="Companies (platform admin)" data-role="Platform administrators">
+<h2>Companies: several separate companies on one installation</h2>
+<p>One AskData installation can serve several companies. Each company is fully separate: its own users, user groups, data models and their training, chats, reports, schedules, data filters, settings, email log and audit log. Nobody in one company can see or reach anything of another company — the server checks the company on every request, and tests prove it.</p>
+<p>Every person belongs to exactly one company (an email address cannot be in two). The company's name — and its logo, if it has one — appears at the top of the menu.</p>
+<h3>Who does what</h3>
+<table>
+<tr><th>Role</th><th>Can</th></tr>
+<tr><td><b>Platform administrator</b></td><td>Everything an administrator can do in their own company, plus the <b>Companies</b> tab: add, rename and suspend companies, add a company's administrators and reset their passwords, upload a company's logo, see each company's size and AI spend — but <i>not</i> its data. Manages the <b>shared</b> AI models and email senders, and installation-wide settings (session length, sign-in lockout).</td></tr>
+<tr><td><b>Administrator</b> (of a company)</td><td>Everything inside their company: users, groups, data models, data access and filters, their own AI models and email senders, which shared ones their company uses, company settings and logo.</td></tr>
+</table>
+<p>After an update from a single-company version, everything that existed becomes <b>Default company</b> (rename it under Companies) and the existing administrators become platform administrators. A platform administrator can give or take away this right under Admin → Users (<i>Platform administrator</i>, for administrators only).</p>
+<figure><img src="/static/help/img/companies.png" alt="The Companies tab listing Default company and Northwind Traders with administrators, users, data models, reports, questions and AI spend"><figcaption>Admin → Companies (platform administrators only).</figcaption></figure>
+<h3>Adding a company</h3>
+<ol>
+<li><b>Admin → Companies → ＋ Add company.</b> Enter the company name and the email and name of its first administrator.</li>
+<li>Keep <b>Add the sample data models</b> ticked to give them the Retail and SAP samples to try.</li>
+<li>Pass the one-time password shown to their administrator securely; they choose their own at first sign-in.</li>
+<li>Give the company an AI model: share one (below), or let their administrator add their own key under AI models.</li>
+</ol>
+<p><b>Edit</b> renames a company, uploads its logo, or makes it <b>inactive</b>: all its people are signed out at once and cannot sign in until it is active again; nothing is deleted. You cannot suspend your own company. <b>＋ Admin</b> adds another administrator; <b>↺</b> next to an administrator gives them a new temporary password (for a company that is locked out).</p>
+<h3>Sharing AI models and email senders with companies</h3>
+<p>Under <b>AI models</b> and <b>Email senders</b>, a platform administrator has an extra section, <i>Platform models — shared with companies</i> (and <i>Platform senders</i>). Add a shared model there, then press <b>Companies…</b> and tick the companies that may use it — or <b>All companies</b>, which includes companies added later.</p>
+<figure><img src="/static/help/img/model-sharing.png" alt="Which companies may use Claude (shared)? with an All companies option and a tick list of companies"><figcaption>Choosing which companies may use a shared model.</figcaption></figure>
+<ul>
+<li>Companies use a shared model without ever seeing its API key, URL or server details. Its use is counted in each company's dashboard and in the AI spend column under Companies.</li>
+<li>A company's administrator can switch a shared model or sender off for their company, add their own, and choose their company's default.</li>
+<li><b>Names never clash:</b> within what one company sees, every model (and sender) name is unique. A company cannot add a model named like a shared one it is offered, and a shared model cannot be offered to a company that already has one with the same name — you are asked to choose another name. In the Ask page the picker groups them as <i>Your company</i> and <i>Shared</i>.</li>
+</ul>
+<h3>Company logo</h3>
+<p>A company's administrator uploads the logo under <b>Admin → Settings → Company</b> (a platform administrator can also do it from Companies → Edit). PNG, JPEG or WebP, at most 512 KB; SVG is not accepted because it can carry scripts. The logo is shown at the top of the menu for everyone in that company and at the top of every page of the company's report PDFs.</p>
+<figure><img src="/static/help/img/company-ask.png" alt="The Ask page of Northwind Traders with its logo and name at the top of the menu and the shared model selected"><figcaption>A company's own logo and name in the menu.</figcaption></figure>
+</section>
+
 <section id="models" data-title="AI models (admin)" data-role="Administrators">
 <h2>AI models</h2>
-<p><b>Admin → AI models.</b> Register each model users may choose from. At least one enabled model with a working key is needed before anyone can ask a question.</p>
-<figure><img src="/static/help/img/models.png" alt="The AI models list with test, edit and delete buttons"><figcaption>Admin → AI models.</figcaption></figure>
+<p><b>Admin → AI models.</b> Register each model users may choose from. At least one enabled model with a working key is needed before anyone can ask a question. With several companies, this page has three parts: the <b>default model</b> for your company, <b>your company's own models</b> (only your company sees them), and the models <b>shared with your company</b> by the platform, each with <i>Available to our users</i> to switch it off for your company. See <a href="#/help/companies">Companies</a>.</p>
+<figure><img src="/static/help/img/models-company.png" alt="A company's AI models page: default model, own models and a model shared by the platform with an Available to our users tick box"><figcaption>A company administrator's view: a shared model, switched on for the company.</figcaption></figure>
+<figure><img src="/static/help/img/models.png" alt="The AI models page of a platform administrator: default model, own models and platform models with their companies"><figcaption>A platform administrator's view, with the shared platform models at the bottom.</figcaption></figure>
 <table>
 <tr><th>Field</th><th>Meaning</th></tr>
 <tr><td>Provider</td><td><b>Anthropic Claude</b>, <b>OpenAI</b>, or <b>Self-hosted / OpenAI-compatible</b> (Ollama, vLLM, LM Studio, or any gateway that speaks the OpenAI chat API).</td></tr>

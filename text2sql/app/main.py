@@ -11,7 +11,7 @@ from sqlalchemy import select
 from . import config, security
 from .db import Base, SessionLocal, engine
 from .models import Connection, LLMModel, TrainingItem, User
-from .routers import admin, analytics, auth, chat, connections, reports, training
+from .routers import admin, analytics, auth, chat, companies, connections, reports, training
 
 log = logging.getLogger("text2sql")
 STATIC = config.BASE_DIR / "static"
@@ -30,6 +30,8 @@ def upgrade_schema():
                     ddl = f'ALTER TABLE {table.name} ADD COLUMN {col.name} {col.type.compile(engine.dialect)}'
                     con.execute(text(ddl))
                     log.info("Schema upgrade: %s", ddl)
+    _per_company_names(insp)
+    _first_company()
     with SessionLocal() as db:      # the single SMTP setting of earlier versions becomes an email sender
         from .deps import get_settings
         from .models import EmailSender
@@ -42,24 +44,115 @@ def upgrade_schema():
             db.commit()
 
 
+def _per_company_names(insp):
+    """Older databases made data-model, group and AI-model names unique for the whole installation.
+    Names are now unique per company: rebuild those tables without the old constraint (data kept)."""
+    from sqlalchemy import text
+    from sqlalchemy.schema import CreateIndex, CreateTable
+    for name in ("connections", "user_groups", "llm_models"):
+        table = Base.metadata.tables[name]
+        old = [u for u in insp.get_unique_constraints(name) if u.get("column_names") == ["name"]]
+        old_idx = [i for i in insp.get_indexes(name) if i.get("unique") and i.get("column_names") == ["name"]]
+        if engine.dialect.name == "sqlite":     # also UNIQUE written on the column itself (SQLite's automatic indexes)
+            with engine.connect() as con:
+                for row in con.execute(text(f"PRAGMA index_list({name})")).mappings():
+                    cols = [r["name"] for r in con.execute(text(f"PRAGMA index_info('{row['name']}')")).mappings()]
+                    if row["unique"] and cols == ["name"]:
+                        old.append({"name": row["name"]})
+        if not old and not old_idx:
+            continue
+        log.info("Schema upgrade: names in %s become unique per company", name)
+        if engine.dialect.name != "sqlite":         # PostgreSQL & co: drop the constraint, add the per-company one
+            with engine.begin() as con:
+                for u in old:
+                    con.execute(text(f'ALTER TABLE {name} DROP CONSTRAINT IF EXISTS "{u["name"]}"'))
+                for i in old_idx:
+                    con.execute(text(f'DROP INDEX IF EXISTS "{i["name"]}"'))
+                con.execute(text(f'ALTER TABLE {name} ADD CONSTRAINT uq_{name}_company_name UNIQUE (company_id, name)'))
+            continue
+        cols = ", ".join(c.name for c in table.columns)
+
+        def value(c):           # columns added by an earlier upgrade step are NULL in old rows
+            arg = c.default.arg if c.default is not None else None
+            if c.nullable or arg is None:
+                return c.name
+            if callable(arg):
+                name_ = getattr(arg, "__name__", "")
+                return f"COALESCE({c.name}, '[]')" if name_ == "list" else f"COALESCE({c.name}, '{{}}')" if name_ == "dict" else \
+                    f"COALESCE({c.name}, CURRENT_TIMESTAMP)" if name_ == "now" else c.name
+            return f"COALESCE({c.name}, {int(arg) if isinstance(arg, bool) else repr(arg)})"
+        source = ", ".join(value(c) for c in table.columns)
+        ddl = str(CreateTable(table).compile(engine)).replace(f"CREATE TABLE {name} (", f"CREATE TABLE {name}__new (", 1)
+        raw = engine.raw_connection()          # SQLite's documented way: copy into a new table, swap names
+        try:
+            cur = raw.cursor()
+            cur.execute("PRAGMA foreign_keys=OFF")
+            cur.execute(f"DROP TABLE IF EXISTS {name}__new")
+            cur.execute(ddl)
+            cur.execute(f"INSERT INTO {name}__new ({cols}) SELECT {source} FROM {name}")
+            cur.execute(f"DROP TABLE {name}")
+            cur.execute(f"ALTER TABLE {name}__new RENAME TO {name}")
+            raw.commit()
+            for idx in table.indexes:
+                cur.execute(str(CreateIndex(idx).compile(engine)).replace("CREATE INDEX", "CREATE INDEX IF NOT EXISTS", 1))
+            raw.commit()
+            cur.execute("PRAGMA foreign_keys=ON")
+        finally:
+            raw.close()
+
+
+def _first_company():
+    """Existing installations: everything becomes the first company; existing administrators manage the platform.
+    AI models and email senders become platform items shared with that company."""
+    from sqlalchemy import text, update
+    from .models import AuditLog, Company, EmailLog, EmailSender, QueryRun, Report, UserGroup
+    with SessionLocal() as db:
+        if db.scalar(select(Company.id).limit(1)) or not db.scalar(select(User.id).limit(1)):
+            return
+        c = Company(name="Default company", hidden_models=[], hidden_senders=[])
+        db.add(c)
+        db.flush()
+        for model in (User, Connection, Report, UserGroup, AuditLog, EmailLog):
+            db.execute(update(model).where(model.company_id.is_(None)).values(company_id=c.id))
+        db.execute(update(User).where(User.role == "admin").values(is_platform_admin=True))
+        db.execute(update(User).where(User.is_platform_admin.is_(None)).values(is_platform_admin=False))
+        db.execute(text("UPDATE query_runs SET company_id = (SELECT company_id FROM connections WHERE connections.id = query_runs.connection_id) WHERE company_id IS NULL"))
+        for model in (LLMModel, EmailSender):
+            for item in db.scalars(select(model)):
+                item.share_all, item.shared_companies = False, [c.id]
+        db.commit()
+        log.info("Multi-company upgrade: existing data is now company '%s'", c.name)
+
+
 def bootstrap():
-    """Create tables; on first run add the admin user and a ready-to-try sample data model."""
+    """Create tables; on first run add the first company, its platform administrator and sample data models."""
     Base.metadata.create_all(engine)
     upgrade_schema()
+    from .models import Company
     with SessionLocal() as db:
         if not db.scalar(select(User.id).limit(1)):
             _first_run(db)
-    add_sample_model("sap_training.json")
+        first = db.scalar(select(Company.id).order_by(Company.id).limit(1))
+    if first:
+        add_sample_model("sap_training.json", first)
 
 
-def add_sample_model(spec_file: str):
-    """Add a bundled sample data model with its training - once per installation, so a data model the
-    admin deleted does not come back. Runs on new and on existing installations (after an update)."""
+def _sample_flag(spec_file: str, company_id: int) -> str:
+    """'Already added' marker. The first company keeps the marker of single-company versions."""
+    from .models import Company
+    with SessionLocal() as db:
+        first = db.scalar(select(Company.id).order_by(Company.id).limit(1))
+    return "sample_added:" + spec_file + ("" if company_id == first else f":{company_id}")
+
+
+def add_sample_model(spec_file: str, company_id: int):
+    """Add a bundled sample data model with its training to one company - once, so a sample the
+    company's admin deleted does not come back. Runs on new and on existing installations (after an update)."""
     import json
     from .db import now
     from .models import Setting
     spec_path = config.BASE_DIR / "sample_data" / spec_file
-    flag = "sample_added:" + spec_file
+    flag = _sample_flag(spec_file, company_id)
     if not spec_path.is_file():
         return
     with SessionLocal() as db:
@@ -67,11 +160,12 @@ def add_sample_model(spec_file: str):
             return
         spec = json.loads(spec_path.read_text(encoding="utf-8"))
         folder = config.BASE_DIR / "sample_data" / spec["folder"]
-        if db.scalar(select(Connection.id).where(Connection.name == spec["name"])) or not folder.is_dir():
+        if db.scalar(select(Connection.id).where(Connection.name == spec["name"], Connection.company_id == company_id)) or not folder.is_dir():
             db.add(Setting(key=flag, value={"v": True}))
             db.commit()
             return
-        conn = Connection(name=spec["name"], db_type="files", description=spec["description"], config_enc=security.encrypt_json({}))
+        conn = Connection(name=spec["name"], db_type="files", description=spec["description"], config_enc=security.encrypt_json({}),
+                          company_id=company_id)
         db.add(conn)
         db.flush()
         dest = config.FILES_DIR / str(conn.id)
@@ -93,48 +187,60 @@ def add_sample_model(spec_file: str):
                                 content=json.dumps(e["analysis"]) if e.get("analysis") else ""))
         db.add(Setting(key=flag, value={"v": True}))
         db.commit()
-        log.info("Added sample data model: %s", spec["name"])
+        log.info("Added sample data model %s to company #%s", spec["name"], company_id)
+
+
+def add_retail_sample(db, company_id: int):
+    """The small retail sample (CSV files) with a little training, for one company."""
+    sample = config.BASE_DIR / "sample_data" / "retail"
+    if not sample.is_dir() or db.scalar(select(Connection.id).where(Connection.name == "Sample: Retail sales",
+                                                                    Connection.company_id == company_id)):
+        return
+    conn = Connection(name="Sample: Retail sales", db_type="files", company_id=company_id,
+                      description="Demo data model built from CSV files (customers, products, orders).",
+                      config_enc=security.encrypt_json({}))
+    db.add(conn)
+    db.flush()
+    dest = config.FILES_DIR / str(conn.id)
+    dest.mkdir(parents=True, exist_ok=True)
+    for f in sample.glob("*.csv"):
+        shutil.copy(f, dest / f.name)
+    from . import connectors
+    try:
+        conn.schema_json = connectors.introspect(conn, {})
+        from .db import now
+        conn.schema_synced_at = now()
+    except Exception as e:      # sample data is a convenience, never a startup blocker
+        log.warning("Sample data model could not be loaded: %s", e)
+    db.add(TrainingItem(connection_id=conn.id, kind="documentation", title="Revenue definition",
+                        content="Revenue (also called sales) = quantity * unit_price * (1 - discount) on "
+                                "order_items, counting only orders whose status is 'completed'. "
+                                "An order's month is taken from orders.order_date."))
+    db.add(TrainingItem(connection_id=conn.id, kind="sql_pair", question="What is total revenue by product category?",
+                        sql="SELECT p.category, ROUND(SUM(oi.quantity * oi.unit_price * (1 - oi.discount)), 2) AS revenue\n"
+                            "FROM order_items oi\nJOIN orders o ON o.order_id = oi.order_id\n"
+                            "JOIN products p ON p.product_id = oi.product_id\n"
+                            "WHERE o.status = 'completed'\nGROUP BY p.category\nORDER BY revenue DESC"))
 
 
 def _first_run(db):
-    """First start: the admin account, a placeholder AI model and the retail sample data model."""
+    """First start: the first company, its administrator (who also manages the platform), a placeholder
+    AI model shared with that company, and the retail sample data model."""
+    from .models import Company
+    company = Company(name="Default company", hidden_models=[], hidden_senders=[])
+    db.add(company)
+    db.flush()
     password = config.ADMIN_PASSWORD or security.random_password()
-    db.add(User(email=config.ADMIN_EMAIL.lower(), name="Administrator", role="admin",
-                password_hash=security.hash_password(password),
+    db.add(User(email=config.ADMIN_EMAIL.lower(), name="Administrator", role="admin", company_id=company.id,
+                is_platform_admin=True, password_hash=security.hash_password(password),
                 must_change_password=not config.ADMIN_PASSWORD))
     if not config.ADMIN_PASSWORD:
         banner = f"\n{'=' * 64}\n First-run admin account\n   email:    {config.ADMIN_EMAIL}\n" \
                  f"   password: {password}\n (you will be asked to change it at first sign-in)\n{'=' * 64}"
         print(banner, flush=True)
-    db.add(LLMModel(name="Claude Opus 5.5", provider="anthropic", model_id="claude-opus-5-5",
+    db.add(LLMModel(name="Claude Opus 5.5", provider="anthropic", model_id="claude-opus-5-5", shared_companies=[company.id],
                     enabled=False, is_default=True, price_in=4.0, price_out=20.0))
-    sample = config.BASE_DIR / "sample_data" / "retail"
-    if sample.is_dir():
-        conn = Connection(name="Sample: Retail sales", db_type="files",
-                          description="Demo data model built from CSV files (customers, products, orders).",
-                          config_enc=security.encrypt_json({}))
-        db.add(conn)
-        db.flush()
-        dest = config.FILES_DIR / str(conn.id)
-        dest.mkdir(parents=True, exist_ok=True)
-        for f in sample.glob("*.csv"):
-            shutil.copy(f, dest / f.name)
-        from . import connectors
-        try:
-            conn.schema_json = connectors.introspect(conn, {})
-            from .db import now
-            conn.schema_synced_at = now()
-        except Exception as e:      # sample data is a convenience, never a startup blocker
-            log.warning("Sample data model could not be loaded: %s", e)
-        db.add(TrainingItem(connection_id=conn.id, kind="documentation", title="Revenue definition",
-                            content="Revenue (also called sales) = quantity * unit_price * (1 - discount) on "
-                                    "order_items, counting only orders whose status is 'completed'. "
-                                    "An order's month is taken from orders.order_date."))
-        db.add(TrainingItem(connection_id=conn.id, kind="sql_pair", question="What is total revenue by product category?",
-                            sql="SELECT p.category, ROUND(SUM(oi.quantity * oi.unit_price * (1 - oi.discount)), 2) AS revenue\n"
-                                "FROM order_items oi\nJOIN orders o ON o.order_id = oi.order_id\n"
-                                "JOIN products p ON p.product_id = oi.product_id\n"
-                                "WHERE o.status = 'completed'\nGROUP BY p.category\nORDER BY revenue DESC"))
+    add_retail_sample(db, company.id)
     db.commit()
 
 
@@ -175,7 +281,8 @@ async def security_layer(request: Request, call_next):
     return response
 
 
-for r in (auth.router, connections.router, training.router, chat.router, admin.router, analytics.router, reports.router):
+for r in (auth.router, connections.router, training.router, chat.router, admin.router, analytics.router, reports.router,
+          companies.router):
     app.include_router(r)
 
 

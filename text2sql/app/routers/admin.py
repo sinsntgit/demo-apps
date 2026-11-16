@@ -7,11 +7,11 @@ from pydantic import BaseModel
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import Session
 
-from .. import config, llm, mailer, rowfilter, security
+from .. import config, llm, mailer, rowfilter, security, tenancy
 from ..db import get_db
-from ..deps import admin_only, audit, get_settings
-from ..models import (ROLES, AuditLog, Connection, ConnectionAccess, ConnectionGroupAccess, DataFilter, EmailLog, EmailSender, LLMModel,
-                      Setting, User, UserGroup, UserGroupMember)
+from ..deps import PLATFORM_SETTINGS, admin_only, audit, company_key, get_settings, platform_admin, same_company
+from ..models import (ROLES, AuditLog, Company, Connection, ConnectionAccess, ConnectionGroupAccess, DataFilter, EmailLog, EmailSender,
+                      LLMModel, Setting, User, UserGroup, UserGroupMember)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -23,23 +23,34 @@ class UserIn(BaseModel):
     role: str = "analyst"
     is_active: bool = True
     show_sql: bool = True           # analysts: False = results only
+    is_platform_admin: bool | None = None   # only a platform administrator may change it
 
 
 def _user(u: User) -> dict:
     return {"id": u.id, "email": u.email, "name": u.name, "role": u.role, "is_active": u.is_active,
             "totp_enabled": u.totp_enabled, "locked": security.is_locked(u),
             "must_change_password": u.must_change_password, "show_sql": u.show_sql is not False,
+            "is_platform_admin": bool(u.is_platform_admin),
             "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
             "created_at": u.created_at.isoformat()}
 
 
-def _admins_left(db: Session, excluding: int) -> int:
-    return db.scalar(select(func.count()).where(User.role == "admin", User.is_active, User.id != excluding))
+def _admins_left(db: Session, excluding: int, company_id: int | None) -> int:
+    """Other active administrators of the same company."""
+    return db.scalar(select(func.count()).where(User.role == "admin", User.is_active, User.id != excluding,
+                                                User.company_id == company_id))
+
+
+def _my_user(db: Session, admin: User, user_id: int) -> User:
+    u = db.get(User, user_id)
+    if not same_company(admin, u):          # another company's people do not exist for this admin
+        raise HTTPException(404, "Not found")
+    return u
 
 
 @router.get("/users")
-def users(_: User = Depends(admin_only), db: Session = Depends(get_db)):
-    return [_user(u) for u in db.scalars(select(User).order_by(User.email))]
+def users(admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    return [_user(u) for u in db.scalars(select(User).where(User.company_id == admin.company_id).order_by(User.email))]
 
 
 @router.post("/users")
@@ -53,7 +64,8 @@ def create_user(body: UserIn, request: Request, admin: User = Depends(admin_only
         raise HTTPException(400, "A user with this email already exists.")
     temp = security.random_password()
     u = User(email=email, name=body.name.strip(), role=body.role, is_active=body.is_active, show_sql=body.show_sql,
-             password_hash=security.hash_password(temp), must_change_password=True)
+             company_id=admin.company_id, password_hash=security.hash_password(temp), must_change_password=True,
+             is_platform_admin=bool(body.is_platform_admin and admin.is_platform_admin and body.role == "admin"))
     db.add(u)
     audit(db, request, admin, "user.created", email, f"{body.role}{'' if body.show_sql else ', results only'}")
     db.commit()
@@ -63,16 +75,20 @@ def create_user(body: UserIn, request: Request, admin: User = Depends(admin_only
 @router.put("/users/{user_id}")
 def update_user(user_id: int, body: UserIn, request: Request, admin: User = Depends(admin_only),
                 db: Session = Depends(get_db)):
-    u = db.get(User, user_id)
-    if not u:
-        raise HTTPException(404, "Not found")
+    u = _my_user(db, admin, user_id)
     if body.role not in ROLES:
         raise HTTPException(400, "Unknown role.")
-    if u.role == "admin" and (body.role != "admin" or not body.is_active) and _admins_left(db, u.id) == 0:
+    if u.role == "admin" and (body.role != "admin" or not body.is_active) and _admins_left(db, u.id, u.company_id) == 0:
         raise HTTPException(400, "This is the last active administrator.")
     if not body.is_active and u.is_active:
         u.token_version += 1
     u.name, u.role, u.is_active, u.show_sql = body.name.strip(), body.role, body.is_active, body.show_sql
+    if body.is_platform_admin is not None and admin.is_platform_admin:
+        if u.id == admin.id and not body.is_platform_admin:
+            raise HTTPException(400, "You cannot remove your own platform administrator rights.")
+        u.is_platform_admin = bool(body.is_platform_admin) and u.role == "admin"
+    elif u.role != "admin":
+        u.is_platform_admin = False
     audit(db, request, admin, "user.updated", u.email, f"role={u.role} active={u.is_active} sees_sql={u.show_sql}")
     db.commit()
     return _user(u)
@@ -81,9 +97,7 @@ def update_user(user_id: int, body: UserIn, request: Request, admin: User = Depe
 @router.post("/users/{user_id}/{action}")
 def user_action(user_id: int, action: str, request: Request, admin: User = Depends(admin_only),
                 db: Session = Depends(get_db)):
-    u = db.get(User, user_id)
-    if not u:
-        raise HTTPException(404, "Not found")
+    u = _my_user(db, admin, user_id)
     out = {"ok": True}
     if action == "reset-password":
         temp = security.random_password()
@@ -104,12 +118,10 @@ def user_action(user_id: int, action: str, request: Request, admin: User = Depen
 
 @router.delete("/users/{user_id}")
 def delete_user(user_id: int, request: Request, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
-    u = db.get(User, user_id)
-    if not u:
-        raise HTTPException(404, "Not found")
+    u = _my_user(db, admin, user_id)
     if u.id == admin.id:
         raise HTTPException(400, "You cannot delete your own account.")
-    if u.role == "admin" and _admins_left(db, u.id) == 0:
+    if u.role == "admin" and _admins_left(db, u.id, u.company_id) == 0:
         raise HTTPException(400, "This is the last active administrator.")
     audit(db, request, admin, "user.deleted", u.email)
     db.delete(u)
@@ -129,12 +141,35 @@ class ModelIn(BaseModel):
     is_default: bool = False
     price_in: float = 0
     price_out: float = 0
+    scope: str = "company"      # company: only this company | platform: a shared model (platform administrators)
+
+
+class ShareIn(BaseModel):
+    share_all: bool = False
+    company_ids: list[int] = []
+
+
+class ChoiceIn(BaseModel):
+    hidden: list[int] = []      # shared items switched off for this company
+    default_id: int | None = None
 
 
 def _model(m: LLMModel) -> dict:
     return {"id": m.id, "name": m.name, "provider": m.provider, "model_id": m.model_id, "base_url": m.base_url,
             "has_key": bool(m.api_key_enc), "effort": m.effort, "enabled": m.enabled, "is_default": m.is_default,
-            "price_in": m.price_in, "price_out": m.price_out}
+            "price_in": m.price_in, "price_out": m.price_out, "scope": "platform" if m.company_id is None else "company",
+            "share_all": m.share_all, "shared_companies": m.shared_companies or []}
+
+
+def _editable(admin: User, item) -> bool:
+    """A company admin edits their company's items; a platform administrator also edits the platform's."""
+    return item is not None and (item.company_id == admin.company_id or (item.company_id is None and admin.is_platform_admin))
+
+
+def _company_ids_seeing(item) -> list[int] | None:
+    if item.company_id is not None:
+        return [item.company_id]
+    return None if item.share_all else list(item.shared_companies or [])
 
 
 def _apply_model(m: LLMModel, body: ModelIn, db: Session):
@@ -151,21 +186,49 @@ def _apply_model(m: LLMModel, body: ModelIn, db: Session):
     m.price_in, m.price_out = body.price_in, body.price_out
     if body.api_key:
         m.api_key_enc = security.encrypt(body.api_key.strip())
-    if body.is_default:
-        db.execute(update(LLMModel).values(is_default=False))
+    if body.is_default:          # one default among the company's own models, or among the platform's
+        db.execute(update(LLMModel).where(LLMModel.company_id.is_(None) if m.company_id is None
+                                          else LLMModel.company_id == m.company_id).values(is_default=False))
     m.is_default = body.is_default
 
 
+def _check_name(db, item, name, model=LLMModel, field="name"):
+    seeing = _company_ids_seeing(item)
+    clash = tenancy.name_clash(db, seeing if seeing is not None else None, name, item.id, model, field)
+    if clash:
+        raise HTTPException(400, f"“{name.strip()}” is already used by a model or sender that {clash} sees. Choose a different name.")
+
+
+def _companies(db) -> list[dict]:
+    return [{"id": c.id, "name": c.name} for c in db.scalars(select(Company).order_by(Company.name))]
+
+
 @router.get("/models")
-def models(_: User = Depends(admin_only), db: Session = Depends(get_db)):
-    return {"providers": llm.PROVIDERS, "models": [_model(m) for m in db.scalars(select(LLMModel).order_by(LLMModel.name))]}
+def models(admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    company = db.get(Company, admin.company_id)
+    hidden = set(company.hidden_models or []) if company else set()
+    default = tenancy.default_model(db, admin.company_id, enabled_only=False)
+    out = {"providers": llm.PROVIDERS, "is_platform_admin": bool(admin.is_platform_admin),
+           "models": [_model(m) for m in db.scalars(select(LLMModel).where(LLMModel.company_id == admin.company_id).order_by(LLMModel.name))],
+           "shared": [{**_model(m), "on": m.id not in hidden} for m in tenancy.models_for(db, admin.company_id, include_hidden=True)
+                      if m.company_id is None],
+           "default_id": default.id if default else None}
+    for m in out["shared"]:             # what a company admin may not see of a platform model
+        m.pop("shared_companies", None)
+        m.pop("base_url", None)
+    if admin.is_platform_admin:
+        out["platform"] = [_model(m) for m in db.scalars(select(LLMModel).where(LLMModel.company_id.is_(None)).order_by(LLMModel.name))]
+        out["companies"] = _companies(db)
+    return out
 
 
 @router.post("/models")
 def create_model(body: ModelIn, request: Request, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
-    if db.scalar(select(LLMModel.id).where(LLMModel.name == body.name.strip())):
-        raise HTTPException(400, "A model with this name already exists.")
-    m = LLMModel()
+    if body.scope == "platform" and not admin.is_platform_admin:
+        raise HTTPException(403, "Only a platform administrator can add shared models.")
+    m = LLMModel(company_id=None if body.scope == "platform" else admin.company_id,
+                 share_all=False, shared_companies=[admin.company_id] if body.scope == "platform" else [])
+    _check_name(db, m, body.name)
     _apply_model(m, body, db)
     db.add(m)
     audit(db, request, admin, "model.created", m.name, f"{m.provider}/{m.model_id}")
@@ -177,8 +240,9 @@ def create_model(body: ModelIn, request: Request, admin: User = Depends(admin_on
 def update_model(model_id: int, body: ModelIn, request: Request, admin: User = Depends(admin_only),
                  db: Session = Depends(get_db)):
     m = db.get(LLMModel, model_id)
-    if not m:
+    if not _editable(admin, m):
         raise HTTPException(404, "Not found")
+    _check_name(db, m, body.name)
     _apply_model(m, body, db)
     audit(db, request, admin, "model.updated", m.name)
     db.commit()
@@ -188,7 +252,7 @@ def update_model(model_id: int, body: ModelIn, request: Request, admin: User = D
 @router.delete("/models/{model_id}")
 def delete_model(model_id: int, request: Request, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
     m = db.get(LLMModel, model_id)
-    if not m:
+    if not _editable(admin, m):
         raise HTTPException(404, "Not found")
     audit(db, request, admin, "model.deleted", m.name)
     db.delete(m)
@@ -197,9 +261,9 @@ def delete_model(model_id: int, request: Request, admin: User = Depends(admin_on
 
 
 @router.post("/models/{model_id}/test")
-def test_model(model_id: int, _: User = Depends(admin_only), db: Session = Depends(get_db)):
+def test_model(model_id: int, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
     m = db.get(LLMModel, model_id)
-    if not m:
+    if m is None or not (_editable(admin, m) or m in tenancy.models_for(db, admin.company_id, include_hidden=True)):
         raise HTTPException(404, "Not found")
     try:
         res = llm.complete(m, "You are a connectivity check. Reply with the single word OK.", "ping")
@@ -210,6 +274,40 @@ def test_model(model_id: int, _: User = Depends(admin_only), db: Session = Depen
         return {"ok": False, "message": str(e)}
 
 
+def _set_sharing(db, item, body: ShareIn, model, field):
+    ids = sorted({c.id for c in db.scalars(select(Company).where(Company.id.in_(body.company_ids)))})
+    probe = type("P", (), {"id": item.id, "company_id": None, "share_all": body.share_all, "shared_companies": ids})()
+    _check_name(db, probe, getattr(item, field), model, field)
+    item.share_all, item.shared_companies = body.share_all, ids
+
+
+@router.put("/models/{model_id}/sharing")
+def share_model(model_id: int, body: ShareIn, request: Request, admin: User = Depends(platform_admin), db: Session = Depends(get_db)):
+    """Which companies may use a platform model: all of them, or the ones ticked."""
+    m = db.get(LLMModel, model_id)
+    if not m or m.company_id is not None:
+        raise HTTPException(404, "Not found")
+    _set_sharing(db, m, body, LLMModel, "name")
+    audit(db, request, admin, "model.sharing_changed", m.name, "all companies" if m.share_all else f"companies {m.shared_companies}", company_id=None)
+    db.commit()
+    return _model(m)
+
+
+@router.put("/company/models")
+def choose_models(body: ChoiceIn, request: Request, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    """A company admin switches shared models on/off for their company and picks the company's default model."""
+    company = db.get(Company, admin.company_id)
+    offered = {m.id for m in tenancy.models_for(db, admin.company_id, include_hidden=True) if m.company_id is None}
+    company.hidden_models = sorted(set(body.hidden) & offered)
+    usable = {m.id for m in tenancy.models_for(db, admin.company_id)}
+    if body.default_id and body.default_id not in usable:
+        raise HTTPException(400, "The default model must be one your company can use.")
+    company.default_model_id = body.default_id
+    audit(db, request, admin, "company.models_chosen", company.name, f"hidden={company.hidden_models} default={body.default_id}")
+    db.commit()
+    return {"ok": True}
+
+
 # ---- settings ----------------------------------------------------------------------
 _LIMITS = {"max_rows": (1, 50000), "query_timeout_s": (5, 900), "rate_limit_per_min": (1, 600),
            "session_hours": (1, 168), "max_repair_attempts": (0, 5), "lockout_attempts": (3, 20),
@@ -217,13 +315,16 @@ _LIMITS = {"max_rows": (1, 50000), "query_timeout_s": (5, 900), "rate_limit_per_
            "rephrase_model_id": (0, 2**31 - 1)}
 
 
-def _public_settings(db: Session) -> dict:
-    return {k: v for k, v in get_settings(db).items() if not k.startswith("smtp_")}
+def _public_settings(db: Session, admin: User) -> dict:
+    out = {k: v for k, v in get_settings(db, admin.company_id).items() if not k.startswith("smtp_")}
+    if not admin.is_platform_admin:          # platform-wide settings are not shown to company admins
+        out = {k: v for k, v in out.items() if k not in PLATFORM_SETTINGS}
+    return {**out, "platform_keys": sorted(k for k in PLATFORM_SETTINGS if not k.startswith("smtp_")) if admin.is_platform_admin else []}
 
 
 @router.get("/settings")
-def settings(_: User = Depends(admin_only), db: Session = Depends(get_db)):
-    return _public_settings(db)
+def settings(admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    return _public_settings(db, admin)
 
 
 @router.put("/settings")
@@ -232,6 +333,8 @@ def save_settings(body: dict, request: Request, admin: User = Depends(admin_only
     for key, default in config.DEFAULT_SETTINGS.items():
         if key not in body:
             continue
+        if key in PLATFORM_SETTINGS and not admin.is_platform_admin:
+            continue                        # company admins cannot change installation-wide settings
         val = body[key]
         if isinstance(default, bool):
             val = bool(val)
@@ -243,8 +346,8 @@ def save_settings(body: dict, request: Request, admin: User = Depends(admin_only
             lo, hi = _LIMITS[key]
             if not lo <= val <= hi:
                 raise HTTPException(400, f"{key} must be between {lo} and {hi}.")
-            if key == "rephrase_model_id" and val and not db.get(LLMModel, val):
-                raise HTTPException(400, "The AI model chosen for rephrasing no longer exists.")
+            if key == "rephrase_model_id" and val and val not in {m.id for m in tenancy.models_for(db, admin.company_id)}:
+                raise HTTPException(400, "The AI model chosen for rephrasing is not available to your company.")
         elif key == "feedback_mode" and val not in ("approval", "instant"):
             raise HTTPException(400, "feedback_mode must be 'approval' or 'instant'.")
         elif key == "smtp_security" and val not in ("starttls", "ssl", "none"):
@@ -255,15 +358,16 @@ def save_settings(body: dict, request: Request, admin: User = Depends(admin_only
             val = security.encrypt(str(val))
         elif isinstance(default, str):
             val = str(val or "").strip()[:500]
-        row = db.get(Setting, key)
+        stored = key if key in PLATFORM_SETTINGS else company_key(admin.company_id, key)
+        row = db.get(Setting, stored)
         if row:
             row.value = {"v": val}
         else:
-            db.add(Setting(key=key, value={"v": val}))
+            db.add(Setting(key=stored, value={"v": val}))
         changed.append(f"{key}={'***' if key == 'smtp_password' else val}")
     audit(db, request, admin, "settings.updated", "", ", ".join(changed))
     db.commit()
-    return _public_settings(db)
+    return _public_settings(db, admin)
 
 
 # ---- email senders -------------------------------------------------------------------
@@ -280,6 +384,7 @@ class SenderIn(BaseModel):
     password: str = ""              # blank on update = keep
     active: bool = True
     is_default: bool = False
+    scope: str = "company"          # company | platform (shared; platform administrators)
 
 
 class TestMailIn(BaseModel):
@@ -290,7 +395,8 @@ def _sender(x: EmailSender) -> dict:
     return {"id": x.id, "label": x.label, "from_name": x.from_name, "from_email": x.from_email, "reply_to": x.reply_to,
             "mode": x.mode, "host": x.host, "port": x.port, "secure": x.secure, "username": x.username,
             "has_password": bool(x.password_enc), "active": x.active, "is_default": x.is_default,
-            "last_error": x.last_error, "verified_at": x.verified_at.isoformat() if x.verified_at else None}
+            "last_error": x.last_error, "verified_at": x.verified_at.isoformat() if x.verified_at else None,
+            "scope": "platform" if x.company_id is None else "company", "share_all": x.share_all, "shared_companies": x.shared_companies or []}
 
 
 def _apply_sender(x: EmailSender, body: SenderIn, db: Session):
@@ -310,20 +416,44 @@ def _apply_sender(x: EmailSender, body: SenderIn, db: Session):
     if body.password:
         x.password_enc = security.encrypt(body.password)
     if body.is_default:
-        db.execute(update(EmailSender).values(is_default=False))
+        db.execute(update(EmailSender).where(EmailSender.company_id.is_(None) if x.company_id is None
+                                             else EmailSender.company_id == x.company_id).values(is_default=False))
     x.is_default = body.is_default
 
 
 @router.get("/senders")
-def senders(_: User = Depends(admin_only), db: Session = Depends(get_db)):
-    return [_sender(x) for x in db.scalars(select(EmailSender).order_by(EmailSender.is_default.desc(), EmailSender.label))]
+def senders(admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    """This company's own senders (the list the screen manages), plus shared ones and, for platform admins, the platform's."""
+    company = db.get(Company, admin.company_id)
+    hidden = set(company.hidden_senders or []) if company else set()
+    default = mailer.pick_sender(db, None, admin.company_id)
+    own = [_sender(x) for x in db.scalars(select(EmailSender).where(EmailSender.company_id == admin.company_id)
+                                           .order_by(EmailSender.is_default.desc(), EmailSender.label))]
+    shared = [{"id": x.id, "label": x.label, "from_name": x.from_name, "from_email": x.from_email, "mode": x.mode, "active": x.active,
+               "scope": "platform", "on": x.id not in hidden}
+              for x in tenancy.senders_for(db, admin.company_id, include_hidden=True) if x.company_id is None]
+    out = {"senders": own, "shared": shared, "default_id": default.id if default else None, "is_platform_admin": bool(admin.is_platform_admin)}
+    if admin.is_platform_admin:
+        out["platform"] = [_sender(x) for x in db.scalars(select(EmailSender).where(EmailSender.company_id.is_(None)).order_by(EmailSender.label))]
+        out["companies"] = _companies(db)
+    return out
+
+
+def _my_sender(db, admin, sender_id) -> EmailSender:
+    x = db.get(EmailSender, sender_id)
+    if not _editable(admin, x):
+        raise HTTPException(404, "Not found")
+    return x
 
 
 @router.post("/senders")
 def create_sender(body: SenderIn, request: Request, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
-    x = EmailSender()
+    if body.scope == "platform" and not admin.is_platform_admin:
+        raise HTTPException(403, "Only a platform administrator can add shared senders.")
+    x = EmailSender(company_id=None if body.scope == "platform" else admin.company_id, share_all=False,
+                    shared_companies=[admin.company_id] if body.scope == "platform" else [])
     _apply_sender(x, body, db)
-    if not db.scalar(select(EmailSender.id).limit(1)):
+    if not tenancy.senders_for(db, admin.company_id):
         x.is_default = True
     db.add(x)
     audit(db, request, admin, "sender.created", x.label, x.from_email)
@@ -334,9 +464,7 @@ def create_sender(body: SenderIn, request: Request, admin: User = Depends(admin_
 @router.put("/senders/{sender_id}")
 def update_sender(sender_id: int, body: SenderIn, request: Request, admin: User = Depends(admin_only),
                   db: Session = Depends(get_db)):
-    x = db.get(EmailSender, sender_id)
-    if not x:
-        raise HTTPException(404, "Not found")
+    x = _my_sender(db, admin, sender_id)
     _apply_sender(x, body, db)
     audit(db, request, admin, "sender.updated", x.label)
     db.commit()
@@ -345,9 +473,7 @@ def update_sender(sender_id: int, body: SenderIn, request: Request, admin: User 
 
 @router.delete("/senders/{sender_id}")
 def delete_sender(sender_id: int, request: Request, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
-    x = db.get(EmailSender, sender_id)
-    if not x:
-        raise HTTPException(404, "Not found")
+    x = _my_sender(db, admin, sender_id)
     audit(db, request, admin, "sender.deleted", x.label)
     db.delete(x)
     db.commit()
@@ -355,10 +481,8 @@ def delete_sender(sender_id: int, request: Request, admin: User = Depends(admin_
 
 
 @router.post("/senders/{sender_id}/verify")
-def verify_sender(sender_id: int, _: User = Depends(admin_only), db: Session = Depends(get_db)):
-    x = db.get(EmailSender, sender_id)
-    if not x:
-        raise HTTPException(404, "Not found")
+def verify_sender(sender_id: int, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    x = _my_sender(db, admin, sender_id)
     try:
         out = {"ok": True, "message": mailer.verify(db, x)}
     except mailer.MailError as e:
@@ -370,14 +494,13 @@ def verify_sender(sender_id: int, _: User = Depends(admin_only), db: Session = D
 @router.post("/senders/{sender_id}/test")
 def test_sender(sender_id: int, body: TestMailIn, request: Request, admin: User = Depends(admin_only),
                 db: Session = Depends(get_db)):
-    x = db.get(EmailSender, sender_id)
-    if not x:
-        raise HTTPException(404, "Not found")
+    x = _my_sender(db, admin, sender_id)
     to = [a.strip() for a in body.to.replace(";", ",").split(",") if "@" in a]
     try:
         how = mailer.send(db, x, to, f"{config.APP_NAME} test email",
                           f"This is a test message from {config.APP_NAME}, sent from the sender \"{x.label}\".\n\n"
-                          "If you received it, scheduled reports can be emailed from this address.", context="test")
+                          "If you received it, scheduled reports can be emailed from this address.", context="test",
+                          company_id=admin.company_id)
         out = {"ok": True, "simulated": how == "simulated",
                "message": (f"Simulated - nothing was actually sent to {', '.join(to)}." if how == "simulated"
                            else f"Test email sent to {', '.join(to)}.")}
@@ -389,10 +512,34 @@ def test_sender(sender_id: int, body: TestMailIn, request: Request, admin: User 
 
 
 @router.get("/email-log")
-def email_log(_: User = Depends(admin_only), db: Session = Depends(get_db)):
+def email_log(admin: User = Depends(admin_only), db: Session = Depends(get_db)):
     return [{"at": e.created_at.isoformat(), "sender": e.sender_label, "to": e.to_addr, "subject": e.subject,
              "status": e.status, "error": e.error, "context": e.context}
-            for e in db.scalars(select(EmailLog).order_by(EmailLog.id.desc()).limit(200))]
+            for e in db.scalars(select(EmailLog).where(EmailLog.company_id == admin.company_id).order_by(EmailLog.id.desc()).limit(200))]
+
+
+@router.put("/senders/{sender_id}/sharing")
+def share_sender(sender_id: int, body: ShareIn, request: Request, admin: User = Depends(platform_admin), db: Session = Depends(get_db)):
+    x = db.get(EmailSender, sender_id)
+    if not x or x.company_id is not None:
+        raise HTTPException(404, "Not found")
+    _set_sharing(db, x, body, EmailSender, "label")
+    audit(db, request, admin, "sender.sharing_changed", x.label, "all companies" if x.share_all else f"companies {x.shared_companies}", company_id=None)
+    db.commit()
+    return _sender(x)
+
+
+@router.put("/company/senders")
+def choose_senders(body: ChoiceIn, request: Request, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    company = db.get(Company, admin.company_id)
+    offered = {x.id for x in tenancy.senders_for(db, admin.company_id, include_hidden=True) if x.company_id is None}
+    company.hidden_senders = sorted(set(body.hidden) & offered)
+    if body.default_id and body.default_id not in {x.id for x in tenancy.senders_for(db, admin.company_id)}:
+        raise HTTPException(400, "The default sender must be one your company can use.")
+    company.default_sender_id = body.default_id
+    audit(db, request, admin, "company.senders_chosen", company.name, f"hidden={company.hidden_senders} default={body.default_id}")
+    db.commit()
+    return {"ok": True}
 
 
 # ---- user groups ----------------------------------------------------------------------
@@ -406,11 +553,12 @@ def _group(g: UserGroup, members: dict) -> dict:
     return {"id": g.id, "name": g.name, "description": g.description, "user_ids": members.get(g.id, [])}
 
 
-def _save_group(g: UserGroup, body: GroupIn, db: Session):
+def _save_group(g: UserGroup, body: GroupIn, db: Session, admin: User):
     name = body.name.strip()
     if not name:
         raise HTTPException(400, "Give the group a name.")
-    clash = db.scalar(select(UserGroup).where(func.lower(UserGroup.name) == name.lower()))
+    g.company_id = admin.company_id
+    clash = db.scalar(select(UserGroup).where(func.lower(UserGroup.name) == name.lower(), UserGroup.company_id == admin.company_id))
     if clash and clash.id != g.id:
         raise HTTPException(400, "A group with this name already exists.")
     g.name, g.description = name[:200], body.description.strip()[:500]
@@ -418,22 +566,22 @@ def _save_group(g: UserGroup, body: GroupIn, db: Session):
     db.flush()
     db.execute(delete(UserGroupMember).where(UserGroupMember.group_id == g.id))
     for uid in set(body.user_ids):
-        if db.get(User, uid):
+        if same_company(admin, db.get(User, uid)):
             db.add(UserGroupMember(group_id=g.id, user_id=uid))
 
 
 @router.get("/groups")
-def groups(_: User = Depends(admin_only), db: Session = Depends(get_db)):
+def groups(admin: User = Depends(admin_only), db: Session = Depends(get_db)):
     members: dict = {}
     for m in db.scalars(select(UserGroupMember)):
         members.setdefault(m.group_id, []).append(m.user_id)
-    return [_group(g, members) for g in db.scalars(select(UserGroup).order_by(UserGroup.name))]
+    return [_group(g, members) for g in db.scalars(select(UserGroup).where(UserGroup.company_id == admin.company_id).order_by(UserGroup.name))]
 
 
 @router.post("/groups")
 def create_group(body: GroupIn, request: Request, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
     g = UserGroup()
-    _save_group(g, body, db)
+    _save_group(g, body, db, admin)
     audit(db, request, admin, "group.created", g.name, f"{len(set(body.user_ids))} member(s)")
     db.commit()
     return {"id": g.id}
@@ -443,9 +591,9 @@ def create_group(body: GroupIn, request: Request, admin: User = Depends(admin_on
 def update_group(group_id: int, body: GroupIn, request: Request, admin: User = Depends(admin_only),
                  db: Session = Depends(get_db)):
     g = db.get(UserGroup, group_id)
-    if not g:
+    if not same_company(admin, g):
         raise HTTPException(404, "Not found")
-    _save_group(g, body, db)
+    _save_group(g, body, db, admin)
     audit(db, request, admin, "group.updated", g.name, f"{len(set(body.user_ids))} member(s)")
     db.commit()
     return {"id": g.id}
@@ -454,7 +602,7 @@ def update_group(group_id: int, body: GroupIn, request: Request, admin: User = D
 @router.delete("/groups/{group_id}")
 def delete_group(group_id: int, request: Request, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
     g = db.get(UserGroup, group_id)
-    if not g:
+    if not same_company(admin, g):
         raise HTTPException(404, "Not found")
     from ..models import ReportShare
     db.execute(delete(ReportShare).where(ReportShare.scope == "group", ReportShare.group_id == g.id))
@@ -496,8 +644,8 @@ def _filter(f: DataFilter, users: dict, groups: dict | None = None) -> dict:
 
 
 @router.get("/access")
-def access_overview(_: User = Depends(admin_only), db: Session = Depends(get_db)):
-    users = {u.id: u for u in db.scalars(select(User).order_by(User.email))}
+def access_overview(admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    users = {u.id: u for u in db.scalars(select(User).where(User.company_id == admin.company_id).order_by(User.email))}
     names = {i: (u.name or u.email) for i, u in users.items()}
     grants: dict = {}
     for a in db.scalars(select(ConnectionAccess)):
@@ -508,7 +656,7 @@ def access_overview(_: User = Depends(admin_only), db: Session = Depends(get_db)
     members: dict = {}
     for m in db.scalars(select(UserGroupMember)):
         members.setdefault(m.group_id, []).append(m.user_id)
-    all_groups = list(db.scalars(select(UserGroup).order_by(UserGroup.name)))
+    all_groups = list(db.scalars(select(UserGroup).where(UserGroup.company_id == admin.company_id).order_by(UserGroup.name)))
     group_names = {g.id: g.name for g in all_groups}
     filters: dict = {}
     for f in db.scalars(select(DataFilter).order_by(DataFilter.table_name, DataFilter.id)):
@@ -523,23 +671,23 @@ def access_overview(_: User = Depends(admin_only), db: Session = Depends(get_db)
                          "group_ids": [g for g in group_grants.get(c.id, []) if g in group_names],
                          "tables": sorted({t["name"] for t in (c.schema_json or {}).get("tables", [])}),
                          "filters": filters.get(c.id, [])}
-                        for c in db.scalars(select(Connection).order_by(Connection.name))]}
+                        for c in db.scalars(select(Connection).where(Connection.company_id == admin.company_id).order_by(Connection.name))]}
 
 
 @router.put("/access/{conn_id}")
 def set_access(conn_id: int, body: AccessIn, request: Request, admin: User = Depends(admin_only),
                db: Session = Depends(get_db)):
     c = db.get(Connection, conn_id)
-    if not c:
+    if not same_company(admin, c):
         raise HTTPException(404, "Not found")
     c.is_active, c.restricted = body.is_active, body.restricted
     db.execute(delete(ConnectionAccess).where(ConnectionAccess.connection_id == conn_id))
     for uid in set(body.user_ids):
-        if db.get(User, uid):
+        if same_company(admin, db.get(User, uid)):
             db.add(ConnectionAccess(connection_id=conn_id, user_id=uid))
     db.execute(delete(ConnectionGroupAccess).where(ConnectionGroupAccess.connection_id == conn_id))
     for gid in set(body.group_ids):
-        if db.get(UserGroup, gid):
+        if same_company(admin, db.get(UserGroup, gid)):
             db.add(ConnectionGroupAccess(connection_id=conn_id, group_id=gid))
     audit(db, request, admin, "connection.access_changed", c.name,
           f"enabled={c.is_active} restricted={c.restricted} users={len(set(body.user_ids))} groups={len(set(body.group_ids))}")
@@ -547,19 +695,19 @@ def set_access(conn_id: int, body: AccessIn, request: Request, admin: User = Dep
     return {"ok": True}
 
 
-def _apply_filter(f: DataFilter, body: FilterIn, db: Session):
+def _apply_filter(f: DataFilter, body: FilterIn, db: Session, admin: User):
     conn = db.get(Connection, body.connection_id)
-    if not conn:
+    if not same_company(admin, conn):
         raise HTTPException(404, "Data model not found")
     if not body.table_name.strip():
         raise HTTPException(400, "Choose the table the filter applies to.")
     if body.scope not in ("all", "role", "group", "user"):
         raise HTTPException(400, "Unknown scope.")
-    if body.scope == "group" and not (body.group_id and db.get(UserGroup, body.group_id)):
+    if body.scope == "group" and not (body.group_id and same_company(admin, db.get(UserGroup, body.group_id))):
         raise HTTPException(400, "Choose the user group.")
     if body.scope == "role" and body.role not in ("analyst", "steward"):
         raise HTTPException(400, "Choose the role (analyst or steward). Administrators are never filtered.")
-    if body.scope == "user" and not (body.user_id and db.get(User, body.user_id)):
+    if body.scope == "user" and not (body.user_id and same_company(admin, db.get(User, body.user_id))):
         raise HTTPException(400, "Choose the user.")
     try:
         rowfilter.validate(body.condition, conn.db_type)
@@ -576,7 +724,7 @@ def _apply_filter(f: DataFilter, body: FilterIn, db: Session):
 @router.post("/filters")
 def create_filter(body: FilterIn, request: Request, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
     f = DataFilter()
-    conn = _apply_filter(f, body, db)
+    conn = _apply_filter(f, body, db, admin)
     db.add(f)
     audit(db, request, admin, "filter.created", conn.name, f"{f.table_name}: {f.condition} [{f.scope}]")
     db.commit()
@@ -587,9 +735,9 @@ def create_filter(body: FilterIn, request: Request, admin: User = Depends(admin_
 def update_filter(filter_id: int, body: FilterIn, request: Request, admin: User = Depends(admin_only),
                   db: Session = Depends(get_db)):
     f = db.get(DataFilter, filter_id)
-    if not f:
+    if not f or not same_company(admin, db.get(Connection, f.connection_id)):
         raise HTTPException(404, "Not found")
-    conn = _apply_filter(f, body, db)
+    conn = _apply_filter(f, body, db, admin)
     audit(db, request, admin, "filter.updated", conn.name, f"{f.table_name}: {f.condition} [{f.scope}] enabled={f.enabled}")
     db.commit()
     return {"id": f.id}
@@ -598,7 +746,7 @@ def update_filter(filter_id: int, body: FilterIn, request: Request, admin: User 
 @router.delete("/filters/{filter_id}")
 def delete_filter(filter_id: int, request: Request, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
     f = db.get(DataFilter, filter_id)
-    if not f:
+    if not f or not same_company(admin, db.get(Connection, f.connection_id)):
         raise HTTPException(404, "Not found")
     audit(db, request, admin, "filter.deleted", str(f.connection_id), f"{f.table_name}: {f.condition}")
     db.delete(f)
@@ -607,8 +755,10 @@ def delete_filter(filter_id: int, request: Request, admin: User = Depends(admin_
 
 
 # ---- audit log ---------------------------------------------------------------------
-def _audit_query(q: str, action: str):
-    stmt = select(AuditLog)
+def _audit_query(q: str, action: str, admin: User):
+    """A company admin sees their company's events; a platform administrator also sees platform-wide ones."""
+    mine = AuditLog.company_id == admin.company_id
+    stmt = select(AuditLog).where(or_(mine, AuditLog.company_id.is_(None)) if admin.is_platform_admin else mine)
     if q:
         like = f"%{q}%"
         stmt = stmt.where(or_(AuditLog.user_email.ilike(like), AuditLog.target.ilike(like), AuditLog.detail.ilike(like)))
@@ -618,21 +768,21 @@ def _audit_query(q: str, action: str):
 
 
 @router.get("/audit")
-def audit_log(q: str = "", action: str = "", page: int = 1, _: User = Depends(admin_only),
+def audit_log(q: str = "", action: str = "", page: int = 1, admin: User = Depends(admin_only),
               db: Session = Depends(get_db)):
     size = 100
-    rows = list(db.scalars(_audit_query(q, action).offset((max(page, 1) - 1) * size).limit(size + 1)))
+    rows = list(db.scalars(_audit_query(q, action, admin).offset((max(page, 1) - 1) * size).limit(size + 1)))
     return {"more": len(rows) > size,
             "items": [{"id": a.id, "at": a.created_at.isoformat(), "user": a.user_email, "action": a.action,
                        "target": a.target, "detail": a.detail, "ip": a.ip} for a in rows[:size]]}
 
 
 @router.get("/audit.csv")
-def audit_csv(q: str = "", action: str = "", _: User = Depends(admin_only), db: Session = Depends(get_db)):
+def audit_csv(q: str = "", action: str = "", admin: User = Depends(admin_only), db: Session = Depends(get_db)):
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(["time_utc", "user", "action", "target", "detail", "ip"])
-    for a in db.scalars(_audit_query(q, action).limit(50000)):
+    for a in db.scalars(_audit_query(q, action, admin).limit(50000)):
         w.writerow([a.created_at.isoformat(), a.user_email, a.action, a.target, a.detail, a.ip])
     return Response(buf.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": 'attachment; filename="audit-log.csv"'})

@@ -59,7 +59,11 @@ export async function chatView(root, convId) {
   }
 
   const connSel = select(active.map(c => [c.id, `${c.name}  ·  ${c.db_label}`]), connId, v => { connId = Number(v); prefs.set('conn', v); if (conv && conv.connection_id !== connId) newChat(); else welcome(); });
-  const modelSel = select(models.map(m => [m.id, m.name]), modelId, v => { modelId = Number(v); prefs.set('model', v); });
+  const opt = m => h('option', { value: m.id, selected: m.id === modelId }, m.name);
+  const both = models.some(m => m.group === 'shared') && models.some(m => m.group !== 'shared');
+  const modelSel = h('select', { onchange: e => { modelId = Number(e.target.value); prefs.set('model', e.target.value); } },
+    both ? [h('optgroup', { label: 'Your company' }, models.filter(m => m.group !== 'shared').map(opt)), h('optgroup', { label: 'Shared' }, models.filter(m => m.group === 'shared').map(opt))]
+      : models.map(opt));
   const predictChk = h('input', { type: 'checkbox', checked: predictive, onchange: e => { predictive = e.target.checked; prefs.set('predictive', predictive ? '1' : '0'); } });
   const shareBtn = h('button', { class: 'btn sm hidden', style: 'margin-top:14px', title: 'Share this chat with people or user groups', onclick: () => conv && shareChat(conv) }, '👥 Share chat');
   const sharedNote = h('div', { class: 'hidden' });

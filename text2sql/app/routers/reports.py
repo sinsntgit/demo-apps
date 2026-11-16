@@ -6,9 +6,9 @@ from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from .. import mailer, reporting
+from .. import tenancy, mailer, reporting
 from ..db import get_db, now
-from ..deps import audit, current_user
+from ..deps import same_company, audit, current_user
 from ..models import ROLES, EmailSender, QueryRun, Report, ReportShare, ReportSnapshot, User, UserGroup, UserGroupMember
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
@@ -87,14 +87,14 @@ def _full(db, user, r: Report) -> dict:
         out["schedule"] = r.schedule or ScheduleIn().model_dump()
         out["shares"] = [{"scope": s.scope, "user_id": s.user_id, "role": s.role, "group_id": s.group_id, "can_edit": s.can_edit}
                          for s in db.scalars(select(ReportShare).where(ReportShare.report_id == r.id))]
-        out["email_ready"] = mailer.configured(db)
+        out["email_ready"] = mailer.configured(db, user.company_id)
     return out
 
 
 @router.get("")
 def list_reports(user: User = Depends(current_user), db: Session = Depends(get_db)):
     reports = reporting.visible_reports(db, user)
-    owners = {u.id: u.name or u.email for u in db.scalars(select(User))}
+    owners = {u.id: u.name or u.email for u in db.scalars(select(User).where(User.company_id == user.company_id))}
     return [_summary(db, user, r, owners) for r in reports]
 
 
@@ -105,19 +105,20 @@ def email_placeholders(_: User = Depends(current_user)):     # registered before
 
 @router.get("/people")
 def people(user: User = Depends(current_user), db: Session = Depends(get_db)):
-    """Directory for the sharing and scheduling pickers: people, groups and email senders."""
+    """Directory for the sharing and scheduling pickers: people, groups and email senders - of this company only."""
+    default = mailer.pick_sender(db, None, user.company_id)
     counts: dict = {}
     for m in db.scalars(select(UserGroupMember)):
         counts[m.group_id] = counts.get(m.group_id, 0) + 1
     return {"roles": list(ROLES),
             "users": [{"id": u.id, "name": u.name or u.email, "email": u.email, "role": u.role, "me": u.id == user.id}
-                      for u in db.scalars(select(User).where(User.is_active).order_by(User.email))],
+                      for u in db.scalars(select(User).where(User.is_active, User.company_id == user.company_id).order_by(User.email))],
             "groups": [{"id": g.id, "name": g.name, "description": g.description, "members": counts.get(g.id, 0)}
-                       for g in db.scalars(select(UserGroup).order_by(UserGroup.name))],
-            "senders": [{"id": x.id, "label": f"{x.label} <{x.from_email}>", "is_default": x.is_default,
+                       for g in db.scalars(select(UserGroup).where(UserGroup.company_id == user.company_id).order_by(UserGroup.name))],
+            "senders": [{"id": x.id, "label": f"{x.label} <{x.from_email}>", "is_default": bool(default and x.id == default.id),
                          "simulated": x.mode == "simulate"}
-                        for x in db.scalars(select(EmailSender).where(EmailSender.active)
-                                            .order_by(EmailSender.is_default.desc(), EmailSender.label))]}
+                        for x in sorted((x for x in tenancy.senders_for(db, user.company_id) if x.active),
+                                        key=lambda x: (not (default and x.id == default.id), x.label.lower()))]}
 
 
 @router.post("")
@@ -126,7 +127,7 @@ def create(body: ReportIn, request: Request, user: User = Depends(current_user),
         comps = reporting.clean_components(db, user, body.components, [])
     except ValueError as e:
         raise HTTPException(400, str(e))
-    r = Report(owner_id=user.id, title=body.title.strip()[:300] or "Untitled report", description=body.description,
+    r = Report(company_id=user.company_id, owner_id=user.id, title=body.title.strip()[:300] or "Untitled report", description=body.description,
                header_text=body.header_text[:300], footer_text=body.footer_text[:300], page_numbers=body.page_numbers,
                components=comps)
     db.add(r)
@@ -192,6 +193,7 @@ def render(report_id: int, request: Request, user: User = Depends(current_user),
     """Re-runs every result for the person opening the report."""
     r = _get(db, user, report_id)
     out = reporting.render(db, r, user)
+    out.pop("logo", None)                # a server file path: the browser shows the logo from /api/company/logo
     audit(db, request, user, "report.opened", r.title)
     db.commit()
     return out
@@ -219,8 +221,10 @@ def set_schedule(report_id: int, body: ScheduleIn, request: Request, user: User 
     bad = [x for x in recipients if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", x)]
     if bad:
         raise HTTPException(400, f"Not a valid email address: {bad[0]}")
-    user_ids = [u for u in dict.fromkeys(body.user_ids) if db.get(User, u)]
-    group_ids = [g for g in dict.fromkeys(body.group_ids) if db.get(UserGroup, g)]
+    user_ids = [u for u in dict.fromkeys(body.user_ids) if same_company(user, db.get(User, u))]
+    group_ids = [g for g in dict.fromkeys(body.group_ids) if same_company(user, db.get(UserGroup, g))]
+    if body.sender_id and body.sender_id not in {x.id for x in tenancy.senders_for(db, user.company_id)}:
+        raise HTTPException(400, "That email sender is not available to your company.")
     if len(body.email_subject) > 300 or len(body.email_body) > 10000:
         raise HTTPException(400, "The email subject or message is too long.")
     bad_tokens = reporting.unknown_tokens(body.email_subject, body.email_body)
@@ -245,7 +249,7 @@ def email_preview(report_id: int, body: PreviewIn, user: User = Depends(current_
     r = _get(db, user, report_id, owner=True)
     probe = Report(id=r.id, title=r.title, owner_id=r.owner_id, schedule={**(r.schedule or {}), "frequency": body.frequency, "tz": body.tz})
     probe.company_id = getattr(r, "company_id", None)
-    sender = mailer.pick_sender(db, body.sender_id)
+    sender = mailer.pick_sender(db, body.sender_id, user.company_id)
     values = reporting.email_context(db, probe, sender, user, user.email)
     return {"subject": " ".join(reporting.fill_template(body.email_subject or reporting.DEFAULT_SUBJECT, values).split()),
             "body": reporting.fill_template(body.email_body or reporting.DEFAULT_BODY, values),
@@ -262,10 +266,10 @@ def set_shares(report_id: int, body: SharesIn, request: Request, user: User = De
         if s.get("scope") == "role" and s.get("role") in ROLES:
             db.add(ReportShare(report_id=r.id, scope="role", role=s["role"], can_edit=bool(s.get("can_edit"))))
             n += 1
-        elif s.get("scope") == "group" and db.get(UserGroup, int(s.get("group_id") or 0)):
+        elif s.get("scope") == "group" and same_company(user, db.get(UserGroup, int(s.get("group_id") or 0))):
             db.add(ReportShare(report_id=r.id, scope="group", group_id=int(s["group_id"]), can_edit=bool(s.get("can_edit"))))
             n += 1
-        elif s.get("scope") == "user" and db.get(User, int(s.get("user_id") or 0)):
+        elif s.get("scope") == "user" and same_company(user, db.get(User, int(s.get("user_id") or 0))):
             db.add(ReportShare(report_id=r.id, scope="user", user_id=int(s["user_id"]), can_edit=bool(s.get("can_edit"))))
             n += 1
     audit(db, request, user, "report.sharing_changed", r.title, f"{n} share(s)")

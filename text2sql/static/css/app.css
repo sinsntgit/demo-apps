@@ -229,3 +229,10 @@ a.report-card { display: block; text-decoration: none; color: inherit; } a.repor
   .thread-col { height: calc(100vh - 110px); } .dash-grid, .grid2 { grid-template-columns: 1fr; } .page { padding: 16px; }
 }
 @media print { .nav, .composer, .ask-bar, .convs { display: none !important; } }
+
+/* the signed-in person's company, under the app name */
+.nav .company { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 0 12px 12px; margin: -4px 0 6px; border-bottom: 1px solid var(--border); }
+.nav .company img { max-width: 100%; max-height: 44px; object-fit: contain; }
+.nav .company span { font-size: 12.5px; font-weight: 600; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.logo-box { width: 180px; height: 64px; border: 1px dashed var(--border); border-radius: 8px; display: grid; place-items: center; background: var(--surface); overflow: hidden; }
+.logo-box img { max-width: 170px; max-height: 56px; object-fit: contain; }

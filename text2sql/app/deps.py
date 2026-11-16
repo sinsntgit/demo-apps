@@ -5,7 +5,11 @@ from sqlalchemy.orm import Session
 
 from . import config, security
 from .db import get_db
-from .models import AuditLog, Connection, ConnectionAccess, ConnectionGroupAccess, Setting, User, UserGroupMember
+from .models import AuditLog, Company, Connection, ConnectionAccess, ConnectionGroupAccess, Setting, User, UserGroupMember
+
+# settings only the platform administrator changes (they apply to every company); all others are per company
+PLATFORM_SETTINGS = {"session_hours", "lockout_attempts", "lockout_minutes", "smtp_host", "smtp_port", "smtp_security",
+                     "smtp_user", "smtp_password", "smtp_from"}
 
 
 def sees_sql(user) -> bool:
@@ -14,11 +18,19 @@ def sees_sql(user) -> bool:
     return user.role != "analyst" or user.show_sql is not False
 
 
-def get_settings(db: Session) -> dict:
+def company_key(company_id: int, key: str) -> str:
+    return f"c{company_id}:{key}"
+
+
+def get_settings(db: Session, company_id: int | None = None) -> dict:
+    """Defaults, overridden by installation-wide values, overridden by the company's own values."""
     out = dict(config.DEFAULT_SETTINGS)
-    for s in db.scalars(select(Setting)):
-        if s.key in out:
-            out[s.key] = s.value.get("v")
+    rows = {s.key: s.value.get("v") for s in db.scalars(select(Setting))}
+    for k in out:
+        if k in rows:
+            out[k] = rows[k]
+        if company_id and k not in PLATFORM_SETTINGS and company_key(company_id, k) in rows:
+            out[k] = rows[company_key(company_id, k)]
     return out
 
 
@@ -27,8 +39,11 @@ def client_ip(request: Request) -> str:
     return (fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else ""))[:64]
 
 
-def audit(db: Session, request: Request | None, user: User | None, action: str, target: str = "", detail: str = ""):
+def audit(db: Session, request: Request | None, user: User | None, action: str, target: str = "", detail: str = "",
+          company_id: int | None = -1):
+    """company_id: -1 = the acting user's company; None = a platform-wide event."""
     db.add(AuditLog(user_id=user.id if user else None, user_email=user.email if user else "",
+                    company_id=(user.company_id if user else None) if company_id == -1 else company_id,
                     action=action, target=str(target)[:500], detail=str(detail)[:4000],
                     ip=client_ip(request) if request else ""))
 
@@ -40,6 +55,9 @@ def _user_from_cookie(request: Request, db: Session, scopes: tuple) -> User:
     user = db.get(User, int(claims["sub"]))
     if not user or not user.is_active or user.token_version != claims.get("tv"):
         raise HTTPException(401, "Session expired")
+    company = db.get(Company, user.company_id) if user.company_id else None
+    if company is not None and not company.is_active:
+        raise HTTPException(401, "Your company's access has been suspended. Contact the platform administrator.")
     request.state.scope = claims["scope"]
     return user
 
@@ -48,7 +66,7 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     """Fully signed-in user (password + 2FA where enabled, no pending setup)."""
     user = _user_from_cookie(request, db, ("full",))
     # Enforced on every request, so turning on mandatory 2FA applies to live sessions too.
-    if user.must_change_password or (not user.totp_enabled and get_settings(db)["enforce_2fa"]):
+    if user.must_change_password or (not user.totp_enabled and get_settings(db, user.company_id)["enforce_2fa"]):
         raise HTTPException(401, "Account setup required")
     return user
 
@@ -70,7 +88,20 @@ admin_only = require("admin")
 steward_up = require("admin", "steward")
 
 
+def platform_admin(user: User = Depends(current_user)) -> User:
+    if not user.is_platform_admin:
+        raise HTTPException(403, "Only a platform administrator can do this.")
+    return user
+
+
+def same_company(user: User, obj) -> bool:
+    """Is this row (user, group, data model, report ...) in the acting user's company?"""
+    return obj is not None and getattr(obj, "company_id", None) == user.company_id
+
+
 def can_use(db: Session, user: User, conn: Connection) -> bool:
+    if conn is None or conn.company_id != user.company_id:      # never another company's data model
+        return False
     if user.role == "admin":
         return True
     if not conn.is_active:

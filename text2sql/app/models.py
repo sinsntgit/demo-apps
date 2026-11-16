@@ -13,9 +13,25 @@ ISSUE_TYPES = {"wrong_numbers": "The numbers are wrong", "missing": "Something i
                "other": "Something else"}
 
 
+class Company(Base):
+    """A tenant. Every user belongs to exactly one company and only ever sees that company's data."""
+    __tablename__ = "companies"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), unique=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)        # False: its users cannot sign in
+    default_model_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    default_sender_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    hidden_models: Mapped[list] = mapped_column(JSON, default=list)      # shared platform models switched off here
+    hidden_senders: Mapped[list] = mapped_column(JSON, default=list)
+    logo_file: Mapped[str] = mapped_column(String(100), default="")          # in DATA_DIR/logos; shown in the menu and PDFs
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
 class User(Base):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    is_platform_admin: Mapped[bool] = mapped_column(Boolean, default=False)   # manages companies + shared models/senders
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(255), default="")
     password_hash: Mapped[str] = mapped_column(String(255))
@@ -38,8 +54,10 @@ class User(Base):
 class Connection(Base):
     """A data model: one database (or file folder) plus its own training data."""
     __tablename__ = "connections"
+    __table_args__ = (UniqueConstraint("company_id", "name", name="uq_connections_company_name"),)
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(255), unique=True)
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text, default="")
     db_type: Mapped[str] = mapped_column(String(30))
     config_enc: Mapped[str] = mapped_column(Text)                 # encrypted JSON incl. password
@@ -91,8 +109,12 @@ class TrainingItem(Base):
 
 class LLMModel(Base):
     __tablename__ = "llm_models"
+    __table_args__ = (UniqueConstraint("company_id", "name", name="uq_llm_models_company_name"),)
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(255), unique=True)   # display name
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)   # None = platform model
+    share_all: Mapped[bool] = mapped_column(Boolean, default=False)          # platform model: every company may use it
+    shared_companies: Mapped[list] = mapped_column(JSON, default=list)      # ...or only these companies
+    name: Mapped[str] = mapped_column(String(255))   # display name
     provider: Mapped[str] = mapped_column(String(30))             # anthropic | openai | openai_compatible
     model_id: Mapped[str] = mapped_column(String(255))
     base_url: Mapped[str] = mapped_column(String(500), default="")
@@ -152,6 +174,7 @@ class QueryRun(Base):
     context: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # what was sent to the model
     analysis: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # predictive: {"spec", "result" | "error"}
     rephrase_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)   # asked using this rephrased wording
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     # "these results are incorrect" -> review queue -> training
     issue_type: Mapped[str] = mapped_column(String(30), default="")       # see ISSUE_TYPES
     issue_status: Mapped[str] = mapped_column(String(20), default="")     # '' | open | fixed | noted | dismissed
@@ -165,6 +188,7 @@ class QueryRun(Base):
 class AuditLog(Base):
     __tablename__ = "audit_log"
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)   # None = platform event
     user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     user_email: Mapped[str] = mapped_column(String(255), default="")
     action: Mapped[str] = mapped_column(String(100), index=True)
@@ -199,6 +223,7 @@ class DataFilter(Base):
 class Report(Base):
     __tablename__ = "reports"
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     title: Mapped[str] = mapped_column(String(300), default="Untitled report")
     description: Mapped[str] = mapped_column(Text, default="")
@@ -238,8 +263,10 @@ class ReportSnapshot(Base):
 
 class UserGroup(Base):
     __tablename__ = "user_groups"
+    __table_args__ = (UniqueConstraint("company_id", "name", name="uq_user_groups_company_name"),)
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(200), unique=True)
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(String(500), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
@@ -256,6 +283,9 @@ class EmailSender(Base):
     """A mailbox the platform sends from (scheduled reports)."""
     __tablename__ = "email_senders"
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)   # None = platform sender
+    share_all: Mapped[bool] = mapped_column(Boolean, default=False)
+    shared_companies: Mapped[list] = mapped_column(JSON, default=list)
     label: Mapped[str] = mapped_column(String(200))
     from_name: Mapped[str] = mapped_column(String(200), default="")
     from_email: Mapped[str] = mapped_column(String(255))
@@ -276,6 +306,7 @@ class EmailSender(Base):
 class EmailLog(Base):
     __tablename__ = "email_log"
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
     sender_label: Mapped[str] = mapped_column(String(200), default="")
     to_addr: Mapped[str] = mapped_column(String(255))

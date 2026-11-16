@@ -57,6 +57,13 @@ These are the product's promises. A change that weakens one is wrong even if the
    for the viewer (`routers/chat.py::_viewer_dto`), exactly as a shared report is. The UI only
    hides things. A viewer never gets more than their own access; SQL that cannot be analysed is refused
    for filtered users rather than run unfiltered.
+3a. **Companies are isolated.** Every company-owned row carries `company_id` (users, connections, reports,
+   user_groups, query_runs, email_log, audit_log; training, filters, chats via their connection). Every list
+   filters by the acting user's company and every lookup by id checks it (`deps.same_company`, `deps.can_use`
+   refuses another company's connection even for admins, `reporting.can_view` checks the report's company). A
+   new endpoint that loads a row by id **must** check the company. Platform AI models / email senders have
+   `company_id = NULL` and are offered via `share_all` / `shared_companies` (`app/tenancy.py`). Only platform
+   admins may set a server folder on a files data model. `tests/test_tenancy.py` is the guard - extend it.
 4. **SQL in reports is never taken from the browser.** `reporting.clean_components` copies SQL from one
    of the editor's own successful runs or keeps what is stored.
 5. **Secrets are encrypted at rest** (`security.encrypt`, key from `T2S_SECRET_KEY`) and never returned
@@ -137,6 +144,16 @@ Every call is a `RephraseLog` row (tokens, cost, used); a question asked from a 
 `QueryRun.rephrase_id`. `similar_questions` finds verified examples locally (BM25, ≥ half the words), on the
 original and on the new wording. The dashboard adds rephrase cost to Model spend and compares "right first
 time" for rephrased vs typed questions. Real-model quality of the rewording is unmeasured.
+
+### Companies
+
+`Company` (name, is_active, default model/sender, hidden shared items, logo). `User.is_platform_admin`.
+Settings: `deps.get_settings(db, company_id)` = defaults < installation rows < `c{id}:key` rows;
+`PLATFORM_SETTINGS` (session, lockout, legacy SMTP) are installation-wide and only platform admins change them.
+`routers/companies.py`: the Companies API (platform admins) and logos (PNG/JPEG/WebP checked by magic bytes,
+stored in `DATA_DIR/logos`, served only to the company's own people; also drawn on report PDFs).
+`main._per_company_names` rebuilds SQLite tables whose `name` was unique installation-wide; `_first_company`
+moves an older database into "Default company". Samples: `add_retail_sample` / `add_sample_model(spec, company)`.
 
 ### Shared chats
 
@@ -225,7 +242,7 @@ Design defaults that have served well:
 ```bash
 python -m pytest -q                       # API-level tests, a few seconds
 tests/e2e/run.sh                          # browser suites against a fresh instance (see file header)
-tests/e2e/run.sh reports                  # one suite: features | reports | groups | predictive | sharing | session
+tests/e2e/run.sh reports                  # one suite: features | reports | groups | predictive | sharing | rephrase | resultsonly | tenancy | session
 T2S_TEST_PG=user:pw@host:5432/db python -m pytest tests/test_postgres.py   # live Postgres, optional
 ```
 

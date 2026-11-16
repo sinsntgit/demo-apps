@@ -48,14 +48,20 @@ def _share(db, user, report) -> ReportShare | None:
 
 
 def is_owner(user, report) -> bool:
+    if report.company_id != user.company_id:         # never another company's report, whoever asks
+        return False
     return user.role == "admin" or report.owner_id == user.id
 
 
 def can_view(db, user, report) -> bool:
+    if report.company_id != user.company_id:
+        return False
     return is_owner(user, report) or _share(db, user, report) is not None
 
 
 def can_edit(db, user, report) -> bool:
+    if report.company_id != user.company_id:
+        return False
     if is_owner(user, report):
         return True
     s = _share(db, user, report)
@@ -63,10 +69,11 @@ def can_edit(db, user, report) -> bool:
 
 
 def visible_reports(db, user) -> list[Report]:
+    mine = select(Report).where(Report.company_id == user.company_id)
     if user.role == "admin":
-        return list(db.scalars(select(Report).order_by(Report.updated_at.desc())))
+        return list(db.scalars(mine.order_by(Report.updated_at.desc())))
     shared = select(ReportShare.report_id).where(_mine(db, user))
-    return list(db.scalars(select(Report).where(or_(Report.owner_id == user.id, Report.id.in_(shared)))
+    return list(db.scalars(mine.where(or_(Report.owner_id == user.id, Report.id.in_(shared)))
                            .order_by(Report.updated_at.desc())))
 
 
@@ -114,7 +121,7 @@ def recipients(db, report: Report) -> tuple[list[User], list[str]]:
     gids = [int(g) for g in s.get("group_ids") or []]
     if gids:
         ids |= set(db.scalars(select(UserGroupMember.user_id).where(UserGroupMember.group_id.in_(gids))))
-    users = [u for u in db.scalars(select(User).where(User.id.in_(ids))) if u.is_active] if ids else []
+    users = [u for u in db.scalars(select(User).where(User.id.in_(ids), User.company_id == report.company_id)) if u.is_active] if ids else []
     known = {u.email.lower() for u in users}
     extra = [e for e in dict.fromkeys(x.strip() for x in s.get("recipients") or []) if "@" in e and e.lower() not in known]
     return users, extra
@@ -187,7 +194,7 @@ def _tokens(text: str, report, viewer, results: list[dict]) -> str:
 
 def render(db, report: Report, viewer: User) -> dict:
     """Re-run every result for this viewer and resolve the text placeholders."""
-    cfg = get_settings(db)
+    cfg = get_settings(db, viewer.company_id)
     conns: dict = {}
     results = []
     comps = [dict(c) for c in (report.components or [])]
@@ -223,11 +230,16 @@ def render(db, report: Report, viewer: User) -> dict:
     for c in comps:
         if c["type"] in ("heading", "text"):
             c["text"] = _tokens(c["text"], report, viewer, results)
-    return {"id": report.id, "title": report.title, "description": report.description,
+    out = {"id": report.id, "title": report.title, "description": report.description,
             "header_text": _tokens(report.header_text, report, viewer, results),
             "footer_text": _tokens(report.footer_text, report, viewer, results),
             "page_numbers": report.page_numbers, "components": comps,
             "refreshed_at": now().isoformat(), "viewer": viewer.name or viewer.email}
+    from .routers.companies import logo_path
+    logo = logo_path(db, report.company_id)
+    if logo:
+        out["logo"] = str(logo)      # server-side only (PDFs); stripped before the API answers
+    return out
 
 
 # ---- charts (server-side, for PDF) -------------------------------------------------------
@@ -486,6 +498,11 @@ def build_pdf(rendered: dict) -> bytes:
 
     class PDF(FPDF):
         def header(self):
+            if rendered.get("logo"):           # the company's logo, top right of every page
+                try:
+                    self.image(rendered["logo"], x=self.w - self.r_margin - 30, y=6, h=9, keep_aspect_ratio=True, w=30)
+                except Exception:          # an unreadable image must never stop the PDF
+                    pass
             if rendered["header_text"]:
                 self.set_font("dv", "", 8)
                 self.set_text_color(120)
@@ -790,7 +807,7 @@ def email_context(db, report: Report, sender, person: User | None, address: str,
         tz = ZoneInfo("UTC")
     local = (at_utc or now()).replace(tzinfo=dt.timezone.utc).astimezone(tz)
     owner = db.get(User, report.owner_id)
-    cfg = get_settings(db)
+    cfg = get_settings(db, getattr(report, "company_id", None))
     company = None
     if getattr(report, "company_id", None):
         from .models import Company
@@ -842,7 +859,7 @@ def make_snapshot(db, report: Report, trigger: str, send: bool) -> ReportSnapsho
         users, extra = recipients(db, report)
         if send and (users or extra):
             sched = report.schedule or {}
-            sender = mailer.pick_sender(db, sched.get("sender_id"))
+            sender = mailer.pick_sender(db, sched.get("sender_id"), report.company_id)
             subject_t, body_t = sched.get("email_subject") or DEFAULT_SUBJECT, sched.get("email_body") or DEFAULT_BODY
             sent, problems, simulated = [], [], False
             # one email per recipient: personal placeholders, and outside addresses do not see each other
@@ -853,7 +870,8 @@ def make_snapshot(db, report: Report, trigger: str, send: bool) -> ReportSnapsho
                     subject = " ".join(fill_template(subject_t, values).split())[:300]
                     body = fill_template(body_t, values)
                     attachment = pdf if person is None or person.id == owner.id else build_pdf(render(db, report, person))
-                    how = mailer.send(db, sender, to, subject, body, (snap.file_name, attachment), context=f"report: {report.title}")
+                    how = mailer.send(db, sender, to, subject, body, (snap.file_name, attachment), context=f"report: {report.title}",
+                                      company_id=report.company_id)
                     simulated = simulated or how == "simulated"
                     sent += to
                 except mailer.MailError as e:

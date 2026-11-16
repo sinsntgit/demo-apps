@@ -116,5 +116,5 @@ def test_sap_sample_data_model_and_training(admin):
 
     # added once per installation: a restart does not duplicate it, and a deleted sample does not come back
     from app.main import add_sample_model
-    add_sample_model("sap_training.json")
+    add_sample_model("sap_training.json", 1)
     assert sum(c["name"] == spec["name"] for c in client.get("/api/connections").json()) == 1

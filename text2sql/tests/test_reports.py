@@ -161,7 +161,7 @@ def test_senders_groups_schedule_and_email(people):
     sim = new(label="Demo (simulation)", mode="simulate").json()
     down = a.post(f"/api/admin/senders/{real['id']}/verify", headers=H).json()
     assert not down["ok"] and "Could not connect" in down["message"]
-    assert a.get("/api/admin/senders").json()[0]["last_error"]
+    assert a.get("/api/admin/senders").json()["senders"][0]["last_error"]
 
     # --- user groups
     g = a.post("/api/admin/groups", headers=H, json={"name": "Regional leads", "user_ids": [people["north_id"], people["south_id"]]}).json()["id"]
