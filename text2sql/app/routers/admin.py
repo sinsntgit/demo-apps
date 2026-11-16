@@ -85,7 +85,8 @@ def update_user(user_id: int, body: UserIn, request: Request, admin: User = Depe
     u.name, u.role, u.is_active, u.show_sql = body.name.strip(), body.role, body.is_active, body.show_sql
     if body.is_platform_admin is not None and admin.is_platform_admin:
         if u.id == admin.id and not body.is_platform_admin:
-            raise HTTPException(400, "You cannot remove your own platform administrator rights.")
+            raise HTTPException(400, f"You are signed in as {admin.email}, so this is your own account: you cannot remove your own "
+                                     "platform administrator rights. Sign in as another platform administrator to do it.")
         u.is_platform_admin = bool(body.is_platform_admin) and u.role == "admin"
     elif u.role != "admin":
         u.is_platform_admin = False

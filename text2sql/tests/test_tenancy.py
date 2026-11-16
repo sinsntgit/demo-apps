@@ -228,3 +228,18 @@ print('fk', c.execute('pragma foreign_key_check').fetchall(), c.execute('pragma 
     assert "users [('boss@old.test', 1, 1), ('ann@old.test', 1, 0)]" in o
     assert "conn [('Sales', 1)]" in o and "model [('Opus', None, 0, '[1]')]" in o and "training [('Keep me',)]" in o
     assert "dup refused" in o and "fk [] ('ok',)" in o
+
+
+def test_removing_platform_admin_rights(admin):
+    """Another platform admin's rights can be removed and the account deleted; only your own are protected."""
+    a = admin[0]
+    second = a.post("/api/admin/users", headers=H, json={"email": "second.pa@test.local", "name": "Second", "role": "admin",
+                                                          "is_platform_admin": True}).json()
+    assert second["is_platform_admin"]
+    body = {"email": second["email"], "name": "Second", "role": "admin", "is_active": True, "show_sql": True}
+    assert a.put(f"/api/admin/users/{second['id']}", headers=H, json={**body, "is_platform_admin": False}).json()["is_platform_admin"] is False
+    me = a.get("/api/auth/me").json()
+    own = a.put(f"/api/admin/users/{me['id']}", headers=H, json={"email": me["email"], "name": me["name"], "role": "admin",
+                                                                  "is_active": True, "show_sql": True, "is_platform_admin": False})
+    assert own.status_code == 400 and f"signed in as {me['email']}" in own.json()["detail"]
+    assert a.delete(f"/api/admin/users/{second['id']}", headers=H).status_code == 200

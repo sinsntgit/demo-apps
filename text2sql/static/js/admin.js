@@ -25,7 +25,9 @@ function usersTab(el) {
     syncView();
     const active = check('Account enabled', u ? u.is_active : true);
     const pa = check('Platform administrator — also manages companies and the AI models / email senders shared with them', !!u?.is_platform_admin);
-    const paWrap = h('div', {}, state.me.is_platform_admin ? pa : null);
+    const own = u && u.id === state.me.id;
+    if (own) pa.input.disabled = true;               // nobody removes their own platform rights (another platform admin can)
+    const paWrap = h('div', {}, state.me.is_platform_admin ? [pa, own ? h('div', { class: 'small dim' }, `This is your own account (${state.me.email}). Another platform administrator can remove this right.`) : null] : null);
     const syncPa = () => paWrap.classList.toggle('hidden', role.value !== 'admin');
     role.addEventListener('change', syncPa); syncPa();
     modal(u ? `Edit ${u.email}` : 'Add user', h('div', { class: 'stack' }, field('Email', email), field('Name', name), field('Role', role), field('What answers show', view), h('div', { class: 'small dim', style: 'margin-top:-6px' }, viewNote), paWrap, active), {
