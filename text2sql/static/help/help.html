@@ -363,6 +363,20 @@
 <li>The server must be running at the scheduled time. A run missed while the server was down happens when it next starts.</li>
 <li>To email a report you must schedule it; sharing alone gives access in the app but sends nothing.</li>
 </ul>
+<h3>The email message</h3>
+<p>Under <b>Email message</b> in the schedule window, write the <b>Subject</b> and <b>Message</b> of the email (the PDF is attached). Click a placeholder to insert it where the cursor is; every recipient gets their own email with the values filled in. Press <b>👁 Preview</b> to see it as you would receive it, or <b>Reset to the standard message</b> to start again.</p>
+<figure><img src="/static/help/img/report-email.png" alt="The Email message section with subject, message, clickable placeholders and a preview showing the filled-in email"><figcaption>Subject and message with placeholders, and the preview.</figcaption></figure>
+<table>
+<tr><th>Placeholder</th><th>Becomes</th></tr>
+<tr><td><code>{{recipient_name}}</code>, <code>{{recipient_email}}</code></td><td>The person this email is sent to (for outside addresses, the address).</td></tr>
+<tr><td><code>{{date}}</code>, <code>{{datetime}}</code></td><td>When it is sent, in the schedule's time zone — e.g. <i>16 Nov 2026</i>, <i>16 Nov 2026 08:30 (IST)</i>.</td></tr>
+<tr><td><code>{{period}}</code></td><td>The period just ended: daily — yesterday; every weekday — the previous working day; weekly — last week, Monday to Sunday (<i>9–15 Nov 2026</i>); monthly — last month (<i>October 2026</i>).</td></tr>
+<tr><td><code>{{report_title}}</code>, <code>{{report_link}}</code></td><td>The report's title, and a link to the live report (only when the app's web address is set under Admin → Settings; otherwise the line is left out).</td></tr>
+<tr><td><code>{{owner_name}}</code>, <code>{{owner_email}}</code></td><td>The report's owner.</td></tr>
+<tr><td><code>{{sender_name}}</code>, <code>{{sender_email}}</code></td><td>The mailbox it is sent from.</td></tr>
+<tr><td><code>{{company}}</code>, <code>{{app_name}}</code></td><td>Your company's name and the application's name.</td></tr>
+</table>
+<p>A placeholder that does not exist (a typing mistake) is refused when you save the schedule. Each outside address gets its own email, so recipients never see each other's addresses.</p>
 </section>
 
 <section id="security" data-title="Security &amp; 2FA">

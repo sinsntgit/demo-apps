@@ -225,7 +225,7 @@ async function openReport(root, id) {
   }
 
   async function schedule() {
-    const people = await api('GET', '/api/reports/people').catch(fail);
+    const [people, tpl] = await Promise.all([api('GET', '/api/reports/people'), api('GET', '/api/reports/email-placeholders')]).catch(e => { fail(e); return []; });
     if (!people) return;
     const s = { ...def.schedule };
     if (!s.tz || s.tz === 'UTC') s.tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
@@ -247,7 +247,24 @@ async function openReport(root, id) {
     rcpt.addEventListener('input', count);
     const sender = select([['', 'Default sender'], ...people.senders.map(x => [x.id, x.label + (x.simulated ? ' — simulation' : '')])], s.sender_id || '', v => { s.sender_id = v ? Number(v) : null; });
     const send = check('Also email it now to everyone selected above', false);
-    const payload = () => ({ ...s, enabled: enabled.input.checked, recipients: extra(), group_ids: [...groups], user_ids: [...users] });
+    // the email itself: subject + message with {{placeholders}}
+    const subj = h('input', { type: 'text', value: s.email_subject || tpl.subject, maxlength: 300 });
+    const msg = h('textarea', { style: 'min-height:150px' }, s.email_body || tpl.body);
+    let target = msg;
+    [subj, msg].forEach(el => el.addEventListener('focus', () => { target = el; }));
+    const insert = name => { const t = `{{${name}}}`, a = target.selectionStart ?? target.value.length, b = target.selectionEnd ?? a;
+      target.value = target.value.slice(0, a) + t + target.value.slice(b); target.focus(); target.setSelectionRange(a + t.length, a + t.length); };
+    const chips = h('div', { class: 'chips' }, Object.entries(tpl.tokens).map(([k, d]) => h('button', { class: 'chip', type: 'button', title: d, onclick: () => insert(k) }, `{{${k}}}`)));
+    const preview = h('div', {});
+    const showPreview = () => busy(null, async () => {
+      const r = await api('POST', `/api/reports/${id}/email-preview`, { email_subject: subj.value, email_body: msg.value, sender_id: s.sender_id, frequency: s.frequency, tz: s.tz });
+      fill(preview, h('div', { class: 'card', style: 'padding:12px 14px;background:var(--surface)' },
+        h('div', { class: 'small dim' }, 'Preview — as you would receive it'), h('div', { style: 'margin:6px 0' }, h('b', {}, 'Subject: '), r.subject),
+        h('div', { style: 'white-space:pre-wrap' }, r.body),
+        r.unknown.length ? h('div', { class: 'banner warn small', style: 'margin-top:8px' }, 'Unknown placeholder(s): ' + r.unknown.map(x => `{{${x}}}`).join(', ')) : null));
+    });
+    const payload = () => ({ ...s, enabled: enabled.input.checked, recipients: extra(), group_ids: [...groups], user_ids: [...users],
+      email_subject: subj.value.trim() === tpl.subject ? '' : subj.value, email_body: msg.value.trim() === tpl.body.trim() ? '' : msg.value });
     count();
     modal('Schedule “' + def.title + '”', h('div', { class: 'stack' }, enabled, field('When', when),
       h('h3', { style: 'margin-bottom:0' }, 'Email the PDF to'),
@@ -257,6 +274,11 @@ async function openReport(root, id) {
       field('Other email addresses', rcpt, 'people without an account'),
       h('div', { class: 'small' }, 'Recipients: ', total),
       field('Send from', sender),
+      h('h3', { style: 'margin-bottom:0' }, 'Email message'),
+      field('Subject', subj), field('Message', msg, 'the PDF is attached'),
+      h('div', {}, h('div', { class: 'small dim', style: 'margin-bottom:4px' }, 'Click a placeholder to insert it where the cursor is — each recipient gets their own email with the values filled in. Hover for what each one means.'), chips),
+      h('div', { class: 'row' }, h('button', { class: 'btn sm', type: 'button', onclick: showPreview }, '👁 Preview'),
+        h('button', { class: 'btn sm ghost', type: 'button', onclick: () => { subj.value = tpl.subject; msg.value = tpl.body; fill(preview); } }, 'Reset to the standard message')), preview,
       people.senders.length ? null : h('div', { class: 'banner warn' }, 'No email sender is set up yet, so scheduled runs will be saved in the app but not emailed. An administrator can add one under Admin → Email senders.'),
       h('p', { class: 'small dim', style: 'margin:0' }, 'Each run refreshes the report and saves a dated PDF under “Saved copies” (the latest 30 are kept). Everyone who has an account receives the report with their own data access and data filters; other addresses receive it as you see it — only add people who are allowed to see that.'),
       def.next_run_at ? h('p', { class: 'small', style: 'margin:0' }, 'Next run: ', h('b', {}, fmtTime(def.next_run_at))) : null,

@@ -38,6 +38,16 @@ class ScheduleIn(BaseModel):
     user_ids: list[int] = []        # people with an account: each gets the report with their own data access
     group_ids: list[int] = []       # every member of these groups
     sender_id: int | None = None    # which email sender to send from (default sender if blank)
+    email_subject: str = ""         # blank = default; {{placeholders}} allowed
+    email_body: str = ""
+
+
+class PreviewIn(BaseModel):
+    email_subject: str = ""
+    email_body: str = ""
+    sender_id: int | None = None
+    frequency: str = "weekly"
+    tz: str = "UTC"
 
 
 class SharesIn(BaseModel):
@@ -86,6 +96,11 @@ def list_reports(user: User = Depends(current_user), db: Session = Depends(get_d
     reports = reporting.visible_reports(db, user)
     owners = {u.id: u.name or u.email for u in db.scalars(select(User))}
     return [_summary(db, user, r, owners) for r in reports]
+
+
+@router.get("/email-placeholders")
+def email_placeholders(_: User = Depends(current_user)):     # registered before "/{report_id}"
+    return {"tokens": reporting.EMAIL_TOKENS, "subject": reporting.DEFAULT_SUBJECT, "body": reporting.DEFAULT_BODY}
 
 
 @router.get("/people")
@@ -206,6 +221,11 @@ def set_schedule(report_id: int, body: ScheduleIn, request: Request, user: User 
         raise HTTPException(400, f"Not a valid email address: {bad[0]}")
     user_ids = [u for u in dict.fromkeys(body.user_ids) if db.get(User, u)]
     group_ids = [g for g in dict.fromkeys(body.group_ids) if db.get(UserGroup, g)]
+    if len(body.email_subject) > 300 or len(body.email_body) > 10000:
+        raise HTTPException(400, "The email subject or message is too long.")
+    bad_tokens = reporting.unknown_tokens(body.email_subject, body.email_body)
+    if bad_tokens:
+        raise HTTPException(400, "Unknown placeholder: {{" + bad_tokens[0] + "}}. Pick one from the list under the message.")
     r.schedule = {**body.model_dump(), "recipients": recipients, "user_ids": user_ids, "group_ids": group_ids,
                   "weekday": body.weekday % 7, "monthday": min(max(body.monthday, 1), 28)}
     people_, extra = reporting.recipients(db, r)
@@ -217,6 +237,19 @@ def set_schedule(report_id: int, body: ScheduleIn, request: Request, user: User 
     db.commit()
     return {"schedule": r.schedule, "next_run_at": r.next_run_at.isoformat() if r.next_run_at else None,
             "recipient_count": len(people_) + len(extra)}
+
+
+@router.post("/{report_id}/email-preview")
+def email_preview(report_id: int, body: PreviewIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """The email as the owner would receive it, with every placeholder filled in."""
+    r = _get(db, user, report_id, owner=True)
+    probe = Report(id=r.id, title=r.title, owner_id=r.owner_id, schedule={**(r.schedule or {}), "frequency": body.frequency, "tz": body.tz})
+    probe.company_id = getattr(r, "company_id", None)
+    sender = mailer.pick_sender(db, body.sender_id)
+    values = reporting.email_context(db, probe, sender, user, user.email)
+    return {"subject": " ".join(reporting.fill_template(body.email_subject or reporting.DEFAULT_SUBJECT, values).split()),
+            "body": reporting.fill_template(body.email_body or reporting.DEFAULT_BODY, values),
+            "unknown": reporting.unknown_tokens(body.email_subject, body.email_body)}
 
 
 @router.put("/{report_id}/shares")

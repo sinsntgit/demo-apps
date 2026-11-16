@@ -734,6 +734,86 @@ def next_run(schedule: dict | None, after: dt.datetime | None = None) -> dt.date
     return None
 
 
+# ---- the scheduled email: subject and body with placeholders ----------------------------------------------
+DEFAULT_SUBJECT = "{{report_title}} – {{period}}"
+DEFAULT_BODY = """Hello {{recipient_name}},
+
+Please find attached "{{report_title}}" for {{period}}.
+
+{{report_link}}
+
+Kind regards,
+{{owner_name}}"""
+EMAIL_TOKENS = {   # placeholder -> what it is (shown in the editor)
+    "recipient_name": "name of the person receiving this email (their address if they have no account)",
+    "recipient_email": "address of the person receiving this email",
+    "date": "date the email is sent, e.g. 16 Nov 2026",
+    "datetime": "date and time it is sent, in the schedule's time zone",
+    "period": "the period just ended: yesterday, last week or last month, by the schedule",
+    "report_title": "the report's title",
+    "report_link": "link to the live report (needs the app's web address under Admin → Settings)",
+    "owner_name": "the report owner's name", "owner_email": "the report owner's email",
+    "sender_name": "the name the email is sent from", "sender_email": "the address it is sent from",
+    "company": "your company's name", "app_name": "the application's name",
+}
+
+
+def _fmt_day(d) -> str:
+    return f"{d.day} {d:%b %Y}"
+
+
+def period_text(schedule: dict | None, at: dt.datetime) -> str:
+    """The period just ended, in the schedule's time zone: yesterday / the previous working day, last week, last month."""
+    freq = (schedule or {}).get("frequency", "daily")
+    day = at.date()
+    if freq == "monthly":
+        last = day.replace(day=1) - dt.timedelta(days=1)
+        return f"{last:%B %Y}"
+    if freq == "weekly":
+        end = day - dt.timedelta(days=day.weekday() + 1)          # last Sunday
+        start = end - dt.timedelta(days=6)
+        if start.month == end.month:
+            return f"{start.day}–{end.day} {end:%b %Y}"
+        return f"{_fmt_day(start)} – {_fmt_day(end)}" if start.year != end.year else f"{start.day} {start:%b} – {_fmt_day(end)}"
+    prev = day - dt.timedelta(days=1)
+    if freq == "weekdays":
+        while prev.weekday() > 4:
+            prev -= dt.timedelta(days=1)
+    return _fmt_day(prev)
+
+
+def email_context(db, report: Report, sender, person: User | None, address: str, at_utc: dt.datetime | None = None) -> dict:
+    sched = report.schedule or {}
+    try:
+        tz = ZoneInfo(sched.get("tz") or "UTC")
+    except Exception:
+        tz = ZoneInfo("UTC")
+    local = (at_utc or now()).replace(tzinfo=dt.timezone.utc).astimezone(tz)
+    owner = db.get(User, report.owner_id)
+    cfg = get_settings(db)
+    company = None
+    if getattr(report, "company_id", None):
+        from .models import Company
+        company = db.get(Company, report.company_id)
+    link = f"{cfg['public_url'].rstrip('/')}/#/reports/{report.id}" if cfg.get("public_url") else ""
+    return {"recipient_name": (person.name or person.email) if person else address, "recipient_email": person.email if person else address,
+            "date": _fmt_day(local), "datetime": f"{_fmt_day(local)} {local:%H:%M} ({local.tzname()})", "period": period_text(sched, local),
+            "report_title": report.title, "report_link": link,
+            "owner_name": (owner.name or owner.email) if owner else "", "owner_email": owner.email if owner else "",
+            "sender_name": (sender.from_name or sender.label) if sender else "", "sender_email": sender.from_email if sender else "",
+            "company": company.name if company else "", "app_name": config.APP_NAME}
+
+
+def fill_template(text: str, values: dict) -> str:
+    """Replace {{placeholder}}s; unknown ones are left as typed so the author notices them in the preview."""
+    out = re.sub(r"\{\{\s*(\w+)\s*\}\}", lambda m: str(values[m.group(1)]) if m.group(1) in values else m.group(0), text or "")
+    return re.sub(r"\n{3,}", "\n\n", out).strip()      # an empty line (e.g. no report link) does not leave a gap
+
+
+def unknown_tokens(*texts: str) -> list[str]:
+    return sorted({m for t in texts for m in re.findall(r"\{\{\s*(\w+)\s*\}\}", t or "") if m not in EMAIL_TOKENS})
+
+
 def snapshot_path(report_id: int, snapshot_id: int):
     folder = config.REPORTS_DIR / str(report_id)
     folder.mkdir(parents=True, exist_ok=True)
@@ -761,16 +841,17 @@ def make_snapshot(db, report: Report, trigger: str, send: bool) -> ReportSnapsho
             notes.append(f"{len(failed)} result(s) could not be refreshed.")
         users, extra = recipients(db, report)
         if send and (users or extra):
-            cfg = get_settings(db)
-            sender = mailer.pick_sender(db, (report.schedule or {}).get("sender_id"))
-            link = f"\n\nOpen the live report: {cfg['public_url'].rstrip('/')}/#/reports/{report.id}" if cfg.get("public_url") else ""
-            subject = f"{report.title} - {dt.datetime.now().strftime('%d %b %Y')}"
-            body = (f"The scheduled report \"{report.title}\" is attached.{link}\n\n"
-                    f"Sent by {config.APP_NAME} on behalf of {owner.name or owner.email}.")
+            sched = report.schedule or {}
+            sender = mailer.pick_sender(db, sched.get("sender_id"))
+            subject_t, body_t = sched.get("email_subject") or DEFAULT_SUBJECT, sched.get("email_body") or DEFAULT_BODY
             sent, problems, simulated = [], [], False
-            jobs = [([u.email], u) for u in users] + ([(extra, None)] if extra else [])
+            # one email per recipient: personal placeholders, and outside addresses do not see each other
+            jobs = [([u.email], u) for u in users] + [([x], None) for x in extra]
             for to, person in jobs:
                 try:
+                    values = email_context(db, report, sender, person, to[0])
+                    subject = " ".join(fill_template(subject_t, values).split())[:300]
+                    body = fill_template(body_t, values)
                     attachment = pdf if person is None or person.id == owner.id else build_pdf(render(db, report, person))
                     how = mailer.send(db, sender, to, subject, body, (snap.file_name, attachment), context=f"report: {report.title}")
                     simulated = simulated or how == "simulated"

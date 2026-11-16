@@ -181,9 +181,15 @@ def test_senders_groups_schedule_and_email(people):
     # --- schedule to a group + a named person + outside addresses
     assert north.put(f"/api/reports/{rid}/schedule", headers=H, json={"enabled": True, "frequency": "hourly"}).status_code == 400
     assert north.put(f"/api/reports/{rid}/schedule", headers=H, json={"enabled": True, "recipients": ["nope"]}).status_code == 400
+    assert north.put(f"/api/reports/{rid}/schedule", headers=H, json={"enabled": True, "email_body": "Hi {{nickname}}"}).status_code == 400
+    mail_tpl = {"email_subject": "Pack for {{recipient_name}} – {{period}}",
+                "email_body": "Hi {{recipient_name}} ({{recipient_email}}),\n\n{{report_title}} covers {{period}}.\n{{report_link}}\n\nFrom {{sender_name}} <{{sender_email}}>, {{owner_name}}, sent {{date}}"}
     s = north.put(f"/api/reports/{rid}/schedule", headers=H, json={
         "enabled": True, "frequency": "weekly", "weekday": 0, "time": "08:30", "tz": "Asia/Kolkata", "sender_id": real["id"],
-        "group_ids": [g], "user_ids": [people["south_id"]], "recipients": ["boss@test.local", "board@test.local"]}).json()
+        "group_ids": [g], "user_ids": [people["south_id"]], "recipients": ["boss@test.local", "board@test.local"], **mail_tpl}).json()
+    assert "period" in north.get("/api/reports/email-placeholders").json()["tokens"]
+    pv = north.post(f"/api/reports/{rid}/email-preview", headers=H, json={**mail_tpl, "sender_id": real["id"], "frequency": "monthly", "tz": "UTC"}).json()
+    assert pv["subject"].startswith("Pack for Nia North – ") and "north@test.local" in pv["body"] and "{{" not in pv["body"] and pv["unknown"] == []
     nxt = dt.datetime.fromisoformat(s["next_run_at"])
     assert (nxt.hour, nxt.minute) == (3, 0) and nxt.weekday() == 0 and s["recipient_count"] == 4      # 08:30 IST = 03:00 UTC
 
@@ -211,9 +217,21 @@ def test_senders_groups_schedule_and_email(people):
         server.stop()
 
     assert [e.rcpt_tos for e in inbox] == [["me@test.local", "you@test.local"], ["north@test.local"], ["south@test.local"],
-                                           ["boss@test.local", "board@test.local"]]
+                                           ["boss@test.local"], ["board@test.local"]]      # outside addresses: one email each
     head = inbox[1].content.decode(errors="replace")
     assert "AskData Reports <reports@test.local>" in head and "Reply-To: help@test.local" in head and "application/pdf" in head
+    import email as _email
+    from email import policy
+
+    def text_of(envelope):
+        m = _email.message_from_bytes(envelope.content, policy=policy.default)
+        return m["subject"], m.get_body(preferencelist=("plain",)).get_content()
+    subj, body = text_of(inbox[1])
+    assert subj.startswith("Pack for Nia North – ") and "–" in subj[len("Pack for Nia North – "):]     # last week, e.g. 9–15 Nov 2026
+    assert "Hi Nia North (north@test.local)" in body and "Regional pack covers" in body and "From AskData Reports <reports@test.local>" in body
+    assert "{{" not in body and "\n\n\n" not in body                       # no report link configured: no empty gap
+    subj_ext, body_ext = text_of(inbox[4])
+    assert "Hi board@test.local (board@test.local)" in body_ext and "boss@test.local" not in body_ext
 
     # each person with an account received the report as *they* are allowed to see it
     import base64
