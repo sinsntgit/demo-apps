@@ -212,7 +212,12 @@ def pdf(report_id: int, request: Request, user: User = Depends(current_user), db
 @router.get("/{report_id}/pptx")
 def pptx(report_id: int, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
     """The report as a PowerPoint deck, refreshed with this viewer's access (like the PDF)."""
-    from .. import pptx_export
+    try:
+        from .. import pptx_export
+    except ImportError:            # python-pptx not installed: say so plainly instead of "Internal Server Error"
+        return Response("PowerPoint export is not available yet: the python-pptx package is not installed on the server.\n\n"
+                        "On the server, run:  py -3.14 -m pip install -r requirements.txt\nthen restart AskData.",
+                        status_code=503, media_type="text/plain; charset=utf-8")
     from ..models import Company
     r = _get(db, user, report_id)
     company = db.get(Company, r.company_id) if r.company_id else None
