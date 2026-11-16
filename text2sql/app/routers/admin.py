@@ -22,12 +22,13 @@ class UserIn(BaseModel):
     name: str = ""
     role: str = "analyst"
     is_active: bool = True
+    show_sql: bool = True           # analysts: False = results only
 
 
 def _user(u: User) -> dict:
     return {"id": u.id, "email": u.email, "name": u.name, "role": u.role, "is_active": u.is_active,
             "totp_enabled": u.totp_enabled, "locked": security.is_locked(u),
-            "must_change_password": u.must_change_password,
+            "must_change_password": u.must_change_password, "show_sql": u.show_sql is not False,
             "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
             "created_at": u.created_at.isoformat()}
 
@@ -51,10 +52,10 @@ def create_user(body: UserIn, request: Request, admin: User = Depends(admin_only
     if db.scalar(select(User.id).where(User.email == email)):
         raise HTTPException(400, "A user with this email already exists.")
     temp = security.random_password()
-    u = User(email=email, name=body.name.strip(), role=body.role, is_active=body.is_active,
+    u = User(email=email, name=body.name.strip(), role=body.role, is_active=body.is_active, show_sql=body.show_sql,
              password_hash=security.hash_password(temp), must_change_password=True)
     db.add(u)
-    audit(db, request, admin, "user.created", email, body.role)
+    audit(db, request, admin, "user.created", email, f"{body.role}{'' if body.show_sql else ', results only'}")
     db.commit()
     return {**_user(u), "temporary_password": temp}
 
@@ -71,8 +72,8 @@ def update_user(user_id: int, body: UserIn, request: Request, admin: User = Depe
         raise HTTPException(400, "This is the last active administrator.")
     if not body.is_active and u.is_active:
         u.token_version += 1
-    u.name, u.role, u.is_active = body.name.strip(), body.role, body.is_active
-    audit(db, request, admin, "user.updated", u.email, f"role={u.role} active={u.is_active}")
+    u.name, u.role, u.is_active, u.show_sql = body.name.strip(), body.role, body.is_active, body.show_sql
+    audit(db, request, admin, "user.updated", u.email, f"role={u.role} active={u.is_active} sees_sql={u.show_sql}")
     db.commit()
     return _user(u)
 

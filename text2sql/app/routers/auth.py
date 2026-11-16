@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from .. import config, security
 from ..db import get_db, now
-from ..deps import audit, client_ip, current_user, get_settings, setup_user
+from ..deps import sees_sql, audit, client_ip, current_user, get_settings, setup_user
 from ..models import User
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -56,7 +56,7 @@ def _me(user: User, db: Session, scope: str) -> dict:
     return {"id": user.id, "email": user.email, "name": user.name, "role": user.role,
             "totp_enabled": user.totp_enabled, "recovery_codes_left": len(user.recovery_codes or []),
             "requirements": _requirements(user, settings), "scope": scope, "app_name": config.APP_NAME,
-            "enforce_2fa": settings["enforce_2fa"]}
+            "enforce_2fa": settings["enforce_2fa"], "sees_sql": sees_sql(user)}
 
 
 @router.post("/login")

@@ -12,7 +12,7 @@ export async function chatView(root, convId) {
   if (!active.some(c => c.id === connId)) connId = active[0]?.id;
   let modelId = Number(prefs.get('model')) || models[0]?.id;
   if (!models.some(m => m.id === modelId)) modelId = models[0]?.id;
-  let review = prefs.get('review') === '1';
+  let review = prefs.get('review') === '1' && state.me?.sees_sql !== false;
   let predictive = prefs.get('predictive') === '1';
   let sending = false;
 
@@ -220,7 +220,7 @@ export async function chatView(root, convId) {
     h('div', { class: 'convs' }, h('div', { style: 'padding:10px' }, h('button', { class: 'btn', style: 'width:100%;justify-content:center', onclick: newChat }, '＋ New chat'), h('div', { style: 'margin-top:8px' }, filter)), list),
     h('div', { class: 'thread-col' },
       h('div', { class: 'ask-bar' }, h('label', {}, 'Data model', connSel), h('label', {}, 'AI model', modelSel),
-        h('label', { class: 'check', style: 'flex-direction:row;font-size:13px;color:var(--text-2);margin-top:14px' }, reviewChk, 'Review SQL before running'),
+        state.me?.sees_sql === false ? null : h('label', { class: 'check', style: 'flex-direction:row;font-size:13px;color:var(--text-2);margin-top:14px' }, reviewChk, 'Review SQL before running'),
         h('label', { class: 'check', title: 'When ticked, questions that ask for a forecast, a prediction, segments, key drivers or anomalies also run a statistical model on the data. Other questions are answered as usual.', style: 'flex-direction:row;font-size:13px;color:var(--text-2);margin-top:14px' }, predictChk, '🔮 Use predictive capability'),
         h('a', { class: 'small', href: '#/help/predictive', target: '_blank', rel: 'noopener', style: 'margin-top:14px' }, '?'),
         h('span', { class: 'spacer' }), shareBtn),

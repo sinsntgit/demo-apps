@@ -79,7 +79,8 @@ def summary(days: int = 30, connection_id: int | None = None, model_id: int | No
         return sorted(out, key=lambda x: -x["queries"])
 
     errors = Counter((r.error or "")[:160] for r in runs if r.status in ("error", "blocked"))
-    pending = db.scalar(select(TrainingItem.id).where(TrainingItem.status == "pending").limit(1)) is not None
+    pending = db.scalar(select(TrainingItem.id).where(TrainingItem.status == "pending").limit(1)) is not None or \
+        db.scalar(select(QueryRun.id).where(QueryRun.issue_status == "open").limit(1)) is not None
     stmt = select(RephraseLog).where(RephraseLog.created_at >= now() - timedelta(days=days))
     if connection_id:
         stmt = stmt.where(RephraseLog.connection_id == connection_id)

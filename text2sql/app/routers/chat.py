@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from .. import connectors, engine, predict, reporting, security, sqlguard, summarize
 from ..db import get_db, now
-from ..deps import audit, can_use, current_user, get_connection, get_settings
-from ..models import ROLES, Connection, Conversation, ConversationShare, LLMModel, QueryRun, RephraseLog, User, UserGroup
+from ..deps import audit, can_use, current_user, get_connection, get_settings, sees_sql
+from ..models import ISSUE_TYPES, ROLES, Connection, Conversation, ConversationShare, LLMModel, QueryRun, RephraseLog, User, UserGroup
 from .training import upsert_pair
 
 router = APIRouter(prefix="/api", tags=["chat"])
@@ -37,8 +37,9 @@ class ExecIn(BaseModel):
 
 
 class FeedbackIn(BaseModel):
-    verdict: str            # correct | incorrect
-    note: str = ""
+    verdict: str            # correct | incorrect | withdraw
+    note: str = ""          # for "incorrect": why / what was expected (required)
+    issue_type: str = ""    # for "incorrect": one of ISSUE_TYPES (required)
 
 
 class TitleIn(BaseModel):
@@ -62,7 +63,22 @@ def run_dto(r: QueryRun, rows: bool = True) -> dict:
             "followups": r.followups or [], "feedback": r.feedback, "feedback_note": r.feedback_note,
             "model_label": r.model_label, "input_tokens": r.input_tokens, "output_tokens": r.output_tokens,
             "cost": round(r.cost, 6), "llm_ms": r.llm_ms, "db_ms": r.db_ms, "attempts": r.attempts,
-            "context": r.context, "created_at": r.created_at.isoformat()}
+            "context": r.context, "created_at": r.created_at.isoformat(),
+            "issue_type": r.issue_type or "", "issue_label": ISSUE_TYPES.get(r.issue_type or "", ""),
+            "issue_status": r.issue_status or "", "issue_resolution": r.issue_resolution or ""}
+
+
+def shaped(dto: dict, user: User) -> dict:
+    """What this person may see of an answer: a "results only" user gets no SQL, no Python code and nothing of
+    what was sent to the AI model - enforced here, not just hidden in the browser."""
+    if sees_sql(user):
+        return dto
+    ctx = dto.get("context") or {}
+    dto.update(generated_sql="", final_sql="", technical=False, context={"filters": ctx.get("filters") or []}, attempts=0)
+    a = dto.get("analysis")
+    if isinstance(a, dict) and isinstance(a.get("result"), dict):
+        dto["analysis"] = {**a, "result": {k: v for k, v in a["result"].items() if k != "code"}}
+    return dto
 
 
 def _own_run(db: Session, user: User, run_id: int) -> QueryRun:
@@ -147,6 +163,7 @@ def ask(body: AskIn, request: Request, user: User = Depends(current_user), db: S
     if not conn.is_active:
         raise HTTPException(400, "This data model is disabled.")
     model = _pick_model(db, body.model_id)
+    review_first = body.review_first and sees_sql(user)      # reviewing SQL needs to see it
 
     if body.conversation_id:
         conv = _conv(db, user, body.conversation_id, edit=True)
@@ -170,12 +187,12 @@ def ask(body: AskIn, request: Request, user: User = Depends(current_user), db: S
     # predictive analysis is used only when the user ticked it for this question and an admin allows it
     prompt = engine.generate(db, run, conn, model, history,
                              {**cfg, "predictive_enabled": bool(cfg["predictive_enabled"] and body.predictive)})
-    if prompt and not body.review_first:
+    if prompt and not review_first:
         engine.execute(db, run, conn, cfg, model, prompt, user=user)
     conv.updated_at = now()
     audit(db, request, user, "query.asked", conn.name, f"run status={run.status}")
     db.commit()
-    return {"conversation": {"id": conv.id, "title": conv.title}, "run": run_dto(run)}
+    return {"conversation": {"id": conv.id, "title": conv.title}, "run": shaped(run_dto(run), user)}
 
 
 @router.get("/chat/options")
@@ -224,6 +241,8 @@ def execute(run_id: int, body: ExecIn, request: Request, user: User = Depends(cu
     conn = get_connection(db, user, run.connection_id)
     cfg = get_settings(db)
     if body.sql is not None:
+        if not sees_sql(user):
+            raise HTTPException(403, "Your account shows results only, so SQL cannot be edited. Use “Incorrect” to report a problem.")
         sql = sqlguard._strip(body.sql)
         if " ".join(sql.split()) != " ".join((run.generated_sql or "").split()):
             run.edited = True      # whitespace-only changes (the UI's formatting) do not count
@@ -235,7 +254,7 @@ def execute(run_id: int, body: ExecIn, request: Request, user: User = Depends(cu
     audit(db, request, user, "query.executed", conn.name,
           f"run #{run.id} status={run.status}{' (edited SQL)' if run.edited else ''}")
     db.commit()
-    return run_dto(run)
+    return shaped(run_dto(run), user)
 
 
 class AnalysisIn(BaseModel):
@@ -262,7 +281,7 @@ def rerun_analysis(run_id: int, body: AnalysisIn, request: Request, user: User =
     engine.execute(db, run, conn, get_settings(db), user=user)
     audit(db, request, user, "query.analysis_rerun", conn.name, f"run #{run.id} {spec.get('type')}")
     db.commit()
-    return run_dto(run)
+    return shaped(run_dto(run), user)
 
 
 @router.post("/chat/runs/{run_id}/feedback")
@@ -271,15 +290,29 @@ def feedback(run_id: int, body: FeedbackIn, request: Request, user: User = Depen
     """Confirm the SQL (it becomes a training pair) or flag it as wrong."""
     run = _own_run(db, user, run_id)
     conn = get_connection(db, user, run.connection_id)
-    if body.verdict == "incorrect":
-        run.feedback, run.feedback_note = "incorrect", body.note[:2000]
-        audit(db, request, user, "query.feedback", conn.name, f"run #{run.id} incorrect")
+    if body.verdict == "withdraw":             # "Change": take back an earlier verdict
+        if run.issue_status == "open":
+            run.issue_status, run.issue_type = "", ""
+        run.feedback, run.feedback_note = "", ""
         db.commit()
-        return {"run": run_dto(run, rows=False), "training": None}
+        return {"run": shaped(run_dto(run, rows=False), user), "training": None}
+    if body.verdict == "incorrect":
+        note = body.note.strip()
+        if body.issue_type not in ISSUE_TYPES:
+            raise HTTPException(400, "Choose what is incorrect.")
+        if len(note) < 5:
+            raise HTTPException(400, "Say briefly why it is incorrect or what you expected - a data steward uses this to fix it.")
+        run.feedback, run.feedback_note, run.issue_type = "incorrect", note[:2000], body.issue_type
+        run.issue_status, run.issue_resolution, run.issue_resolved_by, run.issue_resolved_at = "open", "", None, None
+        audit(db, request, user, "query.feedback", conn.name, f"run #{run.id} incorrect ({body.issue_type}) -> review queue")
+        db.commit()
+        return {"run": shaped(run_dto(run, rows=False), user), "training": "review"}
     if body.verdict != "correct":
         raise HTTPException(400, "Unknown verdict.")
     if run.status != "success":
         raise HTTPException(400, "Only a query that ran successfully can be confirmed.")
+    if run.issue_status == "open":
+        run.issue_status, run.issue_type = "", ""
     run.feedback = "corrected" if run.edited else "correct"
     trusted = user.role in ("admin", "steward") or get_settings(db)["feedback_mode"] == "instant"
     status = "approved" if trusted else "pending"
@@ -287,7 +320,7 @@ def feedback(run_id: int, body: FeedbackIn, request: Request, user: User = Depen
                 analysis=(run.analysis or {}).get("spec"))
     audit(db, request, user, "query.feedback", conn.name, f"run #{run.id} {run.feedback} -> training {status}")
     db.commit()
-    return {"run": run_dto(run, rows=False), "training": status}
+    return {"run": shaped(run_dto(run, rows=False), user), "training": status}
 
 
 @router.put("/chat/runs/{run_id}/chart")
@@ -315,7 +348,7 @@ def export_xlsx(run_id: int, user: User = Depends(current_user), db: Session = D
         ws.append(row)
     ws.freeze_panes = "A2"
     info = wb.create_sheet("Query")
-    for k, v in (("Question", run.question), ("SQL", run.final_sql), ("Model", run.model_label),
+    for k, v in (("Question", run.question), ("SQL", run.final_sql if sees_sql(user) else "(not shown for this account)"), ("Model", run.model_label),
                  ("Run at (UTC)", run.created_at.isoformat(timespec="seconds")), ("Rows", run.row_count)):
         info.append([k, v])
     buf = io.BytesIO()
@@ -360,7 +393,7 @@ def conversation(conv_id: int, user: User = Depends(current_user), db: Session =
         out.update(no_access=True, can_edit=False)
         return out
     cfg = get_settings(db)
-    out["runs"] = [run_dto(r) if r.user_id == user.id else _viewer_dto(db, user, conn, r, cfg, names) for r in conv.runs]
+    out["runs"] = [shaped(run_dto(r) if r.user_id == user.id else _viewer_dto(db, user, conn, r, cfg, names), user) for r in conv.runs]
     return out
 
 
@@ -427,7 +460,8 @@ def history(q: str = "", user: User = Depends(current_user), db: Session = Depen
         .where(QueryRun.user_id == user.id)
     if q:
         like = f"%{q}%"
-        stmt = stmt.where(or_(QueryRun.question.ilike(like), QueryRun.final_sql.ilike(like)))
+        stmt = stmt.where(or_(QueryRun.question.ilike(like), QueryRun.final_sql.ilike(like)) if sees_sql(user)
+                          else QueryRun.question.ilike(like))
     rows = db.execute(stmt.order_by(QueryRun.id.desc()).limit(200)).all()
     return [{"id": r.id, "conversation_id": r.conversation_id, "question": r.question, "status": r.status,
              "row_count": r.row_count, "feedback": r.feedback, "connection_name": name, "model_label": r.model_label,

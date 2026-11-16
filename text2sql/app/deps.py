@@ -8,6 +8,12 @@ from .db import get_db
 from .models import AuditLog, Connection, ConnectionAccess, ConnectionGroupAccess, Setting, User, UserGroupMember
 
 
+def sees_sql(user) -> bool:
+    """Whether this person is shown SQL and Python code. Stewards and admins always are (they review and
+    fix it); an analyst can be set to "results only" by an administrator."""
+    return user.role != "analyst" or user.show_sql is not False
+
+
 def get_settings(db: Session) -> dict:
     out = dict(config.DEFAULT_SETTINGS)
     for s in db.scalars(select(Setting)):

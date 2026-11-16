@@ -18,7 +18,7 @@ from sqlalchemy import or_, select, update
 
 from . import config, connectors, engine, mailer, sqlguard
 from .db import SessionLocal, now
-from .deps import can_use, get_settings
+from .deps import sees_sql, can_use, get_settings
 from .models import Connection, QueryRun, Report, ReportShare, ReportSnapshot, User, UserGroup, UserGroupMember
 from .summarize import is_additive, is_measure
 
@@ -212,8 +212,13 @@ def render(db, report: Report, viewer: User) -> dict:
                 c.update(status="error", message=f"Blocked: {e}")
             except connectors.ConnectorError as e:
                 c.update(status="error", message=str(e))
-        if c.get("status") != "ok":
+        if c.get("status") != "ok" or not sees_sql(viewer):
             c.pop("sql", None)          # do not reveal schema details of data the viewer cannot use
+        if not sees_sql(viewer):        # results-only account: no Python code either, on screen or in the PDF
+            c["hide"] = sorted(set(c.get("hide") or []) | {"code"})
+            a = c.get("analysis")
+            if isinstance(a, dict) and isinstance(a.get("result"), dict):
+                c["analysis"] = {**a, "result": {k: v for k, v in a["result"].items() if k != "code"}}
         results.append(c)
     for c in comps:
         if c["type"] in ("heading", "text"):

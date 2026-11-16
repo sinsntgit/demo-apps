@@ -7,6 +7,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .db import Base, now
 
 ROLES = ("admin", "steward", "analyst")   # steward = curates training data, sees dashboard
+ISSUE_TYPES = {"wrong_numbers": "The numbers are wrong", "missing": "Something is missing",
+               "extra": "It includes things that should not be there", "filter": "Wrong period or filter",
+               "grouping": "Wrong breakdown or grouping", "misunderstood": "It answered a different question",
+               "other": "Something else"}
 
 
 class User(Base):
@@ -27,6 +31,8 @@ class User(Base):
     token_version: Mapped[int] = mapped_column(Integer, default=0)       # bump = revoke sessions
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    # analysts only: False = sees results only (no SQL, no Python code). None (older rows) = sees everything
+    show_sql: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=True)
 
 
 class Connection(Base):
@@ -146,6 +152,12 @@ class QueryRun(Base):
     context: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # what was sent to the model
     analysis: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # predictive: {"spec", "result" | "error"}
     rephrase_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)   # asked using this rephrased wording
+    # "these results are incorrect" -> review queue -> training
+    issue_type: Mapped[str] = mapped_column(String(30), default="")       # see ISSUE_TYPES
+    issue_status: Mapped[str] = mapped_column(String(20), default="")     # '' | open | fixed | noted | dismissed
+    issue_resolution: Mapped[str] = mapped_column(Text, default="")       # the steward's answer, shown to the user
+    issue_resolved_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    issue_resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
     conversation: Mapped[Conversation] = relationship(back_populates="runs")
 

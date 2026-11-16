@@ -118,6 +118,18 @@ still shows/stores at most `max_rows`. A failed analysis never fails the answer.
 `QueryRun` is at once the chat message, the audit record and the dashboard row. `run_dto` recomputes
 the summary on read so old chats benefit from summary improvements.
 
+### Results-only users and reported problems
+
+`User.show_sql` (NULL on older rows = sees everything); `deps.sees_sql(user)` is False only for an analyst set
+to results only. `routers/chat.py::shaped()` strips SQL, model context and predictive `code` from every run DTO
+sent to such a user (ask, execute, analysis re-run, feedback, conversation, shared chats); `reporting.render`
+drops component SQL and forces `hide: code` for them (screen, PDF, scheduled email). They cannot edit SQL (403)
+and `review_first` is ignored. Feedback "incorrect" requires `issue_type` (models.ISSUE_TYPES, mirrored in
+results.js `ISSUES`) and a reason, and sets `QueryRun.issue_status = open`; stewards list them at
+`/api/training/{conn}/issues`, test SQL at `/test-sql`, and resolve at `/api/training/issues/{run}/resolve`
+(example → approved pair after the SQL ran; note → documentation; dismiss). The run DTO carries the status and the
+steward's message back to the user.
+
 ### Rephrase
 
 `POST /api/chat/rephrase` → `engine.rephrase` with the admin's `rephrase_model_id` (0 = the user's model).

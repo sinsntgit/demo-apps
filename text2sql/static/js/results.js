@@ -1,5 +1,5 @@
 // One answered question: SQL review + feedback, chart / table / summary views, exports.
-import { h, fill, prettySQL, api, busy, toast, fail, select, check, fmtNum, fmtCompact, highlightSQL, download, theme, modal, state } from './core.js';
+import { h, fill, prettySQL, api, busy, toast, fail, select, check, fmtNum, fmtCompact, highlightSQL, download, theme, modal, state, field } from './core.js';
 
 // Categorical palette (fixed order, colour-blind-safe adjacent pairs) for light / dark surfaces.
 const PALETTE = {
@@ -190,7 +190,7 @@ function exportPDF(run, cfg) {
     };
     if (!hide.has('table')) pa.tables.forEach(pdfTable);
     if (!hide.has('stats')) pa.stats.forEach(pdfTable);
-    if (!hide.has('code')) { if (y > 640) { doc.addPage(); y = 48; } para('Code that produced this (Python)', 10, 'bold', 40, 'helvetica', 2); para(pa.code, 7, 'normal', 50, 'courier', 10); }
+    if (!hide.has('code') && pa.code) { if (y > 640) { doc.addPage(); y = 48; } para('Code that produced this (Python)', 10, 'bold', 40, 'helvetica', 2); para(pa.code, 7, 'normal', 50, 'courier', 10); }
     if (y > 680) { doc.addPage(); y = 48; }
     para('Data used', 12, 'bold');
   }
@@ -205,8 +205,7 @@ function exportPDF(run, cfg) {
       doc.addImage(img, 'JPEG', M, y, W - 2 * M, hgt); y += hgt + 16;
     }
   }
-  para('SQL', 11, 'bold');
-  para(run.final_sql, 8.5, 'normal', 40, 'courier', 10);
+  if (run.final_sql) { para('SQL', 11, 'bold'); para(run.final_sql, 8.5, 'normal', 40, 'courier', 10); }
   const cap = 1000;
   doc.autoTable({
     startY: Math.min(y, 760), margin: { left: M, right: M }, styles: { fontSize: 8, cellPadding: 3, overflow: 'linebreak' },
@@ -396,7 +395,7 @@ export function analysisBlock(analysis, opts = {}) {
     if (analysis.error) return el.append(h('div', { class: 'banner warn' }, h('b', {}, 'The predictive analysis could not be run. '), analysis.error, ' The data returned by the query is shown below.'));
     if (!r) return el.append(h('div', { class: 'banner info' }, 'The predictive output of this answer was not kept in history. ', opts.controls ? h('button', { class: 'btn sm', onclick: e => busy(e.target, () => opts.controls.rerun({})) }, 'Run again') : ''));
     const show = k => !hidden.has(k);
-    const toggles = h('div', { class: 'row wrap small', style: 'margin:0 0 10px;gap:12px' }, h('span', { class: 'dim' }, 'Show:'), PARTS.map(([k, l]) =>
+    const toggles = h('div', { class: 'row wrap small', style: 'margin:0 0 10px;gap:12px' }, h('span', { class: 'dim' }, 'Show:'), PARTS.filter(([k]) => k !== 'code' || r.code).map(([k, l]) =>
       check(l, show(k), v => { v ? hidden.delete(k) : hidden.add(k); opts.onHide?.(hidden); paint(); })));
     const head = h('div', { class: 'sec-head' }, h('h3', {}, `${ICON[r.type] || '🔮'} ${r.title}`), h('span', { class: 'badge info' }, r.method),
       h('span', { class: 'small dim' }, `${fmtNum(r.rows_used)} rows analysed on the server`), h('span', { class: 'spacer' }));
@@ -420,7 +419,7 @@ export function analysisBlock(analysis, opts = {}) {
     }
     const tables = (list, key) => { if (show(key)) for (const t of list) el.append(h('h3', { style: 'margin:16px 0 6px' }, t.title, t.row_count > t.rows.length ? h('span', { class: 'small dim' }, `  first ${fmtNum(t.rows.length)} of ${fmtNum(t.row_count)} rows`) : null), dataTable(t)); };
     tables(r.tables, 'table'); tables(r.stats, 'stats');
-    if (show('code')) el.append(h('div', { class: 'sec-head', style: 'margin:16px 0 6px' }, h('h3', {}, 'Code that produced this'), h('span', { class: 'small dim' }, 'Python — run on the AskData server on the rows returned by the SQL above; includes the feature engineering'), h('span', { class: 'spacer' }),
+    if (show('code') && r.code) el.append(h('div', { class: 'sec-head', style: 'margin:16px 0 6px' }, h('h3', {}, 'Code that produced this'), h('span', { class: 'small dim' }, 'Python — run on the AskData server on the rows returned by the SQL above; includes the feature engineering'), h('span', { class: 'spacer' }),
       h('button', { class: 'btn sm ghost', onclick: () => navigator.clipboard?.writeText(r.code).then(() => toast('Code copied')) }, 'Copy')), h('pre', { class: 'sql code-py', html: highlightPy(r.code) }));
   }
   paint();
@@ -452,8 +451,13 @@ async function addToReport(run) {
 /**
  * ctx: { readonly, onFollowup(question), onRephrase(question), onChange(run) }
  */
+// what a user can say is wrong with an answer (keys match models.ISSUE_TYPES on the server)
+export const ISSUES = [['wrong_numbers', 'The numbers are wrong'], ['missing', 'Something is missing'], ['extra', 'It includes things that should not be there'],
+  ['filter', 'Wrong period or filter'], ['grouping', 'Wrong breakdown or grouping'], ['misunderstood', 'It answered a different question'], ['other', 'Something else']];
+
 export function runCard(run, ctx = {}) {
   const root = h('div', {});
+  const tech = run.technical !== false;              // false: this account sees results only (no SQL, no code)
   let block = null, ablock = null, editing = false;
   const cleanup = () => { block?.destroy(); block = null; ablock?.destroy(); ablock = null; };
   const refresh = updated => { Object.assign(run, updated); ctx.onChange?.(run); draw(); };
@@ -463,9 +467,9 @@ export function runCard(run, ctx = {}) {
     const meta = h('span', { class: 'small dim' }, [run.model_label, run.llm_ms ? `${(run.llm_ms / 1000).toFixed(1)}s to write` : null,
       run.status === 'success' ? `${run.db_ms} ms to run` : null, run.attempts > 1 ? (run.status === 'success' ? `auto-corrected ×${run.attempts - 1}` : `${run.attempts - 1} repair attempt(s) failed`) : null,
       run.edited ? 'edited by you' : null].filter(Boolean).join(' · '));
-    sec.append(h('div', { class: 'sec-head' }, h('h3', {}, 'SQL'), meta, h('span', { class: 'spacer' }),
-      h('button', { class: 'btn sm ghost', onclick: () => navigator.clipboard?.writeText(run.final_sql).then(() => toast('SQL copied')) }, 'Copy'),
-      ctx.readonly ? null : h('button', { class: 'btn sm' + (editing ? ' active' : ''), onclick: () => { editing = !editing; draw(); } }, editing ? 'Cancel edit' : '✎ Edit SQL')));
+    sec.append(h('div', { class: 'sec-head' }, h('h3', {}, tech ? 'SQL' : 'How this was answered'), meta, h('span', { class: 'spacer' }),
+      tech ? h('button', { class: 'btn sm ghost', onclick: () => navigator.clipboard?.writeText(run.final_sql).then(() => toast('SQL copied')) }, 'Copy') : null,
+      ctx.readonly || !tech ? null : h('button', { class: 'btn sm' + (editing ? ' active' : ''), onclick: () => { editing = !editing; draw(); } }, editing ? 'Cancel edit' : '✎ Edit SQL')));
     if (editing) {
       const ta = h('textarea', { class: 'sql-edit', spellcheck: 'false' }, prettySQL(run.final_sql));
       const runBtn = h('button', { class: 'btn primary', onclick: () => busy(runBtn, async () => {
@@ -475,24 +479,28 @@ export function runCard(run, ctx = {}) {
       }) }, '▶ Run edited SQL');
       sec.append(ta, h('div', { class: 'row', style: 'margin-top:8px' }, runBtn,
         h('span', { class: 'small dim' }, 'Read-only: only a single SELECT is allowed. Confirm it afterwards to teach the model.')));
-    } else {
+    } else if (tech) {
       sec.append(h('pre', { class: 'sql', html: highlightSQL(prettySQL(run.final_sql)) }));
       if (run.explanation) sec.append(h('p', { class: 'muted small', style: 'margin:8px 0 0' }, run.explanation));
-    }
+    } else if (run.explanation) sec.append(h('p', { class: 'muted small', style: 'margin:0' }, run.explanation));
     if (run.status === 'pending_review' && !editing && !ctx.readonly) {
       const go = h('button', { class: 'btn primary', onclick: () => busy(go, async () => refresh(await api('POST', `/api/chat/runs/${run.id}/execute`, {}))) }, '▶ Run this SQL');
       sec.append(h('div', { class: 'feedback' }, go, h('span', { class: 'small muted' }, 'Review the SQL, edit it if needed, then run it.')));
     }
     if (run.status === 'error' || run.status === 'blocked') {
       sec.append(h('div', { class: 'banner bad', style: 'margin-top:10px' },
-        h('b', {}, run.status === 'blocked' ? 'Blocked by the read-only guard: ' : 'The database returned an error: '), run.error));
+        h('b', {}, !tech ? 'This question could not be answered: ' : run.status === 'blocked' ? 'Blocked by the read-only guard: ' : 'The database returned an error: '), run.error));
     }
     if (run.status === 'success' && !ctx.readonly) sec.append(feedbackBar());
-    else if (run.feedback) sec.append(h('div', { class: 'feedback' }, feedbackBadge()));
+    else if (run.feedback || run.issue_status) sec.append(h('div', { class: 'feedback' }, feedbackBadge()));
     return sec;
   }
 
   function feedbackBadge() {
+    if (run.issue_status === 'open') return h('span', {}, h('span', { class: 'badge warn' }, `⏳ Reported: ${run.issue_label || 'incorrect'} — waiting for a data steward`),
+      run.feedback_note ? h('span', { class: 'small dim' }, '  “' + run.feedback_note + '”') : null);
+    if (['fixed', 'noted'].includes(run.issue_status)) return h('span', {}, h('span', { class: 'badge good' }, '✓ Corrected by a data steward'), h('span', { class: 'small' }, '  ' + run.issue_resolution));
+    if (run.issue_status === 'dismissed') return h('span', {}, h('span', { class: 'badge' }, 'Reviewed by a data steward'), h('span', { class: 'small' }, '  ' + run.issue_resolution));
     return run.feedback === 'incorrect' ? h('span', { class: 'badge bad' }, '✗ Marked incorrect')
       : run.feedback === 'corrected' ? h('span', { class: 'badge good' }, '✓ Corrected SQL saved for training')
       : h('span', { class: 'badge good' }, '✓ Confirmed correct');
@@ -500,27 +508,35 @@ export function runCard(run, ctx = {}) {
 
   function feedbackBar() {
     const bar = h('div', { class: 'feedback' });
-    const send = (btn, verdict, note = '') => busy(btn, async () => {
-      const res = await api('POST', `/api/chat/runs/${run.id}/feedback`, { verdict, note });
-      if (res.training === 'approved') toast('Saved as a verified example — the model will use it from now on.');
+    const send = (btn, verdict, note = '', issue_type = '') => busy(btn, async () => {
+      const res = await api('POST', `/api/chat/runs/${run.id}/feedback`, { verdict, note, issue_type });
+      if (res.training === 'review') toast('Thanks — sent to a data steward for review. The outcome will show here.');
+      else if (res.training === 'approved') toast('Saved as a verified example — the model will use it from now on.');
       else if (res.training === 'pending') toast('Thanks — sent to a data steward for approval before it is used for training.');
       refresh(res.run.rows == null ? { ...res.run, rows: run.rows } : res.run);
     });
     if (run.feedback) {
-      bar.append(feedbackBadge(), h('button', { class: 'btn sm ghost', onclick: () => { run.feedback = ''; draw(); } }, 'Change'));
+      const change = h('button', { class: 'btn sm ghost', onclick: () => send(change, 'withdraw') }, 'Change');
+      bar.append(feedbackBadge(), ['fixed', 'noted', 'dismissed'].includes(run.issue_status) ? null : change);
       return bar;
     }
-    const yes = h('button', { class: 'btn sm good', onclick: () => send(yes, 'correct') }, run.edited ? '✓ Yes — save my correction for training' : '✓ Correct');
+    const yes = h('button', { class: 'btn sm good', onclick: () => send(yes, 'correct') }, run.edited ? '✓ Yes — save my correction for training' : tech ? '✓ Correct' : '✓ Yes, correct');
     const no = h('button', { class: 'btn sm danger', onclick: () => {
-      const note = h('textarea', { placeholder: 'Optional: what is wrong with it?' });
-      modal('Mark this SQL as incorrect', h('div', { class: 'stack' }, note,
-        h('p', { class: 'small muted' }, 'Tip: use “Edit SQL” to fix the query yourself — a confirmed correction teaches the model the right answer.')), {
+      const type = select([['', 'Choose…'], ...ISSUES], '');
+      const note = h('textarea', { style: 'min-height:90px', placeholder: 'e.g. “March revenue should be about 1.2M — returns seem to be counted twice.”' });
+      modal('Report an incorrect answer', h('div', { class: 'stack' }, field('What is incorrect?', type), field('Why — or what did you expect to see?', note, 'a data steward reads this to correct the training'),
+        h('p', { class: 'small muted' }, 'A data steward reviews your report and corrects the training, so the next answer to this kind of question is right. You will see the outcome under this answer.'),
+        tech ? h('p', { class: 'small muted' }, 'Tip: if you know the right query, use “Fix it” to correct the SQL yourself.') : null), {
         actions: close => [h('button', { class: 'btn', onclick: close }, 'Cancel'),
-          h('button', { class: 'btn danger', onclick: () => { close(); send(no, 'incorrect', note.value); } }, 'Mark incorrect')],
+          h('button', { class: 'btn danger', onclick: () => {
+            if (!type.value) return toast('Choose what is incorrect.', true);
+            if (note.value.trim().length < 5) return toast('Say briefly why it is incorrect or what you expected.', true);
+            close(); send(no, 'incorrect', note.value, type.value);
+          } }, 'Send for review')],
       });
-    } }, '✗ Incorrect');
-    bar.append(h('span', { class: 'small muted' }, run.edited ? 'Does your edited SQL give the right answer?' : 'Is this SQL correct?'), yes,
-      ...(run.edited ? [] : [h('button', { class: 'btn sm', onclick: () => { editing = true; draw(); } }, '✎ Fix it')]), no);
+    } }, tech ? '✗ Incorrect' : '✗ No, something is wrong');
+    bar.append(h('span', { class: 'small muted' }, run.edited ? 'Does your edited SQL give the right answer?' : tech ? 'Is this SQL correct?' : 'Are these results correct?'), yes,
+      ...(run.edited || !tech ? [] : [h('button', { class: 'btn sm', onclick: () => { editing = true; draw(); } }, '✎ Fix it')]), no);
     return bar;
   }
 
@@ -581,7 +597,7 @@ export function runCard(run, ctx = {}) {
     const card = h('div', { class: 'card flush run' });
     if (run.status === 'clarification') {
       card.append(h('div', { class: 'sec' }, h('div', { class: 'sec-head' }, h('h3', {}, 'I need a bit more detail'), h('span', { class: 'small dim' }, run.model_label)), h('p', { style: 'margin:0' }, run.explanation)));
-    } else if (!run.final_sql) {
+    } else if (!run.final_sql && tech) {
       card.append(h('div', { class: 'sec' }, h('div', { class: 'banner bad' }, run.error || 'Something went wrong.')));
     } else {
       card.append(sqlSection());

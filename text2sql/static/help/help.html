@@ -63,8 +63,15 @@
 <tr><th>Button</th><th>What it does</th></tr>
 <tr><td><b>✓ Correct</b></td><td>Saves your question and this SQL as a <i>verified example</i>. The model uses verified examples as its strongest guide for similar questions in future.</td></tr>
 <tr><td><b>✎ Fix it</b> / <b>Edit SQL</b></td><td>Opens the SQL for editing. Change it, press <b>Run edited SQL</b>, check the result, then press <b>Yes — save my correction for training</b>. Your corrected SQL replaces the model's as the verified example for that question.</td></tr>
-<tr><td><b>✗ Incorrect</b></td><td>Flags the answer as wrong (with an optional note) so a data steward can see it on the dashboard. Nothing is used for training. Prefer <i>Fix it</i> when you know the right query.</td></tr>
+<tr><td><b>✗ Incorrect</b></td><td>Reports the answer as wrong. Choose <b>what</b> is incorrect and say <b>why</b> (or what you expected); both are required. The report goes to a data steward's review queue, who corrects the training. Prefer <i>Fix it</i> when you know the right query.</td></tr>
 </table>
+<h3>When an answer is wrong: report it</h3>
+<p>Press <b>✗ Incorrect</b> (or <b>✗ No, something is wrong</b> if your account shows results only). Pick what is wrong — <i>the numbers are wrong</i>, <i>something is missing</i>, <i>it includes things that should not be there</i>, <i>wrong period or filter</i>, <i>wrong breakdown or grouping</i>, <i>it answered a different question</i>, or <i>something else</i> — and write briefly why, for example “March should be about 1.2M — returns seem to be counted as sales”.</p>
+<figure><img src="/static/help/img/report-incorrect.png" alt="The Report an incorrect answer window with What is incorrect and Why fields and a Send for review button"><figcaption>Both fields are required: a steward needs to know what to fix.</figcaption></figure>
+<p>Under the answer you then see <b>⏳ Reported … waiting for a data steward</b>. When a steward has dealt with it, this changes to <b>✓ Corrected by a data steward</b> (ask the question again to get the corrected answer) or <b>Reviewed by a data steward</b> with their explanation if the answer was in fact right. Press <b>Change</b> to take a report back while it is still waiting.</p>
+<h3>If your account shows results only</h3>
+<p>An administrator can set an account to show <b>results only</b>. Answers then show the chart, table and summary and a short sentence on how the question was answered — but no SQL and no Python code, and there is no <i>Review SQL before running</i>, <i>Edit SQL</i> or <i>Fix it</i>. You still say whether each answer is right with <b>✓ Yes, correct</b> or <b>✗ No, something is wrong</b>, and your reports reach the data stewards in the same way.</p>
+<figure><img src="/static/help/img/results-only-answer.png" alt="An answer with a chart and the question Are these results correct, without any SQL"><figcaption>An answer for a results-only account.</figcaption></figure>
 <figure><img src="/static/help/img/edit.png" alt="The SQL editor open on an answer with a Run edited SQL button"><figcaption>Editing the SQL. Only a single read-only SELECT is accepted.</figcaption></figure>
 <p>Depending on how your administrator has set things up, feedback from analysts is either used immediately or first sent to a data steward for approval. Feedback from stewards and administrators is always used immediately.</p>
 <h3>Messages you may see</h3>
@@ -411,8 +418,19 @@
 <tr><td><b>Documents</b></td><td>Upload existing material: data dictionaries, KPI definitions, design documents.</td><td>PDF, Word, Excel, Markdown, text, SQL, CSV, JSON, YAML, HTML; up to 20 MB. Split into passages automatically; the relevant passages are picked per question. Uploading a file with the same name replaces the earlier version.</td></tr>
 <tr><td><b>Extra DDL</b></td><td>CREATE TABLE / VIEW statements for objects that schema sync cannot see.</td><td>Rarely needed.</td></tr>
 <tr><td><b>Schema</b></td><td>The tables and columns read from the source. Press <b>Sync schema from source</b> after the database structure changes.</td><td>Only names, types, keys and comments are read. Column comments in the database are passed to the model — they are free documentation.</td></tr>
-<tr><td><b>Review queue</b></td><td>Answers that analysts confirmed or corrected, waiting for approval.</td><td>Approve the ones that are right; edit first if nearly right; reject the rest.</td></tr>
+<tr><td><b>Review queue</b></td><td><b>Reported problems</b> (answers users said are incorrect, with what and why) and answers that analysts confirmed or corrected, waiting for approval.</td><td>Fix or explain each reported problem; approve the confirmed answers that are right, edit first if nearly right, reject the rest.</td></tr>
 </table>
+<h3>Reported problems: turning a user's report into training</h3>
+<p>When someone reports an answer as incorrect it appears at the top of the <b>Review queue</b> with who reported it, what is wrong, their reason and the SQL that ran. Choose one of:</p>
+<figure><img src="/static/help/img/review-reported.png" alt="The review queue with a reported problem: question, reporter, The numbers are wrong with the user's reason, the SQL, and Fix the SQL, Add a business rule, View answer and Dismiss buttons"><figcaption>A reported problem in the review queue.</figcaption></figure>
+<ul>
+<li><b>✎ Fix the SQL</b> — correct the query, press <b>▶ Test</b> to run it (read-only, with your own data access) and check the rows, then <b>Save as verified example</b>. You can reword the question so it matches how people ask. The corrected query is used from now on for similar questions. A query that does not run cannot be saved.</li>
+<li><b>📝 Add a business rule</b> — when the mistake comes from a definition the model did not know (“returns are not revenue”), write the rule once; it becomes a documentation note used for every similar question.</li>
+<li><b>View answer</b> — see the answer exactly as the user did.</li>
+<li><b>Dismiss</b> — if the answer is right; explain why. Nothing is added to training.</li>
+</ul>
+<figure><img src="/static/help/img/review-fix.png" alt="The Fix the SQL window with the user's reason, the question, the corrected SQL, a Test button with five result rows and a message to the user"><figcaption>Test the corrected SQL before saving it; the message is shown to the user under their answer.</figcaption></figure>
+<p>The optional <b>Message to …</b> appears under the user's answer, so they know what changed. The dashboard banner reminds stewards while reports are waiting.</p>
 <h3>Working in a large window</h3>
 <p>Every training editor has a <b>⤢ Maximise</b> button at the top right, next to the ✕. It expands the editor to the full screen — useful for long SQL, DDL or documentation — and <b>⤡</b> restores it. The <b>⤢</b> button on each item in the lists, on each uploaded document and on each table in the Schema tab opens that item full-size for reading.</p>
 <figure><img src="/static/help/img/maximise.png" alt="A training editor maximised to the full window"><figcaption>A training editor, maximised.</figcaption></figure>
@@ -670,10 +688,12 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 <h2>Users and settings</h2>
 <h3>Users</h3>
 <p><b>Admin → Users → Add user.</b> Enter the email, name and role. You are shown a one-time temporary password to pass on securely; the user must replace it at first sign-in.</p>
+<p><b>What answers show</b> (analysts only): <i>Results, SQL and code</i> (the default) or <i>Results only — no SQL or Python code</i>, for business users who only need the numbers. Results-only users see the chart, table and summary, and can still mark answers correct or report what is wrong. The server leaves the SQL and code out of everything it sends them — answers, chats shared with them, reports, PDFs and exports — so it is not merely hidden on screen. Data stewards and administrators always see SQL and code, because they review and fix it. The Users list marks these accounts <b>results only</b>.</p>
+<figure><img src="/static/help/img/user-results-only.png" alt="The Add user window with Role set to Analyst and What answers show set to Results only"><figcaption>Setting an account to results only.</figcaption></figure>
 <figure><img src="/static/help/img/users.png" alt="The user list with role, security status and action buttons"><figcaption>Admin → Users.</figcaption></figure>
 <table>
 <tr><th>Action</th><th>Effect</th></tr>
-<tr><td>Edit</td><td>Change name or role, or disable the account (signs the user out immediately).</td></tr>
+<tr><td>Edit</td><td>Change name or role, what answers show, or disable the account (signs the user out immediately).</td></tr>
 <tr><td>Reset password</td><td>Issues a new temporary password and signs the user out.</td></tr>
 <tr><td>Reset 2FA</td><td>Removes the user's authenticator so they can enrol a new phone.</td></tr>
 <tr><td>Unlock</td><td>Clears a lockout caused by failed sign-ins.</td></tr>

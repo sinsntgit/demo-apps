@@ -16,11 +16,17 @@ function usersTab(el) {
   const edit = u => {
     const email = h('input', { type: 'email', value: u?.email || '', disabled: !!u });
     const name = h('input', { type: 'text', value: u?.name || '' });
-    const role = select(ROLES, u?.role || 'analyst');
+    const VIEW = [['all', 'Results, SQL and code'], ['results', 'Results only — no SQL or Python code']];
+    const view = select(VIEW, u && u.show_sql === false ? 'results' : 'all');
+    const viewNote = h('span', {});
+    const role = select(ROLES, u?.role || 'analyst', () => syncView());
+    const syncView = () => { const analyst = role.value === 'analyst'; view.disabled = !analyst; if (!analyst) view.value = 'all';
+      fill(viewNote, analyst ? 'Results only: answers show the chart, table and summary; the user can still say whether they are correct.' : 'Data stewards and administrators always see SQL and code — they review and fix it.'); };
+    syncView();
     const active = check('Account enabled', u ? u.is_active : true);
-    modal(u ? `Edit ${u.email}` : 'Add user', h('div', { class: 'stack' }, field('Email', email), field('Name', name), field('Role', role), active), {
+    modal(u ? `Edit ${u.email}` : 'Add user', h('div', { class: 'stack' }, field('Email', email), field('Name', name), field('Role', role), field('What answers show', view), h('div', { class: 'small dim', style: 'margin-top:-6px' }, viewNote), active), {
       actions: close => [h('button', { class: 'btn', onclick: close }, 'Cancel'), h('button', { class: 'btn primary', onclick: e => busy(e.target, async () => {
-        const payload = { email: email.value, name: name.value, role: role.value, is_active: active.input.checked };
+        const payload = { email: email.value, name: name.value, role: role.value, is_active: active.input.checked, show_sql: view.value !== 'results' };
         const out = await (u ? api('PUT', `/api/admin/users/${u.id}`, payload) : api('POST', '/api/admin/users', payload));
         close(); draw(); if (out.temporary_password) showPassword(out.email, out.temporary_password);
       }) }, 'Save')] });
@@ -34,7 +40,7 @@ function usersTab(el) {
     fill(el, h('div', { class: 'stack' }, h('div', {}, h('button', { class: 'btn primary', onclick: () => edit(null) }, '＋ Add user')),
       h('div', { class: 'tbl-wrap', style: 'max-height:none' }, h('table', { class: 'tbl' },
         h('thead', {}, h('tr', {}, ['User', 'Role', 'Security', 'Last sign-in', ''].map(x => h('th', {}, x)))),
-        h('tbody', {}, users.map(u => h('tr', {}, h('td', {}, h('b', {}, u.name || u.email), h('div', { class: 'small dim' }, u.email)), h('td', {}, u.role),
+        h('tbody', {}, users.map(u => h('tr', {}, h('td', {}, h('b', {}, u.name || u.email), h('div', { class: 'small dim' }, u.email)), h('td', {}, u.role, u.role === 'analyst' && u.show_sql === false ? h('div', {}, h('span', { class: 'badge' }, 'results only')) : null),
           h('td', {}, h('div', { class: 'row wrap' }, u.is_active ? null : h('span', { class: 'badge bad' }, 'disabled'), h('span', { class: 'badge ' + (u.totp_enabled ? 'good' : 'warn') }, u.totp_enabled ? '2FA on' : '2FA off'),
             u.locked ? h('span', { class: 'badge bad' }, 'locked') : null, u.must_change_password ? h('span', { class: 'badge' }, 'temporary password') : null)),
           h('td', { class: 'nowrap' }, fmtTime(u.last_login_at)),

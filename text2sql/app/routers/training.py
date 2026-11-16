@@ -84,7 +84,9 @@ def list_items(conn_id: int, kind: str = "", status: str = "", q: str = "",
         TrainingItem.connection_id == conn_id, TrainingItem.status == "approved").group_by(TrainingItem.kind)).all())
     pending = db.scalar(select(func.count()).where(TrainingItem.connection_id == conn_id,
                                                    TrainingItem.status == "pending"))
-    return {"items": [_dto(i) for i in items], "counts": counts, "pending": pending}
+    from ..models import QueryRun
+    issues_open = db.scalar(select(func.count()).where(QueryRun.connection_id == conn_id, QueryRun.issue_status == "open"))
+    return {"items": [_dto(i) for i in items], "counts": counts, "pending": pending, "issues_open": issues_open}
 
 
 @router.post("/{conn_id}")
@@ -221,3 +223,87 @@ def export(conn_id: int, user: User = Depends(steward_up), db: Session = Depends
                                                   TrainingItem.status == "approved"))
     return [{k: v for k, v in _dto(i).items() if k in ("kind", "title", "content", "question", "sql", "source",
                                                        "document_name")} for i in items]
+
+
+# ---- reported problems: users say an answer is incorrect -> a steward fixes the training ----------------
+class ResolveIn(BaseModel):
+    action: str                 # example | note | dismiss
+    question: str = ""          # example: the question the corrected SQL answers (default: the user's)
+    sql: str = ""               # example: the corrected SQL
+    title: str = ""             # note: business rule title
+    content: str = ""           # note: business rule text
+    comment: str = ""           # shown to the user who reported it
+
+
+class TestSqlIn(BaseModel):
+    sql: str
+
+
+@router.get("/{conn_id}/issues")
+def issues(conn_id: int, status: str = "open", user: User = Depends(steward_up), db: Session = Depends(get_db)):
+    """Answers users reported as incorrect, with what is wrong and why, for a steward to act on."""
+    from ..models import ISSUE_TYPES, QueryRun
+    get_connection(db, user, conn_id)
+    stmt = select(QueryRun).where(QueryRun.connection_id == conn_id, QueryRun.issue_status != "")
+    if status == "open":
+        stmt = stmt.where(QueryRun.issue_status == "open")
+    rows = list(db.scalars(stmt.order_by(QueryRun.id.desc()).limit(300)))
+    names = {u.id: u.name or u.email for u in db.scalars(select(User))}
+    return [{"run_id": r.id, "question": r.question, "sql": r.final_sql, "user": names.get(r.user_id, ""),
+             "issue_type": r.issue_type, "issue_label": ISSUE_TYPES.get(r.issue_type, r.issue_type), "reason": r.feedback_note,
+             "status": r.issue_status, "resolution": r.issue_resolution, "row_count": r.row_count,
+             "resolved_by": names.get(r.issue_resolved_by, "") if r.issue_resolved_by else "",
+             "created_at": r.created_at.isoformat()} for r in rows]
+
+
+@router.post("/{conn_id}/test-sql")
+def test_sql(conn_id: int, body: TestSqlIn, user: User = Depends(steward_up), db: Session = Depends(get_db)):
+    """Run a corrected query before saving it (read-only guard, the steward's own filters, first 20 rows)."""
+    from .. import connectors, engine
+    from ..deps import get_settings
+    conn = get_connection(db, user, conn_id)
+    try:
+        res = engine.run_sql(db, conn, body.sql, get_settings(db), user)
+    except (sqlguard.SQLBlocked, connectors.ConnectorError) as e:
+        raise HTTPException(400, str(e))
+    return {"columns": res["columns"], "rows": res["rows"][:20], "row_count": res["row_count"]}
+
+
+@router.post("/issues/{run_id}/resolve")
+def resolve_issue(run_id: int, body: ResolveIn, request: Request, user: User = Depends(steward_up),
+                  db: Session = Depends(get_db)):
+    """Turn a reported problem into training - a corrected verified example or a business rule - or dismiss it."""
+    from .. import connectors, engine
+    from ..deps import get_settings
+    from ..models import QueryRun
+    run = db.get(QueryRun, run_id)
+    if not run or not run.issue_status:
+        raise HTTPException(404, "Not found")
+    conn = get_connection(db, user, run.connection_id)
+    comment = body.comment.strip()[:1000]
+    if body.action == "example":
+        question = body.question.strip() or run.question
+        try:
+            checked = sqlguard.check(body.sql, conn.db_type).sql
+            engine.run_sql(db, conn, checked, get_settings(db), user)          # it must actually run
+        except (sqlguard.SQLBlocked, connectors.ConnectorError) as e:
+            raise HTTPException(400, f"The corrected SQL did not run: {e}")
+        upsert_pair(db, conn, question, checked, "correction", "approved", user.id, analysis=(run.analysis or {}).get("spec"))
+        run.issue_status = "fixed"
+        run.issue_resolution = comment or "The answer was corrected and added to training. Ask the question again to get the corrected result."
+    elif body.action == "note":
+        if not body.content.strip():
+            raise HTTPException(400, "Write the business rule first.")
+        db.add(TrainingItem(connection_id=conn.id, kind="documentation", title=body.title.strip()[:500] or f"Correction: {run.question[:80]}",
+                            content=body.content.strip(), source="correction", status="approved", created_by=user.id))
+        run.issue_status = "noted"
+        run.issue_resolution = comment or "A business rule was added to training. Ask the question again to get the corrected result."
+    elif body.action == "dismiss":
+        run.issue_status = "dismissed"
+        run.issue_resolution = comment or "Reviewed by a data steward: the answer was found to be correct."
+    else:
+        raise HTTPException(400, "Unknown action.")
+    run.issue_resolved_by, run.issue_resolved_at = user.id, now()
+    audit(db, request, user, "training.issue_resolved", conn.name, f"run #{run.id} {run.issue_status}")
+    db.commit()
+    return {"ok": True, "status": run.issue_status}
