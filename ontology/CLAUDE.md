@@ -138,9 +138,13 @@ range, cardinality, inverse, derived_from), `individuals[]`, `rules[]` (kind `di
     Scheduled rebuilds: `routers/graph.run_due` is called every minute by a thread started in `main.lifespan`; a rebuild runs as the
     person who set it up (`refresh_user_id`) and is switched off when they lost access. A summary dict must not use the key
     `proposed` either (it travels in job results) - hence `to_review`.
-17. A pyoxigraph store left open blocks deleting its folder on Windows; old stores are removed after each build and at start-up
+17. Pause / resume / cancel: `builder.control(job_id, action, who)` sets a flag that `Ctx.checkpoint` reads at every
+    `stage` / `note` / `ask` (and `_acquire`, while queued). Long loops must call `stage` now and then (graph builds: every
+    5,000 rows) or they cannot be paused. Job statuses: queued | running | paused | done | error | cancelled - anything that
+    asks "is a job still active" must include `paused`.
+18. A pyoxigraph store left open blocks deleting its folder on Windows; old stores are removed after each build and at start-up
     (`kg.cleanup`), ignoring errors.
-18. Help screenshots are produced by `tests/e2e/features.js` and copied by name into `static/help/img/`.
+19. Help screenshots are produced by `tests/e2e/features.js` and copied by name into `static/help/img/`.
     Check for drift: every `img/*.png` named in `help.html` must exist.
 
 ## Verification — non-negotiable

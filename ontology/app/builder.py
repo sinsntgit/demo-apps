@@ -41,16 +41,64 @@ class Stop(Exception):
     """A job failure with a message for the user."""
 
 
+class Cancelled(Stop):
+    """A person cancelled the job."""
+
+
+# Pause / resume / cancel requests for running jobs: job id -> (action, who). Jobs run in threads of this process and
+# look at it at every progress step (Ctx.checkpoint), so a request takes effect at the next step, not in the middle of
+# one (a database query or an AI call that has started is finished first).
+_control: dict = {}
+_control_lock = threading.Lock()
+MAX_PAUSE = 4 * 3600          # a job paused longer than this is cancelled
+
+
+def control(job_id: int, action: str, who: str):
+    with _control_lock:
+        _control[job_id] = (action, who)
+
+
 class Ctx:
     def __init__(self, db, job: Job, model: LLMModel):
         self.db, self.job, self.model = db, job, model
 
+    def checkpoint(self):
+        """Honour a pause or cancel request. While paused the job waits here, holding what it has done so far."""
+        import time
+        act = _control.get(self.job.id)
+        if not act:
+            return
+        if act[0] == "cancel":
+            raise Cancelled(f"Cancelled by {act[1]}.")
+        if act[0] == "pause":
+            before = self.job.stage
+            self.job.status, self.job.stage = "paused", f"Paused by {act[1]}"
+            self.job.log = [*self.job.log, {"at": now().isoformat(), "text": f"Paused by {act[1]}."}]
+            self.db.commit()
+            t0 = time.time()
+            while True:
+                time.sleep(0.5)
+                act = _control.get(self.job.id)
+                if act and act[0] == "cancel":
+                    raise Cancelled(f"Cancelled by {act[1]}.")
+                if not act or act[0] == "resume":
+                    break
+                if time.time() - t0 > MAX_PAUSE:
+                    raise Cancelled("Paused for more than 4 hours, so it was cancelled.")
+            with _control_lock:
+                _control.pop(self.job.id, None)
+            self.job.status, self.job.stage = "running", before
+            self.job.log = [*self.job.log, {"at": now().isoformat(), "text": f"Resumed by {act[1] if act else 'someone'}."}]
+            self.db.commit()
+
     def stage(self, text: str, pct: int):
+        self.checkpoint()
         self.job.stage, self.job.progress = text, pct
         self.job.log = [*self.job.log, {"at": now().isoformat(), "text": text}]
         self.db.commit()
 
     def note(self, text: str):
+        self.checkpoint()
         self.job.log = [*self.job.log, {"at": now().isoformat(), "text": text}]
         self.db.commit()
 
@@ -58,6 +106,7 @@ class Ctx:
         """One model call that must come back as a JSON object; one retry if it does not parse."""
         prompt = user
         for attempt in (1, 2):
+            self.checkpoint()
             try:
                 res = llm.complete(self.model, SYSTEM, prompt)
             except llm.LLMError as e:
@@ -632,15 +681,17 @@ _slot_lock = threading.Lock()
 _running = 0
 
 
-def _acquire(db) -> None:
-    """Wait for a free AI slot (admin setting 'max_parallel_jobs')."""
+def _acquire(db, job_id: int = 0) -> bool:
+    """Wait for a free AI slot (admin setting 'max_parallel_jobs'). False if the job was cancelled while waiting."""
     global _running
     import time
     while True:
+        if (_control.get(job_id) or ("",))[0] == "cancel":
+            return False
         with _slot_lock:
             if _running < int(get_settings(db)["max_parallel_jobs"]):
                 _running += 1
-                return
+                return True
         time.sleep(0.5)
 
 
@@ -660,8 +711,17 @@ def run(job_id: int):
         if not job or job.status != "queued":
             return
         ai = job.kind not in NO_MODEL
-        if ai:
-            _acquire(db)
+        if ai and not _acquire(db, job_id):          # cancelled while it waited for a free AI slot
+            who = _control.pop(job_id, ("", "someone"))[1]
+            job.status, job.error, job.finished_at = "cancelled", f"Cancelled by {who} before it started.", now()
+            o = db.get(Ontology, job.ontology_id) if job.ontology_id else None
+            if o and o.status == "building":
+                o.status = "ready" if o.version else "draft"
+            tr = db.get(TestRun, (job.params or {}).get("test_run_id") or 0)
+            if tr and tr.status == "running":
+                tr.status, tr.error = "error", job.error
+            db.commit()
+            return
         o = None
         try:
             job.status = "running"
@@ -676,6 +736,10 @@ def run(job_id: int):
             cfg = get_settings(db)
             job.result = KINDS[job.kind](ctx, o, cfg) or {}
             job.status, job.progress, job.stage = "done", 100, "Finished"
+        except Cancelled as e:
+            db.rollback()
+            job = db.get(Job, job_id)
+            job.status, job.error = "cancelled", str(e)
         except Stop as e:
             db.rollback()
             job = db.get(Job, job_id)
@@ -688,6 +752,8 @@ def run(job_id: int):
         finally:
             if ai:
                 _release()
+            with _control_lock:
+                _control.pop(job_id, None)
             job.finished_at = now()
             if job.kind == "graph":
                 from . import kg
@@ -695,7 +761,7 @@ def run(job_id: int):
                 if rec and rec.status == "building":
                     rec.status = "ready" if rec.store or (kg.is_live(rec) and rec.built_at) else "none"
                     rec.error = job.error
-            if job.status == "error":
+            if job.status in ("error", "cancelled"):
                 o = db.get(Ontology, job.ontology_id) if job.ontology_id else None
                 if o and o.status == "building":
                     o.status = "ready" if o.version else "failed"
@@ -1054,7 +1120,7 @@ def recover():
     """At start-up: jobs that were running when the server stopped cannot continue - say so."""
     with SessionLocal() as db:
         msg = "The server was restarted while this was running. Please start it again."
-        db.execute(update(Job).where(Job.status.in_(("queued", "running"))).values(status="error", error=msg, finished_at=now()))
+        db.execute(update(Job).where(Job.status.in_(("queued", "running", "paused"))).values(status="error", error=msg, finished_at=now()))
         db.execute(update(TestRun).where(TestRun.status == "running").values(status="error", error=msg))
         for o in db.scalars(select(Ontology).where(Ontology.status == "building")):
             o.status = "ready" if o.version else "failed"

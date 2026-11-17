@@ -78,6 +78,7 @@ export async function graphTab(el, ctx) {
         } } }, 'Delete graph') : null),
     busyJob ? h('div', { class: 'banner info' }, h('span', { class: 'spinner' }), ` ${{ map: 'The AI is proposing a mapping', extract: 'The AI is reading documents' }[busyJob.kind] || 'Building'}: ${busyJob.stage || 'starting'} — progress is shown above.`) : null,
     g.last_job?.status === 'error' ? h('div', { class: 'banner bad' }, h('b', {}, { map: 'The mapping proposal did not finish: ', extract: 'Reading the documents did not finish: ' }[g.last_job.kind] || 'The last build did not finish: '), g.last_job.error) : null,
+    g.last_job?.status === 'cancelled' ? h('div', { class: 'banner info' }, `${g.last_job.error} `, g.last_job.kind === 'graph' ? (g.status === 'ready' ? 'The graph is as it was before that build.' : 'Nothing was built.') : '') : null,
     g.error && !g.last_job?.error ? h('div', { class: 'banner warn' }, g.error) : null,
     g.can_edit ? storageRow(ctx, g, redraw) : h('div', { class: 'small muted' }, live ? 'Live: the data is read from the sources whenever the graph is used; no copy is kept on this server.' : 'A copy of the data is kept on this server and refreshed when the graph is built again.'),
     g.status === 'ready' || g.can_edit ? h('div', { class: 'row wrap small' },

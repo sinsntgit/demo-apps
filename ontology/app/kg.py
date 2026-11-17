@@ -738,6 +738,8 @@ def build(db, o, rec: KnowledgeGraph, cap: int, stage, live: bool = False):
                     vals.append((i, prop_node[v["property"]], lookup, v["property"]))
                     st["values"][v["property"]] = {"matched": 0, "unmatched": 0, "examples": []}
             for rn, row in enumerate(t["rows"]):
+                if rn and rn % 5000 == 0:              # a progress step: also where a pause or cancel takes effect
+                    stage(f"Loading {m['class']} records: {rn:,} of {len(t['rows']):,} rows ({n + 1} of {len(maps)} tables)", 50 + int(30 * n / len(maps)))
                 if not wanted(m, t, row):
                     continue
                 kv = _keyval(_at(row, ki)) if ki is not None else str(rn + 1)

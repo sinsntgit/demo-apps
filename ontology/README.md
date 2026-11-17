@@ -124,6 +124,8 @@ Verified here, with a stand-in AI model that returns a fixed retail ontology (`t
   keeps what was accepted; answers, the explorer and the console citing document, page and quote; records hidden from people without
   access; quotes and pages also checked on the user's three real judgments (PDF, up to 57 pages); the explorer, Turtle and R2RML
   downloads (both re-parsed); scheduled rebuilds, including one switched off because its owner lost access;
+- pausing, resuming and cancelling a running graph build (nothing moves while paused; a cancelled build leaves the earlier graph
+  and no unfinished copy; viewers cannot), also in the browser on a 200,000-row table;
 - live knowledge graphs: switching deletes the stored copy; a row added to the database shows in the next answer without a build;
   nothing written to the graphs folder; in-memory reuse for the chosen minutes; explorer and Turtle download working live; schedules
   refused; back to a stored copy by building. Data sources that keep no uploaded files: profiled then deleted, a graph says why it

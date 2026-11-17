@@ -399,14 +399,14 @@ def duplicate(oid: int, body: CopyIn, request: Request, user: User = Depends(bui
 
 
 def _active_job(db: Session, oid: int) -> Job | None:
-    return db.scalar(select(Job).where(Job.ontology_id == oid, Job.status.in_(("queued", "running")), Job.kind.not_in(("test", "answer"))).order_by(Job.id.desc()))
+    return db.scalar(select(Job).where(Job.ontology_id == oid, Job.status.in_(("queued", "running", "paused")), Job.kind.not_in(("test", "answer"))).order_by(Job.id.desc()))
 
 
 def _job(j: Job) -> dict:
     return {"id": j.id, "kind": j.kind, "status": j.status, "stage": j.stage, "progress": j.progress, "log": j.log, "error": j.error,
             "result": {k: v for k, v in (j.result or {}).items() if k != "proposed"} if j.result else None, "model": j.model_label,
             "calls": j.calls, "input_tokens": j.input_tokens, "output_tokens": j.output_tokens, "cost": round(j.cost, 4),
-            "ontology_id": j.ontology_id, "at": j.created_at.isoformat()}
+            "ontology_id": j.ontology_id, "user": j.user_email, "at": j.created_at.isoformat()}
 
 
 @router.get("/ontologies/{oid}")
@@ -623,6 +623,37 @@ def run_job(oid: int, kind: str, body: JobIn, request: Request, user: User = Dep
         raise HTTPException(400, "Describe the change you want.")
     params = {"instruction": body.instruction.strip()[:6000], "count": body.count, "focus": body.focus[:1000]}
     return _job(_launch(db, request, user, o, kind, _model(db, body.model_id), params))
+
+
+class ControlIn(BaseModel):
+    action: str
+
+
+@router.post("/jobs/{jid}/control")
+def control_job(jid: int, body: ControlIn, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Pause, resume or cancel a background job. It takes effect at the job's next step. Whoever may change the
+    ontology (or the data source) may do this, and always the person who started it."""
+    if body.action not in ("pause", "resume", "cancel"):
+        raise HTTPException(400, "Unknown action.")
+    j = db.get(Job, jid)
+    if not j or (not j.ontology_id and not j.data_source_id):
+        raise HTTPException(404, "Not found")
+    if j.ontology_id:
+        o = get_ontology(db, user, j.ontology_id)
+        if j.user_id != user.id and RANK[o.my_level] < RANK["edit"]:
+            raise HTTPException(403, "Only the person who started this, or someone who can change the ontology, can do this.")
+        target = o.name
+    else:
+        from .. import datasources as dsrc
+        target = dsrc.get(db, user, j.data_source_id, "manage" if j.user_id != user.id else "use").name
+    if j.status not in ("queued", "running", "paused"):
+        raise HTTPException(409, "It has already finished.")
+    if body.action == "pause" and j.status == "paused" or body.action == "resume" and j.status != "paused":
+        return _job(j)
+    builder.control(j.id, body.action, user.email)
+    audit(db, request, user, f"job.{body.action}", target, f"{j.kind} job {j.id}")
+    db.commit()
+    return _job(j)
 
 
 @router.get("/jobs/{jid}")

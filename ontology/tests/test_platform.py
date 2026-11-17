@@ -1154,3 +1154,57 @@ def test_live_knowledge_graph_keeps_no_copy(admin):
         c.delete(f"/api/ontologies/{x}", headers=H)
     for x in (fs["id"], ks["id"]):
         c.delete(f"/api/datasources/{x}", headers=H)
+
+
+def test_pause_resume_and_cancel_a_graph_build(admin, monkeypatch):
+    """A running job can be paused, resumed and cancelled at its next step. A cancelled graph build keeps nothing of
+    itself and leaves the earlier graph as it was; only people who may change the ontology (or who started it) can do this."""
+    import time as _t
+    from app import config, kg
+    c, mid = admin
+    oid = c.post("/api/ontologies", headers=H, json={"name": "Pausable", "domain": "Retail"}).json()["id"]
+    wait_job(c, c.post(f"/api/ontologies/{oid}/build", headers=H, json={"model_id": mid, "use_cases": 0}).json()["id"])
+    ds = c.post("/api/datasources", headers=H, json={"name": "Pause shop", "kind": "files"}).json()
+    c.post(f"/api/datasources/{ds['id']}/files", headers=H, files=_shop_files())
+    c.post(f"/api/ontologies/{oid}/datasources", headers=H, json={"data_source_id": ds["id"]})
+    c.post(f"/api/ontologies/{oid}/graph/match", headers=H, json={})
+    assert wait_job(c, c.post(f"/api/ontologies/{oid}/graph/build", headers=H).json()["id"])["status"] == "done"
+    first = c.get(f"/api/ontologies/{oid}/graph").json()["built_at"]
+    real = kg._Reader.table
+    monkeypatch.setattr(kg._Reader, "table", lambda self, item_id: (_t.sleep(0.4), real(self, item_id))[1])   # a slow database
+
+    def until(jid, status):
+        for _ in range(100):
+            j = c.get(f"/api/jobs/{jid}").json()
+            if j["status"] == status:
+                return j
+            _t.sleep(0.1)
+        raise AssertionError(f"job never became {status}: {j['status']}")
+    jid = c.post(f"/api/ontologies/{oid}/graph/build", headers=H).json()["id"]
+    vic = make_user(c, "pause-vic@test.local", "viewer")
+    c.put(f"/api/ontologies/{oid}", headers=H, json={"name": "Pausable", "domain": "Retail", "visibility": "shared"})
+    assert vic.post(f"/api/jobs/{jid}/control", headers=H, json={"action": "cancel"}).status_code == 403
+    c.post(f"/api/jobs/{jid}/control", headers=H, json={"action": "pause"})
+    j = until(jid, "paused")
+    assert j["stage"].startswith("Paused by admin@test.local")
+    _t.sleep(1.0)
+    assert c.get(f"/api/jobs/{jid}").json()["progress"] == j["progress"]          # nothing moves while paused
+    assert c.get(f"/api/ontologies/{oid}").json()["job"]["status"] == "paused"     # still the ontology's job: nothing else can start
+    c.post(f"/api/jobs/{jid}/control", headers=H, json={"action": "resume"})
+    j = until(jid, "done")
+    assert any("Paused by" in x["text"] for x in j["log"]) and any("Resumed by" in x["text"] for x in j["log"])
+    second = c.get(f"/api/ontologies/{oid}/graph").json()
+    assert second["built_at"] != first and second["status"] == "ready"
+    # cancelled: the graph from before stays, and no unfinished copy is left behind
+    stores = {p.name for p in config.GRAPHS_DIR.iterdir() if p.name.startswith(f"{oid}-")}
+    jid = c.post(f"/api/ontologies/{oid}/graph/build", headers=H).json()["id"]
+    c.post(f"/api/jobs/{jid}/control", headers=H, json={"action": "cancel"})
+    j = until(jid, "cancelled")
+    assert j["error"] == "Cancelled by admin@test.local."
+    g = c.get(f"/api/ontologies/{oid}/graph").json()
+    assert g["status"] == "ready" and g["built_at"] == second["built_at"] and g["last_job"]["status"] == "cancelled"
+    assert {p.name for p in config.GRAPHS_DIR.iterdir() if p.name.startswith(f"{oid}-")} == stores
+    assert c.post(f"/api/ontologies/{oid}/graph/query", headers=H, json={"sparql": "SELECT (COUNT(?o) AS ?n) WHERE { ?o a :Order }"}).json()["rows"][0][0]["v"] == "120"
+    assert c.post(f"/api/jobs/{jid}/control", headers=H, json={"action": "cancel"}).status_code == 409
+    c.delete(f"/api/ontologies/{oid}", headers=H)
+    c.delete(f"/api/datasources/{ds['id']}", headers=H)

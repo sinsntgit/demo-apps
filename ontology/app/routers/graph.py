@@ -67,7 +67,7 @@ def _state(db, user, o) -> dict:
     see = not blocked
     stats = (rec.stats if rec else None) or {}
     kinds = ("graph", "map", "extract")
-    job = db.scalar(select(Job).where(Job.ontology_id == o.id, Job.kind.in_(kinds), Job.status.in_(("queued", "running"))).order_by(Job.id.desc()))
+    job = db.scalar(select(Job).where(Job.ontology_id == o.id, Job.kind.in_(kinds), Job.status.in_(("queued", "running", "paused"))).order_by(Job.id.desc()))
     last = db.scalar(select(Job).where(Job.ontology_id == o.id, Job.kind.in_(kinds)).order_by(Job.id.desc()))
     stale = []
     if rec and rec.store:                                      # a stored copy can fall behind; a live graph cannot
@@ -81,7 +81,7 @@ def _state(db, user, o) -> dict:
             "stats": (stats if see else _hide(stats)) if stats else None, "stale": stale,
             "tables": tables if see else [], "sources": [{"id": d.id, "name": d.name, "kind": d.kind} for d in kg.linked(db, o.id)],
             "can_see_data": see, "blocked": blocked, "can_edit": o.my_level in ("edit", "manage") and user.role != "viewer" and see,
-            "job": _job(job) if job else None, "last_job": _job(last) if last and last.status in ("done", "error") else None,
+            "job": _job(job) if job else None, "last_job": _job(last) if last and last.status in ("done", "error", "cancelled") else None,
             "prefixes": kg.prefixes(o.content) if o.content else {},
             "documents": kgdocs.documents(db, o.id) if see else [],
             "extracted": kgdocs.summary(rec.extracted) if rec and rec.extracted else None,

@@ -324,7 +324,7 @@ def describe(dsid: int, body: DescribeIn, request: Request, user: User = Depends
     if not db.scalar(select(DataSourceItem.id).where(DataSourceItem.data_source_id == dsid, DataSourceItem.kind == "table").limit(1)):
         raise HTTPException(400, "This data source has no tables to describe yet.")
     running = _describe_job(db, dsid)
-    if running and running["status"] in ("queued", "running"):
+    if running and running["status"] in ("queued", "running", "paused"):
         raise HTTPException(409, "The AI is already describing this data source.")
     m = db.get(LLMModel, body.model_id) if body.model_id else db.scalar(select(LLMModel).where(LLMModel.enabled).order_by(LLMModel.is_default.desc()))
     if not m or not m.enabled:

@@ -271,7 +271,7 @@ const waitJob = async () => { await page.waitForSelector('.joblog', { timeout: 8
     await page.locator('.modal tr:has-text("stage") input[type=text]').fill('Where the application is in the credit process');
     await shot('datasource-profile');
     await page.click('.modal button:text-is("Save descriptions")'); await page.waitForSelector('.modal', { state: 'detached' });
-    ok('the business description is saved', (await page.innerText('table.tbl')).includes('Loan applications sourced by dealers'));
+    ok('the business description is saved', await page.waitForSelector('table.tbl td:has-text("Loan applications sourced by dealers")', { timeout: 10000 }).then(() => true, () => false));
     await page.click('.tabs button:has-text("Documentation")');
     await page.locator('.card:has-text("Notes") textarea').fill('Stage: Submitted = received from the dealer; Sanctioned = approved by the credit desk.');
     await page.click('button:text-is("Save documentation")'); await page.waitForSelector('.toast:has-text("Documentation saved")');
@@ -411,6 +411,30 @@ const waitJob = async () => { await page.waitForSelector('.joblog', { timeout: 8
     await page.click('button:text-is("▶ Run query")'); await page.waitForSelector('.card:has(h2:has-text("Ask the graph")) td:has-text("O-0001")');
     ok('a live graph answers by reading the sources', true);
     await page.evaluate(() => window.scrollTo(0, 0)); await page.locator('text=Where the data lives').scrollIntoViewIfNeeded(); await shot('graph-live');
+    // a long build: pause, resume, cancel (a big orders file and a higher row limit make it take a while)
+    await page.locator('label:has-text("A copy on this server") input').check(); await page.waitForSelector('.toast:has-text("A copy will be kept")');
+    await page.evaluate(async () => {
+      const H = { 'X-Requested-With': 'fetch', 'Content-Type': 'application/json' };
+      await fetch('/api/admin/settings', { method: 'PUT', headers: H, body: JSON.stringify({ graph_rows_per_table: 200000 }) });
+      const ds = (await (await fetch('/api/datasources')).json()).items.find(d => d.name === 'Shop data');
+      const rows = Array.from({ length: 200000 }, (_, i) => `${i + 1},O-${String(i + 1).padStart(6, '0')},${i % 30 + 1},2025-03-01 10:30,${(i % 500) + 0.5},Paid`).join('\n');
+      const fd = new FormData(); fd.append('files', new Blob(['order_id,order_no,customer_id,order_date,total,status\n' + rows], { type: 'text/csv' }), 'orders.csv');
+      await fetch(`/api/datasources/${ds.id}/files`, { method: 'POST', headers: { 'X-Requested-With': 'fetch' }, body: fd });
+    });
+    await page.reload(); await page.waitForSelector('button:text-is("▶ Build the knowledge graph")');
+    await page.click('button:text-is("▶ Build the knowledge graph")');
+    await page.waitForSelector('.joblog'); await page.waitForSelector('text=Loading Order records', { timeout: 30000 });
+    await page.click('button:text-is("⏸ Pause")'); await page.waitForSelector('.badge:text-is("Paused")', { timeout: 15000 });
+    const p1 = await page.innerText('.card:has(.joblog)');
+    ok('a running build can be paused', p1.includes('Paused by admin@example.com'), p1.replace(/\n/g, ' ').slice(0, 120));
+    await shot('job-paused');
+    await page.click('button:text-is("▶ Resume")'); await page.waitForSelector('.badge:text-is("Paused")', { state: 'hidden', timeout: 15000 });
+    ok('and resumed', (await page.innerText('.joblog')).includes('Resumed by'));
+    await page.click('button:text-is("✕ Cancel")'); await page.click('.modal button:text-is("Cancel it")');
+    await page.waitForSelector('.toast:has-text("Cancelled by")', { timeout: 30000 });
+    await page.waitForSelector('.banner:has-text("Cancelled by")');
+    ok('and cancelled; nothing of the build is kept', (await page.innerText('.banner:has-text("Cancelled by")')).includes('Nothing was built'));     // it had just been switched back from live
+    await page.evaluate(() => fetch('/api/admin/settings', { method: 'PUT', headers: { 'X-Requested-With': 'fetch', 'Content-Type': 'application/json' }, body: JSON.stringify({ graph_rows_per_table: 10000 }) }));
   });
 
   await step('knowledge graph from documents: extract, review, merge, build, explore', async () => {

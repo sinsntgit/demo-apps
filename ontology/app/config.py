@@ -13,7 +13,7 @@ DATASETS_DIR = DATA_DIR / "datasets"      # kept copies of uploaded dataset file
 DATABASE_URL = os.environ.get("ONTO_DATABASE_URL", f"sqlite:///{DATA_DIR / 'ontostudio.db'}")
 
 APP_NAME = os.environ.get("ONTO_APP_NAME", "OntoStudio")
-VERSION = "1.9"
+VERSION = "1.10"
 COOKIE_NAME = "onto_session"
 COOKIE_SECURE = os.environ.get("ONTO_COOKIE_SECURE", "0") == "1"   # set to 1 behind HTTPS
 

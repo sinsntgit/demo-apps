@@ -75,23 +75,37 @@ export async function workspaceView(root, id, tab, arg) {
     const j = ctx.o.job;
     if (!j) return fill(jobBox);
     const bar2 = h('div', {}), stage = h('b', {}), log = h('ol', { class: 'joblog' }), meta = h('span', { class: 'small dim' });
+    const spin = h('span', { class: 'spinner' }), pausedTag = h('span', { class: 'badge warn hidden' }, 'Paused');
+    const send = action => async e => {
+      if (action === 'cancel' && !await confirmDialog(`Cancel: ${(JOB[j.kind] || 'this job').toLowerCase()}?`, CANCEL_TEXT[j.kind] || 'It stops at its next step. Nothing it was doing is saved.', 'Cancel it')) return;
+      await busy(e.target, async () => { await api('POST', `/api/jobs/${j.id}/control`, { action });
+        toast(action === 'pause' ? 'Pausing at the next step…' : action === 'resume' ? 'Resuming…' : 'Cancelling at the next step…'); });
+    };
+    const pauseBtn = h('button', { class: 'btn sm', title: 'Pause at the next step; it waits until you resume it (at most 4 hours)', onclick: send('pause') }, '⏸ Pause');
+    const resumeBtn = h('button', { class: 'btn sm primary hidden', onclick: send('resume') }, '▶ Resume');
+    const cancelBtn = h('button', { class: 'btn sm danger', onclick: send('cancel') }, '✕ Cancel');
+    const controls = ctx.canEdit || j.user === state.me.email ? h('div', { class: 'row', style: 'gap:6px' }, pauseBtn, resumeBtn, cancelBtn) : null;
     const paint = job => {
+      const paused = job.status === 'paused';
+      spin.classList.toggle('hidden', paused); pausedTag.classList.toggle('hidden', !paused);
+      pauseBtn.classList.toggle('hidden', paused); resumeBtn.classList.toggle('hidden', !paused);
       stage.textContent = job.stage || 'Starting…'; bar2.style.width = Math.max(job.progress, 3) + '%';
       fill(log, job.log.map(l => h('li', {}, l.text)));
       meta.textContent = job.model ? `${job.model} · ${job.calls} model call${job.calls === 1 ? '' : 's'} · ~$${job.cost.toFixed(2)}` : 'no AI model used';
       log.scrollTop = log.scrollHeight;
     };
     fill(jobBox, h('div', { class: 'card stack', style: 'margin-bottom:14px;border-color:var(--accent)' },
-      h('div', { class: 'row' }, h('span', { class: 'spinner' }), h('span', {}, (JOB[j.kind] || 'Working') + ': '), stage, h('span', { class: 'spacer' }), meta),
+      h('div', { class: 'row wrap' }, spin, pausedTag, h('span', {}, (JOB[j.kind] || 'Working') + ': '), stage, h('span', { class: 'spacer' }), meta, controls),
       h('div', { class: 'progress' }, bar2), log,
-      h('div', { class: 'small dim' }, 'This runs on the server. You can keep browsing or close the page; it will carry on.')));
+      h('div', { class: 'small dim' }, 'This runs on the server. You can keep browsing or close the page; it will carry on. Pause and Cancel take effect at its next step.')));
     paint(j);
     const tick = async () => {
       if (!jobBox.isConnected) return;
       let job;
       try { job = await api('GET', `/api/jobs/${j.id}`); } catch { return; }
-      if (job.status === 'done' || job.status === 'error') {
-        if (job.status === 'error') modal('The AI job did not finish', h('div', { class: 'stack' }, h('div', { class: 'banner bad' }, job.error),
+      if (job.status === 'done' || job.status === 'error' || job.status === 'cancelled') {
+        if (job.status === 'cancelled') toast(job.error || 'Cancelled.');
+        else if (job.status === 'error') modal('The AI job did not finish', h('div', { class: 'stack' }, h('div', { class: 'banner bad' }, job.error),
           h('p', { class: 'small muted' }, 'Nothing was changed. You can try again, choose another model, or narrow the scope.')));
         else if (job.kind === 'gaps' || job.kind === 'fix') toast('Proposals ready — see Quality & reasoning.');
         else if (job.kind === 'map') toast(`Mapping proposed: ${job.result.suggested} class mapping(s) — check them on the Knowledge graph tab.`);
@@ -103,6 +117,11 @@ export async function workspaceView(root, id, tab, arg) {
     };
     setTimeout(tick, 1200);
   }
+  const CANCEL_TEXT = {
+    graph: 'It stops at its next step. The knowledge graph stays as it was before this build; nothing of this build is kept.',
+    extract: 'It stops at its next step. Documents it has finished reading are kept for review; the document it is reading is not.',
+    build: 'It stops at its next step. The ontology stays as it was; nothing of this build is saved.',
+  };
   const doneText = job => job.kind === 'build' ? `Built: ${job.result.stats.classes} classes, ${job.result.stats.object_properties + job.result.stats.data_properties} properties.`
     : job.kind === 'refine' ? `Done: ${job.result.added} added, ${job.result.updated} changed, ${job.result.removed} removed.` : 'Done.';
 
