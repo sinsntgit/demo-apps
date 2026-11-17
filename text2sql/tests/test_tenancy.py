@@ -243,3 +243,77 @@ def test_removing_platform_admin_rights(admin):
                                                                   "is_active": True, "show_sql": True, "is_platform_admin": False})
     assert own.status_code == 400 and f"signed in as {me['email']}" in own.json()["detail"]
     assert a.delete(f"/api/admin/users/{second['id']}", headers=H).status_code == 200
+
+
+def test_platform_admin_adds_and_moves_people(two):
+    """＋ User puts anyone into a company; moving a person removes every tie to the old company,
+    hands their reports to an old-company administrator (schedules paused) and signs them out."""
+    a = two["a"]
+    cos = {c["name"]: c for c in a.get("/api/admin/companies").json()}
+    one, b = next(c for c in cos.values() if c["is_mine"]), cos["Beta Ltd"]
+    boss0 = next(x for x in b["admins"] if x["email"] == "boss@beta.test")      # earlier tests signed Beta out
+    pw = a.post(f"/api/admin/companies/{b['id']}/admins/{boss0['id']}/reset-password", headers=H).json()["temporary_password"]
+    beta = _sign_in("boss@beta.test", pw, new="Tenant-Passw0rd-9")
+    assert beta.get(f"/api/admin/companies/{b['id']}/users").status_code == 403          # platform administrators only
+    assert beta.post(f"/api/admin/companies/{one['id']}/users", headers=H, json={"email": "x@x.test"}).status_code == 403
+
+    # ＋ User: any role, straight into another company
+    r = a.post(f"/api/admin/companies/{b['id']}/users", headers=H,
+               json={"email": "mo@beta.test", "name": "Mo Mover", "role": "analyst", "show_sql": False}).json()
+    assert r["role"] == "analyst" and r["show_sql"] is False
+    assert a.post(f"/api/admin/companies/{b['id']}/users", headers=H, json={"email": "mo@beta.test"}).status_code == 400
+    assert a.post(f"/api/admin/companies/{b['id']}/users", headers=H, json={"email": "z@beta.test", "role": "boss"}).status_code == 400
+    st = a.post(f"/api/admin/companies/{b['id']}/users", headers=H, json={"email": "stew@beta.test", "role": "steward"}).json()
+    assert "mo@beta.test" in [u["email"] for u in beta.get("/api/admin/users").json()]       # Beta's admin sees them
+    mo = _sign_in("mo@beta.test", r["temporary_password"])
+    assert mo.get("/api/auth/me").json()["company"]["name"] == "Beta Ltd"
+
+    # Mo's ties to Beta: a group, a report with a schedule, a place on a colleague's schedule, a personal share
+    gid = beta.post("/api/admin/groups", headers=H, json={"name": "Movers", "user_ids": [r["id"]]}).json()["id"]
+    rep = mo.post("/api/reports", headers=H, json={"title": "Mo's pack", "components": []}).json()["id"]
+    assert mo.put(f"/api/reports/{rep}/schedule", headers=H, json={"enabled": True, "recipients": ["out@else.test"]}).status_code == 200
+    boss_rep = beta.post("/api/reports", headers=H, json={"title": "Boss pack", "components": []}).json()["id"]
+    assert beta.put(f"/api/reports/{boss_rep}/schedule", headers=H, json={"enabled": True, "user_ids": [r["id"]]}).status_code == 200
+    beta.put(f"/api/reports/{boss_rep}/shares", headers=H, json={"shares": [{"scope": "user", "user_id": r["id"]}]})
+    assert r["id"] in [x["user_id"] for x in beta.get(f"/api/reports/{boss_rep}").json()["shares"]]
+    assert r["id"] in beta.get(f"/api/reports/{boss_rep}").json()["schedule"]["user_ids"]
+    people = {u["email"]: u for u in a.get(f"/api/admin/companies/{b['id']}/users").json()}
+    assert people["mo@beta.test"]["reports"] == 1
+    boss = people["boss@beta.test"]
+
+    url = f"/api/admin/companies/{one['id']}/users/{r['id']}/move"
+    assert a.post(url, headers=H, json={"role": "analyst"}).status_code == 400                 # who takes over the report?
+    assert a.post(url, headers=H, json={"role": "analyst", "reports_to": st["id"]}).status_code == 400   # a steward cannot
+    me = next(u for u in a.get(f"/api/admin/companies/{one['id']}/users").json() if u["email"] == "admin@test.local")
+    assert a.post(f"/api/admin/companies/{b['id']}/users/{me['id']}/move", headers=H, json={"role": "admin"}).status_code == 400  # own account
+    assert a.post(f"/api/admin/companies/{one['id']}/users/{boss['id']}/move", headers=H,
+                  json={"role": "admin"}).status_code == 400                                   # Beta's last administrator
+    out = a.post(url, headers=H, json={"role": "steward", "reports_to": boss["id"]})
+    assert out.status_code == 200, out.text
+    out = out.json()
+    assert out["reports_handed_over"] == 1 and out["schedules_paused"] == 1 and out["role"] == "steward"
+
+    # old ties are gone; the report stays in Beta with its new owner, its schedule paused
+    assert mo.get("/api/auth/me").status_code == 401                                            # signed out
+    assert "mo@beta.test" not in [u["email"] for u in beta.get("/api/admin/users").json()]
+    assert next(g for g in beta.get("/api/admin/groups").json() if g["id"] == gid)["user_ids"] == []
+    handed = beta.get(f"/api/reports/{rep}").json()
+    assert handed["schedule"]["enabled"] is False
+    assert next(x for x in beta.get("/api/reports").json() if x["id"] == rep)["scheduled"] is False
+    assert r["id"] not in beta.get(f"/api/reports/{boss_rep}").json()["schedule"]["user_ids"]
+    assert r["id"] not in [x["user_id"] for x in beta.get(f"/api/reports/{boss_rep}").json()["shares"]]
+
+    # in the new company: sees only that company's things, nothing of Beta's
+    mo = _sign_in("mo@beta.test", "Tenant-Passw0rd-1", new="Tenant-Passw0rd-2")
+    assert mo.get("/api/auth/me").json()["company"]["id"] == one["id"]
+    assert mo.get("/api/auth/me").json()["role"] == "steward"
+    assert rep not in [x["id"] for x in mo.get("/api/reports").json()]
+    assert mo.get(f"/api/reports/{boss_rep}").status_code in (403, 404)
+    assert "mo@beta.test" in [u["email"] for u in a.get("/api/admin/users").json()]
+    assert "user.moved_out" in [e["action"] for e in beta.get("/api/admin/audit").json()["items"]]
+    assert "user.moved_in" in [e["action"] for e in a.get("/api/admin/audit").json()["items"]]
+
+    # tidy up for later tests
+    a.delete(f"/api/admin/users/{r['id']}", headers=H)
+    beta.delete(f"/api/admin/users/{st['id']}", headers=H)
+    beta.delete(f"/api/admin/groups/{gid}", headers=H)

@@ -5,13 +5,14 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from .. import config, security
 from ..db import get_db, now
 from ..deps import admin_only, audit, current_user, platform_admin
-from ..models import Company, Connection, QueryRun, RephraseLog, Report, User
+from ..models import (ROLES, Company, Connection, ConnectionAccess, ConversationShare, DataFilter, QueryRun, RephraseLog, Report,
+                      ReportShare, User, UserGroupMember)
 
 router = APIRouter(prefix="/api", tags=["companies"])
 LOGOS = config.DATA_DIR / "logos"
@@ -64,7 +65,7 @@ def _get(db: Session, company_id: int) -> Company:
 def _new_admin(db: Session, company: Company, email: str, name: str) -> tuple[User, str]:
     email = email.strip().lower()
     if "@" not in email:
-        raise HTTPException(400, "Enter a valid email address for the company administrator.")
+        raise HTTPException(400, "Enter a valid email address.")
     if db.scalar(select(User.id).where(User.email == email)):
         raise HTTPException(400, "A user with this email already exists (an email address belongs to one company).")
     temp = security.random_password()
@@ -132,6 +133,112 @@ def add_admin(company_id: int, body: AdminIn, request: Request, me: User = Depen
     audit(db, request, me, "company.admin_added", c.name, u.email, company_id=None)
     db.commit()
     return {"email": u.email, "temporary_password": temp}
+
+
+class CompanyUserIn(BaseModel):
+    email: str
+    name: str = ""
+    role: str = "analyst"
+    show_sql: bool = True
+
+
+class MoveIn(BaseModel):
+    role: str = "analyst"
+    show_sql: bool = True
+    reports_to: int | None = None      # an administrator of the old company who takes over the person's reports
+
+
+def _person(u: User) -> dict:
+    return {"id": u.id, "email": u.email, "name": u.name, "role": u.role, "is_active": u.is_active,
+            "show_sql": u.show_sql is not False, "is_platform_admin": bool(u.is_platform_admin),
+            "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None}
+
+
+@router.get("/admin/companies/{company_id}/users")
+def company_users(company_id: int, me: User = Depends(platform_admin), db: Session = Depends(get_db)):
+    """The people of one company (names, roles) - so a platform administrator can add or move them. No data."""
+    c = _get(db, company_id)
+    people = list(db.scalars(select(User).where(User.company_id == c.id).order_by(User.email)))
+    owned = dict(db.execute(select(Report.owner_id, func.count()).where(Report.company_id == c.id).group_by(Report.owner_id)).all())
+    return [{**_person(u), "reports": owned.get(u.id, 0)} for u in people]
+
+
+@router.post("/admin/companies/{company_id}/users")
+def add_company_user(company_id: int, body: CompanyUserIn, request: Request, me: User = Depends(platform_admin),
+                     db: Session = Depends(get_db)):
+    """Add a person of any role straight into a company."""
+    c = _get(db, company_id)
+    if body.role not in ROLES:
+        raise HTTPException(400, "Unknown role.")
+    u, temp = _new_admin(db, c, body.email, body.name)
+    u.role, u.show_sql = body.role, (body.show_sql if body.role == "analyst" else True)
+    db.flush()
+    detail = f"{u.email} as {u.role}{'' if u.show_sql else ', results only'}"
+    audit(db, request, me, "company.user_added", c.name, detail, company_id=None)
+    audit(db, request, me, "user.created", u.email, f"{detail} - added by the platform administrator", company_id=c.id)
+    db.commit()
+    return {**_person(u), "temporary_password": temp}
+
+
+@router.post("/admin/companies/{company_id}/users/{user_id}/move")
+def move_user(company_id: int, user_id: int, body: MoveIn, request: Request, me: User = Depends(platform_admin),
+              db: Session = Depends(get_db)):
+    """Move a person to this company. Everything that tied them to their old company is removed: group
+    memberships, direct data-model access, personal row filters, things shared with them personally and
+    their place on report schedules. Their reports are handed to an administrator of the old company with
+    any schedule paused; their chats stay with the old company. They are signed out."""
+    target = _get(db, company_id)
+    u = db.get(User, user_id)
+    if not u:
+        raise HTTPException(404, "Not found")
+    if body.role not in ROLES:
+        raise HTTPException(400, "Unknown role.")
+    if u.company_id == target.id:
+        raise HTTPException(400, f"{u.email} is already in {target.name}.")
+    if u.id == me.id:
+        raise HTTPException(400, f"You are signed in as {me.email}, so this is your own account: you cannot move it. "
+                                 "Sign in as another platform administrator to do it.")
+    old = db.get(Company, u.company_id) if u.company_id else None
+    old_name = old.name if old else "no company"
+    if u.role == "admin" and u.is_active and db.scalar(select(func.count()).where(
+            User.role == "admin", User.is_active, User.id != u.id, User.company_id == u.company_id)) == 0:
+        raise HTTPException(400, f"{u.email} is the last active administrator of {old_name}. Add another administrator "
+                                 "to that company first (＋ User), then move them.")
+    reports = list(db.scalars(select(Report).where(Report.owner_id == u.id)))
+    heir = None
+    if reports:
+        heir = db.get(User, body.reports_to) if body.reports_to else None
+        if not heir or heir.id == u.id or heir.company_id != u.company_id or heir.role != "admin" or not heir.is_active:
+            raise HTTPException(400, f"{u.email} owns {len(reports)} report(s). Choose an active administrator of "
+                                     f"{old_name} to take them over.")
+    paused = 0
+    for r in reports:
+        r.owner_id = heir.id
+        if (r.schedule or {}).get("enabled"):
+            r.schedule, r.next_run_at = {**r.schedule, "enabled": False}, None
+            paused += 1
+    # their place on other reports' schedules in the old company
+    for r in db.scalars(select(Report).where(Report.company_id == u.company_id, Report.schedule.is_not(None))):
+        ids = (r.schedule or {}).get("user_ids") or []
+        if any(int(i) == u.id for i in ids):
+            r.schedule = {**r.schedule, "user_ids": [i for i in ids if int(i) != u.id]}
+    for model in (UserGroupMember, ConnectionAccess, DataFilter, ReportShare, ConversationShare):
+        db.execute(delete(model).where(model.user_id == u.id))
+    u.company_id, u.role = target.id, body.role
+    u.show_sql = body.show_sql if body.role == "analyst" else True
+    if u.role != "admin":
+        u.is_platform_admin = False
+    u.token_version += 1                       # signed out: the next sign-in opens the new company
+    detail = (f"{u.email}: {old_name} → {target.name} as {u.role}"
+              + (f"; {len(reports)} report(s) handed to {heir.email}" if reports else "")
+              + (f", {paused} schedule(s) paused" if paused else ""))
+    audit(db, request, me, "company.user_moved", target.name, detail, company_id=None)
+    if old:
+        audit(db, request, me, "user.moved_out", u.email, detail, company_id=old.id)
+    audit(db, request, me, "user.moved_in", u.email, detail, company_id=target.id)
+    db.commit()
+    return {**_person(u), "reports_handed_over": len(reports), "schedules_paused": paused,
+            "reports_to": heir.email if heir else None}
 
 
 @router.post("/admin/companies/{company_id}/admins/{user_id}/reset-password")

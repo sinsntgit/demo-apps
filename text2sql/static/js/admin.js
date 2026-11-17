@@ -178,12 +178,59 @@ function companiesTab(el) {
         close(); toast('Saved'); draw();
       }) }, 'Save')] });
   };
-  const addAdmin = c => {
-    const email = h('input', { type: 'email' }), person = h('input', { type: 'text' });
-    modal(`Add an administrator to ${c.name}`, h('div', { class: 'stack' }, field('Email', email), field('Name', person)), {
+  const ROLE_OPTS = [['analyst', 'Analyst — asks questions'], ['steward', 'Data steward — also curates training, sees dashboard'], ['admin', 'Administrator — manages the company']];
+  const roleAndView = (role0 = 'analyst', showSql = true) => {
+    const role = select(ROLE_OPTS, role0), view = select([['all', 'Results, SQL and code'], ['results', 'Results only — no SQL or Python code']], showSql ? 'all' : 'results');
+    const sync = () => { view.disabled = role.value !== 'analyst'; if (view.disabled) view.value = 'all'; };
+    role.addEventListener('change', sync); sync();
+    return { role, view, fields: [field('Role', role), field('What answers show', view, 'analysts only')] };
+  };
+  const addUser = (c, done = draw) => {
+    const email = h('input', { type: 'email' }), person = h('input', { type: 'text' }), rv = roleAndView();
+    modal(`Add a user to ${c.name}`, h('div', { class: 'stack' }, h('div', { class: 'grid2' }, field('Email', email), field('Name', person)), ...rv.fields,
+      h('p', { class: 'small dim', style: 'margin:0' }, `They belong to ${c.name} only and see only its data models, chats and reports. They get a one-time password and choose their own at first sign-in.`)), {
       actions: close => [h('button', { class: 'btn', onclick: close }, 'Cancel'), h('button', { class: 'btn primary', onclick: e => busy(e.target, async () => {
-        const r = await api('POST', `/api/admin/companies/${c.id}/admins`, { email: email.value, name: person.value }); close(); draw(); showPw(r.email, r.temporary_password);
-      }) }, 'Add')] });
+        const r = await api('POST', `/api/admin/companies/${c.id}/users`, { email: email.value, name: person.value, role: rv.role.value, show_sql: rv.view.value !== 'results' });
+        close(); done(); showPw(r.email, r.temporary_password);
+      }) }, 'Add user')] });
+  };
+  const move = (u, from, all, done) => {
+    const others = all.filter(x => x.id !== from.id);
+    const to = select(others.map(x => [x.id, x.name + (x.is_active ? '' : ' (inactive)')]), others[0]?.id);
+    const rv = roleAndView(u.role, u.show_sql);
+    const heirs = from.admins.filter(a => a.id !== u.id && a.is_active);
+    const heir = u.reports ? select(heirs.map(a => [a.id, `${a.name || a.email} · ${a.email}`]), heirs[0]?.id) : null;
+    modal(`Move ${u.name || u.email} to another company`, h('div', { class: 'stack' }, field('Move to', to), ...rv.fields,
+      u.reports ? (heirs.length ? field(`Who takes over their ${u.reports} report${u.reports > 1 ? 's' : ''} in ${from.name}`, heir, 'an administrator of the company they leave')
+        : h('div', { class: 'banner warn small' }, `They own ${u.reports} report${u.reports > 1 ? 's' : ''}, and ${from.name} has no other active administrator to take ${u.reports > 1 ? 'them' : 'it'} over. Add one with ＋ User first.`)) : null,
+      h('div', { class: 'banner info small' }, h('b', {}, 'What happens: '), `they are signed out, and next time they sign in to the new company. In ${from.name} they leave their user groups, their personal data access, row filters and shares, and any report schedules that email them. `,
+        u.reports ? `Their reports stay in ${from.name} with the person chosen above; any schedule on them is paused until that person checks and restarts it. ` : '',
+        `Their chats stay with ${from.name} and are no longer visible to them. Nothing is deleted.`)), {
+      actions: close => [h('button', { class: 'btn', onclick: close }, 'Cancel'), h('button', { class: 'btn primary', disabled: !others.length || (u.reports && !heirs.length), onclick: e => busy(e.target, async () => {
+        const r = await api('POST', `/api/admin/companies/${to.value}/users/${u.id}/move`, { role: rv.role.value, show_sql: rv.view.value !== 'results', reports_to: heir ? Number(heir.value) : null });
+        close(); done();
+        toast(`${r.email} moved` + (r.reports_handed_over ? ` — ${r.reports_handed_over} report(s) now with ${r.reports_to}` + (r.schedules_paused ? `, ${r.schedules_paused} schedule(s) paused` : '') : ''));
+      }) }, 'Move')] });
+  };
+  const people = (c, all) => {
+    const box = h('div', { class: 'stack' });
+    const load = async () => {
+      const list = await api('GET', `/api/admin/companies/${c.id}/users`);
+      const fresh = (await api('GET', '/api/admin/companies')).find(x => x.id === c.id) || c;
+      fill(box, h('div', { class: 'row' }, h('button', { class: 'btn primary sm', onclick: () => addUser(c, () => { load(); draw(); }) }, '＋ User'),
+          h('span', { class: 'small dim' }, `${list.length} ${list.length === 1 ? 'person' : 'people'}`)),
+        list.length ? h('div', { class: 'tbl-wrap', style: 'max-height:55vh' }, h('table', { class: 'tbl' },
+          h('thead', {}, h('tr', {}, ['Person', 'Role', 'Reports', 'Last sign-in', ''].map(t => h('th', {}, t)))),
+          h('tbody', {}, list.map(u => h('tr', {},
+            h('td', {}, h('b', {}, u.name || u.email), h('div', { class: 'small dim' }, u.email)),
+            h('td', {}, u.role, u.role === 'analyst' && !u.show_sql ? h('div', {}, h('span', { class: 'badge' }, 'results only')) : null,
+              u.is_platform_admin ? h('div', {}, h('span', { class: 'badge info' }, 'platform admin')) : null, u.is_active ? null : h('div', {}, h('span', { class: 'badge bad' }, 'disabled'))),
+            h('td', { class: 'num' }, u.reports), h('td', { class: 'nowrap small' }, fmtTime(u.last_login_at)),
+            h('td', { class: 'right' }, u.id === state.me.id ? h('span', { class: 'small dim' }, 'you')
+              : h('button', { class: 'btn sm', onclick: () => move(u, fresh, all, () => { load(); draw(); }) }, 'Move…'))))))) : h('div', { class: 'empty small' }, 'Nobody yet.'));
+    };
+    modal(`People in ${c.name}`, box, { wide: true });
+    load().catch(fail);
   };
   const reset = (c, a) => async () => {
     if (!await confirmDialog('Reset this administrator’s password?', `${a.email} (${c.name}) gets a new temporary password and is signed out.`, 'Reset', false)) return;
@@ -203,7 +250,7 @@ function companiesTab(el) {
             c.is_mine ? null : h('button', { class: 'btn ghost sm', title: 'Reset this administrator’s password', onclick: reset(c, a) }, '↺'))) : h('span', { class: 'badge warn' }, 'none')),
           h('td', { class: 'num' }, c.users), h('td', { class: 'num' }, c.data_models), h('td', { class: 'num' }, c.reports), h('td', { class: 'num' }, c.questions_30d),
           h('td', { class: 'num' }, '$' + c.spend_30d.toFixed(2)),
-          h('td', { class: 'right nowrap' }, h('button', { class: 'btn sm', onclick: () => editCo(c) }, 'Edit'), ' ', h('button', { class: 'btn sm', onclick: () => addAdmin(c) }, '＋ Admin'))))))),
+          h('td', { class: 'right nowrap' }, h('button', { class: 'btn sm', onclick: () => editCo(c) }, 'Edit'), ' ', h('button', { class: 'btn sm', onclick: () => addUser(c) }, '＋ User'), ' ', h('button', { class: 'btn sm', onclick: () => people(c, list) }, 'People…'))))))),
       h('p', { class: 'small dim' }, 'AI spend is tokens × the prices set on each model, for questions and rephrasing. Shared models and email senders are offered to companies under AI models and Email senders.')));
   }
   draw().catch(fail);

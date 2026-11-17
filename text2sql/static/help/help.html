@@ -699,7 +699,7 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 <h3>Who does what</h3>
 <table>
 <tr><th>Role</th><th>Can</th></tr>
-<tr><td><b>Platform administrator</b></td><td>Everything an administrator can do in their own company, plus the <b>Companies</b> tab: add, rename and suspend companies, add a company's administrators and reset their passwords, upload a company's logo, see each company's size and AI spend — but <i>not</i> its data. Manages the <b>shared</b> AI models and email senders, and installation-wide settings (session length, sign-in lockout).</td></tr>
+<tr><td><b>Platform administrator</b></td><td>Everything an administrator can do in their own company, plus the <b>Companies</b> tab: add, rename and suspend companies, add people to any company and move them between companies, reset administrators' passwords, upload a company's logo, see each company's size and AI spend — but <i>not</i> its data. Manages the <b>shared</b> AI models and email senders, and installation-wide settings (session length, sign-in lockout).</td></tr>
 <tr><td><b>Administrator</b> (of a company)</td><td>Everything inside their company: users, groups, data models, data access and filters, their own AI models and email senders, which shared ones their company uses, company settings and logo.</td></tr>
 </table>
 <p>After an update from a single-company version, everything that existed becomes <b>Default company</b> (rename it under Companies) and the existing administrators become platform administrators. A platform administrator can give or take away this right under Admin → Users (<i>Platform administrator</i>, for administrators only).</p>
@@ -711,7 +711,21 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 <li>Pass the one-time password shown to their administrator securely; they choose their own at first sign-in.</li>
 <li>Give the company an AI model: share one (below), or let their administrator add their own key under AI models.</li>
 </ol>
-<p><b>Edit</b> renames a company, uploads its logo, or makes it <b>inactive</b>: all its people are signed out at once and cannot sign in until it is active again; nothing is deleted. You cannot suspend your own company. <b>＋ Admin</b> adds another administrator; <b>↺</b> next to an administrator gives them a new temporary password (for a company that is locked out).</p>
+<p><b>Edit</b> renames a company, uploads its logo, or makes it <b>inactive</b>: all its people are signed out at once and cannot sign in until it is active again; nothing is deleted. You cannot suspend your own company. <b>↺</b> next to an administrator gives them a new temporary password (for a company that is locked out).</p>
+<h3>Adding people to a company</h3>
+<p><b>＋ User</b> on a company's row adds a person straight into that company — analyst, data steward or administrator, and for analysts whether answers show <i>results only</i>. Pass the one-time password shown to them securely. A company's own administrator can also add people under Admin → Users; they always join that administrator's company.</p>
+<figure><img src="/static/help/img/company-add-user.png" alt="Add a user to Northwind Traders with email, name, role and what answers show"><figcaption>Adding a user straight into a company.</figcaption></figure>
+<h3>Moving a person to another company</h3>
+<p><b>People…</b> lists a company's people with their role and how many reports they own. <b>Move…</b> moves one of them to another company, with the role (and, for analysts, the view) they will have there.</p>
+<figure><img src="/static/help/img/company-move.png" alt="Move Peter Franken to another company: Move to, Role, What answers show, who takes over their report, and what happens"><figcaption>Moving a person: the new company, their role there, and who takes over their reports.</figcaption></figure>
+<ul>
+<li><b>They are signed out.</b> Next time they sign in, they are in the new company and see only its data models, chats and reports.</li>
+<li><b>Everything that tied them to the old company is removed:</b> their user-group memberships, personal data-model access, personal row filters, chats and reports shared with them personally, and their place on report schedules.</li>
+<li><b>Their reports stay with the old company.</b> You choose one of its administrators to take them over. Any schedule on those reports is <b>paused</b>, because the new owner's access may differ: the new owner checks the report and switches the schedule back on.</li>
+<li><b>Their chats stay with the old company</b> (with their history and audit records) and are no longer visible to them. Nothing is deleted.</li>
+<li>You cannot move the last active administrator of a company (add another first with ＋ User), and you cannot move your own account.</li>
+<li>The move is written to the audit log of both companies.</li>
+</ul>
 <h3>Sharing AI models and email senders with companies</h3>
 <p>Under <b>AI models</b> and <b>Email senders</b>, a platform administrator has an extra section, <i>Platform models — shared with companies</i> (and <i>Platform senders</i>). Add a shared model there, then press <b>Companies…</b> and tick the companies that may use it — or <b>All companies</b>, which includes companies added later.</p>
 <figure><img src="/static/help/img/model-sharing.png" alt="Which companies may use Claude (shared)? with an All companies option and a tick list of companies"><figcaption>Choosing which companies may use a shared model.</figcaption></figure>

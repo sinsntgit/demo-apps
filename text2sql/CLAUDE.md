@@ -154,7 +154,9 @@ Settings: `deps.get_settings(db, company_id)` = defaults < installation rows < `
 `routers/companies.py`: the Companies API (platform admins) and logos (PNG/JPEG/WebP checked by magic bytes,
 stored in `DATA_DIR/logos`, served only to the company's own people; also drawn on report PDFs).
 `main._per_company_names` rebuilds SQLite tables whose `name` was unique installation-wide; `_first_company`
-moves an older database into "Default company". Samples: `add_retail_sample` / `add_sample_model(spec, company)`.
+moves an older database into "Default company". Platform admins add people of any role to a company (`POST /api/admin/companies/{id}/users`) and move them
+(`.../users/{uid}/move`): group memberships, direct access, personal filters, personal shares and schedule places are
+deleted; owned reports go to a chosen active admin of the old company with schedules paused; chats stay behind; sessions revoked. Samples: `add_retail_sample` / `add_sample_model(spec, company)`.
 
 ### Shared chats
 
