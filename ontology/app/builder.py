@@ -649,8 +649,11 @@ def _extract(ctx: Ctx, o: Ontology, cfg: dict):
         checker = kgdocs.Doc(text)
         tot = {"entities": 0, "merged": 0, "relations": 0, "rejected": 0}
         notes = []
+        ctx.note(f"{name}: {len(text):,} characters - " + ("read in one part." if len(parts) == 1 else
+                 f"longer than {kgdocs.CHUNK:,} characters, so read in {len(parts)} parts ({', '.join(f'{len(p):,}' for p in parts)} characters)."))
         for k, part in enumerate(parts):
-            ctx.stage(f"Reading {name}" + (f" (part {k + 1} of {len(parts)})" if len(parts) > 1 else "") + f" - document {n + 1} of {len(keys)}",
+            ctx.stage(f"Reading {name} ({len(text):,} characters" + (f", part {k + 1} of {len(parts)})" if len(parts) > 1 else ", in one part)")
+                      + f" - document {n + 1} of {len(keys)}",
                       5 + int(90 * (n + k / len(parts)) / max(1, len(keys))))
             raw = ctx.ask(EXTRACT_PROMPT.format(name=o.name, outline=onto.outline(o.content), registry=kgdocs.registry(store, part), doc=name,
                                                 part=f" (part {k + 1} of {len(parts)})" if len(parts) > 1 else "", text=part), need=("entities",))

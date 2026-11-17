@@ -218,9 +218,9 @@ function docsCard(ctx, g, redraw) {
     h('div', { class: 'tbl-wrap', style: 'max-height:240px' }, h('table', { class: 'tbl' },
       h('thead', {}, h('tr', {}, g.can_edit ? h('th', { style: 'width:30px' }, h('input', { type: 'checkbox', style: 'width:auto', title: 'All', onchange: e => {
         card.querySelectorAll('input[data-doc]').forEach(cb => { cb.checked = e.target.checked; cb.dispatchEvent(new Event('change')); }); } })) : null,
-        h('th', {}, 'Document'), h('th', {}, 'From'), h('th', { class: 'num' }, 'Pages'), h('th', {}, 'Read'))),
+        h('th', {}, 'Document'), h('th', {}, 'From'), h('th', { class: 'num' }, 'Pages'), h('th', { class: 'num', title: 'Longer than 40,000 characters: read in parts' }, 'Characters'), h('th', {}, 'Read'))),
       h('tbody', {}, g.documents.map(d => h('tr', {}, g.can_edit ? h('td', {}, h('input', { type: 'checkbox', style: 'width:auto', 'data-doc': d.key, onchange: e => { e.target.checked ? chosen.add(d.key) : chosen.delete(d.key); } })) : null,
-        h('td', {}, h('b', {}, d.name)), h('td', { class: 'small' }, d.origin), h('td', { class: 'num' }, d.pages), h('td', { class: 'small', 'data-read': d.key }, '—')))))),
+        h('td', {}, h('b', {}, d.name)), h('td', { class: 'small' }, d.origin), h('td', { class: 'num' }, d.pages), h('td', { class: 'num' }, d.chars.toLocaleString()), h('td', { class: 'small', 'data-read': d.key }, '—')))))),
     box);
   if (x) reviewPanel(ctx, g, box, card, redraw);
   return card;
@@ -231,7 +231,7 @@ async function reviewPanel(ctx, g, box, card, redraw) {
   try { x = await api('GET', `/api/ontologies/${ctx.id}/graph/extracted`); } catch (e) { return fill(box, h('div', { class: 'banner bad' }, e.message)); }
   for (const [k, d] of Object.entries(x.documents)) {
     const cell = card.querySelector(`[data-read="${k}"]`);
-    if (cell) fill(cell, `${fmtTime(d.at)} · ${d.entities} new, ${d.merged} matched, ${d.relations} links, ${d.rejected} rejected`);
+    if (cell) fill(cell, `${fmtTime(d.at)} · ${d.parts > 1 ? `in ${d.parts} parts` : 'in one part'} · ${d.entities} new, ${d.merged} matched, ${d.relations} links, ${d.rejected} rejected`);
   }
   const docName = k => x.documents[k]?.name || g.documents.find(d => d.key === k)?.name || k;
   const byId = Object.fromEntries(x.entities.map(e => [e.id, e]));
