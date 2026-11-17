@@ -46,6 +46,7 @@ const waitJob = async () => { await page.waitForSelector('.joblog', { timeout: 8
     await page.locator('.item:has-text("Stand-in model") button:text-is("Test")').click();
     await page.waitForSelector('.badge.good:has-text("responded")');
     ok('AI model added and connection test passes', true);
+    ok('a self-hosted model without prices is not flagged (it may be free)', !(await page.innerText('.item:has-text("Stand-in model")')).includes('no prices — cost not counted'));
     await shot('models');
     await page.goto(BASE + '/#/admin/users'); await page.waitForSelector('button:text-is("＋ Add user")');
     await page.click('button:text-is("＋ Add user")');
@@ -214,7 +215,7 @@ const waitJob = async () => { await page.waitForSelector('.joblog', { timeout: 8
     await page.click('.steps button:has-text("Use cases")');
     await page.locator('.modal textarea').first().fill('Which dealers have the most rejected applications?\nShow disbursements older than 90 days.');
     await shot('wizard-needs');
-    await page.click('.steps button:has-text("Database")');
+    await page.click('.steps button:has-text("More documents")');
     fs.writeFileSync(path.join(OUT, 'schema.sql'), 'CREATE TABLE customers(id int primary key, name text);\nCREATE TABLE loans(id int primary key, customer_id int references customers(id), amount numeric);');
     fs.writeFileSync(path.join(OUT, 'policy.txt'), 'Gift vouchers expire after twelve months. A loan needs a sanction before disbursement.');
     await page.locator('.modal .drop input[type=file]').first().setInputFiles([path.join(OUT, 'schema.sql'), path.join(OUT, 'policy.txt')]);
@@ -231,6 +232,18 @@ const waitJob = async () => { await page.waitForSelector('.joblog', { timeout: 8
     await page.click('.tabs button:text-is("Versions")'); await page.waitForSelector('.item:has-text("Version 1")'); await shot('versions');
     await page.goto(BASE + '/#/library'); await page.waitForSelector('.tree a:has-text("Lending")'); await shot('library');
     ok('library shows the folder with its ontology', (await page.innerText('.tree a:has-text("Lending")')).includes('1'));
+  });
+
+  await step('database data source form: SingleStore and Snowflake', async () => {
+    await page.goto(BASE + '/#/datasources'); await page.waitForSelector('h1:text-is("Data sources")');
+    await page.click('button:text-is("＋ New data source")'); await page.click('.modal .seg button:has-text("Connect a database")');
+    const opts = await page.locator('.modal select option').allTextContents();
+    ok('database types include SingleStore and Snowflake', opts.includes('SingleStore') && opts.includes('Snowflake') && opts.includes('Microsoft SQL Server'));
+    await page.selectOption('.modal select', 'snowflake');
+    ok('Snowflake asks for account, warehouse and role, not a port', await page.locator('.modal label.field:has-text("Account identifier")').isVisible()
+      && await page.locator('.modal label.field:has-text("Warehouse")').isVisible() && !(await page.locator('.modal label.field:has-text("Port")').isVisible()));
+    await shot('datasource-snowflake');
+    await page.keyboard.press('Escape');
   });
 
   await step('data sources: set up once, profile, describe, build from it', async () => {
@@ -259,10 +272,23 @@ const waitJob = async () => { await page.waitForSelector('.joblog', { timeout: 8
     await shot('datasource-profile');
     await page.click('.modal button:text-is("Save descriptions")'); await page.waitForSelector('.modal', { state: 'detached' });
     ok('the business description is saved', (await page.innerText('table.tbl')).includes('Loan applications sourced by dealers'));
+    await page.click('.tabs button:has-text("Documentation")');
+    await page.locator('.card:has-text("Notes") textarea').fill('Stage: Submitted = received from the dealer; Sanctioned = approved by the credit desk.');
+    await page.click('button:text-is("Save documentation")'); await page.waitForSelector('.toast:has-text("Documentation saved")');
+    await page.click('button:has-text("Describe with AI")'); await page.click('.modal button:text-is("Describe")');
+    await page.waitForSelector('.card:has-text("What the AI understood")', { timeout: 30000 });
+    const understood = await page.innerText('.card:has-text("What the AI understood")');
+    ok('Describe with AI: summary, terms and open questions', understood.includes('Drafted summary') && understood.includes('Sanction') && understood.includes('Not clear from the documentation'));
+    await shot('datasource-understood');
+    await page.click('.tabs button:has-text("Tables")');
+    const tb = await page.innerText('table.tbl');
+    ok('AI drafts are marked, and the description a person wrote is kept', tb.includes('AI draft') && tb.includes('Loan applications sourced by dealers'));
+    await page.click('.tabs button:has-text("Documentation")'); await shot('datasource-docs');
     await page.click('button:has-text("Build an ontology from this")');
     await page.waitForSelector('.modal .banner:has-text("Building from the data source")');
     ok('the wizard opens with the data source chosen', (await page.inputValue('.modal input[type=text] >> nth=0')) === 'Dealer lending files');
-    await page.click('.steps button:has-text("Database")'); await page.waitForSelector('.modal input[type=checkbox]:checked');
+    await page.waitForSelector('.modal .card:has-text("Build from your data") input[type=checkbox]:checked');
+    ok('the data source is offered and ticked on the first step of the wizard', true);
     await shot('datasource-wizard');
     await page.click('.steps button:has-text("Build")'); await page.click('button:has-text("Create and build with AI")');
     await page.waitForSelector('.joblog', { timeout: 15000 });
@@ -304,7 +330,7 @@ const waitJob = async () => { await page.waitForSelector('.joblog', { timeout: 8
   await step('usage dashboard and appearance', async () => {
     await page.goto(BASE + '/#/usage'); await page.waitForSelector('svg.chart .bar');
     const kp = await page.innerText('.kpis');
-    ok('usage dashboard shows jobs, tokens, cost and a chart', /AI jobs\s*\n\s*6/.test(kp) && kp.includes('Estimated cost'), kp.replace(/\n/g, ' ').slice(0, 80));
+    ok('usage dashboard shows jobs, tokens, cost and a chart', /AI jobs\s*\n\s*7/.test(kp) && kp.includes('Estimated cost'), kp.replace(/\n/g, ' ').slice(0, 80));
     ok('admin can filter by person', (await page.locator('select:has(option:text-is("All users"))').count()) === 1);
     await shot('usage');
     await page.goto(BASE + '/#/admin/appearance'); await page.waitForSelector('.swatch');

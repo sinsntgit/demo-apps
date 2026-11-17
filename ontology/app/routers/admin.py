@@ -127,12 +127,27 @@ class ModelIn(BaseModel):
     is_default: bool = False
     price_in: float = 0
     price_out: float = 0
+    recalc: bool = False        # apply these prices to earlier AI jobs of this model
 
 
-def _model(m: LLMModel) -> dict:
-    return {"id": m.id, "name": m.name, "provider": m.provider, "model_id": m.model_id, "base_url": m.base_url,
-            "has_key": bool(m.api_key_enc), "effort": m.effort, "enabled": m.enabled, "is_default": m.is_default,
-            "price_in": m.price_in, "price_out": m.price_out}
+def _model(m: LLMModel, db: Session | None = None) -> dict:
+    out = {"id": m.id, "name": m.name, "provider": m.provider, "model_id": m.model_id, "base_url": m.base_url,
+           "has_key": bool(m.api_key_enc), "effort": m.effort, "enabled": m.enabled, "is_default": m.is_default,
+           "price_in": m.price_in, "price_out": m.price_out, "priced": bool(m.price_in or m.price_out)}
+    if db is not None:     # how much recorded usage has no cost because the model had no prices
+        row = db.execute(select(func.count(Job.id), func.coalesce(func.sum(Job.input_tokens + Job.output_tokens), 0))
+                         .where(Job.model_id == m.id, Job.cost == 0, Job.input_tokens + Job.output_tokens > 0)).one()
+        out["unpriced_jobs"], out["unpriced_tokens"] = row[0], int(row[1])
+    return out
+
+
+def _recalc(db: Session, m: LLMModel) -> int:
+    """Re-price every earlier job of this model from its recorded tokens."""
+    n = 0
+    for j in db.scalars(select(Job).where(Job.model_id == m.id)):
+        j.cost = (j.input_tokens * m.price_in + j.output_tokens * m.price_out) / 1e6
+        n += 1
+    return n
 
 
 def _apply_model(m: LLMModel, body: ModelIn, db: Session):
@@ -156,7 +171,7 @@ def _apply_model(m: LLMModel, body: ModelIn, db: Session):
 
 @router.get("/models")
 def models(_: User = Depends(admin_only), db: Session = Depends(get_db)):
-    return {"providers": llm.PROVIDERS, "models": [_model(m) for m in db.scalars(select(LLMModel).order_by(LLMModel.name))]}
+    return {"providers": llm.PROVIDERS, "models": [_model(m, db) for m in db.scalars(select(LLMModel).order_by(LLMModel.name))]}
 
 
 @router.post("/models")
@@ -177,10 +192,13 @@ def update_model(model_id: int, body: ModelIn, request: Request, admin: User = D
     m = db.get(LLMModel, model_id)
     if not m:
         raise HTTPException(404, "Not found")
+    old_prices = (m.price_in, m.price_out)
     _apply_model(m, body, db)
-    audit(db, request, admin, "model.updated", m.name)
+    n = _recalc(db, m) if body.recalc else 0
+    audit(db, request, admin, "model.updated", m.name,
+          f"prices {old_prices[0]}/{old_prices[1]} -> {m.price_in}/{m.price_out}" + (f"; {n} earlier job(s) re-priced" if body.recalc else ""))
     db.commit()
-    return _model(m)
+    return {**_model(m, db), "recalculated": n}
 
 
 @router.delete("/models/{model_id}")
@@ -188,6 +206,8 @@ def delete_model(model_id: int, request: Request, admin: User = Depends(admin_on
     m = db.get(LLMModel, model_id)
     if not m:
         raise HTTPException(404, "Not found")
+    # jobs keep the model's name; their link goes, so a later model that reuses the id is never confused with this one
+    db.execute(update(Job).where(Job.model_id == m.id).values(model_id=None))
     audit(db, request, admin, "model.deleted", m.name)
     db.delete(m)
     db.commit()

@@ -118,6 +118,7 @@ class DataSource(Base):
     owner_email: Mapped[str] = mapped_column(String(255), default="")
     visibility: Mapped[str] = mapped_column(String(20), default="private")    # private | shared (everyone signed in may use it)
     config_enc: Mapped[str] = mapped_column(Text, default="")                 # database connection, encrypted, password included
+    documentation: Mapped[str] = mapped_column(Text, default="")             # what the data means: glossary, rules, data dictionary - by people
     sample_values: Mapped[bool] = mapped_column(Boolean, default=True)        # sample values may go to the AI model
     personal_samples: Mapped[bool] = mapped_column(Boolean, default=False)    # ...including columns that look like personal data
     status: Mapped[str] = mapped_column(String(20), default="empty")          # empty | ready | error
@@ -148,7 +149,8 @@ class DataSourceItem(Base):
     chars: Mapped[int] = mapped_column(Integer, default=0)
     text: Mapped[str] = mapped_column(Text, default="")                       # document text
     profile: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)      # table profile (profiling.py)
-    description: Mapped[str] = mapped_column(Text, default="")                # business description, written by a person
+    description: Mapped[str] = mapped_column(Text, default="")                # business description, written by a person (or drafted by AI)
+    described_by_ai: Mapped[bool] = mapped_column(Boolean, default=False)     # the table description is an AI draft nobody has confirmed
     include: Mapped[bool] = mapped_column(Boolean, default=True)              # used when an ontology is built
     note: Mapped[str] = mapped_column(String(500), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
@@ -203,6 +205,7 @@ class Job(Base):
     kind: Mapped[str] = mapped_column(String(30))
     ontology_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     ontology_name: Mapped[str] = mapped_column(String(255), default="")
+    data_source_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)   # jobs on a data source (no ontology)
     user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     user_email: Mapped[str] = mapped_column(String(255), default="")
     model_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -218,6 +221,7 @@ class Job(Base):
     output_tokens: Mapped[int] = mapped_column(Integer, default=0)
     cost: Mapped[float] = mapped_column(Float, default=0.0)
     calls: Mapped[int] = mapped_column(Integer, default=0)
+    estimated: Mapped[bool] = mapped_column(Boolean, default=False)      # some token counts were estimated (provider reported none)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 

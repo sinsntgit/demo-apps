@@ -33,6 +33,15 @@ def answer(prompt: str) -> dict | str:
     if "Step 3: add the relationships" in prompt:
         return {"properties": sample.PROPERTIES + [{"id": "dangling", "kind": "object", "domain": "Order", "range": "DoesNotExist"}],
                 "individuals": sample.INDIVIDUALS, "rules": sample.RULES}
+    if "You are documenting a data source" in prompt:
+        tables = re.findall(r"\nTABLE (\S+)", prompt)
+        out = []
+        for t in tables:
+            cols = re.findall(r"\nTABLE " + re.escape(t) + r"[^\n]*\n((?:  [^\n]*\n?)+)", prompt)
+            names = re.findall(r"^  (\S+)  ", cols[0], re.M) if cols else []
+            out.append({"name": t, "description": f"Drafted: each row is one {t.rstrip('s')}.", "columns": {n: f"Drafted meaning of {n}." for n in names}})
+        return {"summary": "Drafted summary: dealer-sourced tractor lending.", "tables": out,
+                "glossary": [{"term": "Sanction", "meaning": "The credit desk's approval."}], "questions": ["What does stage 'Submitted' cover?"]}
     if "Propose the concrete changes that fix these problems" in prompt:
         return {"findings": ["Brand has no attributes.", "Store and online channel can overlap."],
                 "properties": [{"id": "brandName", "label": "brand name", "kind": "data", "domain": "Brand", "range": "string", "cardinality": "1",
@@ -97,9 +106,13 @@ async def chat(request: Request):
     else:
         out = answer(prompt)
         out = out if isinstance(out, str) else "```json\n" + json.dumps(out) + "\n```"
-    return {"id": "x", "object": "chat.completion", "model": body.get("model"),
-            "choices": [{"index": 0, "message": {"role": "assistant", "content": out}, "finish_reason": "stop"}],
-            "usage": {"prompt_tokens": len(prompt) // 4, "completion_tokens": len(out) // 4}}
+    resp = {"id": "x", "object": "chat.completion", "model": body.get("model"),
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": out}, "finish_reason": "stop"}]}
+    if body.get("model") == "no-usage":                 # a gateway that reports no token usage
+        return resp
+    if body.get("model") == "new-usage-names":          # a server that uses input / output token names
+        return {**resp, "usage": {"input_tokens": len(prompt) // 4, "output_tokens": len(out) // 4}}
+    return {**resp, "usage": {"prompt_tokens": len(prompt) // 4, "completion_tokens": len(out) // 4}}
 
 
 @app.post("/v1/messages")

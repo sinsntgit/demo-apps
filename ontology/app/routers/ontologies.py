@@ -68,6 +68,10 @@ def usage(days: int = 30, user_id: int = 0, model: str = "", kind: str = "", use
         series.append(day.get(d) or {"key": d, "jobs": 0, "calls": 0, "input_tokens": 0, "output_tokens": 0, "cost": 0.0, "failed": 0})
     tot = agg(lambda j: "all")
     done = [j for j in rows if j.finished_at]
+    unpriced: dict = {}
+    for j in rows:
+        if j.cost == 0 and (j.input_tokens or j.output_tokens):
+            unpriced[j.model_label or "-"] = unpriced.get(j.model_label or "-", 0) + 1
     out = {"days": days, "is_admin": user.role == "admin",
            "totals": {**(tot[0] if tot else {"jobs": 0, "calls": 0, "input_tokens": 0, "output_tokens": 0, "cost": 0.0, "failed": 0}),
                       "ontologies": len({j.ontology_id for j in rows}), "users": len({j.user_id for j in rows}),
@@ -77,10 +81,11 @@ def usage(days: int = 30, user_id: int = 0, model: str = "", kind: str = "", use
            "by_ontology": sorted(agg(lambda j: j.ontology_name or "-"), key=lambda x: -x["cost"])[:15],
            "by_user": sorted(agg(lambda j: j.user_email or "-"), key=lambda x: -x["cost"]) if user.role == "admin" else [],
            "models": models_seen, "kinds": kinds_seen,
+           "unpriced": [{"model": k, "jobs": n} for k, n in sorted(unpriced.items())], "estimated": sum(bool(j.estimated) for j in rows),
            "users": [{"id": u.id, "email": u.email} for u in db.scalars(select(User).order_by(User.email))] if user.role == "admin" else [],
            "recent": [{"id": j.id, "at": j.created_at.isoformat(), "user": j.user_email, "kind": j.kind, "ontology": j.ontology_name, "ontology_id": j.ontology_id,
                        "model": j.model_label, "status": j.status, "error": j.error, "calls": j.calls, "input_tokens": j.input_tokens,
-                       "output_tokens": j.output_tokens, "cost": round(j.cost, 4),
+                       "output_tokens": j.output_tokens, "cost": round(j.cost, 4), "estimated": bool(j.estimated),
                        "seconds": int((j.finished_at - j.created_at).total_seconds()) if j.finished_at else None} for j in rows[:100]]}
     return out
 
@@ -508,6 +513,8 @@ class DatabaseIn(BaseModel):
     user: str = ""
     password: str = ""
     schema_name: str = ""
+    warehouse: str = ""
+    role: str = ""
 
 
 @router.post("/ontologies/{oid}/sources/database")
@@ -523,8 +530,9 @@ def add_database(oid: int, body: DatabaseIn, request: Request, user: User = Depe
         raise HTTPException(429, "Too many database reads. Try again in a few minutes.")
     label = f"{sources.DB_TYPES[body.db_type]['label']} {body.database.strip()} on {body.host.strip()}" + (f" (schema {body.schema_name})" if body.schema_name else "")
     try:
-        text, note = sources.introspect(sources.db_url(body.db_type, body.host.strip(), body.port, body.database.strip(), body.user, body.password),
-                                        body.schema_name.strip() or None)
+        extra = {"warehouse": body.warehouse.strip(), "role": body.role.strip(), "schema": body.schema_name.strip()}
+        text, note = sources.introspect(sources.db_url(body.db_type, body.host.strip(), body.port, body.database.strip(), body.user, body.password, extra),
+                                        None if body.db_type == "snowflake" else (body.schema_name.strip() or None))
     except sources.Unreadable as e:
         audit(db, request, user, "source.database_failed", o.name, label)
         db.commit()
@@ -618,6 +626,10 @@ def run_job(oid: int, kind: str, body: JobIn, request: Request, user: User = Dep
 @router.get("/jobs/{jid}")
 def job(jid: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
     j = db.get(Job, jid)
+    if j and j.data_source_id and not j.ontology_id:
+        from .. import datasources as dsrc
+        dsrc.get(db, user, j.data_source_id)
+        return _job(j)
     if not j or not j.ontology_id:
         raise HTTPException(404, "Not found")
     get_ontology(db, user, j.ontology_id)

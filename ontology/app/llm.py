@@ -26,6 +26,15 @@ class LLMResult:
     input_tokens: int = 0
     output_tokens: int = 0
     ms: int = 0
+    estimated: bool = False      # the provider reported no usage: tokens estimated from the text length
+
+
+def _estimate(res: "LLMResult", system: str, user: str) -> "LLMResult":
+    """Some gateways and self-hosted servers report no token usage. Rather than record a free call, estimate
+    (about 4 characters per token) and say so."""
+    if not res.input_tokens and not res.output_tokens and res.text:
+        res.input_tokens, res.output_tokens, res.estimated = (len(system) + len(user)) // 4, len(res.text) // 4, True
+    return res
 
 
 def complete(model, system: str, user: str, max_tokens: int = MAX_TOKENS) -> LLMResult:
@@ -39,7 +48,7 @@ def complete(model, system: str, user: str, max_tokens: int = MAX_TOKENS) -> LLM
     else:
         raise LLMError(f"Unknown provider: {model.provider}")
     res.ms = int((time.time() - t0) * 1000)
-    return res
+    return _estimate(res, system, user)
 
 
 def _anthropic(model, key, system, user, max_tokens) -> LLMResult:
@@ -102,9 +111,10 @@ def _openai(model, key, system, user) -> LLMResult:
     if resp.choices[0].finish_reason == "length":
         raise LLMError("The model's answer was cut off because it was too long. Try a narrower scope or a smaller depth.")
     u = resp.usage
+    # Chat Completions reports prompt / completion tokens; some compatible servers use the newer input / output names
     return LLMResult(text=resp.choices[0].message.content or "",
-                     input_tokens=getattr(u, "prompt_tokens", 0) or 0,
-                     output_tokens=getattr(u, "completion_tokens", 0) or 0)
+                     input_tokens=(getattr(u, "prompt_tokens", 0) or getattr(u, "input_tokens", 0) or 0) if u else 0,
+                     output_tokens=(getattr(u, "completion_tokens", 0) or getattr(u, "output_tokens", 0) or 0) if u else 0)
 
 
 def parse_json(text: str) -> dict | None:

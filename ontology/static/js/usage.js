@@ -80,8 +80,11 @@ export async function usageView(root) {
         h('tbody', {}, d.recent.map(j => h('tr', {}, h('td', { class: 'nowrap' }, fmtTime(j.at)), admin ? h('td', {}, j.user) : null, h('td', {}, KIND[j.kind] || j.kind),
           h('td', {}, j.ontology_id ? h('a', { href: `#/o/${j.ontology_id}` }, j.ontology) : j.ontology), h('td', {}, j.model),
           h('td', {}, h('span', { class: 'badge ' + ({ done: 'good', error: 'bad' }[j.status] || 'info'), title: j.error || '' }, j.status === 'done' ? 'finished' : j.status === 'error' ? 'failed' : j.status)),
-          h('td', { class: 'num' }, j.calls), h('td', { class: 'num' }, `${fmtNum(j.input_tokens)} / ${fmtNum(j.output_tokens)}`), h('td', { class: 'num' }, '$' + j.cost.toFixed(3)),
+          h('td', { class: 'num' }, j.calls), h('td', { class: 'num' }, (j.estimated ? '≈ ' : '') + `${fmtNum(j.input_tokens)} / ${fmtNum(j.output_tokens)}`), h('td', { class: 'num' }, '$' + j.cost.toFixed(3)),
           h('td', { class: 'num' }, j.seconds == null ? '…' : j.seconds + 's')))))) : h('div', { class: 'card empty' }, 'No AI jobs in this period.')),
+      d.unpriced.length ? h('div', { class: 'banner warn' }, h('b', {}, 'Some usage has no cost: '), d.unpriced.map(u => `${u.model} (${u.jobs} job${u.jobs === 1 ? '' : 's'})`).join(', '),
+        ' — tokens were recorded, but the model had no prices. ', admin ? ['Enter the prices under ', h('a', { href: '#/admin/models' }, 'Admin › AI models'), ' and tick “Apply these prices to earlier AI jobs” to fill in these costs.'] : 'Ask an administrator to enter the model’s prices.') : null,
+      d.estimated ? h('div', { class: 'banner info' }, `${d.estimated} job(s) used a model that reported no token counts; their tokens (marked ≈) are estimated from the length of the text, about 4 characters per token.`) : null,
       h('p', { class: 'small dim' }, 'Cost is an estimate: tokens reported by the model provider multiplied by the prices entered for each model under Admin › AI models. ',
         admin ? 'As an administrator you see everyone’s usage; other people see only their own.' : 'You see your own usage. Administrators see everyone’s.')));
   }

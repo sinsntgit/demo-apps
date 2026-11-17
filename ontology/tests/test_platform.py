@@ -646,3 +646,105 @@ def test_database_data_source_and_access(admin):
         c.delete(f"/api/datasources/{ds['id']}", headers=H)
     finally:
         srcmod.db_url = real
+
+
+def test_every_database_driver_gets_settings_it_accepts():
+    """SQL Server once failed with "unexpected keyword argument 'connect_timeout'": each driver names its timeout differently."""
+    import importlib.util
+    from app import profiling, sources
+    assert set(sources.DB_TYPES) == {"postgresql", "mysql", "singlestore", "mssql", "oracle", "snowflake"}
+    mods = {"postgresql": "psycopg2", "mysql": "pymysql", "singlestore": "pymysql", "mssql": "pymssql", "oracle": "oracledb"}
+    tried = 0
+    for typ, mod in mods.items():
+        if importlib.util.find_spec(mod) is None:
+            continue
+        tried += 1
+        with pytest.raises(profiling.ProfileError) as e:            # nothing listens on port 1: a connection error, not a settings error
+            profiling.profile_database(sources.db_url(typ, "127.0.0.1", 1, "x", "u", "p"))
+        assert "unexpected keyword" not in str(e.value) and "Could not read the database" in str(e.value), (typ, str(e.value))
+    if tried == 0:
+        pytest.skip("no database drivers installed here")
+    url = sources.db_url("snowflake", "orgname-acct", None, "SALES", "u", "p@ss", {"warehouse": "COMPUTE_WH", "role": "ANALYST", "schema": "PUBLIC"})
+    assert url == "snowflake://u:p%40ss@orgname-acct/SALES/PUBLIC?role=ANALYST&warehouse=COMPUTE_WH"
+    assert sources.connect_args("mssql+pymssql://x") == {"login_timeout": 10} and "connect_timeout" not in sources.connect_args("oracle+oracledb://x")
+    assert sources.db_url("singlestore", "h", None, "d", "u", "p").startswith("mysql+pymysql://u:p@h:3306/d")
+
+
+def test_data_source_documentation_and_ai_descriptions(admin, fake_llm):
+    c, mid = admin
+    path = tempfile.mktemp(suffix=".db")
+    _lending_db(path)
+    ds = c.post("/api/datasources", headers=H, json={"name": "Documented", "kind": "files",
+                                                    "documentation": "Status codes: Approved means the credit desk sanctioned the loan."}).json()
+    assert c.get(f"/api/datasources/{ds['id']}").json()["documentation"].startswith("Status codes")
+    up = c.post(f"/api/datasources/{ds['id']}/files", headers=H, files=[("files", ("lending.sqlite", open(path, "rb").read(), "application/octet-stream")),
+                                                                         ("files", ("dictionary.md", b"# Data dictionary\nregion: sales region of the branch.", "text/markdown"))]).json()
+    assert len(up["added"]) == 2
+    d = c.get(f"/api/datasources/{ds['id']}").json()
+    loans = next(i for i in d["items"] if i["name"] == "loans")
+    c.put(f"/api/datasources/{ds['id']}/items/{loans['id']}", headers=H, json={"description": "Written by a person.", "columns": {"status": "Person's words."}})
+    # AI drafts descriptions from the documentation; it never replaces what people wrote
+    n = len(fake_llm.REQUESTS)
+    r = c.post(f"/api/datasources/{ds['id']}/describe", headers=H, json={"model_id": mid}).json()
+    j = wait_job(c, r["id"])
+    assert j["status"] == "done", j
+    sent = json.dumps(fake_llm.REQUESTS[n:])
+    assert "Approved means the credit desk" in sent and "sales region of the branch" in sent and "TABLE customers" in sent
+    d = c.get(f"/api/datasources/{ds['id']}").json()
+    assert d["job"]["result"]["questions"] and d["job"]["result"]["glossary"][0]["term"] == "Sanction"
+    items = {i["name"]: i for i in d["items"]}
+    assert items["loans"]["description"] == "Written by a person." and not items["loans"]["ai"]
+    assert items["customers"]["description"].startswith("Drafted") and items["customers"]["ai"]
+    cols = {x["name"]: x for x in items["loans"]["profile"]["columns"]}
+    assert cols["status"]["description"] == "Person's words." and not cols["status"].get("ai")
+    assert cols["amount"]["description"].startswith("Drafted") and cols["amount"]["ai"]
+    # confirming a draft (saving it) makes it the person's
+    c.put(f"/api/datasources/{ds['id']}/items/{items['customers']['id']}", headers=H, json={"description": "Customers of the lender."})
+    assert not next(i for i in c.get(f"/api/datasources/{ds['id']}").json()["items"] if i["name"] == "customers")["ai"]
+    # a database data source takes documentation files, but not datasets
+    srcmod = __import__("app.sources", fromlist=["x"])
+    real = srcmod.db_url
+    srcmod.db_url = lambda *a, **k: f"sqlite:///{path}"
+    try:
+        dbs = c.post("/api/datasources", headers=H, json={"name": "Documented DB", "kind": "database", "db_type": "mssql", "host": "h", "database": "d"}).json()
+    finally:
+        srcmod.db_url = real
+    up = c.post(f"/api/datasources/{dbs['id']}/files", headers=H, files=[("files", ("manual.txt", b"The loans table holds sanctioned loans.", "text/plain")),
+                                                                          ("files", ("extra.csv", b"a,b\n1,2\n3,4\n", "text/csv"))]).json()
+    assert [a["name"] for a in up["added"]] == ["manual.txt"] and "Datasets belong" in up["failed"][0]["reason"]
+    c.put(f"/api/datasources/{dbs['id']}/documentation", headers=H, json={"documentation": "Owned by the credit team."})
+    assert c.get(f"/api/datasources/{dbs['id']}").json()["documentation"] == "Owned by the credit team."
+    for x in (ds["id"], dbs["id"]):
+        c.delete(f"/api/datasources/{x}", headers=H)
+
+
+def test_cost_is_captured_or_flagged(admin, fake_llm):
+    from tests.conftest import FAKE_PORT
+    c, _ = admin
+    base = f"http://127.0.0.1:{FAKE_PORT}/v1"
+    made = []
+    for name, mid_, pin, pout in (("Unpriced", "fake-unpriced", 0, 0), ("No usage", "no-usage", 1, 2), ("New names", "new-usage-names", 1, 2)):
+        made.append(c.post("/api/admin/models", headers=H, json={"name": name, "provider": "openai", "model_id": mid_, "base_url": base, "api_key": "k",
+                                                               "price_in": pin, "price_out": pout}).json())
+    oid = c.post("/api/ontologies", headers=H, json={"name": "Costs", "domain": "Retail"}).json()["id"]
+    jobs = {}
+    for m in made:
+        jobs[m["name"]] = wait_job(c, c.post(f"/api/ontologies/{oid}/build", headers=H, json={"model_id": m["id"], "use_cases": 0}).json()["id"])
+    assert all(j["status"] == "done" for j in jobs.values())
+    assert jobs["New names"]["input_tokens"] > 0 and jobs["New names"]["cost"] > 0               # input/output token names are read
+    assert jobs["No usage"]["input_tokens"] > 0 and jobs["No usage"]["cost"] > 0                 # no usage reported: estimated, not free
+    assert jobs["Unpriced"]["input_tokens"] > 0 and jobs["Unpriced"]["cost"] == 0
+    u = c.get("/api/usage?days=1").json()
+    assert {"model": "Unpriced", "jobs": 1} in u["unpriced"] and u["estimated"] >= 1
+    assert next(r for r in u["recent"] if r["model"] == "No usage")["estimated"] is True
+    m = next(x for x in c.get("/api/admin/models").json()["models"] if x["name"] == "Unpriced")
+    assert m["priced"] is False and m["unpriced_jobs"] == 1
+    upd = c.put(f"/api/admin/models/{m['id']}", headers=H, json={"name": "Unpriced", "provider": "openai", "model_id": "fake-unpriced", "base_url": base,
+                                                              "price_in": 2, "price_out": 8, "recalc": True}).json()
+    assert upd["recalculated"] == 1 and upd["unpriced_jobs"] == 0
+    j = c.get(f"/api/jobs/{jobs['Unpriced']['id']}").json()
+    assert j["cost"] == round((j["input_tokens"] * 2 + j["output_tokens"] * 8) / 1e6, 4)
+    assert not c.get("/api/usage?days=1").json()["unpriced"]
+    c.delete(f"/api/ontologies/{oid}", headers=H)
+    for x in made:
+        c.delete(f"/api/admin/models/{x['id']}", headers=H)

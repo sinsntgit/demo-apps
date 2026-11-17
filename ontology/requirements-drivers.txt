@@ -1,5 +1,7 @@
-# Optional: only needed to read the structure of a live database of that kind.
-psycopg2-binary>=2.9     # PostgreSQL
-pymysql>=1.1             # MySQL / MariaDB
-pymssql>=2.3             # SQL Server
-oracledb>=2.0            # Oracle
+# Optional: only needed to connect to a live database of that kind (data sources, or "read a database").
+# Install the ones you need, e.g.:  py -m pip install pymssql
+psycopg2-binary>=2.9         # PostgreSQL
+pymysql>=1.1                 # MySQL / MariaDB and SingleStore
+pymssql>=2.3                 # Microsoft SQL Server
+oracledb>=2.2                # Oracle (thin mode, no Oracle client needed)
+snowflake-sqlalchemy>=1.6    # Snowflake

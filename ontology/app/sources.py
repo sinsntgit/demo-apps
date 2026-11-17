@@ -107,31 +107,64 @@ def extract(name: str, data: bytes) -> tuple[str, str, str]:
 DB_TYPES = {
     "postgresql": {"label": "PostgreSQL", "driver": "postgresql+psycopg2", "port": 5432, "package": "psycopg2-binary"},
     "mysql": {"label": "MySQL / MariaDB", "driver": "mysql+pymysql", "port": 3306, "package": "pymysql"},
-    "mssql": {"label": "SQL Server", "driver": "mssql+pymssql", "port": 1433, "package": "pymssql"},
+    "singlestore": {"label": "SingleStore", "driver": "mysql+pymysql", "port": 3306, "package": "pymysql"},
+    "mssql": {"label": "Microsoft SQL Server", "driver": "mssql+pymssql", "port": 1433, "package": "pymssql"},
     "oracle": {"label": "Oracle", "driver": "oracle+oracledb", "port": 1521, "package": "oracledb"},
+    "snowflake": {"label": "Snowflake", "driver": "snowflake", "port": None, "package": "snowflake-sqlalchemy"},
 }
 
 
-def db_url(db_type: str, host: str, port: int | None, database: str, user: str, password: str) -> str:
+def db_url(db_type: str, host: str, port: int | None, database: str, user: str, password: str, extra: dict | None = None) -> str:
+    """A SQLAlchemy URL. Snowflake: host is the account identifier (e.g. orgname-account), and `extra` may give
+    the warehouse, role and schema. Oracle: database is the service name."""
     from sqlalchemy.engine import URL
-    t = DB_TYPES[db_type]
+    t, extra = DB_TYPES[db_type], extra or {}
+    if db_type == "snowflake":
+        db = database + (f"/{extra['schema']}" if extra.get("schema") else "")
+        query = {k: extra[k] for k in ("warehouse", "role") if extra.get(k)}
+        return URL.create("snowflake", user or None, password or None, host, None, db, query=query).render_as_string(False)
     if db_type == "oracle":
         return URL.create(t["driver"], user or None, password or None, host, port or t["port"], query={"service_name": database}).render_as_string(False)
     return URL.create(t["driver"], user or None, password or None, host, port or t["port"], database).render_as_string(False)
 
 
+def connect_args(url: str) -> dict:
+    """Each driver names its connection timeout differently; passing the wrong name makes it refuse to connect."""
+    scheme = url.split(":", 1)[0]
+    if scheme.startswith(("postgresql", "mysql")):
+        return {"connect_timeout": 10}
+    if scheme.startswith("mssql"):
+        return {"login_timeout": 10}
+    if scheme.startswith("oracle"):
+        return {"tcp_connect_timeout": 10}
+    if scheme.startswith("snowflake"):
+        return {"login_timeout": 15, "session_parameters": {"QUERY_TAG": "ontostudio"}}
+    return {}
+
+
+def make_engine(url: str):
+    """Engine with the right connection settings, or Unreadable with the package to install."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.exc import NoSuchModuleError
+    scheme = url.split(":", 1)[0]
+    try:
+        return create_engine(url, connect_args=connect_args(url))
+    except ModuleNotFoundError as e:
+        raise Unreadable(_no_driver(e))
+    except NoSuchModuleError:
+        pkg = next((v["package"] for v in DB_TYPES.values() if v["driver"].split("+")[0] == scheme.split("+")[0]), scheme)
+        raise Unreadable(f"The driver for this kind of database is not installed on the server. Ask an administrator to run:  pip install {pkg}")
+
+
 def _no_driver(e) -> str:
-    pkg = {"psycopg2": "psycopg2-binary"}.get(e.name, e.name)
+    pkg = {"psycopg2": "psycopg2-binary", "snowflake": "snowflake-sqlalchemy"}.get(e.name, e.name)
     return f"The driver for this kind of database is not installed on the server. Ask an administrator to run:  pip install {pkg}"
 
 
 def introspect(url: str, schema: str | None = None, max_tables: int = 400) -> tuple[str, str]:
     """Read a database's structure (never its rows) -> (schema text, note)."""
-    from sqlalchemy import create_engine, inspect
-    try:
-        engine = create_engine(url, connect_args={"connect_timeout": 10} if not url.startswith(("sqlite", "oracle")) else {})
-    except ModuleNotFoundError as e:
-        raise Unreadable(_no_driver(e))
+    from sqlalchemy import inspect
+    engine = make_engine(url)
     try:
         insp = inspect(engine)
         tables = insp.get_table_names(schema=schema)

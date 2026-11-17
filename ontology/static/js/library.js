@@ -122,7 +122,10 @@ async function wizard(cur, folders) {
   sessionStorage.removeItem('onto-wizard-ds');
   if (pre) dsChosen.add(pre);
   const dsBox = h('div', {}, h('span', { class: 'spinner' }));
-  pickDataSources(dsChosen).then(el => { fill(dsBox, el); dsBox.addEventListener('change', () => sync()); }).catch(() => fill(dsBox));
+  const dsSummary = h('div', { class: 'small muted' });
+  const drawSummary = () => fill(dsSummary, dsChosen.size ? [`Data sources chosen in step 1: ${dsChosen.size}. `] : ['No data source chosen. '],
+    h('a', { href: '#', onclick: e => { e.preventDefault(); show('basics'); } }, dsChosen.size ? 'Change' : 'Choose data sources'), ' — or add documents and databases for this ontology only below.');
+  pickDataSources(dsChosen, new Set(), () => close()).then(el => { fill(dsBox, el); dsBox.addEventListener('change', () => { sync(); drawSummary(); }); drawSummary(); }).catch(() => fill(dsBox));
   const fileList = h('div', {});
   const drawFiles = () => fill(fileList, files.length || dbs.length ? h('div', { class: 'card flush' },
     dbs.map((d, i) => h('div', { class: 'item row' }, '🗄', h('span', { style: 'flex:1' }, h('b', {}, d.label), h('span', { class: 'small dim' }, ' — structure will be read when you create the ontology')),
@@ -134,13 +137,16 @@ async function wizard(cur, folders) {
   const addDb = h('button', { class: 'btn', onclick: () => { const v = db.value(); if (!v || !v.host || !v.database) return toast('Enter at least the host and the database name.', true); dbs.push({ payload: v, label: db.label() }); drawFiles(); sync(); toast('Database added to the list.'); } }, '＋ Add this database');
 
   const panes = {
-    basics: h('div', { class: 'stack' }, h('div', { class: 'banner info' }, 'Prefer not to start from scratch? The ', h('a', { href: '#/templates', onclick: () => close() }, 'pre-built library'), ' has ready-made ontologies by industry that you can copy and extend.'), field('Name', name), field('Domain', domain), field('Scope', scope, 'optional, but the more precise the better'),
+    basics: h('div', { class: 'stack' }, field('Name', name),
+      h('div', { class: 'card stack', style: 'background:var(--surface-2)' }, h('div', {}, h('b', {}, 'Build from your data'), h('span', { class: 'small dim' }, ' — optional: tick the data sources (data models) this ontology should be built from. With a data source, the domain and scope can be left blank.')), dsBox),
+      field('Domain', domain), field('Scope', scope, 'optional, but the more precise the better'),
+      h('div', { class: 'small muted' }, 'Prefer not to start from scratch? The ', h('a', { href: '#/templates', onclick: () => close() }, 'pre-built library'), ' has ready-made ontologies by industry to copy and extend.'),
       h('div', { class: 'grid2' }, field('Size', depth), field('Folder', folder))),
     needs: h('div', { class: 'stack' }, h('p', { class: 'muted' }, 'Tell the builder what the ontology is for. Every use case you list becomes a required use case: the ontology is designed so it can answer it, and it appears first under Use cases, ready to be tested.'),
       field('Use cases it must answer', ucs), field('Requirements', reqs), field('Reference notes', notes)),
     sources: h('div', { class: 'stack' }, h('p', { class: 'muted' }, 'Optional. Ground the ontology in what you already have — or build it from this material alone. The AI reads it, uses your terms, and records which table or document each class came from.'),
-      h('h3', {}, 'From the data-source library'), h('p', { class: 'small dim', style: 'margin:0' }, 'Databases, datasets and documents set up once on the ', h('a', { href: '#/datasources', onclick: () => close() }, 'Data sources'), ' page: their tables are profiled, so the AI sees keys, code lists and sample values, not only names.'), dsBox,
-      h('h3', { style: 'margin-top:16px' }, 'Or add documents for this ontology only'), filePicker(fs => { files.push(...fs.filter(f => !f.name.startsWith('.') && !f.name.startsWith('~$'))); drawFiles(); sync(); }),
+      dsSummary,
+      h('h3', { style: 'margin-top:16px' }, 'Documents for this ontology only'), filePicker(fs => { files.push(...fs.filter(f => !f.name.startsWith('.') && !f.name.startsWith('~$'))); drawFiles(); sync(); }),
       h('h3', { style: 'margin-top:16px' }, 'A database'), h('p', { class: 'small dim' }, 'Either add a schema script (.sql / .ddl) or a SQLite file above, or let the application read the structure of a live database:'),
       h('details', {}, h('summary', { style: 'cursor:pointer;color:var(--accent)' }, 'Read the structure of a live database'), h('div', { style: 'margin-top:10px' }, db, h('div', { style: 'margin-top:10px' }, addDb))),
       fileList),
@@ -155,7 +161,7 @@ async function wizard(cur, folders) {
   };
   const body = h('div', { style: 'min-height:330px' });
   const steps = h('div', { class: 'steps' });
-  const order = [['basics', '1 · Basics'], ['needs', '2 · Use cases & requirements'], ['sources', '3 · Database & documents'], ['build', '4 · Build']];
+  const order = [['basics', '1 · Basics'], ['needs', '2 · Use cases & requirements'], ['sources', '3 · More documents'], ['build', '4 · Build']];
   let at = 'basics';
   const sync = () => {
     const has = { basics: name.value.trim(), needs: ucs.value.trim() || reqs.value.trim() || notes.value.trim(), sources: files.length || dbs.length || dsChosen.size };

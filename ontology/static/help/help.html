@@ -142,9 +142,18 @@
 <ul><li><b>Datasets</b> — CSV / TSV, Excel (each sheet is a table), SQLite files (each table), JSON files holding lists of records. They are profiled; the data itself is not kept.</li>
 <li><b>Documents</b> — PDF, Word, PowerPoint, Markdown, text, JSON, XML, HTML, YAML, SQL scripts. Their text is kept.</li></ul>
 Uploading a file with the same name again replaces it and keeps the descriptions you wrote.</li>
-<li><b>Connect a database</b> — PostgreSQL, MySQL / MariaDB, SQL Server or Oracle: host, database, user, password. The password is stored <b>encrypted</b> so that <b>↻ Re-read database</b> can profile it again later; it is never shown again. Use a read-only user. Each table is profiled from at most 2,000 rows; nothing is ever written to the database, and only queries built by the application are run.</li>
+<li><b>Connect a database</b> — PostgreSQL, MySQL / MariaDB, SingleStore, Microsoft SQL Server, Oracle or Snowflake: host, database, user, password (for Snowflake: the <i>account identifier</i> from your Snowflake web address, e.g. <code>orgname-accountname</code>, plus the warehouse and, optionally, the role and schema; for Oracle the database is the <i>service name</i>). The driver for that kind of database must be installed on the server — see <code>requirements-drivers.txt</code>; if it is not, the message names the package to install. The password is stored <b>encrypted</b> so that <b>↻ Re-read database</b> can profile it again later; it is never shown again. Use a read-only user. Each table is profiled from at most 2,000 rows; nothing is ever written to the database, and only queries built by the application are run.</li>
 </ul>
 <figure><img src="/static/help/img/datasource-new.png" alt="New data source"><figcaption>Creating a data source.</figcaption></figure>
+<h3>Documentation — help the AI understand the data first</h3>
+<p>The <b>Documentation</b> tab (and the box on the New data source form) is where you explain the data before any ontology is built from it:</p>
+<ul>
+<li><b>Notes</b> — what the system is for, what the main tables hold, what codes and statuses mean, business rules, abbreviations; paste a data dictionary or glossary.</li>
+<li><b>Documentation files</b> — data dictionaries, system manuals, process descriptions, report specifications (PDF, Word, PowerPoint, Markdown, text, HTML, JSON, XML). For a database data source this is where documents go; datasets are refused there (they belong in a data source of uploaded files).</li>
+</ul>
+<p>Both are given to the AI with the table profiles, as the authoritative explanation, every time an ontology is built from the data source.</p>
+<p><b>✨ Describe with AI</b> shows you what the AI understood <i>before</i> you build: it reads the documentation and the profiles and drafts a business description of every table and column that has none yet. The drafts are marked <b>AI draft</b>; check them in each table — saving makes them yours. Descriptions written by people are never replaced. It also lists the terms it found and what the documentation leaves unclear — worth adding to the notes.</p>
+<figure><img src="/static/help/img/datasource-understood.png" alt="What the AI understood"><figcaption>After “Describe with AI”: what the AI understood, and what it found unclear.</figcaption></figure>
 <h3>What the profile contains</h3>
 <p>For every table: the number of rows, and for each column its type, how many values are empty, how many distinct values it has, whether it is unique, the range of numbers and dates, and its <b>role</b>:</p>
 <table>
@@ -162,7 +171,7 @@ Uploading a file with the same name again replaces it and keeps the descriptions
 <h3>Building an ontology from it</h3>
 <ul>
 <li>On a data source, press <b>✨ Build an ontology from this</b>: the New ontology wizard opens with the data source chosen and its name filled in. Nothing else is required — the domain is inferred from the data — but use cases and requirements make the result sharper.</li>
-<li>Or in the wizard's step 3, tick any number of data sources under <b>From the data-source library</b>.</li>
+<li>Or press <b>＋ New ontology</b>: step 1 lists your data sources under <b>Build from your data</b> — tick any number. Data sources that are still empty are listed but cannot be ticked.</li>
 <li>Or on an existing ontology's <b>Sources</b> tab, <b>＋ Add from the library</b>; then rebuild.</li>
 </ul>
 <figure><img src="/static/help/img/datasource-wizard.png" alt="Choosing data sources in the wizard"><figcaption>Choosing data sources when creating an ontology.</figcaption></figure>
@@ -418,7 +427,8 @@ Uploading a file with the same name again replaces it and keeps the descriptions
 <ul>
 <li>Press <b>Test</b> to check the connection.</li>
 <li>The <b>default</b> model is pre-selected wherever a model is chosen; people can pick any enabled model per run.</li>
-<li>Enter the <b>prices</b> per million tokens so the usage dashboard can estimate cost.</li>
+<li>Enter the <b>prices</b> per million tokens so the usage dashboard can estimate cost. A model without prices is marked <b>no prices — cost not counted</b>: its usage is recorded with tokens but a cost of $0. When you enter the prices, tick <b>Apply these prices to earlier AI jobs of this model</b> to fill in the cost of what was already used (the tokens were kept). Self-hosted models are not flagged, as they may be free.</li>
+<li>If a provider or gateway reports no token counts, they are <b>estimated</b> from the length of the text (about 4 characters per token) and marked ≈ on the usage dashboard, rather than recorded as free.</li>
 <li>API keys are encrypted and never shown again.</li>
 <li>Building an ontology is demanding work: larger models give noticeably better and more complete results. Small self-hosted models may fail to return a usable answer; the job then stops with a message and nothing is changed.</li>
 </ul>
@@ -484,6 +494,8 @@ Uploading a file with the same name again replaces it and keeps the descriptions
 <tr><td>“The driver for this kind of database is not installed”</td><td>An administrator runs the <code>pip install …</code> command shown, on the server, and restarts the application. Or upload a schema script instead.</td></tr>
 <tr><td>HermiT button greyed out</td><td>Java is not installed on the server. The built-in reasoner works without it.</td></tr>
 <tr><td>HermiT: “could not reserve enough space … object heap” (older versions) or “could not reserve even 256 MB”</td><td>Java could not get the memory it asked for. The application now asks for 1024 MB and automatically steps down to 512 and 256 MB. If even that fails, a <b>32-bit Java</b> is almost certainly installed: install a 64-bit Java (for example Temurin from adoptium.net), restart the application, and run HermiT again. The amount tried first can be set with the environment variable <code>ONTO_HERMIT_MEMORY_MB</code>.</td></tr>
+<tr><td>A model's cost shows $0 on the AI usage dashboard</td><td>The model has no prices. Admin › AI models › Edit: enter the price per million input and output tokens and tick “Apply these prices to earlier AI jobs of this model”.</td></tr>
+<tr><td>“connect() got an unexpected keyword argument …” when connecting a database</td><td>Fixed in version 1.5 (SQL Server was given a setting meant for PostgreSQL). Update the application.</td></tr>
 <tr><td>A data source shows “Not everything could be read”</td><td>The list names the tables. A table may be unreadable for the database user (grant SELECT), or the 150-second time limit for profiling was reached — those tables have their structure but no profile. Re-read, or leave large unneeded tables out.</td></tr>
 <tr><td>A join between two uploaded files was not found</td><td>Joins are inferred when a column is named after the other table and its key (<code>dealer_id</code> → <code>dealers.id</code>) and the values match. Rename the column, or describe the link in the column's business description.</td></tr>
 <tr><td>I want to change a pre-built ontology</td><td>You cannot change the library itself. Open it and press ＋ Use this ontology — the copy is yours to change.</td></tr>

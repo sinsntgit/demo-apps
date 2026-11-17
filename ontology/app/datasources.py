@@ -44,7 +44,8 @@ def config(ds: DataSource) -> dict:
 def _url(cfg: dict) -> str:
     if cfg.get("db_type") not in sources.DB_TYPES:
         raise profiling.ProfileError("Unknown database type.")
-    return sources.db_url(cfg["db_type"], cfg.get("host", ""), cfg.get("port"), cfg.get("database", ""), cfg.get("user", ""), cfg.get("password", ""))
+    return sources.db_url(cfg["db_type"], cfg.get("host", ""), cfg.get("port"), cfg.get("database", ""), cfg.get("user", ""), cfg.get("password", ""),
+                          {k: cfg.get(k, "") for k in ("warehouse", "role", "schema")})
 
 
 def _keep_descriptions(old: dict | None, new: dict) -> dict:
@@ -102,7 +103,9 @@ def relink(db: Session, ds: DataSource):
 
 def read_database(db: Session, ds: DataSource):
     cfg = config(ds)
-    res = profiling.profile_database(_url(cfg), cfg.get("schema") or None, allow_personal=ds.personal_samples)
+    # Snowflake carries the schema in the URL; other databases are asked for it by name
+    schema = None if cfg.get("db_type") == "snowflake" else (cfg.get("schema") or None)
+    res = profiling.profile_database(_url(cfg), schema, allow_personal=ds.personal_samples)
     _store_tables(db, ds, res["tables"])
     ds.notes, ds.status, ds.error, ds.refreshed_at = res["notes"], "ready", "", now()
     return res
@@ -114,6 +117,9 @@ def add_files(db: Session, ds: DataSource, files: list[tuple[str, bytes]]) -> tu
     added, failed = [], []
     for name, data in files:
         try:
+            if profiling.is_dataset(name, data) and ds.kind == "database":
+                raise profiling.ProfileError("This data source is a database: add documentation here (PDF, Word, text, Markdown…). "
+                                             "Datasets belong in a data source of uploaded files.")
             if profiling.is_dataset(name, data):
                 if len(data) > sources.MAX_FILE:
                     raise profiling.ProfileError("Larger than 25 MB.")
@@ -150,9 +156,22 @@ def add_files(db: Session, ds: DataSource, files: list[tuple[str, bytes]]) -> tu
     return added, failed
 
 
-def material(db: Session, ds: DataSource, share_samples: bool) -> tuple[str, list]:
+def draft_prompt(db: Session, ds: DataSource, share_samples: bool) -> str:
+    """What the model reads to draft business descriptions of a data source's tables and columns."""
+    text, docs = material(db, ds, share_samples, include_all=True)
+    room, parts = 80_000, []
+    for name, t in docs:
+        piece = t[:max(0, min(room, 30_000))]
+        if piece:
+            parts.append(f"=== DOCUMENTATION FILE: {name} ===\n{piece}")
+            room -= len(piece)
+    return text + ("\n\n" + "\n\n".join(parts) if parts else "")
+
+
+def material(db: Session, ds: DataSource, share_samples: bool, include_all: bool = False) -> tuple[str, list]:
     """-> (text describing the included tables, [(name, text)] of the included documents)."""
-    items = list(db.scalars(select(DataSourceItem).where(DataSourceItem.data_source_id == ds.id, DataSourceItem.include).order_by(DataSourceItem.id)))
+    q = select(DataSourceItem).where(DataSourceItem.data_source_id == ds.id)
+    items = list(db.scalars((q if include_all else q.where(DataSourceItem.include)).order_by(DataSourceItem.id)))
     samples = share_samples and ds.sample_values
     tables = []
     for i in items:
@@ -160,6 +179,7 @@ def material(db: Session, ds: DataSource, share_samples: bool) -> tuple[str, lis
             continue
         p = json.loads(json.dumps(i.profile))
         p["description"] = i.description
+        p["name"] = i.name if not include_all or i.include else f"{i.name} [left out of ontologies]"
         if not ds.personal_samples:                 # samples of personal columns stay out, whatever was stored earlier
             for c in p["columns"]:
                 if c["personal"]:
@@ -169,6 +189,8 @@ def material(db: Session, ds: DataSource, share_samples: bool) -> tuple[str, lis
            (", statistics and sample values" if samples else ", statistics only - no values") + ") ==="
     if ds.description:
         head += f"\n{ds.description}"
-    text = head + "\n" + "\n\n".join(tables) if tables else ""
+    if ds.documentation.strip():
+        head += f"\nDOCUMENTATION written by the people who own this data (authoritative):\n{ds.documentation.strip()[:30000]}"
+    text = head + "\n" + "\n\n".join(tables) if tables or ds.documentation.strip() else ""
     docs = [(f"{ds.name} / {i.name}", i.text) for i in items if i.kind == "document" and i.text]
     return text, docs

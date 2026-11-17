@@ -68,6 +68,7 @@ class Ctx:
             j.input_tokens += res.input_tokens
             j.output_tokens += res.output_tokens
             j.calls += 1
+            j.estimated = bool(j.estimated or res.estimated)
             j.cost += (res.input_tokens * self.model.price_in + res.output_tokens * self.model.price_out) / 1e6
             self.db.commit()
             obj = llm.parse_json(res.text)
@@ -524,8 +525,8 @@ def run(job_id: int):
             model = db.get(LLMModel, job.model_id) if job.model_id else None
             if not model or not model.enabled:
                 raise Stop("The selected AI model is no longer available. Pick another model and try again.")
-            o = db.get(Ontology, job.ontology_id)
-            if not o:
+            o = None if job.kind in NO_ONTOLOGY else db.get(Ontology, job.ontology_id)
+            if not o and job.kind not in NO_ONTOLOGY:
                 raise Stop("The ontology was deleted.")
             ctx = Ctx(db, job, model)
             cfg = get_settings(db)
@@ -732,7 +733,66 @@ def _test(ctx: Ctx, o: Ontology, cfg: dict):
     return {"test_run_id": tr.id, "score": res["score"]}
 
 
-KINDS = {"build": _build, "refine": _refine, "explain": _explain, "usecases": _use_cases, "test": _test, "gaps": _gaps, "fix": _fix}
+def _describe(ctx: Ctx, o, cfg: dict):
+    """Draft business descriptions of a data source's tables and columns from its documentation and profiles.
+    Only empty descriptions are filled (and earlier AI drafts, if asked); what people wrote is never replaced.
+    Drafts are marked so the UI can show them as drafts until a person confirms them."""
+    from . import datasources as dsrc
+    from .models import DataSource, DataSourceItem
+    ds = ctx.db.get(DataSource, ctx.job.params["data_source_id"])
+    if not ds:
+        raise Stop("The data source was deleted.")
+    overwrite = bool(ctx.job.params.get("overwrite"))
+    items = {i.name: i for i in ctx.db.scalars(select(DataSourceItem).where(DataSourceItem.data_source_id == ds.id, DataSourceItem.kind == "table"))}
+    ctx.stage(f"Reading the documentation and the profiles of {len(items)} table(s)", 20)
+    material = dsrc.draft_prompt(ctx.db, ds, bool(cfg["share_sample_values"]))
+    obj = ctx.ask(f"""You are documenting a data source so that business people and an ontology builder understand it.
+
+{material}
+
+For every table, write a one- or two-sentence business description of what one row represents and what the table is for, \
+and for every column a short business description of what it holds (for code columns, what the codes mean; for references, \
+what is referred to). Base yourself on the documentation first, then on the names, profiles and sample values. Where you \
+are guessing, say so briefly ("probably …"). Use the organisation's terms from the documentation. Keep descriptions that \
+people already wrote (after "--") as they are and do not repeat them.
+
+JSON shape:
+{{"summary": "2-3 sentences: what this data as a whole is about",
+ "tables": [{{"name": "exact table name", "description": "", "columns": {{"exact column name": "description"}}}}],
+ "glossary": [{{"term": "", "meaning": ""}}],
+ "questions": ["things the documentation does not explain and a person should clarify"]}}""", need=("tables",))
+    ctx.stage("Saving the drafts", 90)
+    n_tables = n_cols = 0
+    for t in obj.get("tables") if isinstance(obj.get("tables"), list) else []:
+        if not isinstance(t, dict):
+            continue
+        name = onto.s(t.get("name"), 500).split(" [left out")[0]
+        item = items.get(name)
+        if not item:
+            continue
+        d = onto.text(t.get("description"), 2000)
+        if d and (not item.description or (overwrite and item.described_by_ai)):
+            item.description, item.described_by_ai = d, True
+            n_tables += 1
+        cols = t.get("columns") if isinstance(t.get("columns"), dict) else {}
+        p = json.loads(json.dumps(item.profile))
+        for c in p["columns"]:
+            new = onto.text(cols.get(c["name"]), 1000)
+            if new and (not c.get("description") or (overwrite and c.get("ai"))):
+                c["description"], c["ai"] = new, True
+                n_cols += 1
+        item.profile = p
+    summary = onto.text(obj.get("summary"), 2000)
+    if summary and not ds.description.strip():
+        ds.description = summary
+    glossary = [g for g in (obj.get("glossary") or []) if isinstance(g, dict) and onto.s(g.get("term"))][:60]
+    return {"tables": n_tables, "columns": n_cols, "summary": summary,
+            "glossary": [{"term": onto.s(g.get("term"), 120), "meaning": onto.s(g.get("meaning"), 400)} for g in glossary],
+            "questions": onto.strs(obj.get("questions"), 20, 400)}
+
+
+KINDS = {"build": _build, "refine": _refine, "explain": _explain, "usecases": _use_cases, "test": _test, "gaps": _gaps, "fix": _fix, "describe": _describe}
+NO_ONTOLOGY = {"describe"}
 
 
 def recover():

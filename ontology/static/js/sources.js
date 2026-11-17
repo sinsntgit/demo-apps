@@ -2,7 +2,8 @@
 // Used by the New ontology wizard and by the Sources tab of an ontology.
 import { h, fill, api, field, select, toast } from './core.js';
 
-export const DB_TYPES = { postgresql: ['PostgreSQL', 5432], mysql: ['MySQL / MariaDB', 3306], mssql: ['SQL Server', 1433], oracle: ['Oracle', 1521] };
+export const DB_TYPES = { postgresql: ['PostgreSQL', 5432], mysql: ['MySQL / MariaDB', 3306], singlestore: ['SingleStore', 3306], mssql: ['Microsoft SQL Server', 1433],
+  oracle: ['Oracle', 1521], snowflake: ['Snowflake', null] };
 export const ACCEPT = '.pdf,.docx,.pptx,.xlsx,.xlsm,.csv,.txt,.md,.sql,.ddl,.json,.xml,.yaml,.yml,.html,.htm,.ttl,.owl,.rdf,.db,.sqlite,.sqlite3,.tsv,.dbml,.xsd,.graphql,.proto';
 export const fmtSize = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n > 1024 ? Math.round(n / 1024) + ' KB' : n + ' B';
 
@@ -59,18 +60,41 @@ export async function uploadFiles(oid, files, onProgress) {
 }
 
 /** The form for reading a live database's structure. value() -> payload or null when left empty. */
-export function dbForm() {
-  const type = select(Object.entries(DB_TYPES).map(([k, v]) => [k, v[0]]), 'postgresql', v => { port.placeholder = DB_TYPES[v][1]; });
-  const host = h('input', { type: 'text', placeholder: 'db.yourcompany.com' }), port = h('input', { type: 'number', placeholder: '5432' });
-  const database = h('input', { type: 'text', placeholder: 'Database name (Oracle: service name)' }), schema = h('input', { type: 'text', placeholder: 'optional, e.g. public or dbo' });
+/** The form for a database connection. opts.dataSource: profiling with a stored password (data sources),
+ *  otherwise a one-off structure read. value() -> payload or null when left empty; set(connection) fills it in. */
+export function dbForm(opts = {}) {
+  const type = select(Object.entries(DB_TYPES).map(([k, v]) => [k, v[0]]), 'postgresql', () => adapt());
+  const host = h('input', { type: 'text' }), port = h('input', { type: 'number' });
+  const database = h('input', { type: 'text' }), schema = h('input', { type: 'text' });
   const user = h('input', { type: 'text', autocomplete: 'off' }), password = h('input', { type: 'password', autocomplete: 'new-password' });
-  const el = h('div', { class: 'stack' },
-    h('div', { class: 'banner info' }, 'Only the structure is read: tables, columns, types, keys and comments. No rows are read. The password is used for this one read and is not stored. A read-only database user is enough.'),
-    h('div', { class: 'grid2' }, field('Database type', type), field('Host', host), field('Port', port, 'blank = default'), field('Database', database),
-      field('User', user), field('Password', password), field('Schema', schema)));
+  const warehouse = h('input', { type: 'text', placeholder: 'e.g. COMPUTE_WH' }), role = h('input', { type: 'text', placeholder: 'optional, e.g. ANALYST' });
+  const f = { host: field('Host', host), port: field('Port', port, 'blank = default'), database: field('Database', database), schema: field('Schema', schema),
+    warehouse: field('Warehouse', warehouse), role: field('Role', role, 'optional') };
+  const adapt = () => {
+    const k = type.value, sf = k === 'snowflake';
+    f.host.firstChild.firstChild.textContent = sf ? 'Account identifier' : 'Host';
+    host.placeholder = sf ? 'orgname-accountname (from your Snowflake URL)' : 'db.yourcompany.com';
+    f.database.firstChild.firstChild.textContent = k === 'oracle' ? 'Service name' : 'Database';
+    database.placeholder = k === 'oracle' ? 'e.g. ORCLPDB1' : 'Database name';
+    port.placeholder = DB_TYPES[k][1] || '';
+    schema.placeholder = { postgresql: 'optional, e.g. public', mssql: 'optional, e.g. dbo', snowflake: 'optional, e.g. PUBLIC', oracle: 'optional — the owner, e.g. LENDING' }[k] || 'optional';
+    f.port.classList.toggle('hidden', sf); f.warehouse.classList.toggle('hidden', !sf); f.role.classList.toggle('hidden', !sf);
+    f.schema.classList.toggle('hidden', k === 'mysql' || k === 'singlestore');
+  };
+  const note = opts.dataSource
+    ? 'Tables are profiled from at most 2,000 rows each; nothing is written. The password is stored encrypted so the database can be re-read, and is never shown again. A read-only database user is enough.'
+    : 'Only the structure is read: tables, columns, types, keys and comments. No rows are read. The password is used for this one read and is not stored. A read-only database user is enough.';
+  const el = h('div', { class: 'stack' }, h('div', { class: 'banner info' }, note),
+    h('div', { class: 'grid2' }, field('Database type', type), f.host, f.port, f.database, field('User', user), field('Password', password), f.warehouse, f.role, f.schema));
   el.value = () => host.value.trim() || database.value.trim() ? { db_type: type.value, host: host.value.trim(), port: port.value ? Number(port.value) : null,
-    database: database.value.trim(), user: user.value, password: password.value, schema_name: schema.value.trim() } : null;
+    database: database.value.trim(), user: user.value, password: password.value, schema_name: schema.value.trim(), warehouse: warehouse.value.trim(), role: role.value.trim() } : null;
   el.label = () => `${DB_TYPES[type.value][0]} ${database.value.trim()} on ${host.value.trim()}`;
+  el.set = c => {
+    type.value = c.db_type; host.value = c.host || ''; port.value = c.port || ''; database.value = c.database || ''; user.value = c.user || '';
+    schema.value = c.schema || ''; warehouse.value = c.warehouse || ''; role.value = c.role || '';
+    password.placeholder = c.has_password ? '•••••••• (unchanged)' : ''; adapt();
+  };
+  adapt();
   return el;
 }
 

@@ -59,6 +59,10 @@ function modelsTab(el) {
     const pin = h('input', { type: 'number', step: 'any', min: 0, value: m?.price_in ?? 0 }), pout = h('input', { type: 'number', step: 'any', min: 0, value: m?.price_out ?? 0 });
     const effort = select([['', 'Model default'], 'low', 'medium', 'high', 'xhigh', 'max'], m?.effort || '');
     const enabled = check('Enabled — users can pick this model', m ? m.enabled : true), def = check('Default model', m?.is_default);
+    const recalc = m ? check('Apply these prices to earlier AI jobs of this model', !m.priced && m.unpriced_jobs > 0, null,
+      m.unpriced_jobs ? `${m.unpriced_jobs} earlier job(s) of this model were recorded with no cost because it had no prices. Their tokens were kept, so their cost can be worked out now.` : 'Re-prices every earlier job of this model from its recorded tokens.') : null;
+    const noPrice = h('div', { class: 'banner warn hidden' }, 'With no prices, AI usage for this model is recorded with tokens but a cost of $0. Enter the provider’s price per million input and output tokens.');
+    const priceCheck = () => noPrice.classList.toggle('hidden', !!(Number(pin.value) || Number(pout.value)) || provider.value === 'openai_compatible');
     const urlField = field('Base URL', baseUrl, 'OpenAI-compatible endpoint'), effortField = field('Reasoning effort', effort, 'Claude models that support it');
     const provider = select(Object.entries(providers).map(([k, v]) => [k, v.label]), m?.provider || 'anthropic', sync);
     function sync() {
@@ -66,16 +70,18 @@ function modelsTab(el) {
       urlField.classList.toggle('hidden', p === 'anthropic'); effortField.classList.toggle('hidden', p !== 'anthropic');
       fill(presets, ...PRESETS[p].map(x => h('option', { value: x[0] }, x[1])));
     }
+    [pin, pout].forEach(x => x.addEventListener('input', priceCheck));
     modelId.addEventListener('change', () => { const hit = PRESETS[provider.value].find(x => x[0] === modelId.value); if (hit) { if (!name.value) name.value = hit[1]; pin.value = hit[2]; pout.value = hit[3]; } });
-    sync();
+    sync(); priceCheck();
     modal(m ? `Edit ${m.name}` : 'Add AI model', h('div', { class: 'stack' }, field('Provider', provider), h('div', { class: 'grid2' }, field('Model ID', modelId), field('Display name', name)), presets, urlField,
       field('API key', key, 'encrypted at rest; never shown again'), effortField,
-      h('div', { class: 'grid2' }, field('Input price', pin, '$ per million tokens'), field('Output price', pout, '$ per million tokens')), enabled, def,
+      h('div', { class: 'grid2' }, field('Input price', pin, '$ per million tokens'), field('Output price', pout, '$ per million tokens')), noPrice, enabled, def, recalc,
       h('p', { class: 'small dim' }, 'The model receives the domain, scope, notes and source material an ontology is built from, and the ontology itself. Choose a self-hosted model (for example Hermes, Llama or Qwen through Ollama or vLLM) if that material must stay on your network.')), {
       actions: close => [h('button', { class: 'btn', onclick: close }, 'Cancel'), h('button', { class: 'btn primary', onclick: e => busy(e.target, async () => {
         const payload = { name: name.value, provider: provider.value, model_id: modelId.value, base_url: provider.value === 'anthropic' ? '' : baseUrl.value, api_key: key.value, effort: provider.value === 'anthropic' ? effort.value : '',
-          enabled: enabled.input.checked, is_default: def.input.checked, price_in: Number(pin.value) || 0, price_out: Number(pout.value) || 0 };
-        await (m ? api('PUT', `/api/admin/models/${m.id}`, payload) : api('POST', '/api/admin/models', payload)); close(); toast('Saved'); draw();
+          enabled: enabled.input.checked, is_default: def.input.checked, price_in: Number(pin.value) || 0, price_out: Number(pout.value) || 0, recalc: !!recalc?.input.checked };
+        const r = await (m ? api('PUT', `/api/admin/models/${m.id}`, payload) : api('POST', '/api/admin/models', payload)); close();
+        toast(r.recalculated ? `Saved. ${r.recalculated} earlier job(s) re-priced.` : 'Saved'); draw();
       }) }, 'Save')] });
   };
   async function draw() {
@@ -85,7 +91,9 @@ function modelsTab(el) {
         const status = h('span', { class: 'small' });
         const test = h('button', { class: 'btn sm', onclick: () => busy(test, async () => { status.textContent = 'Testing…'; const r = await api('POST', `/api/admin/models/${m.id}/test`); fill(status, h('span', { class: 'badge ' + (r.ok ? 'good' : 'bad') }, r.ok ? '✓ ' : '✗ ', r.message)); }) }, 'Test');
         return h('div', { class: 'item' }, h('div', { class: 'row wrap' }, h('div', { style: 'flex:1;min-width:220px' }, h('div', { class: 'row wrap' }, h('b', {}, m.name), m.is_default ? h('span', { class: 'badge info' }, 'default') : null,
-          m.enabled ? null : h('span', { class: 'badge bad' }, 'disabled'), !m.has_key && m.provider !== 'openai_compatible' ? h('span', { class: 'badge warn' }, 'no API key') : null),
+          m.enabled ? null : h('span', { class: 'badge bad' }, 'disabled'), !m.has_key && m.provider !== 'openai_compatible' ? h('span', { class: 'badge warn' }, 'no API key') : null,
+          !m.priced && m.provider !== 'openai_compatible' ? h('span', { class: 'badge warn', title: 'Usage of this model is recorded with a cost of $0. Edit it to enter prices.' }, 'no prices — cost not counted') : null,
+          m.unpriced_jobs ? h('span', { class: 'badge', title: 'Earlier jobs recorded without a cost; edit the model and tick “Apply these prices to earlier AI jobs”.' }, `${m.unpriced_jobs} job(s) without cost`) : null),
         h('div', { class: 'small dim' }, `${providers[m.provider]?.label || m.provider} · ${m.model_id}${m.base_url ? ' · ' + m.base_url : ''} · $${m.price_in}/$${m.price_out} per MTok`)),
         status, test, h('button', { class: 'btn sm', onclick: () => edit(m) }, 'Edit'),
         h('button', { class: 'btn sm danger', onclick: async () => { if (await confirmDialog('Delete model?', `${m.name} will be removed. Past runs keep its name.`, 'Delete')) { await api('DELETE', `/api/admin/models/${m.id}`).catch(fail); draw(); } } }, 'Delete')));

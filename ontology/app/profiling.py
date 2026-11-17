@@ -245,13 +245,12 @@ def infer_joins(tables: list[dict], values: dict) -> int:
 def profile_database(url: str, schema: str | None = None, max_tables: int = 200, sample_rows: int = SAMPLE_ROWS,
                      budget_s: float = 150, allow_personal: bool = False) -> dict:
     """Structure plus a profile of each table, reading at most `sample_rows` rows per table."""
-    from sqlalchemy import MetaData, Table, create_engine, func, inspect, select
-    from sqlalchemy.exc import NoSuchModuleError
+    from sqlalchemy import MetaData, Table, func, inspect, select
     from . import sources
     try:
-        engine = create_engine(url, connect_args={"connect_timeout": 10} if not url.startswith(("sqlite", "oracle")) else {})
-    except (ModuleNotFoundError, NoSuchModuleError) as e:
-        raise ProfileError(sources._no_driver(e) if isinstance(e, ModuleNotFoundError) else "This kind of database is not supported.")
+        engine = sources.make_engine(url)
+    except sources.Unreadable as e:
+        raise ProfileError(str(e))
     t0 = time.time()
     tables, values, notes = [], {}, []
     try:
