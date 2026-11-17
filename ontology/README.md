@@ -10,6 +10,7 @@ In-app **Help** (menu → Help) is the full user and administrator manual, with 
 | Area | What you get |
 |---|---|
 | **Build with AI** | From any of: a domain and scope · your own use cases and requirements · a database schema · documents or a whole folder. Pipeline: read sources → research standards → class hierarchy → relationships, attributes, controlled values, rules → completeness review → explanation → use cases. Runs in the background with live progress. |
+| **Data sources** | A reusable library of databases (PostgreSQL, MySQL, SQL Server, Oracle, SQLite) and uploaded datasets (CSV, Excel, JSON) and documents (PDF, Word, PowerPoint, Markdown, text, JSON, XML). Tables are profiled on the server — row counts, types, keys, references (declared or inferred across files), code lists with their values, ranges, personal-data detection; people add business descriptions; any number of ontologies can be built from scratch from them. Sample values to the AI are on per data source, off for personal columns, and can be switched off by an administrator. |
 | **Pre-built library** | 22 ready-made starter ontologies across 19 industries (lending, banking, insurance, healthcare, manufacturing, supply chain, procurement, HR, CRM, finance, telecom, energy, IT service management, cybersecurity, projects, education, real estate, agriculture, public sector, data governance, travel, retail). Preview, copy into your library - optionally tailored by AI at once - and build on it. Any ontology can also be duplicated. |
 | **Industry standards** | Built-in catalogue of 65 published ontologies and standards (schema.org, FIBO, HL7 FHIR, GS1, ISO 20022, SKOS, PROV-O, IOF, SAREF, TM Forum SID…). Candidates are matched locally; the AI chooses, says how each is used, aligns classes to published terms. |
 | **Explanation** | Summary, purpose, scope in / out, how to read the model, a paragraph per module, design decisions. Editable; can be rewritten by AI. |
@@ -99,6 +100,7 @@ Verified here, with a stand-in AI model that returns a fixed retail ontology (`t
 - OWL / Turtle / JSON-LD exports re-parsed with rdflib; import round-trip; PDF, PowerPoint and Excel opened and read;
 - both reasoners on a correct ontology and on one with planted contradictions (HermiT with Java 21);
 - AI usage rules (a user cannot see another's usage); appearance; schema upgrade of an older database;
+- data sources: profiling of a SQLite database and of CSV files (keys, inferred joins across files, code lists, personal-data detection), business descriptions reaching the model, personal values never sent, statistics-only mode, access rules, encrypted database password and re-read, building an ontology from a data source alone;
 - all 22 pre-built ontologies: parsed without loss, quality score 93+, valid Turtle export, consistent under the reasoner;
   copy and duplicate with their access rules;
 - every screen in a headless browser, including visual editing on the diagram, as administrator and as viewer;
@@ -109,7 +111,7 @@ Verified here, with a stand-in AI model that returns a fixed retail ontology (`t
 - **Real AI models.** No call was made to the real Anthropic or OpenAI APIs, or to a real self-hosted model. How good
   and how complete a real model's ontology is, how long a build takes and what it costs are therefore unmeasured.
   The first real build is the real test — start with a Standard-size ontology.
-- **Live database servers.** Reading structure was run against SQLite only. PostgreSQL, MySQL, SQL Server and Oracle
+- **Live database servers.** Reading structure and profiling were run against SQLite only. PostgreSQL, MySQL, SQL Server and Oracle
   use the same code path through their own drivers and were not run against live servers.
 - Windows, and Python versions other than 3.13.
 - Very large inputs (hundreds of documents; ontologies near the class limit).

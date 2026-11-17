@@ -233,6 +233,46 @@ const waitJob = async () => { await page.waitForSelector('.joblog', { timeout: 8
     ok('library shows the folder with its ontology', (await page.innerText('.tree a:has-text("Lending")')).includes('1'));
   });
 
+  await step('data sources: set up once, profile, describe, build from it', async () => {
+    fs.writeFileSync(path.join(OUT, 'dealers.csv'), 'id,name,region\n' + Array.from({ length: 40 }, (_, i) => `${i + 1},Dealer ${i + 1},${i % 2 ? 'North' : 'South'}`).join('\n'));
+    fs.writeFileSync(path.join(OUT, 'applications.csv'), 'app_no;dealer_id;amount;stage\n' + Array.from({ length: 200 }, (_, i) => `A${i + 1};${(i % 40) + 1};${1000 * (i + 1)};${['Submitted', 'Sanctioned', 'Rejected'][i % 3]}`).join('\n'));
+    fs.writeFileSync(path.join(OUT, 'credit-policy.md'), '# Credit policy\nEvery application is sanctioned or rejected by the credit desk. A dealer sources applications.');
+    await page.goto(BASE + '/#/datasources'); await page.waitForSelector('h1:text-is("Data sources")');
+    await page.click('button:text-is("＋ New data source")');
+    await page.locator('.modal input[type=text]').first().fill('Dealer lending files');
+    await page.locator('.modal textarea').first().fill('Applications sourced by tractor dealers.');
+    await shot('datasource-new');
+    await page.click('.modal button:text-is("Create")');
+    await page.waitForSelector('h1:has-text("Dealer lending files")');
+    await page.click('.tabs button:has-text("Add files")');
+    await page.locator('.drop input[type=file]').first().setInputFiles([path.join(OUT, 'dealers.csv'), path.join(OUT, 'applications.csv'), path.join(OUT, 'credit-policy.md')]);
+    await page.waitForSelector('.tabs button:has-text("Tables 2")', { timeout: 20000 });
+    await page.click('.tabs button:has-text("Tables 2")');
+    const tbl = await page.innerText('table.tbl');
+    ok('datasets are profiled, with a join inferred across two files and code lists found', tbl.includes('dealer_id → dealers.id (inferred)') && tbl.includes('stage'), tbl.replace(/\n/g, ' ').slice(0, 120));
+    await shot('datasource-tables');
+    await page.click('tr.click:has-text("applications")'); await page.waitForSelector('.modal h2:text-is("Table applications")');
+    const prof = await page.innerText('.modal');
+    ok('the table profile shows roles and values', prof.includes('code list') && prof.includes('Sanctioned') && prof.includes('reference'));
+    await page.locator('.modal textarea').fill('Loan applications sourced by dealers');
+    await page.locator('.modal tr:has-text("stage") input[type=text]').fill('Where the application is in the credit process');
+    await shot('datasource-profile');
+    await page.click('.modal button:text-is("Save descriptions")'); await page.waitForSelector('.modal', { state: 'detached' });
+    ok('the business description is saved', (await page.innerText('table.tbl')).includes('Loan applications sourced by dealers'));
+    await page.click('button:has-text("Build an ontology from this")');
+    await page.waitForSelector('.modal .banner:has-text("Building from the data source")');
+    ok('the wizard opens with the data source chosen', (await page.inputValue('.modal input[type=text] >> nth=0')) === 'Dealer lending files');
+    await page.click('.steps button:has-text("Database")'); await page.waitForSelector('.modal input[type=checkbox]:checked');
+    await shot('datasource-wizard');
+    await page.click('.steps button:has-text("Build")'); await page.click('button:has-text("Create and build with AI")');
+    await page.waitForSelector('.joblog', { timeout: 15000 });
+    await page.waitForSelector('.prose', { timeout: 60000 });
+    ok('an ontology is built from scratch from the data source alone', (await page.innerText('h1')) === 'Dealer lending files');
+    await page.click('.tabs button:has-text("Sources")'); await page.waitForSelector('.card:has-text("Data sources from the library") a:has-text("Dealer lending files")');
+    await shot('ontology-datasources');
+    ok('the ontology lists the data source it uses', true);
+  });
+
   await step('pre-built library: browse, preview, copy, duplicate', async () => {
     await page.goto(BASE + '/#/templates'); await page.waitForSelector('h1:text-is("Pre-built library")'); await page.waitForSelector('.ocard');
     const all = await page.locator('.ocard').count();
@@ -264,7 +304,7 @@ const waitJob = async () => { await page.waitForSelector('.joblog', { timeout: 8
   await step('usage dashboard and appearance', async () => {
     await page.goto(BASE + '/#/usage'); await page.waitForSelector('svg.chart .bar');
     const kp = await page.innerText('.kpis');
-    ok('usage dashboard shows jobs, tokens, cost and a chart', /AI jobs\s*\n\s*5/.test(kp) && kp.includes('Estimated cost'), kp.replace(/\n/g, ' ').slice(0, 80));
+    ok('usage dashboard shows jobs, tokens, cost and a chart', /AI jobs\s*\n\s*6/.test(kp) && kp.includes('Estimated cost'), kp.replace(/\n/g, ' ').slice(0, 80));
     ok('admin can filter by person', (await page.locator('select:has(option:text-is("All users"))').count()) === 1);
     await shot('usage');
     await page.goto(BASE + '/#/admin/appearance'); await page.waitForSelector('.swatch');

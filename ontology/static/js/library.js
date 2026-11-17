@@ -1,13 +1,14 @@
 // The library: folders on the left, ontologies as cards, the New ontology wizard, import, folder access.
 import { h, fill, api, busy, fail, toast, modal, field, check, select, confirmDialog, ago, state } from './core.js';
 import { filePicker, uploadFiles, dbForm, fmtSize } from './sources.js';
+import { pickDataSources } from './datasources.js';
 
 const STATUS = { ready: ['good', 'Ready'], building: ['info', 'Building…'], draft: ['', 'Draft'], failed: ['bad', 'Build failed'] };
 export const LEVEL = { manage: 'Owner', edit: 'Can edit', view: 'Read only' };
 
 export async function libraryView(root, arg) {
   const lib = await api('GET', '/api/library');
-  const sel = arg === 'none' ? 'none' : arg ? Number(arg) : null;      // null = everything
+  const sel = arg === 'none' ? 'none' : arg && arg !== 'new' ? Number(arg) : null;      // null = everything
   const folders = lib.folders, byId = Object.fromEntries(folders.map(f => [f.id, f]));
   const cur = typeof sel === 'number' ? byId[sel] : null;
   if (typeof sel === 'number' && !cur) { location.hash = '#/library'; return; }
@@ -50,6 +51,7 @@ export async function libraryView(root, arg) {
   fill(root, h('div', { class: 'page' }, head, h('div', { class: 'lib' }, tree,
     shown.length ? h('div', { class: 'cards' }, shown.map(card)) : h('div', { class: 'card empty' }, h('p', {}, 'No ontologies here yet.'),
       canAdd ? h('p', { class: 'small' }, 'Use ', h('b', {}, '＋ New ontology'), ' to build one from a domain, your use cases, a database or a folder of documents — or start from a ready-made one in the ', h('a', { href: '#/templates' }, 'pre-built library'), '.') : null))));
+  if (arg === 'new') { history.replaceState(null, '', '#/library'); if (lib.can_create) wizard(null, folders); }
   if (lib.ontologies.some(o => o.status === 'building')) setTimeout(() => { if (location.hash.startsWith('#/library') && root.isConnected) reload(); }, 5000);
 }
 
@@ -116,6 +118,11 @@ async function wizard(cur, folders) {
   const model = select(models.map(m => [m.id, m.name + (m.is_default ? ' (default)' : '')]), models[0]?.id);
   const nUc = h('input', { type: 'number', min: 0, max: 15, value: 8, style: 'max-width:110px' });
   let files = [], dbs = [];
+  const dsChosen = new Set(), pre = Number(sessionStorage.getItem('onto-wizard-ds')) || null;
+  sessionStorage.removeItem('onto-wizard-ds');
+  if (pre) dsChosen.add(pre);
+  const dsBox = h('div', {}, h('span', { class: 'spinner' }));
+  pickDataSources(dsChosen).then(el => { fill(dsBox, el); dsBox.addEventListener('change', () => sync()); }).catch(() => fill(dsBox));
   const fileList = h('div', {});
   const drawFiles = () => fill(fileList, files.length || dbs.length ? h('div', { class: 'card flush' },
     dbs.map((d, i) => h('div', { class: 'item row' }, '🗄', h('span', { style: 'flex:1' }, h('b', {}, d.label), h('span', { class: 'small dim' }, ' — structure will be read when you create the ontology')),
@@ -131,8 +138,9 @@ async function wizard(cur, folders) {
       h('div', { class: 'grid2' }, field('Size', depth), field('Folder', folder))),
     needs: h('div', { class: 'stack' }, h('p', { class: 'muted' }, 'Tell the builder what the ontology is for. Every use case you list becomes a required use case: the ontology is designed so it can answer it, and it appears first under Use cases, ready to be tested.'),
       field('Use cases it must answer', ucs), field('Requirements', reqs), field('Reference notes', notes)),
-    sources: h('div', { class: 'stack' }, h('p', { class: 'muted' }, 'Optional. Ground the ontology in what you already have. The AI reads this material, uses your terms, and records which table or term each class came from.'),
-      h('h3', {}, 'Documents or a folder of documents'), filePicker(fs => { files.push(...fs.filter(f => !f.name.startsWith('.') && !f.name.startsWith('~$'))); drawFiles(); sync(); }),
+    sources: h('div', { class: 'stack' }, h('p', { class: 'muted' }, 'Optional. Ground the ontology in what you already have — or build it from this material alone. The AI reads it, uses your terms, and records which table or document each class came from.'),
+      h('h3', {}, 'From the data-source library'), h('p', { class: 'small dim', style: 'margin:0' }, 'Databases, datasets and documents set up once on the ', h('a', { href: '#/datasources', onclick: () => close() }, 'Data sources'), ' page: their tables are profiled, so the AI sees keys, code lists and sample values, not only names.'), dsBox,
+      h('h3', { style: 'margin-top:16px' }, 'Or add documents for this ontology only'), filePicker(fs => { files.push(...fs.filter(f => !f.name.startsWith('.') && !f.name.startsWith('~$'))); drawFiles(); sync(); }),
       h('h3', { style: 'margin-top:16px' }, 'A database'), h('p', { class: 'small dim' }, 'Either add a schema script (.sql / .ddl) or a SQLite file above, or let the application read the structure of a live database:'),
       h('details', {}, h('summary', { style: 'cursor:pointer;color:var(--accent)' }, 'Read the structure of a live database'), h('div', { style: 'margin-top:10px' }, db, h('div', { style: 'margin-top:10px' }, addDb))),
       fileList),
@@ -150,7 +158,7 @@ async function wizard(cur, folders) {
   const order = [['basics', '1 · Basics'], ['needs', '2 · Use cases & requirements'], ['sources', '3 · Database & documents'], ['build', '4 · Build']];
   let at = 'basics';
   const sync = () => {
-    const has = { basics: name.value.trim(), needs: ucs.value.trim() || reqs.value.trim() || notes.value.trim(), sources: files.length || dbs.length };
+    const has = { basics: name.value.trim(), needs: ucs.value.trim() || reqs.value.trim() || notes.value.trim(), sources: files.length || dbs.length || dsChosen.size };
     fill(steps, order.map(([k, l]) => h('button', { class: (at === k ? 'on ' : '') + (has[k] ? 'has' : ''), onclick: () => show(k) }, l)));
   };
   const show = k => { at = k; fill(body, panes[k]); sync(); back.classList.toggle('hidden', k === 'basics'); next.classList.toggle('hidden', k === 'build'); go.classList.toggle('hidden', k !== 'build'); manual.classList.toggle('hidden', k !== 'build'); };
@@ -162,11 +170,14 @@ async function wizard(cur, folders) {
   const create = async (build) => {
     if (!name.value.trim()) { show('basics'); name.focus(); throw new Error('Give the ontology a name.'); }
     const seeds = ucs.value.split('\n').map(x => x.trim().replace(/^[-•*\d.)\s]+/, '')).filter(Boolean);
-    if (build && !(domain.value.trim() || scope.value.trim() || seeds.length || reqs.value.trim() || files.length || dbs.length)) { show('basics'); throw new Error('Say what the ontology is about: a domain, use cases, requirements, or source material.'); }
+    if (build && !(domain.value.trim() || scope.value.trim() || seeds.length || reqs.value.trim() || files.length || dbs.length || dsChosen.size)) { show('basics'); throw new Error('Say what the ontology is about: a domain, use cases, requirements, or source material.'); }
     status.textContent = 'Creating…';
     const { id } = await api('POST', '/api/ontologies', { name: name.value, domain: domain.value, scope: scope.value, notes: notes.value, requirements: reqs.value,
       use_cases: seeds, depth: depth.value, folder_id: folder.value ? Number(folder.value) : null });
     const problems = [];
+    for (const dsid of dsChosen) {
+      try { await api('POST', `/api/ontologies/${id}/datasources`, { data_source_id: dsid }); } catch (e) { problems.push(`Data source ${dsid}: ${e.message}`); }
+    }
     for (const d of dbs) {
       status.textContent = `Reading ${d.label}…`;
       try { await api('POST', `/api/ontologies/${id}/sources/database`, d.payload); } catch (e) { problems.push(`${d.label}: ${e.message}`); }
@@ -187,4 +198,9 @@ async function wizard(cur, folders) {
   name.addEventListener('input', sync); ucs.addEventListener('input', sync);
   show('basics');
   name.focus();
+  if (pre) api('GET', '/api/datasources/' + pre).then(d => {      // started from "Build an ontology from this"
+    if (!name.value) name.value = d.name;
+    body.prepend(h('div', { class: 'banner info', style: 'margin-bottom:12px' }, `Building from the data source “${d.name}”. Everything else is optional: press Next to add use cases or more material, or go to `, h('b', {}, '4 · Build'), '.'));
+    sync();
+  }).catch(() => {});
 }

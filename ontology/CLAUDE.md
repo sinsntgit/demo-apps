@@ -29,8 +29,12 @@ Turtle / JSON-LD / JSON. Roles: `viewer` (read, export, test) · `ontologist` (c
    namespace). Model-proposed standards are flagged `in_catalogue: false`; URLs must be http(s).
 4. **Access is enforced on the server** through `deps.get_ontology` / `deps.get_folder` on every route (view / edit /
    manage; folder inheritance; the Viewer role is always read-only). The UI only hides.
-5. **A database is only asked for its structure.** `sources.introspect` reads tables, columns, keys, comments — never
-   rows. Connection passwords are used once and not stored; they must not reach logs, audit or error messages.
+5. **Databases are read, never written.** `sources.introspect` (per-ontology sources) reads structure only and does not store
+   the password. Data sources (`profiling.profile_database`) read structure plus at most 2,000 rows per table, with
+   SELECTs built by SQLAlchemy Core only; their password is stored encrypted for re-reads. Passwords must never reach
+   an API response, logs, audit or error messages. Only profiles and (where allowed) a few sample values go to a model;
+   values of personal-looking columns only if the data source owner allows it; the admin setting `share_sample_values`
+   switches all values off.
 6. **`builder.py` is the only place content is assembled for a model.** Source material and user text are wrapped in
    tags and described as material, not instructions. Nothing is truncated silently — what was not read is reported.
 7. **Secrets are encrypted at rest** (`security.encrypt`) and never returned by an API.
@@ -62,6 +66,8 @@ modules, hash routes. Run: `python -m uvicorn app.main:app --port 8000`.
 | `app/render.py` | `draw` (spec → PNG), `build_pdf`, `build_pptx`, `build_xlsx`. |
 | `app/exports.py` | rdflib graph → OWL / Turtle / JSON-LD; native JSON; `import_file`. |
 | `app/reasoner.py` | OWL 2 RL with probe individuals; HermiT via owlready2; structural contradictions. |
+| `app/profiling.py` | Table and column profiling (types, roles, code lists, ranges, personal-data detection, inferred joins) for databases and dataset files; `describe` renders a profile for the model. Only SQLAlchemy Core SELECTs with a row limit. |
+| `app/datasources.py`, `routers/datasources.py` | The data-source library: access (`level`/`get`), reading (`read_database`, `add_files`), linking to ontologies, `material` (what a build receives). Passwords encrypted in `config_enc`, never returned. |
 | `app/library.py`, `library/*.onto` | The pre-built library: plain-text ontology files (format documented at the top of `library.py`), parsed and validated at first use; a bad file is logged and skipped. The retail sample is added as the `retail` entry. |
 | `app/sample.py` | Hand-written retail ontology installed on first run; also the stand-in model's canned answer. |
 | `app/routers/ontologies.py` | Library, folders, sources, jobs, edit, diagrams, versions, exports, test bed, reasoner, usage. |

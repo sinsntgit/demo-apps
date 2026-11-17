@@ -177,7 +177,7 @@ def test_sources_documents_and_database_schema(admin, fake_llm):
     n = len(fake_llm.REQUESTS)
     j = wait_job(c, c.post(f"/api/ontologies/{oid}/build", headers=H, json={"model_id": mid, "use_cases": 0}).json()["id"])
     assert j["status"] == "done", j
-    assert j["result"]["sources"] == {"schemas": 1, "documents": 2, "skipped": [], "distilled": True}
+    assert j["result"]["sources"] == {"schemas": 1, "documents": 2, "skipped": [], "distilled": True, "data_sources": 0, "tables": 0}
     sent = json.dumps(fake_llm.REQUESTS[n:])
     assert "TABLE loans" in sent and "FK (customer_id) -> customers" in sent        # the schema reaches the model...
     assert "SECRET-ROW-VALUE" not in sent                                            # ...the rows never do
@@ -537,3 +537,112 @@ def test_hermit_steps_down_when_java_cannot_reserve_memory(monkeypatch):
     monkeypatch.setattr(owlready2, "sync_reasoner_hermit", never)
     r = reasoner.run(sample.content(), "hermit")
     assert "64-bit Java" in r["error"]
+
+
+def _lending_db(path):
+    import random
+    con = sqlite3.connect(path)
+    con.executescript("""create table customers(id integer primary key, full_name text not null, email text, region text);
+        create table loans(id integer primary key, customer_id integer references customers(id), amount numeric, status text, applied_on date);
+        create table etl_log(id integer primary key, run_at text, message text);""")
+    random.seed(7)
+    for i in range(1, 201):
+        con.execute("insert into customers values (?,?,?,?)", (i, f"SECRET-NAME-{i}", f"secret{i}@mail.example", random.choice(["North", "South"])))
+    for i in range(1, 601):
+        con.execute("insert into loans values (?,?,?,?,?)", (i, random.randint(1, 200), random.randint(50000, 900000),
+                                                             random.choice(["Approved", "Rejected", "Pending"]), f"2025-0{random.randint(1, 9)}-1{random.randint(0, 9)}"))
+    con.execute("insert into etl_log values (1, '2025-01-01', 'loaded')")
+    con.commit(); con.close()
+
+
+def test_data_source_library_profiles_and_builds(admin, fake_llm):
+    c, mid = admin
+    path = tempfile.mktemp(suffix=".db")
+    _lending_db(path)
+    # a data source of uploaded files: a SQLite database, two CSVs that join, a document, and a file that cannot be read
+    ds = c.post("/api/datasources", headers=H, json={"name": "Lending files", "kind": "files", "description": "Tractor lending data"}).json()
+    dealers = b"id,name,region\n" + b"".join(f"{i},Dealer {i},{'N' if i % 2 else 'S'}\n".encode() for i in range(1, 41))
+    apps = b"app_no;dealer_id;amount;stage\n" + b"".join(f"A{i};{i % 40 + 1};{1000 * i};{['open', 'closed'][i % 2]}\n".encode() for i in range(1, 201))
+    up = c.post(f"/api/datasources/{ds['id']}/files", headers=H, files=[
+        ("files", ("lending.sqlite", open(path, "rb").read(), "application/octet-stream")), ("files", ("dealers.csv", dealers, "text/csv")),
+        ("files", ("applications.csv", apps, "text/csv")), ("files", ("policy/credit.md", b"# Credit policy\nEvery loan needs a sanction.", "text/markdown")),
+        ("files", ("photo.png", b"\x89PNG", "image/png"))]).json()
+    assert {a["name"]: a["kind"] for a in up["added"]} == {"lending.sqlite": "dataset", "dealers.csv": "dataset", "applications.csv": "dataset", "policy/credit.md": "document"}
+    assert [f["name"] for f in up["failed"]] == ["photo.png"]
+    d = c.get(f"/api/datasources/{ds['id']}").json()
+    tables = {i["name"]: i for i in d["items"] if i["kind"] == "table"}
+    assert set(tables) == {"customers", "loans", "etl_log", "dealers", "applications"} and d["documents"] == 1
+    assert tables["etl_log"]["include"] is False                       # technical tables are left out by default
+    cols = {x["name"]: x for x in tables["loans"]["profile"]["columns"]}
+    assert cols["customer_id"]["ref"] == "customers.id" and cols["status"]["role"] == "code" and {v for v, _ in cols["status"]["top"]} == {"Approved", "Rejected", "Pending"}
+    assert cols["amount"]["role"] == "measure" and cols["applied_on"]["role"] == "date"
+    pers = {x["name"]: x for x in tables["customers"]["profile"]["columns"]}
+    assert pers["email"]["personal"] and pers["email"]["examples"] == [] and pers["full_name"]["personal"]
+    acols = {x["name"]: x for x in tables["applications"]["profile"]["columns"]}
+    assert acols["dealer_id"]["ref"] == "dealers.id"                   # inferred across two separately uploaded files
+    # people describe tables and columns; that becomes part of what the model reads
+    c.put(f"/api/datasources/{ds['id']}/items/{tables['loans']['id']}", headers=H, json={"description": "Loans booked after sanction",
+                                                                                        "columns": {"status": "Credit decision on the application"}})
+    # build an ontology from scratch from the data source alone
+    oid = c.post("/api/ontologies", headers=H, json={"name": "From the library"}).json()["id"]
+    assert c.post(f"/api/ontologies/{oid}/build", headers=H, json={"model_id": mid}).status_code == 400       # nothing to build from yet
+    c.post(f"/api/ontologies/{oid}/datasources", headers=H, json={"data_source_id": ds["id"]})
+    n = len(fake_llm.REQUESTS)
+    j = wait_job(c, c.post(f"/api/ontologies/{oid}/build", headers=H, json={"model_id": mid, "use_cases": 0}).json()["id"])
+    assert j["status"] == "done", j
+    assert j["result"]["sources"]["data_sources"] == 1 and j["result"]["sources"]["tables"] == 4
+    sent = json.dumps(fake_llm.REQUESTS[n:])
+    assert "TABLE loans" in sent and "Loans booked after sanction" in sent and "Credit decision on the application" in sent
+    assert "Approved (" in sent and "-> customers.id" in sent and "-> dealers.id (inferred)" in sent and "Every loan needs a sanction" in sent
+    assert "SECRET-NAME" not in sent and "secret1@mail" not in sent and "etl_log" not in sent
+    assert next(k for k in c.get(f"/api/ontologies/{oid}").json()["content"]["classes"] if k["id"] == "Loan")["derived_from"] == "loans"
+    # statistics only: no values at all reach the model
+    s = c.get(f"/api/datasources/{ds['id']}").json()
+    c.put(f"/api/datasources/{ds['id']}", headers=H, json={"name": s["name"], "description": s["description"], "kind": "files", "sample_values": False})
+    n = len(fake_llm.REQUESTS)
+    wait_job(c, c.post(f"/api/ontologies/{oid}/build", headers=H, json={"model_id": mid, "use_cases": 0}).json()["id"])
+    sent = json.dumps(fake_llm.REQUESTS[n:])
+    assert "TABLE loans" in sent and "Approved (" not in sent and "statistics only" in sent
+    c.delete(f"/api/ontologies/{oid}", headers=H)
+    c.delete(f"/api/datasources/{ds['id']}", headers=H)
+
+
+def test_database_data_source_and_access(admin):
+    c, _ = admin
+    path = tempfile.mktemp(suffix=".db")
+    _lending_db(path)
+    from app import datasources as dsrc, sources as srcmod
+    real = srcmod.db_url
+    srcmod.db_url = lambda *a, **k: f"sqlite:///{path}"                # a live-database data source, pointed at a local file
+    try:
+        r = c.post("/api/datasources", headers=H, json={"name": "Core lending DB", "kind": "database", "db_type": "postgresql", "host": "db.internal",
+                                                        "database": "lending", "user": "reader", "password": "hunter2-secret"})
+        assert r.status_code == 200, r.text
+        ds = r.json()
+        assert ds["tables"] == 3 and ds["connection"]["has_password"] and "password" not in ds["connection"]
+        assert "hunter2-secret" not in json.dumps(c.get(f"/api/datasources/{ds['id']}").json())
+        assert "hunter2-secret" not in json.dumps(c.get("/api/admin/audit?q=lending").json())
+        con = sqlite3.connect(path); con.execute("create table dealers(id integer primary key, name text)"); con.commit(); con.close()
+        assert c.post(f"/api/datasources/{ds['id']}/refresh", headers=H).json()["tables"] == 4        # re-read with the stored password
+        # access: private to its owner; shared or granted to use; viewers never
+        ann = make_user(c, "ds-ann@test.local", "ontologist")
+        vic = make_user(c, "ds-vic@test.local", "viewer")
+        assert ann.get(f"/api/datasources/{ds['id']}").status_code == 404 and ds["id"] not in [x["id"] for x in ann.get("/api/datasources").json()["items"]]
+        oid = ann.post("/api/ontologies", headers=H, json={"name": "Ann's"}).json()["id"]
+        assert ann.post(f"/api/ontologies/{oid}/datasources", headers=H, json={"data_source_id": ds["id"]}).status_code == 404
+        uid = next(u["id"] for u in c.get(f"/api/datasources/{ds['id']}/access").json()["users"] if u["email"] == "ds-ann@test.local")
+        c.put(f"/api/datasources/{ds['id']}/access", headers=H, json={"visibility": "private", "users": [uid]})
+        assert ann.get(f"/api/datasources/{ds['id']}").json()["level"] == "use"
+        assert ann.post(f"/api/datasources/{ds['id']}/refresh", headers=H).status_code == 403          # use, not manage
+        assert ann.post(f"/api/ontologies/{oid}/datasources", headers=H, json={"data_source_id": ds["id"]}).status_code == 200
+        c.put(f"/api/datasources/{ds['id']}/access", headers=H, json={"visibility": "shared", "users": []})
+        assert vic.get(f"/api/datasources/{ds['id']}").status_code == 404 and vic.get("/api/datasources").json()["can_create"] is False
+        c.put(f"/api/datasources/{ds['id']}/access", headers=H, json={"visibility": "private", "users": []})
+        b = ann.post(f"/api/ontologies/{oid}/build", headers=H, json={})    # access withdrawn: the build refuses, naming the source
+        assert b.status_code == 403 and "Core lending DB" in b.json()["detail"]
+        ann.delete(f"/api/ontologies/{oid}", headers=H)
+        for email in ("ds-ann@test.local", "ds-vic@test.local"):
+            c.delete(f"/api/admin/users/{next(u['id'] for u in c.get('/api/admin/users').json() if u['email'] == email)}", headers=H)
+        c.delete(f"/api/datasources/{ds['id']}", headers=H)
+    finally:
+        srcmod.db_url = real

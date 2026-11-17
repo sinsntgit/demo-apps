@@ -131,9 +131,55 @@
 <p><b>⬆ Import file</b> in the library brings in an OWL (RDF/XML), Turtle, JSON-LD or N-Triples file — for example a published standard or a model from Protégé — or a JSON file exported from this application. It becomes a normal ontology that you can extend, test and export. Classes, the hierarchy, properties with their domain and range, labels, definitions and individuals are read; complex logical expressions are not.</p>
 </section>
 
-<section id="sources" data-title="From a database or documents" data-role="Ontologist, Administrator">
-<h2>Building from a database or documents</h2>
-<p>Source material can be given in the wizard (step 3) or later on the <b>Sources</b> tab of an ontology. It is read when the ontology is built: after adding or removing sources use <b>✨ AI › Rebuild from scratch</b>.</p>
+<section id="datasources" data-title="Data sources" data-role="Ontologist, Administrator">
+<h2>Data sources — build ontologies from your databases, datasets and documents</h2>
+<p>A <b>data source</b> is a database, or a set of uploaded datasets and documents, that you set up once on the <b>Data sources</b> page and then use for as many ontologies as you like — the way a data model is set up once in AskData. Its tables are <b>profiled</b> and its documents read when you set it up, so every ontology built from it starts from a precise picture of your data, not just table and column names.</p>
+<figure><img src="/static/help/img/datasource-tables.png" alt="A data source with its tables"><figcaption>A data source: its tables, with the joins and code lists found in them.</figcaption></figure>
+<h3>Setting one up</h3>
+<p><b>＋ New data source</b>, then choose:</p>
+<ul>
+<li><b>Upload datasets and documents</b> — then <b>＋ Add files</b>: choose files, a whole folder, or drop them. You can mix:
+<ul><li><b>Datasets</b> — CSV / TSV, Excel (each sheet is a table), SQLite files (each table), JSON files holding lists of records. They are profiled; the data itself is not kept.</li>
+<li><b>Documents</b> — PDF, Word, PowerPoint, Markdown, text, JSON, XML, HTML, YAML, SQL scripts. Their text is kept.</li></ul>
+Uploading a file with the same name again replaces it and keeps the descriptions you wrote.</li>
+<li><b>Connect a database</b> — PostgreSQL, MySQL / MariaDB, SQL Server or Oracle: host, database, user, password. The password is stored <b>encrypted</b> so that <b>↻ Re-read database</b> can profile it again later; it is never shown again. Use a read-only user. Each table is profiled from at most 2,000 rows; nothing is ever written to the database, and only queries built by the application are run.</li>
+</ul>
+<figure><img src="/static/help/img/datasource-new.png" alt="New data source"><figcaption>Creating a data source.</figcaption></figure>
+<h3>What the profile contains</h3>
+<p>For every table: the number of rows, and for each column its type, how many values are empty, how many distinct values it has, whether it is unique, the range of numbers and dates, and its <b>role</b>:</p>
+<table>
+<tr><th>Role</th><th>Meaning</th><th>What it usually becomes in the ontology</th></tr>
+<tr><td>identifier</td><td>A key: unique, named like an id or code.</td><td>The identifying attribute of a class.</td></tr>
+<tr><td>reference</td><td>Points to another table's key — declared by the database, or <b>inferred</b> from names and values (e.g. <code>dealer_id</code> in one file matching <code>id</code> in <code>dealers.csv</code>).</td><td>A relationship.</td></tr>
+<tr><td>code list</td><td>A small set of values, all listed with their counts (statuses, types, regions).</td><td>A class with controlled values.</td></tr>
+<tr><td>yes / no</td><td>Two values such as Y / N.</td><td>A yes/no attribute.</td></tr>
+<tr><td>date, measure, free text, attribute</td><td>Dates, amounts and quantities, long text, anything else.</td><td>Attributes with the right datatype.</td></tr>
+</table>
+<p>Columns that look like <b>personal data</b> (names, emails, phone, ID or account numbers, addresses, dates of birth) are marked; their values are not kept as samples unless the owner allows it.</p>
+<h3>Describe your data</h3>
+<p>Click a table to see its profile. Write what the table and its columns <b>mean in business terms</b> — these descriptions are given to the AI as the authoritative meaning, and make a noticeably better ontology. Untick a table to leave it out (tables that look like logs, staging, audit trails or backups are left out automatically).</p>
+<figure><img src="/static/help/img/datasource-profile.png" alt="A table profile with business descriptions"><figcaption>A table's profile, with business descriptions being added.</figcaption></figure>
+<h3>Building an ontology from it</h3>
+<ul>
+<li>On a data source, press <b>✨ Build an ontology from this</b>: the New ontology wizard opens with the data source chosen and its name filled in. Nothing else is required — the domain is inferred from the data — but use cases and requirements make the result sharper.</li>
+<li>Or in the wizard's step 3, tick any number of data sources under <b>From the data-source library</b>.</li>
+<li>Or on an existing ontology's <b>Sources</b> tab, <b>＋ Add from the library</b>; then rebuild.</li>
+</ul>
+<figure><img src="/static/help/img/datasource-wizard.png" alt="Choosing data sources in the wizard"><figcaption>Choosing data sources when creating an ontology.</figcaption></figure>
+<p>The AI receives each included table's profile — with your descriptions, the references, the code lists and their values — and the text of the included documents (condensed first if there is a lot). It models business meaning, not storage: code lists become controlled values, references become relationships, technical columns are left out, and every class records the table or document it came from (<b>Derived from</b>, also in the Excel and OWL downloads). Up to about 100 documents per build work well.</p>
+<h3>Sample values and access</h3>
+<ul>
+<li><b>Share sample values with the AI model</b> (on by default, per data source): a few example values per column and the full value list of code columns. Untick for statistics only.</li>
+<li><b>Also for columns that look like personal data</b> (off by default).</li>
+<li>An administrator can stop all data sources sending values: Admin › Settings › Data sources.</li>
+<li><b>Access</b>: a data source is private to its owner and administrators until shared with named ontologists or with everyone who builds ontologies. Those people can build from it and read its profiles; only the owner and administrators can change, re-read or delete it. Viewers do not see data sources. If an ontology uses a data source someone has no access to, a build by that person is refused and says which one.</li>
+<li>Deleting a data source unlinks it from its ontologies; what was already built stays.</li>
+</ul>
+</section>
+
+<section id="sources" data-title="Material for one ontology" data-role="Ontologist, Administrator">
+<h2>Material added to one ontology</h2>
+<p>Besides <a href="#/help/datasources">data sources</a> from the library, documents and database structures can be added to a single ontology — in the wizard (step 3) or later on its <b>Sources</b> tab. This is quicker for a one-off, but nothing is profiled and nothing is reused. It is read when the ontology is built: after adding or removing sources use <b>✨ AI › Rebuild from scratch</b>.</p>
 <figure><img src="/static/help/img/sources.png" alt="The Sources tab"><figcaption>The Sources tab lists what was read from each source.</figcaption></figure>
 <h3>Documents or a whole folder</h3>
 <ul>
@@ -403,10 +449,11 @@
 <ul>
 <li>the domain, scope, required use cases, requirements and reference notes of the ontology;</li>
 <li>the text extracted from its source documents, and the structure of its databases (table and column names, types, keys, comments);</li>
+<li>from <a href="#/help/datasources">data sources</a>: each table's profile — row counts, types, roles, how many values are empty or distinct, ranges, references — your business descriptions, and, where the data source allows it, a few sample values per column and the value lists of code columns (never of columns that look like personal data unless the owner allows it). Statistics are computed on this server;</li>
 <li>entries from the built-in standards catalogue;</li>
 <li>the ontology itself; and, in the test bed, the use case you typed.</li>
 </ul>
-<p>It never receives: rows from a database (they are never read), database passwords, other ontologies, user accounts, or API keys.</p>
+<p>It never receives: whole tables or bulk rows (at most the sample values above), database passwords, other ontologies, user accounts, or API keys.</p>
 <p>If source documents contain confidential material, choose a model your organisation is allowed to send it to — or a <b>self-hosted model</b>, in which case nothing leaves your network. The application itself makes no other outside connections.</p>
 <p>What comes back from a model is never used as it is: it is rebuilt field by field, references to things that do not exist are repaired or dropped, and test-bed scores are computed by the application.</p>
 </section>
@@ -437,6 +484,8 @@
 <tr><td>“The driver for this kind of database is not installed”</td><td>An administrator runs the <code>pip install …</code> command shown, on the server, and restarts the application. Or upload a schema script instead.</td></tr>
 <tr><td>HermiT button greyed out</td><td>Java is not installed on the server. The built-in reasoner works without it.</td></tr>
 <tr><td>HermiT: “could not reserve enough space … object heap” (older versions) or “could not reserve even 256 MB”</td><td>Java could not get the memory it asked for. The application now asks for 1024 MB and automatically steps down to 512 and 256 MB. If even that fails, a <b>32-bit Java</b> is almost certainly installed: install a 64-bit Java (for example Temurin from adoptium.net), restart the application, and run HermiT again. The amount tried first can be set with the environment variable <code>ONTO_HERMIT_MEMORY_MB</code>.</td></tr>
+<tr><td>A data source shows “Not everything could be read”</td><td>The list names the tables. A table may be unreadable for the database user (grant SELECT), or the 150-second time limit for profiling was reached — those tables have their structure but no profile. Re-read, or leave large unneeded tables out.</td></tr>
+<tr><td>A join between two uploaded files was not found</td><td>Joins are inferred when a column is named after the other table and its key (<code>dealer_id</code> → <code>dealers.id</code>) and the values match. Rename the column, or describe the link in the column's business description.</td></tr>
 <tr><td>I want to change a pre-built ontology</td><td>You cannot change the library itself. Open it and press ＋ Use this ontology — the copy is yours to change.</td></tr>
 <tr><td>The test score went down after I applied the suggested changes</td><td>You probably ran a fresh breakdown, which can produce a different and longer list of requirements. Use <b>↻ Test again</b> on the earlier result: it re-checks the same requirements, so the scores compare. See <a href="#/help/testbed">Test bed</a>.</td></tr>
 <tr><td>A class I expected is missing</td><td>Test the use case that needs it in the test bed and add the proposed elements; or use ✨ AI › Change it with an instruction; or add it on the diagram.</td></tr>

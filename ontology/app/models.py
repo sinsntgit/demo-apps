@@ -106,6 +106,63 @@ class Source(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 
+class DataSource(Base):
+    """A reusable data source: a database connection, or a set of uploaded datasets and documents. Its tables
+    are profiled and its documents read once; any number of ontologies can be built from it."""
+    __tablename__ = "data_sources"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(Text, default="")
+    kind: Mapped[str] = mapped_column(String(20), default="files")            # database | files
+    owner_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    owner_email: Mapped[str] = mapped_column(String(255), default="")
+    visibility: Mapped[str] = mapped_column(String(20), default="private")    # private | shared (everyone signed in may use it)
+    config_enc: Mapped[str] = mapped_column(Text, default="")                 # database connection, encrypted, password included
+    sample_values: Mapped[bool] = mapped_column(Boolean, default=True)        # sample values may go to the AI model
+    personal_samples: Mapped[bool] = mapped_column(Boolean, default=False)    # ...including columns that look like personal data
+    status: Mapped[str] = mapped_column(String(20), default="empty")          # empty | ready | error
+    error: Mapped[str] = mapped_column(Text, default="")
+    notes: Mapped[list] = mapped_column(JSON, default=list)                   # what could not be read, from the last read
+    refreshed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+
+class DataSourceAccess(Base):
+    __tablename__ = "data_source_access"
+    __table_args__ = (UniqueConstraint("data_source_id", "user_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    data_source_id: Mapped[int] = mapped_column(ForeignKey("data_sources.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+
+
+class DataSourceItem(Base):
+    """One table (with its profile) or one document of a data source."""
+    __tablename__ = "data_source_items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    data_source_id: Mapped[int] = mapped_column(ForeignKey("data_sources.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))                             # table | document
+    name: Mapped[str] = mapped_column(String(500))
+    file_name: Mapped[str] = mapped_column(String(500), default="")           # the uploaded file it came from
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    chars: Mapped[int] = mapped_column(Integer, default=0)
+    text: Mapped[str] = mapped_column(Text, default="")                       # document text
+    profile: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)      # table profile (profiling.py)
+    description: Mapped[str] = mapped_column(Text, default="")                # business description, written by a person
+    include: Mapped[bool] = mapped_column(Boolean, default=True)              # used when an ontology is built
+    note: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+
+class OntologyDataSource(Base):
+    __tablename__ = "ontology_data_sources"
+    __table_args__ = (UniqueConstraint("ontology_id", "data_source_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ontology_id: Mapped[int] = mapped_column(ForeignKey("ontologies.id", ondelete="CASCADE"), index=True)
+    data_source_id: Mapped[int] = mapped_column(ForeignKey("data_sources.id", ondelete="CASCADE"), index=True)
+
+
 class OntologyVersion(Base):
     __tablename__ = "ontology_versions"
     __table_args__ = (UniqueConstraint("ontology_id", "number"),)

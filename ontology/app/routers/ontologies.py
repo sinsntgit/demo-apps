@@ -13,7 +13,7 @@ from .. import builder, exports, layout, onto, reasoner, render, security, sourc
 from .. import library as prebuilt
 from ..db import get_db, now
 from ..deps import RANK, audit, builder_up, current_user, folder_level, get_folder, get_ontology, get_settings, level
-from ..models import Folder, FolderAccess, Job, LLMModel, Ontology, OntologyVersion, Source, TestRun, User
+from ..models import Folder, FolderAccess, Job, LLMModel, Ontology, OntologyDataSource, OntologyVersion, Source, TestRun, User
 
 router = APIRouter(prefix="/api", tags=["ontologies"])
 
@@ -382,6 +382,12 @@ def duplicate(oid: int, body: CopyIn, request: Request, user: User = Depends(bui
     for s in db.scalars(select(Source).where(Source.ontology_id == oid)):       # its source material comes along
         db.add(Source(ontology_id=o.id, kind=s.kind, name=s.name, size=s.size, chars=s.chars, text=s.text, note=s.note, added_by=s.added_by))
     o.material, o.seed_use_cases = src.material, list(src.seed_use_cases or [])
+    from .. import datasources as dsrc
+    from ..models import DataSource
+    for dsid in list(db.scalars(select(OntologyDataSource.data_source_id).where(OntologyDataSource.ontology_id == oid))):  # links the person may use
+        ds = db.get(DataSource, dsid)
+        if ds and dsrc.level(db, user, ds):
+            db.add(OntologyDataSource(ontology_id=o.id, data_source_id=dsid))
     audit(db, request, user, "ontology.duplicated", o.name, f"from {src.name} v{src.version}")
     db.commit()
     return {"id": o.id}
@@ -408,7 +414,8 @@ def get(oid: int, user: User = Depends(current_user), db: Session = Depends(get_
             "content": o.content, "stats": onto.stats(o.content) if o.content else None,
             "quality": onto.quality(o.content) if o.content else None, "job": _job(job) if job else None,
             "last_build": _job(last) if last and last.status in ("error", "done") else None,
-            "sources": {k: n for k, n in srcs}, "reasoners": reasoner.engines(),
+            "sources": {k: n for k, n in srcs} | {"datasource": db.scalar(select(func.count(OntologyDataSource.id)).where(OntologyDataSource.ontology_id == oid))},
+            "reasoners": reasoner.engines(),
             "folder": db.get(Folder, o.folder_id).name if o.folder_id and db.get(Folder, o.folder_id) else None,
             "based_on": o.based_on or ""}
 
@@ -581,8 +588,15 @@ def _launch(db, request, user, o: Ontology, kind: str, model: LLMModel, params: 
 @router.post("/ontologies/{oid}/build")
 def build(oid: int, body: JobIn, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
     o = get_ontology(db, user, oid, "edit")
+    from .. import datasources as dsrc
+    from ..models import DataSource
     has_src = db.scalar(select(Source.id).where(Source.ontology_id == oid).limit(1))
-    if not (o.domain.strip() or o.scope.strip() or o.requirements.strip() or o.seed_use_cases or has_src):
+    links = [db.get(DataSource, x) for x in db.scalars(select(OntologyDataSource.data_source_id).where(OntologyDataSource.ontology_id == oid))]
+    blocked = [d.name for d in links if d and not dsrc.level(db, user, d)]
+    if blocked:
+        raise HTTPException(403, f"This ontology uses data sources you have no access to: {', '.join(blocked)}. Ask their owner for access, "
+                                 "or remove them from the ontology's Sources tab.")
+    if not (o.domain.strip() or o.scope.strip() or o.requirements.strip() or o.seed_use_cases or has_src or any(links)):
         raise HTTPException(400, "Say what the ontology is about first: a domain, use cases, requirements, or source material.")
     n = None if body.use_cases is None else max(0, min(body.use_cases, 15))
     return _job(_launch(db, request, user, o, "build", _model(db, body.model_id), {"use_cases": n}))

@@ -11,7 +11,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 DATABASE_URL = os.environ.get("ONTO_DATABASE_URL", f"sqlite:///{DATA_DIR / 'ontostudio.db'}")
 
 APP_NAME = os.environ.get("ONTO_APP_NAME", "OntoStudio")
-VERSION = "1.3"
+VERSION = "1.4"
 COOKIE_NAME = "onto_session"
 COOKIE_SECURE = os.environ.get("ONTO_COOKIE_SECURE", "0") == "1"   # set to 1 behind HTTPS
 
@@ -49,6 +49,7 @@ DEFAULT_SETTINGS = {
     "default_use_cases": 8,        # use cases generated with a new ontology
     "max_classes": 250,            # hard cap on classes in one ontology
     "base_namespace": "https://example.org/ontology/",   # prefix of the IRIs in OWL / Turtle exports
+    "share_sample_values": True,   # data sources may send sample values (not only statistics) to the AI model
     # appearance (Admin > Appearance)
     "app_title": "",               # name shown in the menu, sign-in page and documents; blank = ONTO_APP_NAME
     "accent": "blue",              # blue | teal | green | purple | orange | red | slate

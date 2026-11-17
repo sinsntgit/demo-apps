@@ -104,11 +104,32 @@ def read_sources(ctx: "Ctx", o: Ontology) -> dict:
     """Turn the ontology's sources into the material given to every later step. Database schemas go in as they
     are; documents go in whole when small, otherwise each batch is first distilled by the model. Nothing is
     dropped silently: what was not read is reported."""
+    from types import SimpleNamespace
+    from . import datasources as dsrc
+    from .models import DataSource, OntologyDataSource
     srcs = list(ctx.db.scalars(select(Source).where(Source.ontology_id == o.id).order_by(Source.id)))
     schemas = [s for s in srcs if s.kind == "schema" and s.text]
     docs = [s for s in srcs if s.kind == "document" and s.text]
-    parts, report = [], {"schemas": len(schemas), "documents": len(docs), "skipped": [], "distilled": False}
+    share = bool(get_settings(ctx.db)["share_sample_values"])
+    linked = [ctx.db.get(DataSource, link.data_source_id) for link in
+              ctx.db.scalars(select(OntologyDataSource).where(OntologyDataSource.ontology_id == o.id).order_by(OntologyDataSource.id))]
+    tables_text, n_tables = [], 0
+    for ds in [x for x in linked if x]:
+        text, ds_docs = dsrc.material(ctx.db, ds, share)
+        if text:
+            tables_text.append(text)
+            n_tables += text.count("\nTABLE ")
+        docs += [SimpleNamespace(name=n, text=t) for n, t in ds_docs]
+    parts, report = [], {"schemas": len(schemas), "documents": len(docs), "skipped": [], "distilled": False,
+                         "data_sources": len([x for x in linked if x]), "tables": n_tables}
     room = 200_000
+    for text in tables_text:                         # profiled tables of the data sources come first: they are the richest
+        body = text[:room]
+        if len(body) < len(text):
+            report["skipped"].append(f"{text.splitlines()[0]}: only the first {len(body):,} characters of the table profiles fit")
+        room -= len(body)
+        if body:
+            parts.append(body)
     for s in schemas:
         body = s.text[:room]
         if len(body) < len(s.text):
@@ -185,8 +206,13 @@ _SCHEMA_HINT = """
 A database schema is part of the source material. Model the business meaning, not the storage: a table that describes a \
 thing or event becomes a class with a business name (expand abbreviations); a pure link table becomes a relationship; a \
 lookup / code table becomes a class with controlled values; a foreign key becomes an object property; technical columns \
-(surrogate keys, audit timestamps, flags of the load process) are left out. Record the table in derived_from so the \
-mapping back to the database is kept."""
+(surrogate keys, audit timestamps, flags of the load process) are left out. Record the table (and for documents, the \
+document) in derived_from so the mapping back to the source is kept.
+Where a data source gives profiles: a column marked "code list" with its values becomes a class with those values as \
+controlled values (use the values' business meaning for labels); a "reference" (declared or inferred) is a relationship; \
+"identifier", "date", "measure", "flag" and "free text" guide the attribute and its datatype; ranges and row counts tell you \
+what is significant. Descriptions written by people (after "--") are authoritative: use their wording in definitions. \
+Tables that are clearly technical (logs, staging, audit trails) are not business concepts; leave them out."""
 
 
 # ---- stages -------------------------------------------------------------------------------------
@@ -238,7 +264,7 @@ Step 2: design the class hierarchy. Aim for {lo}-{hi} classes covering the whole
 (products, assets, documents), the events and transactions with their lifecycle states, the places, the classifications and \
 the measures. Organise the classes into 4-9 modules (coherent subject areas). Use inheritance where it is real (a \
 subclass is a kind of its parent) and keep it at most 4 levels deep. Align classes to the standards above wherever a \
-term exists.{_SCHEMA_HINT if "=== DATABASE SCHEMA" in (o.material or "") else ""}
+term exists.{_SCHEMA_HINT if ("=== DATABASE SCHEMA" in (o.material or "") or "=== DATA SOURCE" in (o.material or "")) else ""}
 
 JSON shape:
 {{"modules": [{{"id": "UpperCamelCase", "name": "", "description": "what this subject area covers, 1-2 sentences"}}],
@@ -532,6 +558,8 @@ def _build(ctx: Ctx, o: Ontology, cfg: dict):
     content = onto.empty(o.name, o.domain, o.scope, cfg["base_namespace"])
     ctx.stage("Reading the source material", 1)
     rep = read_sources(ctx, o)
+    if rep.get("data_sources"):
+        ctx.note(f"Using {rep['data_sources']} data source(s) from the library: {rep['tables']} profiled table(s)")
     if rep["schemas"] or rep["documents"]:
         ctx.note(f"Read {rep['schemas']} database schema(s) and {rep['documents']} document(s)"
                  + (" - the documents were distilled into findings first" if rep["distilled"] else ""))

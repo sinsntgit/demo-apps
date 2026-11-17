@@ -105,6 +105,8 @@ function settingsTab(el) {
         h('div', { class: 'grid2' }, field('Session length (hours)', num('session_hours')), field('Failed sign-ins before lockout', num('lockout_attempts')), field('Lockout duration (minutes)', num('lockout_minutes')))),
       h('div', { class: 'card stack' }, h('h2', {}, 'AI usage'), h('div', { class: 'grid2' }, field('AI build / refine runs per user per hour', num('builds_per_hour')), field('Test-bed runs per user per minute', num('tests_per_min')),
         field('AI jobs running at the same time', num('max_parallel_jobs'), 'others wait in a queue'))),
+      h('div', { class: 'card stack' }, h('h2', {}, 'Data sources'), bool('share_sample_values', 'Allow data sources to send sample values to the AI model',
+        'When on, each data source decides for itself (its owner can switch to statistics only). When off, no data source sends any values — only statistics such as row counts, types and how many distinct values a column has.')),
       h('div', { class: 'card stack' }, h('h2', {}, 'Ontologies'), h('div', { class: 'grid2' }, field('Use cases written with a new ontology', num('default_use_cases')), field('Maximum classes in one ontology', num('max_classes'))),
         field('Base namespace', text('base_namespace', 'https://data.yourcompany.com/ontology/'), 'the web address that prefixes every identifier in OWL / Turtle exports of new ontologies')),
       h('div', {}, save)));

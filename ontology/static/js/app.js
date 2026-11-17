@@ -8,6 +8,7 @@ document.addEventListener('click', () => document.querySelectorAll('.menu .pop')
 const ROUTES = [
   { path: 'library', label: 'Ontologies', icon: '🗂', roles: null, load: async (root, a) => (await import('./library.js')).libraryView(root, a) },
   { path: 'o', hidden: true, nav: 'library', roles: null, load: async (root, a, b, c) => (await import('./workspace.js')).workspaceView(root, a, b, c) },
+  { path: 'datasources', label: 'Data sources', icon: '🗄', roles: ['admin', 'ontologist'], load: async (root, a) => (await import('./datasources.js')).dataSourcesView(root, a) },
   { path: 'templates', label: 'Pre-built library', icon: '📚', roles: null, load: async (root, a) => (await import('./templates.js')).templatesView(root, a) },
   { path: 'usage', label: 'AI usage', icon: '📈', roles: null, load: async root => (await import('./usage.js')).usageView(root) },
   { sect: 'Manage', roles: ['admin'] },

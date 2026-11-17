@@ -3,6 +3,7 @@
 import { h, fill, api, busy, fail, toast, modal, field, check, select, confirmDialog, fmtTime, ago, state } from './core.js';
 import { filePicker, uploadFiles, dbForm, failedList, fmtSize } from './sources.js';
 import { LEVEL } from './library.js';
+import { pickDataSources } from './datasources.js';
 import { diagramTab, modelTab, useCasesTab, testTab, qualityTab } from './editor.js';
 
 const TABS = [['overview', 'Overview'], ['standards', 'Standards'], ['diagram', 'Diagram'], ['model', 'Classes & properties'], ['usecases', 'Use cases'],
@@ -65,7 +66,7 @@ export async function workspaceView(root, id, tab, arg) {
       ctx.built && state.me.role !== 'viewer' ? h('button', { class: 'btn', title: 'Make your own copy to modify', onclick: () => duplicateForm(ctx) }, '⧉ Duplicate') : null,
       ctx.canEdit ? h('button', { class: 'btn', onclick: () => settingsForm(ctx) }, '⚙ Settings') : null));
     fill(bar, TABS.map(([k, l]) => h('button', { 'data-key': k, class: current === k ? 'on' : '', onclick: () => ctx.go(k) }, l,
-      k === 'sources' && (o.sources.document || o.sources.schema) ? h('span', { class: 'small dim' }, ` ${(o.sources.document || 0) + (o.sources.schema || 0)}`) : null)));
+      k === 'sources' && (o.sources.document || o.sources.schema || o.sources.datasource) ? h('span', { class: 'small dim' }, ` ${(o.sources.document || 0) + (o.sources.schema || 0) + (o.sources.datasource || 0)}`) : null)));
   }
 
   function drawJob() {
@@ -267,7 +268,7 @@ function standardsTab(el, ctx) {
 
 // ---- Sources -----------------------------------------------------------------------------------
 async function sourcesTab(el, ctx) {
-  const data = await api('GET', `/api/ontologies/${ctx.id}/sources`);
+  const [data, linked] = await Promise.all([api('GET', `/api/ontologies/${ctx.id}/sources`), api('GET', `/api/ontologies/${ctx.id}/datasources`)]);
   const status = h('div', {});
   const redraw = async () => { await ctx.load(); sourcesTab(el, ctx); };
   const add = async files => {
@@ -289,6 +290,22 @@ async function sourcesTab(el, ctx) {
       h('b', {}, '✨ AI › Rebuild from scratch'), ' (or Build, if it has not been built) for the change to take effect.',
       ctx.built && data.items.length ? ' To pull in something specific without rebuilding, use ✨ AI › Change it with an instruction.' : ''),
     status,
+    h('div', { class: 'card stack' }, h('div', { class: 'row wrap' }, h('h2', { style: 'margin:0;flex:1' }, 'Data sources from the library'),
+      ctx.canEdit && state.me.role !== 'viewer' ? h('button', { class: 'btn', onclick: async () => {
+        const chosen = new Set(), picker = await pickDataSources(chosen, new Set(linked.map(d => d.id)));
+        modal('Use data sources from the library', h('div', { class: 'stack' }, h('p', { class: 'muted' }, 'Their profiled tables and documents are given to the AI when the ontology is built or rebuilt.'), picker), {
+          wide: true, actions: close => [h('button', { class: 'btn', onclick: close }, 'Cancel'), h('button', { class: 'btn primary', onclick: e => busy(e.target, async () => {
+            for (const id of chosen) await api('POST', `/api/ontologies/${ctx.id}/datasources`, { data_source_id: id });
+            close(); toast(`${chosen.size} data source(s) added.`); redraw();
+          }) }, 'Add')] });
+      } }, '＋ Add from the library') : null),
+      linked.length ? h('div', { class: 'card flush' }, linked.map(d => h('div', { class: 'item row' },
+        h('span', { style: 'flex:1' }, d.can_use ? h('a', { href: '#/datasources/' + d.id }, h('b', {}, (d.kind === 'database' ? '🗄 ' : '📁 ') + d.name)) : h('b', {}, d.name),
+          d.can_use ? h('div', { class: 'small muted' }, `${d.tables} tables · ${d.documents} documents · ${d.sample_values ? 'statistics and sample values' : 'statistics only'}`)
+            : h('div', { class: 'small', style: 'color:var(--warn)' }, `You have no access to this data source (owner ${d.owner}); a build by you will be refused until you are given access or it is removed.`)),
+        ctx.canEdit ? h('button', { class: 'btn sm', onclick: async () => { if (await confirmDialog('Stop using this data source?', `${d.name} is no longer read when the ontology is built. What was already built stays.`, 'Remove')) { await api('DELETE', `/api/ontologies/${ctx.id}/datasources/${d.id}`).catch(fail); redraw(); } } }, 'Remove') : null)))
+        : h('p', { class: 'small dim', style: 'margin:0' }, 'None. Data sources are databases, datasets and documents set up once on the ', h('a', { href: '#/datasources' }, 'Data sources'), ' page — their tables are profiled, so the AI sees keys, code lists and sample values.')),
+    h('h2', { style: 'margin:8px 0 0' }, 'Material added to this ontology only'),
     data.items.length ? h('div', { class: 'tbl-wrap', style: 'max-height:none' }, h('table', { class: 'tbl' },
       h('thead', {}, h('tr', {}, ['Source', 'Kind', 'What was read', 'Added', ''].map(x => h('th', {}, x)))),
       h('tbody', {}, data.items.map(s => h('tr', {}, h('td', {}, h('b', {}, (s.kind === 'schema' ? '🗄 ' : '📄 ') + s.name)), h('td', {}, s.kind === 'schema' ? 'Database schema' : 'Document'),
