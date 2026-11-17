@@ -63,13 +63,14 @@ export async function graphTab(el, ctx) {
   // ---- status -------------------------------------------------------------------------------------
   const busyJob = g.job;
   const accepted = g.extracted?.accepted || 0;
+  const live = g.storage === 'live';
   const buildBtn = g.can_edit && (maps.length || accepted) && !busyJob ? h('button', { class: 'btn primary', onclick: e => busy(e.target, async () => {
     await api('POST', `/api/ontologies/${ctx.id}/graph/build`); toast('Building the knowledge graph…'); await ctx.reload();
-  }) }, g.status === 'ready' ? '↻ Build again from the data' : '▶ Build the knowledge graph') : null;
+  }) }, live ? (g.status === 'ready' ? '↻ Read the sources now' : '▶ Check the mapping and count') : g.status === 'ready' ? '↻ Build again from the data' : '▶ Build the knowledge graph') : null;
   const kpi = (l, v, s) => h('div', { class: 'kpi' }, h('div', { class: 'l' }, l), h('div', { class: 'v' }, v), s ? h('div', { class: 's' }, s) : null);
   const status = h('div', { class: 'card stack' },
     h('div', { class: 'row wrap' }, h('h2', { style: 'margin:0;flex:1' }, 'Knowledge graph'),
-      g.status === 'ready' ? h('span', { class: 'badge good' }, 'Built') : busyJob ? h('span', { class: 'badge info' }, 'Working…') : h('span', { class: 'badge' }, 'Not built yet'),
+      g.status === 'ready' ? h('span', { class: 'badge good' }, live ? 'Live — nothing stored' : 'Built') : busyJob ? h('span', { class: 'badge info' }, 'Working…') : h('span', { class: 'badge' }, 'Not built yet'),
       buildBtn,
       g.can_edit && g.status === 'ready' && !busyJob ? h('button', { class: 'btn ghost', title: 'Delete the graph (its copy of the data). The mapping stays.', onclick: async () => {
         if (await confirmDialog('Delete the knowledge graph?', 'Its copy of the data is deleted. The mapping is kept, so you can build it again at any time.', 'Delete')) {
@@ -78,8 +79,9 @@ export async function graphTab(el, ctx) {
     busyJob ? h('div', { class: 'banner info' }, h('span', { class: 'spinner' }), ` ${{ map: 'The AI is proposing a mapping', extract: 'The AI is reading documents' }[busyJob.kind] || 'Building'}: ${busyJob.stage || 'starting'} — progress is shown above.`) : null,
     g.last_job?.status === 'error' ? h('div', { class: 'banner bad' }, h('b', {}, { map: 'The mapping proposal did not finish: ', extract: 'Reading the documents did not finish: ' }[g.last_job.kind] || 'The last build did not finish: '), g.last_job.error) : null,
     g.error && !g.last_job?.error ? h('div', { class: 'banner warn' }, g.error) : null,
+    g.can_edit ? storageRow(ctx, g, redraw) : h('div', { class: 'small muted' }, live ? 'Live: the data is read from the sources whenever the graph is used; no copy is kept on this server.' : 'A copy of the data is kept on this server and refreshed when the graph is built again.'),
     g.status === 'ready' || g.can_edit ? h('div', { class: 'row wrap small' },
-      g.can_edit ? [h('span', { class: 'muted' }, 'Rebuild from the data automatically:'), select([['', 'never'], ['daily', 'every night (02:00)'], ['weekly', 'every week']], g.refresh, async v => {
+      g.can_edit && !live ? [h('span', { class: 'muted' }, 'Rebuild from the data automatically:'), select([['', 'never'], ['daily', 'every night (02:00)'], ['weekly', 'every week']], g.refresh, async v => {
         try { await api('PUT', `/api/ontologies/${ctx.id}/graph/refresh`, { refresh: v }); toast(v ? 'Scheduled. It runs with your access to the data sources.' : 'Schedule switched off.'); redraw(); } catch (e) { fail(e); }
       }, { class: 'inline' }), g.next_refresh_at ? h('span', { class: 'dim' }, `next: ${fmtTime(g.next_refresh_at)}`) : null] : g.refresh ? h('span', { class: 'muted' }, `Rebuilt automatically ${g.refresh === 'daily' ? 'every night' : 'every week'}.`) : null,
       h('span', { class: 'spacer' }),
@@ -90,7 +92,7 @@ export async function graphTab(el, ctx) {
     g.status === 'ready' && st ? [
       h('div', { class: 'kpis' }, kpi('Records', n(st.records)), kpi('Facts', n(st.facts), 'statements in the graph'),
         kpi('Tables read', n(st.tables.length), st.tables.some(t => t.capped) ? 'some in part' : 'in full'),
-        kpi('Classes with data', `${cov.classes_with_data ?? '–'} of ${cov.classes}`), kpi('Built', `version ${g.built_version}`, `${fmtTime(g.built_at)} · ${g.built_by}`)),
+        kpi('Classes with data', `${cov.classes_with_data ?? '–'} of ${cov.classes}`), live ? kpi('Last read from the sources', fmtTime(g.built_at), 'counts as of then; every question reads afresh') : kpi('Built', `version ${g.built_version}`, `${fmtTime(g.built_at)} · ${g.built_by}`)),
       g.stale.map(s => h('div', { class: 'banner warn' }, s, ' Build again to bring the graph up to date.')),
       st.notes.length ? h('div', { class: 'banner info' }, h('ul', { class: 'bul', style: 'margin:0' }, st.notes.map(x => h('li', {}, x)))) : null]
       : h('p', { class: 'muted', style: 'margin:0' }, maps.length ? 'The mapping is ready to use: build the graph to load the records.' : 'Start by mapping classes onto tables below.'));
@@ -179,8 +181,10 @@ export async function graphTab(el, ctx) {
     h('details', {}, h('summary', { style: 'cursor:pointer;color:var(--accent)' }, 'Tables read'), h('ul', { class: 'bul small' },
       st.tables.map(t => h('li', {}, `${t.source} / ${t.table}: ${n(t.read)} of ${n(t.total)} rows`, t.capped ? h('span', { style: 'color:var(--warn)' }, ` (limit ${n(st.rows_per_table)} per table)`) : null))))) : null;
 
-  fill(el, h('div', { class: 'stack' }, intro(), status, g.sources.length ? mapping : null, g.can_see_data && g.documents.length ? docsCard(ctx, g, redraw) : null, coverage,
-    g.status === 'ready' && g.can_see_data ? explorerCard(ctx, g) : null, g.status === 'ready' && g.can_see_data ? consoleCard(ctx, g) : null));
+  const explorer = g.status === 'ready' && g.can_see_data ? explorerCard(ctx, g) : null;
+  fill(el, h('div', { class: 'stack' }, intro(), status, g.overview && g.overview.nodes.length ? overviewCard(ctx, g, explorer) : null,
+    g.sources.length ? mapping : null, g.can_see_data && g.documents.length ? docsCard(ctx, g, redraw) : null, coverage,
+    explorer, g.status === 'ready' && g.can_see_data ? consoleCard(ctx, g) : null));
 }
 
 function intro() {
@@ -320,9 +324,40 @@ function explorerCard(ctx, g) {
       r.picture?.nodes.length ? h('div', {}, h('p', { class: 'small dim', style: 'margin:0 0 6px' }, 'Click a box to open that record.'), diagram(r.picture, { maxHeight: 420, onNode: nd => { if (!String(nd.id).startsWith('more:')) open(nd.id); } })) : null,
       evidenceView(r.evidence)));
   }
-  return h('div', { class: 'card stack' }, h('h2', { style: 'margin:0' }, 'Explore records'),
+  const card = h('div', { class: 'card stack' }, h('h2', { style: 'margin:0' }, 'Explore records'),
     h('p', { class: 'small muted', style: 'margin:0' }, 'Find a record, see its values and the records it is linked to, and follow the links.'),
     h('div', { class: 'row wrap' }, input, cls, h('button', { class: 'btn', onclick: find }, 'Find')), results, panel);
+  card.showClass = k => { cls.value = k; input.value = ''; find(); card.scrollIntoView({ block: 'start', behavior: 'smooth' }); };
+  return card;
+}
+
+// ---- where the data lives (stored copy or live) -----------------------------------------------------------
+function storageRow(ctx, g, redraw) {
+  const minutes = h('input', { type: 'number', min: 0, max: 120, value: g.live_minutes, style: 'max-width:80px' });
+  const save = async (storage) => {
+    try {
+      if (storage === 'live' && g.storage !== 'live' && g.status === 'ready' &&
+          !await confirmDialog('Keep no copy of the data?', 'The copy of the data kept on this server is deleted. From now on every question, test and look in the explorer reads the data sources at that moment (a fetched graph can be kept in memory for a few minutes). Scheduled rebuilds are switched off.', 'Switch to live', false)) return redraw();
+      await api('PUT', `/api/ontologies/${ctx.id}/graph/storage`, { storage, live_minutes: Number(minutes.value) || 0 });
+      toast(storage === 'live' ? 'Live: nothing is kept on this server.' : 'A copy will be kept on this server. Build the graph to make it.'); redraw();
+    } catch (e) { fail(e); }
+  };
+  const live = g.storage === 'live';
+  return h('div', { class: 'stack', style: 'gap:6px;padding:10px 12px;border:1px solid var(--line);border-radius:8px' },
+    h('div', { class: 'small', style: 'font-weight:600' }, 'Where the data lives'),
+    h('label', { class: 'check' }, h('input', { type: 'radio', name: 'kg-storage', checked: !live, onchange: () => save('stored') }),
+      h('span', {}, 'A copy on this server', h('div', { class: 'small dim' }, 'Fast. The data is as it was at the last build — build again, or schedule nightly or weekly rebuilds.'))),
+    h('label', { class: 'check' }, h('input', { type: 'radio', name: 'kg-storage', checked: live, onchange: () => save('live') }),
+      h('span', {}, 'Live from the sources — nothing kept on this server', h('div', { class: 'small dim' }, 'Every question reads the databases at that moment, so answers are always current; slower, and it puts load on the databases. Uploaded files are read from where they were uploaded to; facts accepted from documents are part of the graph’s definition and stay.'))),
+    live ? h('div', { class: 'row small' }, h('span', { class: 'muted' }, 'Reuse what was read for'), minutes, h('span', { class: 'muted' }, 'minutes (in memory only; 0 = read for every question)'),
+      h('button', { class: 'btn sm', onclick: () => save('live') }, 'Save')) : null);
+}
+
+// ---- overview -----------------------------------------------------------------------------------------
+function overviewCard(ctx, g, explorer) {
+  return h('div', { class: 'card stack' }, h('h2', { style: 'margin:0' }, 'The graph at a glance'),
+    h('p', { class: 'small muted', style: 'margin:0' }, 'Each box is a class with how many records it holds; each line a relationship with how many links.' + (explorer ? ' Click a box to list its records below.' : '')),
+    diagram(g.overview, { maxHeight: 460, onNode: explorer ? nd => explorer.showClass(nd.id) : null }));
 }
 
 // ---- the query console ---------------------------------------------------------------------------------
@@ -349,7 +384,7 @@ function consoleCard(ctx, g) {
       attrs.map((a, i) => `  OPTIONAL { ?record :${a.property} ?v${i + 1} }   # ${propLabel(ctx, a.property)}\n`).join('') +
       links.map(l => `  OPTIONAL { ?record :${l.property} ?l . ?l rdfs:label ?linked }   # ${propLabel(ctx, l.property)}\n`).join('') + '}\nLIMIT 50';
   }, { class: 'inline', style: 'max-width:280px' });
-  return h('div', { class: 'card stack' }, h('div', { class: 'row wrap' }, h('h2', { style: 'margin:0;flex:1' }, 'Ask the graph (SPARQL)'), pick),
+  return h('div', { class: 'card stack', id: 'graph-console' }, h('div', { class: 'row wrap' }, h('h2', { style: 'margin:0;flex:1' }, 'Ask the graph (SPARQL)'), pick),
     h('p', { class: 'small muted', style: 'margin:0' }, 'Questions only (SELECT, ASK, CONSTRUCT, DESCRIBE): the graph cannot be changed by a query, and it never calls other servers. Every record has the type of its class and of all its parent classes, and a name (rdfs:label). Predefined prefixes: ', h('span', { class: 'mono small' }, pre)),
     text, h('div', { class: 'row' }, run), out);
 }

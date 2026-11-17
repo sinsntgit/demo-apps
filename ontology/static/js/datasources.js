@@ -86,7 +86,7 @@ async function detailView(root, id) {
     const refs = p.columns.filter(c => c.ref);
     return h('tr', { class: 'click', onclick: e => { if (e.target.tagName !== 'INPUT') tableDialog(i); } }, h('td', { style: 'width:30px' }, include),
       h('td', {}, h('b', {}, i.name), i.description ? h('div', { class: 'small muted' }, i.ai ? [h('span', { class: 'badge warn', title: 'Drafted by AI — check it; editing it makes it yours' }, 'AI draft'), ' '] : null, i.description) : null, i.file_name && i.file_name !== i.name ? h('div', { class: 'small dim' }, 'from ' + i.file_name) : null,
-        i.kept === false ? h('div', { class: 'small', style: 'color:var(--warn)', title: 'Uploaded before version 1.7, when files were not kept' }, 'Upload this file again to use its rows in knowledge graphs') : null),
+        i.kept === false ? h('div', { class: 'small', style: 'color:var(--warn)' }, d.keep_files === false ? 'Not kept on this server (Settings): its rows cannot be loaded into knowledge graphs' : 'Uploaded before version 1.7: upload this file again (the same folder) to use its rows in knowledge graphs') : null),
       h('td', { class: 'num' }, p.row_count == null ? '—' : p.row_count.toLocaleString()), h('td', { class: 'num' }, p.columns.length),
       h('td', { class: 'small' }, refs.length ? refs.map(c => `${c.name} → ${c.ref}${c.ref_declared === false ? ' (inferred)' : ''}`).join('; ') : h('span', { class: 'dim' }, '—')),
       h('td', { class: 'small' }, p.columns.filter(c => c.role === 'code').map(c => c.name).join(', ') || h('span', { class: 'dim' }, '—')));
@@ -203,11 +203,12 @@ function settingsPane(d, reload) {
   const name = h('input', { type: 'text', value: d.name }), desc = h('textarea', { rows: 3 }, d.description || '');
   const samples = check('Share sample values with the AI model', d.sample_values, null, 'Example values per column and the full list of values of code columns. Untick to send statistics only.');
   const personal = check('Also for columns that look like personal data', d.personal_samples, null, 'Names, emails, phone numbers, ID numbers, addresses, dates of birth. Off by default. Takes effect for values read from now on — re-read or re-upload.');
+  const keepFiles = d.kind === 'files' ? check('Keep a copy of uploaded datasets on this server', d.keep_files, null, 'Needed to build knowledge graphs from their rows. When off, datasets are profiled when uploaded and then deleted; their tables can still be mapped, but their rows cannot be loaded. Switching it off deletes the copies kept so far.') : null;
   const graphPersonal = check('Load personal data into knowledge graphs', d.graph_personal, null, 'Columns that look like personal data are left out of knowledge graphs built from this data source unless this is ticked. Only people who may use this data source see a graph’s records. Takes effect at the next build.');
   const db = d.kind === 'database' ? dbForm({ dataSource: true }) : null;
   if (db && d.connection) db.set(d.connection);
   const save = h('button', { class: 'btn primary', onclick: () => busy(save, async () => {
-    const payload = { name: name.value, description: desc.value, kind: d.kind, visibility: d.visibility, sample_values: samples.input.checked, personal_samples: personal.input.checked, graph_personal: graphPersonal.input.checked };
+    const payload = { name: name.value, description: desc.value, kind: d.kind, visibility: d.visibility, sample_values: samples.input.checked, personal_samples: personal.input.checked, graph_personal: graphPersonal.input.checked, ...(keepFiles ? { keep_files: keepFiles.input.checked } : {}) };
     if (db) { const v = db.value(); Object.assign(payload, v || {}); }
     const r = await api('PUT', `/api/datasources/${d.id}`, payload);
     toast(r.reread_needed ? 'Saved. Re-read the data source (or re-upload the files) to collect values of personal columns.' : 'Saved'); reload();
@@ -223,7 +224,7 @@ function settingsPane(d, reload) {
       }) }, 'Save access'))));
   }).catch(fail);
   return h('div', { class: 'grid2', style: 'align-items:start' },
-    h('div', { class: 'card stack' }, h('h2', {}, 'Settings'), field('Name', name), field('Description', desc, 'tells the AI what this data is about'), samples, personal, graphPersonal,
+    h('div', { class: 'card stack' }, h('h2', {}, 'Settings'), field('Name', name), field('Description', desc, 'tells the AI what this data is about'), samples, personal, graphPersonal, keepFiles,
       db ? [h('h3', {}, 'Connection'), db] : null, h('div', { class: 'row' }, save, h('span', { class: 'spacer' }),
         h('button', { class: 'btn danger', onclick: async () => { if (!await confirmDialog('Delete this data source?', `${d.name} will be removed${d.used_by ? ` and unlinked from ${d.used_by} ontolog${d.used_by === 1 ? 'y' : 'ies'} (they keep what was built)` : ''}.`, 'Delete')) return;
           try { await api('DELETE', '/api/datasources/' + d.id); location.hash = '#/datasources'; } catch (e) { fail(e); } } }, 'Delete data source'))),

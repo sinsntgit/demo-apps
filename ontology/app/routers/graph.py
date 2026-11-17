@@ -34,7 +34,10 @@ def _may_see(db, user, rec) -> list[str]:
     """Names of data sources of the graph this person may not use (empty = may see its records)."""
     if user.role == "viewer":
         return ["(viewers see the design only)"]
-    ids = list(rec.sources or []) if rec and rec.store else [d.id for d in kg.linked(db, rec.ontology_id if rec else 0)]
+    if rec and rec.store and not kg.is_live(rec):
+        ids = list(rec.sources or [])
+    else:                                                      # not built, or live: whatever it reads next time
+        ids = [d.id for d in kg.linked(db, rec.ontology_id if rec else 0)] + list((rec.sources if rec else None) or [])
     return kg.data_access(db, user, ids)
 
 
@@ -67,7 +70,7 @@ def _state(db, user, o) -> dict:
     job = db.scalar(select(Job).where(Job.ontology_id == o.id, Job.kind.in_(kinds), Job.status.in_(("queued", "running"))).order_by(Job.id.desc()))
     last = db.scalar(select(Job).where(Job.ontology_id == o.id, Job.kind.in_(kinds)).order_by(Job.id.desc()))
     stale = []
-    if rec and rec.store:
+    if rec and rec.store:                                      # a stored copy can fall behind; a live graph cannot
         if rec.built_version != o.version:
             stale.append(f"The ontology has changed since the graph was built (version {rec.built_version} → {o.version}).")
         if rec.mapping_changed_at and rec.built_at and rec.mapping_changed_at > rec.built_at:
@@ -82,6 +85,8 @@ def _state(db, user, o) -> dict:
             "prefixes": kg.prefixes(o.content) if o.content else {},
             "documents": kgdocs.documents(db, o.id) if see else [],
             "extracted": kgdocs.summary(rec.extracted) if rec and rec.extracted else None,
+            "storage": (rec.storage or "stored") if rec else "stored", "live_minutes": (rec.live_minutes if rec and rec.live_minutes is not None else 10),
+            "overview": kg.overview(o.content, rec) if rec and rec.status == "ready" and o.content else None,
             "refresh": (rec.refresh or "") if rec else "", "next_refresh_at": rec.next_refresh_at.isoformat() if rec and rec.next_refresh_at else None,
             "rows_per_table": int(get_settings(db)["graph_rows_per_table"])}
 
@@ -175,6 +180,7 @@ def remove(oid: int, request: Request, user: User = Depends(current_user), db: S
     rec = kg.record(db, oid)
     if rec:
         kg.drop(db, oid)
+        kg.forget_live(oid)
         rec.store, rec.status, rec.stats, rec.sources, rec.built_at = "", "none", {}, [], None
     audit(db, request, user, "graph.deleted", o.name)
     db.commit()
@@ -189,7 +195,7 @@ class QueryIn(BaseModel):
 def query(oid: int, body: QueryIn, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
     o = get_ontology(db, user, oid)
     rec = kg.record(db, oid)
-    if not rec or rec.status != "ready" or not rec.store:
+    if not rec or rec.status != "ready" or not (rec.store or kg.is_live(rec)):
         raise HTTPException(400, "The knowledge graph has not been built yet.")
     blocked = _may_see(db, user, rec)
     if blocked:
@@ -371,7 +377,7 @@ def dismiss(oid: int, body: SuggestionIn, user: User = Depends(current_user), db
 def _readable(db, user, oid):
     o = get_ontology(db, user, oid)
     rec = kg.record(db, oid)
-    if not rec or rec.status != "ready" or not rec.store:
+    if not rec or rec.status != "ready" or not (rec.store or kg.is_live(rec)):
         raise HTTPException(400, "The knowledge graph has not been built yet.")
     blocked = _may_see(db, user, rec)
     if blocked:
@@ -430,6 +436,39 @@ def export(oid: int, fmt: str, request: Request, user: User = Depends(current_us
     return Response(data, media_type="text/turtle", headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
+# ---- where the data lives --------------------------------------------------------------------------------------
+class StorageIn(BaseModel):
+    storage: str = "stored"
+    live_minutes: int = 10
+
+
+@router.put("/ontologies/{oid}/graph/storage")
+def set_storage(oid: int, body: StorageIn, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """stored: a copy of the records is kept on this server (fast; refreshed by building again or on a schedule).
+    live: nothing is kept - the records are read from the data sources when someone asks, held in memory for a few
+    minutes at most, and discarded."""
+    o = get_ontology(db, user, oid, "edit")
+    if body.storage not in ("stored", "live"):
+        raise HTTPException(400, "Choose stored or live.")
+    if not 0 <= body.live_minutes <= 120:
+        raise HTTPException(400, "Keep a live graph in memory for 0 to 120 minutes.")
+    rec = kg.record(db, oid, create=True)
+    _need_data(db, user, o, rec)
+    before = rec.storage or "stored"
+    rec.storage, rec.live_minutes = body.storage, body.live_minutes
+    kg.forget_live(oid)
+    if body.storage == "live" and before != "live":
+        kg.drop(db, oid)                                       # the stored copy of the data is deleted
+        rec.store = ""
+        rec.refresh, rec.refresh_user_id, rec.next_refresh_at = "", None, None
+        rec.status = "ready" if rec.status == "ready" else rec.status
+    elif body.storage == "stored" and before == "live":
+        rec.status = "none"                                    # build to make the stored copy
+    audit(db, request, user, "graph.storage", o.name, f"{body.storage}; memory {body.live_minutes} min")
+    db.commit()
+    return _state(db, user, o)
+
+
 # ---- scheduled rebuilds -----------------------------------------------------------------------------------------
 class RefreshIn(BaseModel):
     refresh: str = ""
@@ -442,6 +481,8 @@ def set_refresh(oid: int, body: RefreshIn, request: Request, user: User = Depend
     if body.refresh not in ("", "daily", "weekly"):
         raise HTTPException(400, "Choose never, daily or weekly.")
     rec = kg.record(db, oid, create=True)
+    if body.refresh and kg.is_live(rec):
+        raise HTTPException(400, "A live knowledge graph is read from the data sources whenever it is used; it needs no scheduled rebuild.")
     _need_data(db, user, o, rec)
     rec.refresh = body.refresh
     rec.refresh_user_id = user.id if body.refresh else None

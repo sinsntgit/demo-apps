@@ -156,7 +156,7 @@ def add_files(db: Session, ds: DataSource, files: list[tuple[str, bytes]]) -> tu
                 if len(data) > sources.MAX_FILE:
                     raise profiling.ProfileError("Larger than 25 MB.")
                 tables = profiling.profile_file(name, data, allow_personal=ds.personal_samples)
-                kept = _keep_file(ds, name, data)
+                kept = _keep_file(ds, name, data) if ds.keep_files is not False else ""   # the owner may choose not to keep uploads
                 old = list(db.scalars(select(DataSourceItem).where(DataSourceItem.data_source_id == ds.id, DataSourceItem.file_name == name)))
                 keep = {i.name: i for i in old if i.kind == "table"}
                 for i in old:

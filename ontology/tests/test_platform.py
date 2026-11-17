@@ -1079,3 +1079,78 @@ def test_owl_and_turtle_import_keep_rules_and_modules():
         assert r["meta"]["namespace"] == s["meta"]["namespace"]
         mn = lambda c: {m["id"]: m["name"] for m in c["modules"]}                                   # noqa: E731
         assert {k["id"]: mn(r)[k["module"]] for k in r["classes"]} == {k["id"]: mn(s)[k["module"]] for k in s["classes"]}
+
+
+def test_live_knowledge_graph_keeps_no_copy(admin):
+    """Live: nothing of the data is written to the server; every question reads the sources afresh (or reuses what was read a
+    few minutes ago, in memory). Stored: a copy, refreshed by building. Plus the overview picture and not keeping uploads."""
+    from app import config
+    from app import sources as srcmod
+    c, mid = admin
+    path = tempfile.mktemp(suffix=".db")
+    _lending_db(path)
+    real = srcmod.db_url
+    srcmod.db_url = lambda *a, **k: f"sqlite:///{path}"
+    try:
+        ds = c.post("/api/datasources", headers=H, json={"name": "Live lending DB", "kind": "database", "db_type": "postgresql", "host": "db.internal",
+                                                         "database": "lending", "user": "reader", "password": "pw"}).json()
+        oid = c.post("/api/ontologies", headers=H, json={"name": "Live graph"}).json()["id"]
+        c.post(f"/api/ontologies/{oid}/datasources", headers=H, json={"data_source_id": ds["id"]})
+        wait_job(c, c.post(f"/api/ontologies/{oid}/build", headers=H, json={"model_id": mid, "use_cases": 0}).json()["id"])
+        c.post(f"/api/ontologies/{oid}/graph/match", headers=H, json={})
+        assert wait_job(c, c.post(f"/api/ontologies/{oid}/graph/build", headers=H).json()["id"])["status"] == "done"
+        g = c.get(f"/api/ontologies/{oid}/graph").json()
+        assert g["storage"] == "stored" and any(p.name.startswith(f"{oid}-") for p in config.GRAPHS_DIR.iterdir())
+        ov = g["overview"]                                                              # the graph at class level, with counts
+        assert {n["label"] for n in ov["nodes"]} >= {"Loan · 600", "Customer · 200"}
+        count = lambda: c.post(f"/api/ontologies/{oid}/graph/query", headers=H, json={"sparql": "SELECT (COUNT(?l) AS ?n) WHERE { ?l a :Loan }"}).json()["rows"][0][0]["v"]   # noqa: E731
+        assert count() == "600"
+        con = sqlite3.connect(path); con.execute("insert into loans values (601, 1, 1000, 'Approved', '2025-10-01')"); con.commit(); con.close()
+        assert count() == "600"                                                         # the stored copy does not know yet
+        # live: the copy is deleted; every question reads the database (memory 0 = no reuse at all)
+        g = c.put(f"/api/ontologies/{oid}/graph/storage", headers=H, json={"storage": "live", "live_minutes": 0}).json()
+        assert g["storage"] == "live" and not any(p.name.startswith(f"{oid}-") for p in config.GRAPHS_DIR.iterdir())
+        assert count() == "601"
+        con = sqlite3.connect(path); con.execute("insert into loans values (602, 1, 1000, 'Approved', '2025-10-02')"); con.commit(); con.close()
+        assert count() == "602"
+        assert not any(p.name.startswith(f"{oid}-") for p in config.GRAPHS_DIR.iterdir())   # still nothing written
+        assert c.put(f"/api/ontologies/{oid}/graph/refresh", headers=H, json={"refresh": "daily"}).status_code == 400
+        found = c.get(f"/api/ontologies/{oid}/graph/records", params={"q": "", "cls": "Loan"}).json()["items"]
+        assert found and c.get(f"/api/ontologies/{oid}/graph/record", params={"iri": found[0]["iri"]}).json()["classes"] == ["Loan"]
+        assert c.get(f"/api/ontologies/{oid}/graph/export/ttl").status_code == 200
+        # reused for a few minutes when asked to
+        c.put(f"/api/ontologies/{oid}/graph/storage", headers=H, json={"storage": "live", "live_minutes": 5})
+        assert count() == "602"
+        con = sqlite3.connect(path); con.execute("insert into loans values (603, 1, 1000, 'Approved', '2025-10-03')"); con.commit(); con.close()
+        assert count() == "602"
+        # back to stored: build to make the copy again
+        g = c.put(f"/api/ontologies/{oid}/graph/storage", headers=H, json={"storage": "stored"}).json()
+        assert g["status"] == "none"
+        wait_job(c, c.post(f"/api/ontologies/{oid}/graph/build", headers=H).json()["id"])
+        assert count() == "603"
+        c.delete(f"/api/ontologies/{oid}", headers=H)
+        c.delete(f"/api/datasources/{ds['id']}", headers=H)
+    finally:
+        srcmod.db_url = real
+    # a data source that keeps no uploads: profiled, then the file is gone; a graph says why it cannot load the rows
+    fs = c.post("/api/datasources", headers=H, json={"name": "No copies", "kind": "files", "keep_files": False}).json()
+    assert fs["keep_files"] is False
+    c.post(f"/api/datasources/{fs['id']}/files", headers=H, files=_shop_files())
+    assert all(i["kept"] is False for i in c.get(f"/api/datasources/{fs['id']}").json()["items"])
+    assert not (config.DATASETS_DIR / str(fs["id"])).exists()
+    oid = c.post("/api/ontologies", headers=H, json={"name": "No copies graph"}).json()["id"]
+    c.post(f"/api/ontologies/{oid}/datasources", headers=H, json={"data_source_id": fs["id"]})
+    wait_job(c, c.post(f"/api/ontologies/{oid}/build", headers=H, json={"model_id": mid, "use_cases": 0}).json()["id"])
+    c.post(f"/api/ontologies/{oid}/graph/match", headers=H, json={})
+    j = wait_job(c, c.post(f"/api/ontologies/{oid}/graph/build", headers=H).json()["id"])
+    assert j["status"] == "error" and "does not keep a copy of uploaded files" in j["error"]
+    # switching it off later deletes the copies already kept
+    ks = c.post("/api/datasources", headers=H, json={"name": "Copies then not", "kind": "files"}).json()
+    c.post(f"/api/datasources/{ks['id']}/files", headers=H, files=_shop_files())
+    assert (config.DATASETS_DIR / str(ks["id"])).exists()
+    c.put(f"/api/datasources/{ks['id']}", headers=H, json={"name": "Copies then not", "kind": "files", "keep_files": False})
+    assert not (config.DATASETS_DIR / str(ks["id"])).exists()
+    for x in (oid,):
+        c.delete(f"/api/ontologies/{x}", headers=H)
+    for x in (fs["id"], ks["id"]):
+        c.delete(f"/api/datasources/{x}", headers=H)

@@ -22,7 +22,7 @@ def _summary(db: Session, ds: DataSource, lvl: str) -> dict:
     return {"id": ds.id, "name": ds.name, "description": ds.description, "kind": ds.kind, "owner": ds.owner_email, "visibility": ds.visibility,
             "level": lvl, "status": ds.status, "error": ds.error, "notes": ds.notes or [], "tables": counts.get("table", 0),
             "documents": counts.get("document", 0), "documentation": ds.documentation, "sample_values": ds.sample_values, "personal_samples": ds.personal_samples,
-            "graph_personal": bool(ds.graph_personal), "refreshed_at": ds.refreshed_at.isoformat() if ds.refreshed_at else None,
+            "graph_personal": bool(ds.graph_personal), "keep_files": ds.keep_files is not False, "refreshed_at": ds.refreshed_at.isoformat() if ds.refreshed_at else None,
             "used_by": db.scalar(select(func.count(OntologyDataSource.id)).where(OntologyDataSource.data_source_id == ds.id)),
             "connection": {k: cfg.get(k, "") for k in DB_PUBLIC} | {"has_password": bool(cfg.get("password"))} if cfg else None,
             "db_label": f"{sources.DB_TYPES.get(cfg.get('db_type'), {}).get('label', '')} {cfg.get('database', '')} on {cfg.get('host', '')}".strip() if cfg else ""}
@@ -60,6 +60,7 @@ class SourceIn(BaseModel):
     sample_values: bool = True
     personal_samples: bool = False
     graph_personal: bool | None = None   # personal columns may be loaded into knowledge graphs; None on update = keep
+    keep_files: bool | None = None       # keep a copy of uploaded datasets on the server; None on update = keep
 
 
 def _apply(ds: DataSource, body: SourceIn, creating: bool):
@@ -75,6 +76,8 @@ def _apply(ds: DataSource, body: SourceIn, creating: bool):
     ds.sample_values, ds.personal_samples = body.sample_values, body.personal_samples
     if body.graph_personal is not None:
         ds.graph_personal = body.graph_personal
+    if body.keep_files is not None:
+        ds.keep_files = body.keep_files
     if ds.kind == "database":
         if body.db_type not in sources.DB_TYPES or not body.host.strip() or not body.database.strip():
             raise HTTPException(400, "Choose the database type and enter the host and the database name.")
@@ -130,7 +133,12 @@ def get_source(dsid: int, user: User = Depends(current_user), db: Session = Depe
 def update_source(dsid: int, body: SourceIn, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
     ds = dsrc.get(db, user, dsid, "manage")
     before = (ds.sample_values, ds.personal_samples)
+    kept_before = ds.keep_files is not False
     _apply(ds, body, False)
+    if kept_before and ds.keep_files is False:                    # the copies kept so far are deleted now
+        for i in db.scalars(select(DataSourceItem).where(DataSourceItem.data_source_id == ds.id)):
+            i.stored = ""
+        dsrc.forget_files(db, ds)
     audit(db, request, user, "datasource.updated", ds.name, f"visibility={ds.visibility} samples={ds.sample_values} personal={ds.personal_samples} graph_personal={bool(ds.graph_personal)}")
     db.commit()
     out = _summary(db, ds, ds.my_level)

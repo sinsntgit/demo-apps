@@ -502,6 +502,10 @@ class _Reader:
                 cols, rows, total = self._sql(dsrc._url(cfg), item.name, schema)
             else:
                 path = dsrc.stored_path(item)
+                if not path and ds.keep_files is False:
+                    raise GraphError(f"The data source “{ds.name}” does not keep a copy of uploaded files on this server, so the rows of "
+                                     f"“{item.file_name or item.name}” cannot be loaded. Its owner can switch “Keep a copy of uploaded datasets” "
+                                     "on in its Settings and upload the file again.")
                 if not path:
                     raise GraphError(f"“{item.file_name or item.name}” was uploaded before version 1.7, when uploaded files were not kept. "
                                      f"Upload it again on the data source “{ds.name}” (same name: it replaces the old one), then build again.")
@@ -611,8 +615,9 @@ def _fold(x: str) -> str:
 
 
 # ---- building ---------------------------------------------------------------------------------------
-def build(db, o, rec: KnowledgeGraph, cap: int, stage) -> dict:
-    """Read the mapped rows into a new store; swap it in. -> stats"""
+def build(db, o, rec: KnowledgeGraph, cap: int, stage, live: bool = False):
+    """Read the mapped rows into a new store; swap it in. -> stats.
+    live=True: the graph is made in memory only and nothing is written to disk -> (stats, N-Triples bytes)."""
     import pyoxigraph as px
     from . import exports
     t0 = time.time()
@@ -627,13 +632,14 @@ def build(db, o, rec: KnowledgeGraph, cap: int, stage) -> dict:
     ns, base = c["meta"]["namespace"], data_base(c)
     by_id = {m["id"]: m for m in maps}
     folder = f"{o.id}-{uuid.uuid4().hex[:10]}"
-    path = config.GRAPHS_DIR / folder
-    path.mkdir(parents=True, exist_ok=True)
+    path = None if live else config.GRAPHS_DIR / folder
+    if path:
+        path.mkdir(parents=True, exist_ok=True)
     reader = _Reader(db, cap)
     notes, tables, read = [], [], {}
     store = None
     try:
-        store = px.Store(str(path))
+        store = px.Store() if live else px.Store(str(path))
         store.load(exports.graph(c, o.version).serialize(format="nt").encode("utf-8"), px.RdfFormat.N_TRIPLES)
         needed = list(dict.fromkeys([m["item"] for m in maps] + [ln["link_item"] for m in maps for ln in m["links"] if ln["link_item"]]))
         for n, item_id in enumerate(needed):
@@ -831,7 +837,7 @@ def build(db, o, rec: KnowledgeGraph, cap: int, stage) -> dict:
         if docs_e:                       # facts extracted from documents and accepted by a person (kgdocs.py)
             stage("Loading the facts accepted from documents", 90)
             derived, alt = T("http://www.w3.org/ns/prov#wasDerivedFrom"), T("http://www.w3.org/2004/02/skos/core#altLabel")
-            live = {e["id"] for e in docs_e}
+            accepted_ids = {e["id"] for e in docs_e}
             for k, d in ext.get("documents", {}).items():
                 add(T(f"{base}document/{k}"), label, px.Literal(d["name"]))
             for e in docs_e:
@@ -853,13 +859,13 @@ def build(db, o, rec: KnowledgeGraph, cap: int, stage) -> dict:
                             add(s_, prop_node[pid], lit)
                             counts_p[pid] = counts_p.get(pid, 0) + 1
             for r in ext.get("relations", []):
-                if r["status"] != "accepted" or r["p"] not in ix["props"] or r["s"] not in live:
+                if r["status"] != "accepted" or r["p"] not in ix["props"] or r["s"] not in accepted_ids:
                     continue
                 if r["o"].startswith("ind:"):
                     if r["o"][4:] not in ix["individuals"]:
                         continue
                     o_ = T(ns + r["o"][4:])
-                elif r["o"] in live:
+                elif r["o"] in accepted_ids:
                     o_ = T(f"{base}doc/{r['o']}")
                 else:
                     continue
@@ -876,17 +882,30 @@ def build(db, o, rec: KnowledgeGraph, cap: int, stage) -> dict:
         if total[0] >= MAX_TRIPLES:
             notes.append(f"The graph reached its size limit of {MAX_TRIPLES:,} facts; the rest was not loaded.")
         stage("Saving the graph", 95)
-        store.flush()
+        nt = None
+        if live:
+            import io
+            buf = io.BytesIO()
+            store.dump(buf, px.RdfFormat.N_TRIPLES, from_graph=px.DefaultGraph())
+            nt = buf.getvalue()
+        else:
+            store.flush()
     except Exception:
         reader.close()
         store = None
         gc.collect()
-        shutil.rmtree(path, ignore_errors=True)
+        if path:
+            shutil.rmtree(path, ignore_errors=True)
         raise
     reader.close()
     store = None
     gc.collect()
     old = rec.store
+    if live:                                   # nothing kept on disk; a stored copy from before goes
+        folder = ""
+        for m in per_map:                      # example values are data: in live mode they are not kept either
+            for v in m.get("values", {}).values():
+                v["examples"] = []
     rec.store, rec.status, rec.error = folder, "ready", ""
     rec.built_at, rec.built_version = now(), o.version
     doc_keys = {m["doc"] for e in docs_e for m in e["mentions"]}
@@ -898,10 +917,11 @@ def build(db, o, rec: KnowledgeGraph, cap: int, stage) -> dict:
              "filled": {p: len(v) for p, v in filled.items() if p in ix["props"]},
              "documents": {"entities": len(docs_e), "relations": doc_rel, "documents": len(doc_keys)}, "maps": per_map, "notes": notes, "problems": problems,
              "seconds": round(time.time() - t0, 1), "rows_per_table": cap}
+    stats["live"] = live
     rec.stats = stats
     if old and old != folder:
         shutil.rmtree(config.GRAPHS_DIR / old, ignore_errors=True)   # a query still reading it (Windows) keeps it: cleaned at start-up
-    return stats
+    return (stats, nt) if live else stats
 
 
 def drop(db, oid: int):
@@ -919,7 +939,7 @@ def cleanup(db):
         if p.is_dir() and p.name not in live:
             shutil.rmtree(p, ignore_errors=True)
     for rec in db.scalars(select(KnowledgeGraph).where(KnowledgeGraph.status == "building")):
-        rec.status = "ready" if rec.store else "none"
+        rec.status = "ready" if rec.store or (is_live(rec) and rec.built_at) else "none"
     db.commit()
 
 
@@ -937,30 +957,39 @@ def check_query(sparql: str) -> str:
     return q
 
 
+def is_live(rec) -> bool:
+    return bool(rec) and (rec.storage or "stored") == "live"
+
+
 def run_query(rec: KnowledgeGraph, c: dict, sparql: str, seconds: int, limit: int = CONSOLE_ROWS, picture: bool = True, focus: list | None = None) -> dict:
-    if not rec or rec.status != "ready" or not rec.store:
+    live = is_live(rec)
+    if not rec or rec.status != "ready" or (not live and not rec.store):
         raise GraphError("The knowledge graph has not been built yet.")
     q = check_query(sparql)
-    store = config.GRAPHS_DIR / rec.store
-    if not store.is_dir():
-        raise GraphError("The knowledge graph's files are missing. Build it again.")
-    req = {"store": str(store), "query": q, "prefixes": prefixes(c), "limit": limit,
+    data = b""
+    if live:
+        data = live_data(rec.ontology_id)              # read from the sources now (or from the short in-memory cache)
+        store = None
+    else:
+        store = config.GRAPHS_DIR / rec.store
+        if not store.is_dir():
+            raise GraphError("The knowledge graph's files are missing. Build it again.")
+    req = {"store": str(store) if store else "", "inline": live, "query": q, "prefixes": prefixes(c), "limit": limit,
            "picture": {"data": data_base(c), "max": PICTURE_RECORDS, "focus": focus} if picture else None}
     if not _queries.acquire(timeout=30):
         raise GraphError("Too many queries are running at once. Try again in a moment.")
     t0 = time.time()
     try:
-        proc = subprocess.run([sys.executable, str(WORKER)], input=json.dumps(req), capture_output=True, text=True, timeout=seconds,
-                              encoding="utf-8")
+        proc = subprocess.run([sys.executable, str(WORKER)], input=json.dumps(req).encode("utf-8") + b"\n" + data, capture_output=True, timeout=seconds)
     except subprocess.TimeoutExpired:
         raise GraphError(f"The query took longer than {seconds} seconds and was stopped. Narrow it down (fewer records, a LIMIT, "
                          "fewer optional parts), or ask an administrator to raise the time limit.")
     finally:
         _queries.release()
     try:
-        out = json.loads(proc.stdout)
+        out = json.loads(proc.stdout.decode("utf-8"))
     except ValueError:
-        log.error("Knowledge-graph query worker failed: %s", (proc.stderr or "")[-2000:])
+        log.error("Knowledge-graph query worker failed: %s", proc.stderr.decode("utf-8", "replace")[-2000:])
         raise GraphError("The query could not be run (the details are in the server log).")
     if out.get("error"):
         lead = {"syntax": "The query is not valid SPARQL: ", "run": "The query failed: "}.get(out["error"], "")
@@ -1046,10 +1075,14 @@ def record_view(rec, c: dict, iri: str, seconds: int) -> dict:
 def dump_turtle(rec) -> bytes:
     """The whole graph - ontology and records - as Turtle. Opened read-only and closed again at once."""
     import pyoxigraph as px
-    path = config.GRAPHS_DIR / (rec.store or "")
-    if not rec.store or not path.is_dir():
-        raise GraphError("The knowledge graph has not been built yet.")
-    store = px.Store.read_only(str(path))
+    if is_live(rec):
+        store = px.Store()
+        store.load(live_data(rec.ontology_id), px.RdfFormat.N_TRIPLES)
+    else:
+        path = config.GRAPHS_DIR / (rec.store or "")
+        if not rec.store or not path.is_dir():
+            raise GraphError("The knowledge graph has not been built yet.")
+        store = px.Store.read_only(str(path))
     try:
         import io
         buf = io.BytesIO()
@@ -1184,3 +1217,95 @@ def without_data(c: dict, stats: dict, ids) -> list[dict]:
         elif x in ix["props"] and not stats.get("properties", {}).get(x):
             out.append({"id": x, "label": ix["props"][x]["label"], "type": ix["props"][x]["kind"] + "_property"})
     return out
+
+
+# ---- live graphs: fetched from the sources when needed, held in memory only ----------------------------------
+_LIVE: dict = {}                # ontology id -> {"at": time, "key": (...), "nt": bytes}
+_LIVE_LOCKS: dict = {}
+_LIVE_GUARD = threading.Lock()
+
+
+def _live_key(o, rec) -> tuple:
+    return (o.version, str(rec.mapping_changed_at), json.dumps([[e["id"], e["status"]] for e in (rec.extracted or {}).get("entities", [])])[:100000])
+
+
+def remember(oid: int, key: tuple, nt: bytes, minutes: int):
+    with _LIVE_GUARD:
+        if minutes > 0:
+            _LIVE[oid] = {"at": time.time(), "key": key, "nt": nt}
+        else:
+            _LIVE.pop(oid, None)
+
+
+def forget_live(oid: int):
+    with _LIVE_GUARD:
+        _LIVE.pop(oid, None)
+
+
+def live_data(oid: int) -> bytes:
+    """The graph of a live knowledge graph as N-Triples: read from the data sources now, unless a copy fetched less than
+    `live_minutes` ago is still in memory. Nothing of it is written to disk."""
+    from .db import SessionLocal
+    from .deps import get_settings
+    from .models import Ontology
+    with _LIVE_GUARD:
+        lock = _LIVE_LOCKS.setdefault(oid, threading.Lock())
+    with lock, SessionLocal() as db:                   # one fetch at a time per graph; others wait and reuse it
+        rec, o = record(db, oid), db.get(Ontology, oid)
+        if not rec or not o or not o.content:
+            raise GraphError("The knowledge graph is gone.")
+        key, minutes = _live_key(o, rec), int(rec.live_minutes if rec.live_minutes is not None else 10)
+        hit = _LIVE.get(oid)
+        if hit and hit["key"] == key and time.time() - hit["at"] < minutes * 60:
+            return hit["nt"]
+        stats, nt = build(db, o, rec, int(get_settings(db)["graph_rows_per_table"]), lambda *a: None, live=True)
+        db.commit()                                    # the counts and "fetched at" are kept; the data is not
+        remember(oid, key, nt, minutes)
+        return nt
+
+
+def live_cache_key(db, oid: int):
+    from .models import Ontology
+    rec, o = record(db, oid), db.get(Ontology, oid)
+    return _live_key(o, rec) if rec and o else None
+
+
+# ---- overview picture ----------------------------------------------------------------------------------
+def overview(c: dict, rec) -> dict | None:
+    """The graph at class level: each class that holds records, with how many, and the links between them with how many."""
+    import copy
+    from . import layout
+    st = (rec.stats if rec else None) or {}
+    if not st.get("classes"):
+        return None
+    ix = onto.index(c)
+    direct = {m["class"] for m in (rec.mapping or {}).get("maps", [])} | \
+             {e["class"] for e in (rec.extracted or {}).get("entities", []) if e["status"] == "accepted"}
+    ids = [k["id"] for k in c["classes"] if st["classes"].get(k["id"]) and (k["id"] in direct or not direct)]
+    if not ids:
+        return None
+    c2 = copy.deepcopy(c)
+    for k in c2["classes"]:
+        if k["id"] in ids:
+            k["label"] = f"{k['label']} · {st['classes'][k['id']]:,}"
+    props = []
+    for p in c2["properties"]:
+        n = st["properties"].get(p["id"], 0)
+        if p["kind"] == "object" and n:
+            p["label"] = f"{p['label']} ({n:,})"
+            props.append(p["id"])
+    # a link stated on a parent class (e.g. Party) is drawn from the class that actually holds the records
+    for p in list(c2["properties"]):
+        if p["id"] in props and p["domain"] not in ids:
+            for k in ids:
+                if p["domain"] in onto.ancestors(ix, k):
+                    c2["properties"].append({**p, "id": f"{p['id']}__{k}", "domain": k})
+                    props.append(f"{p['id']}__{k}")
+        if p["id"] in props and p["kind"] == "object" and p["range"] not in ids:
+            for k in ids:
+                if p["range"] in onto.ancestors(ix, k):
+                    c2["properties"].append({**p, "id": f"{p['id']}__to_{k}", "range": k})
+                    props.append(f"{p['id']}__to_{k}")
+    spec = layout.relations(c2, ids, prop_ids=props, attrs=False)
+    spec["kind"] = "overview"
+    return spec

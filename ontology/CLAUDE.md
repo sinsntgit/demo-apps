@@ -42,6 +42,9 @@ Turtle / JSON-LD / JSON. Roles: `viewer` (read, export, test) · `ontologist` (c
    `kg.describe` (which classes have records, which properties hold values), nothing more. Records reach a person
    only through `graph.visible_data` / `_may_see`: they must be able to use every data source the graph was built from.
    Queries run in `kg_worker.py`, a separate process with a time limit, on a store opened read-only; SERVICE is refused.
+   **Live graphs** (`KnowledgeGraph.storage == "live"`) write nothing to disk: `kg.live_data` builds the graph in memory
+   (`build(..., live=True)`), keeps it at most `live_minutes` in `kg._LIVE`, and passes it to the worker through stdin.
+   Stats of a live graph keep counts, never example values. `DataSource.keep_files = False`: uploaded datasets are not kept.
 6. **`builder.py` is the only place content is assembled for a model.** Source material and user text are wrapped in
    tags and described as material, not instructions. Nothing is truncated silently — what was not read is reported.
 7. **Secrets are encrypted at rest** (`security.encrypt`) and never returned by an API.
@@ -131,7 +134,8 @@ range, cardinality, inverse, derived_from), `individuals[]`, `rules[]` (kind `di
 15. Jobs of kind `graph` call no model (`builder.NO_MODEL`): no AI slot, excluded from the AI usage dashboard. The test job
     commits the design result before answering from the data, so a failure there never loses the test. `_job()` drops a result
     key named `proposed` — do not use that name in a job result.
-16. Scheduled rebuilds: `routers/graph.run_due` is called every minute by a thread started in `main.lifespan`; a rebuild runs as the
+16. `kg.build` returns a tuple `(stats, n_triples)` when `live=True`; do not reuse the name `live` inside it.
+    Scheduled rebuilds: `routers/graph.run_due` is called every minute by a thread started in `main.lifespan`; a rebuild runs as the
     person who set it up (`refresh_user_id`) and is switched off when they lost access. A summary dict must not use the key
     `proposed` either (it travels in job results) - hence `to_review`.
 17. A pyoxigraph store left open blocks deleting its folder on Windows; old stores are removed after each build and at start-up

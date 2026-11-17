@@ -693,7 +693,7 @@ def run(job_id: int):
                 from . import kg
                 rec = kg.record(db, job.ontology_id)
                 if rec and rec.status == "building":
-                    rec.status = "ready" if rec.store else "none"
+                    rec.status = "ready" if rec.store or (kg.is_live(rec) and rec.built_at) else "none"
                     rec.error = job.error
             if job.status == "error":
                 o = db.get(Ontology, job.ontology_id) if job.ontology_id else None
@@ -974,7 +974,12 @@ def _graph(ctx: Ctx, o: Ontology, cfg: dict):
     rec.status = "building"
     ctx.stage("Preparing", 2)
     try:
-        stats = kg.build(ctx.db, o, rec, int(cfg["graph_rows_per_table"]), ctx.stage)
+        if kg.is_live(rec):                    # live: fetched to check the mapping and count; held in memory, not stored
+            key = kg.live_cache_key(ctx.db, o.id)
+            stats, nt = kg.build(ctx.db, o, rec, int(cfg["graph_rows_per_table"]), ctx.stage, live=True)
+            kg.remember(o.id, key, nt, int(rec.live_minutes if rec.live_minutes is not None else 10))
+        else:
+            stats = kg.build(ctx.db, o, rec, int(cfg["graph_rows_per_table"]), ctx.stage)
     except kg.GraphError as e:
         raise Stop(str(e))
     rec.built_by = ctx.job.user_email

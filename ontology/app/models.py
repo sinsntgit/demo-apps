@@ -121,6 +121,7 @@ class DataSource(Base):
     documentation: Mapped[str] = mapped_column(Text, default="")             # what the data means: glossary, rules, data dictionary - by people
     sample_values: Mapped[bool] = mapped_column(Boolean, default=True)        # sample values may go to the AI model
     personal_samples: Mapped[bool] = mapped_column(Boolean, default=False)    # ...including columns that look like personal data
+    keep_files: Mapped[Optional[bool]] = mapped_column(Boolean, default=True, nullable=True)   # keep a copy of uploaded datasets on the server
     graph_personal: Mapped[Optional[bool]] = mapped_column(Boolean, default=False, nullable=True)  # personal columns may be loaded into knowledge graphs
     status: Mapped[str] = mapped_column(String(20), default="empty")          # empty | ready | error
     error: Mapped[str] = mapped_column(Text, default="")
@@ -187,6 +188,8 @@ class KnowledgeGraph(Base):
     refresh: Mapped[Optional[str]] = mapped_column(String(20), default="", nullable=True)   # "" | daily | weekly - scheduled rebuild
     refresh_user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)          # whose access a scheduled rebuild runs with
     next_refresh_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    storage: Mapped[Optional[str]] = mapped_column(String(10), default="stored", nullable=True)   # stored (a copy on this server) | live (fetched when needed, memory only)
+    live_minutes: Mapped[Optional[int]] = mapped_column(Integer, default=10, nullable=True)      # live: how long a fetched graph is reused, in memory
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 

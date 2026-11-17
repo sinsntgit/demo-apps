@@ -182,6 +182,7 @@ Uploading a file with the same name again replaces it and keeps the descriptions
 <li><b>Also for columns that look like personal data</b> (off by default).</li>
 <li>An administrator can stop all data sources sending values: Admin › Settings › Data sources.</li>
 <li><b>Access</b>: a data source is private to its owner and administrators until shared with named ontologists or with everyone who builds ontologies. Those people can build from it and read its profiles; only the owner and administrators can change, re-read or delete it. Viewers do not see data sources. If an ontology uses a data source someone has no access to, a build by that person is refused and says which one.</li>
+<li><b>Keep a copy of uploaded datasets on this server</b> (on by default, files only): needed to build knowledge graphs from their rows. Switching it off deletes the copies kept so far.</li>
 <li><b>Load personal data into knowledge graphs</b> (off by default): whether columns that look like personal data are loaded when a <a href="#/help/graph">knowledge graph</a> is built from this data source.</li>
 <li>Deleting a data source unlinks it from its ontologies; what was already built stays.</li>
 </ul>
@@ -344,6 +345,25 @@ Uploading a file with the same name again replaces it and keeps the descriptions
 <li>The graph is a copy taken at build time. When the data, the mapping or the ontology change, the tab says so — press <b>↻ Build again from the data</b>.</li>
 </ul>
 <p><b>What is in the graph</b> lists the records per class and the values per property, and everything worth checking: rows without an identifier, repeated identifiers, code values that match none of the ontology's controlled values (with examples), links pointing to records that are not there, values that do not fit their type, personal columns left out. These are usually data-quality findings, or mapping mistakes to correct.</p>
+<h3>Seeing the graph</h3>
+<p>Once it is built, the Knowledge graph tab shows it in four ways:</p>
+<ul>
+<li><b>The graph at a glance</b> — every class that holds records, with how many, and the relationships between them, with how many links. Click a box to list that class's records in the explorer.</li>
+<li><b>Explore records</b> — find a record, see its values and linked records as a picture, and click through from record to record (see below).</li>
+<li><b>Ask the graph</b> — a query and a picture of the records behind its answer.</li>
+<li><b>Test bed</b> — a use case answered from the data, with the records behind the answer.</li>
+</ul>
+<p>For very large graphs or other kinds of pictures, <b>⬇ Graph (Turtle)</b> loads into graph tools such as GraphDB, Stardog, Neo4j (with its RDF plug-in) or Gephi.</p>
+<figure><img src="/static/help/img/graph-overview.png" alt="The graph at a glance"><figcaption>The graph at a glance: classes with their records and the links between them.</figcaption></figure>
+<h3>Where the data lives: a copy on this server, or live</h3>
+<p>Under <b>Where the data lives</b> (people who can edit the ontology and use its data sources):</p>
+<ul>
+<li><b>A copy on this server</b> (the default) — building reads the data sources once and keeps the records in the graph's store on this server. Questions are fast; the data is as it was at the last build. Build again, or schedule nightly or weekly rebuilds.</li>
+<li><b>Live from the sources — nothing kept on this server</b> — no copy is written. Each time the graph is used — a question in the console, a test-bed answer, a record in the explorer, a download — the application reads the databases at that moment, makes the graph in memory, answers, and discards it. Answers are always current. It is slower (the mapped tables are read each time, up to the row limit per table) and puts load on the databases. <b>Reuse what was read for … minutes</b> keeps a fetched graph in memory, never on disk, so that several questions in a row do not each read the databases; 0 reads for every question.</li>
+</ul>
+<p>Switching to live deletes the stored copy and switches off scheduled rebuilds. In live mode the button reads <b>↻ Read the sources now</b>: it checks that the mapping works and updates the counts shown (the counts and the time of the last read are kept; example values are not). Switching back to a copy needs a build.</p>
+<p>Live mode is about databases. Uploaded datasets are themselves files on this server; their owner decides whether a copy is kept at all (<b>Keep a copy of uploaded datasets on this server</b> in the data source's Settings — when off, files are profiled when uploaded and then deleted, and their rows cannot be loaded into a graph). Facts accepted from documents are part of the graph's definition and are kept in either mode.</p>
+<figure><img src="/static/help/img/graph-live.png" alt="Choosing where the data lives"><figcaption>A live knowledge graph: nothing is stored; every question reads the sources.</figcaption></figure>
 <h3>From documents — judgments, opinions, contracts, policies</h3>
 <p>Records can also come from unstructured documents: the documents of the ontology's data sources, and the documents added on its own Sources tab. The <b>From documents</b> card lists them. Tick the ones to read and press <b>✨ Extract with AI</b>.</p>
 <p>The AI reads each document (a long one in parts of about 40,000 characters) and lists the <b>entities</b> it states — parties, courts, decisions, provisions, transactions… — with their attributes, and the <b>relationships</b> between them, using only this ontology's classes, properties and controlled values. For every item it must give the <b>exact words of the document</b> that state it. The application then checks every item before you see it:</p>
@@ -573,6 +593,8 @@ Uploading a file with the same name again replaces it and keeps the descriptions
 <tr><td>“connect() got an unexpected keyword argument …” when connecting a database</td><td>Fixed in version 1.5 (SQL Server was given a setting meant for PostgreSQL). Update the application.</td></tr>
 <tr><td>Knowledge graph: “… was uploaded before version 1.7, when uploaded files were not kept”</td><td>Upload that file again on its data source (same name — it replaces the old one and keeps your descriptions), then build again.</td></tr>
 <tr><td>Knowledge graph: the test bed says “The query found nothing”</td><td>Look at <b>No data in the knowledge graph for</b>: map those classes or properties on the Knowledge graph tab and build again. Then press ↻ Run again. Also check “What is in the graph” for code values that match no controlled value.</td></tr>
+<tr><td>Knowledge graph: “… was uploaded before version 1.7, when uploaded files were not kept” after uploading the files again</td><td>Upload them the way they were first uploaded: if the data source shows them as <code>folder/file.csv</code>, use <b>📁 Choose a folder</b> and pick that folder, so the names match and the old tables are replaced. Files chosen one by one arrive without the folder name and become new tables; delete those and upload the folder.</td></tr>
+<tr><td>A live knowledge graph is slow</td><td>Every question reads the mapped tables. Raise “Reuse what was read for … minutes”, lower the rows read per table (Admin › Settings), or switch to a copy on this server.</td></tr>
 <tr><td>Extracting from documents: many items “rejected by the application's checks” — “the quote … is not in the document”</td><td>The model paraphrased instead of copying the words, or the PDF's text is broken (a scanned page, odd spacing). Try a more capable model; check the document's text on its data source.</td></tr>
 <tr><td>Extracting from documents: the same party appears twice</td><td>Use <b>Merge</b> under “Possibly the same”. If it is not offered, the names differ too much to be sure — reject one, or extract again after accepting the other (the AI is then told about it).</td></tr>
 <tr><td>An ontology imported from OWL or Turtle lost its rules or modules</td><td>Fixed in version 1.8: rules, modules, cardinalities, namespace and scope now come back. Import the file again.</td></tr>

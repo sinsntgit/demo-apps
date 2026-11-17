@@ -1,7 +1,7 @@
 """Runs knowledge-graph queries in a separate process, so that a query that takes too long can be stopped
 (the application kills this process at the time limit). The store is opened read-only: nothing can be written.
 
-Reads one JSON request on stdin:  {"store": folder, "query": SPARQL, "prefixes": {}, "limit": rows to return,
+Reads one JSON request as the first line of stdin (for a live graph, followed by the graph as N-Triples):  {"store": folder, "query": SPARQL, "prefixes": {}, "limit": rows to return,
                                    "picture": {"data": IRI prefix of records, "max": records} | null}
 and writes one JSON answer on stdout. Imports nothing from the application.
 """
@@ -54,10 +54,16 @@ def picture(px, store, focus: list, data: str, most: int) -> dict:
 
 
 def main():
-    req = json.loads(sys.stdin.read())
+    raw = sys.stdin.buffer.read()
+    head, _, body = raw.partition(b"\n")              # first line: the request; the rest (live graphs): the graph itself
+    req = json.loads(head.decode("utf-8"))
     import pyoxigraph as px
     try:
-        store = px.Store.read_only(req["store"])
+        if req.get("inline"):                          # a live graph: held in memory only, never written to disk
+            store = px.Store()
+            store.load(body, px.RdfFormat.N_TRIPLES)
+        else:
+            store = px.Store.read_only(req["store"])
     except Exception as e:                                    # noqa: BLE001 - reported to the user plainly
         return {"error": "store", "message": f"The knowledge graph could not be opened ({type(e).__name__})."}
     try:

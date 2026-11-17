@@ -387,7 +387,7 @@ const waitJob = async () => { await page.waitForSelector('.joblog', { timeout: 8
     await page.selectOption('.card:has(h2:has-text("Ask the graph")) select', { label: 'Records of Order' });
     await page.click('button:text-is("▶ Run query")'); await page.waitForSelector('.card:has(h2:has-text("Ask the graph")) .dg-svg .dg-node');
     const res = await page.innerText('.card:has(h2:has-text("Ask the graph"))');
-    ok('a console query returns rows and a picture of the records', res.includes('O-0001') && (await drawn('.dg-svg')) > 5);
+    ok('a console query returns rows and a picture of the records', res.includes('O-0001') && (await drawn('#graph-console .dg-svg')) > 5);
     await page.locator('.card:has(h2:has-text("Ask the graph")) .dg-svg').scrollIntoViewIfNeeded(); await shot('graph-console');
     await page.click('.tabs button:text-is("Test bed")'); await page.waitForSelector('label:has-text("Also answer it from the knowledge graph") input:checked');
     await page.fill('textarea', 'Show orders by customer with their totals and status');
@@ -397,6 +397,20 @@ const waitJob = async () => { await page.waitForSelector('.joblog', { timeout: 8
     ok('the records behind the answer are drawn', (await drawn('.dg-svg')) > 5);
     await page.locator('.card:has(h3:text-is("Answer from your data"))').last().evaluate(e => e.scrollIntoView()); await shot('test-data-answer');
     ok('the history shows the answer from the data', (await page.innerText('table:has(th:text-is("From the data"))')).includes('Answered from the data'));
+    await page.click('.tabs button:text-is("Knowledge graph")'); await page.waitForSelector('h2:text-is("The graph at a glance")');
+    const ov = await page.innerText('.card:has(h2:text-is("The graph at a glance"))');
+    ok('the overview shows each class with its number of records', ov.includes('Order · 80') && ov.includes('Customer · 30'), ov.replace(/\n/g, ' ').slice(0, 120));
+    await page.locator('.card:has(h2:text-is("The graph at a glance"))').evaluate(e => e.scrollIntoView()); await shot('graph-overview');
+    await page.locator('.card:has(h2:text-is("The graph at a glance")) .dg-node[data-id="Customer"]').click();
+    await page.waitForSelector('.card:has(h2:text-is("Explore records")) button:has-text("Customer 1")');
+    ok('clicking a class in the overview lists its records in the explorer', true);
+    await page.locator('label:has-text("Live from the sources") input').check();
+    await page.click('.modal button:text-is("Switch to live")'); await page.waitForSelector('.toast:has-text("Live: nothing is kept")');
+    await page.waitForSelector('.badge:text-is("Live — nothing stored")');
+    await page.selectOption('.card:has(h2:has-text("Ask the graph")) select', { label: 'Records of Order' });
+    await page.click('button:text-is("▶ Run query")'); await page.waitForSelector('.card:has(h2:has-text("Ask the graph")) td:has-text("O-0001")');
+    ok('a live graph answers by reading the sources', true);
+    await page.evaluate(() => window.scrollTo(0, 0)); await page.locator('text=Where the data lives').scrollIntoViewIfNeeded(); await shot('graph-live');
   });
 
   await step('knowledge graph from documents: extract, review, merge, build, explore', async () => {
