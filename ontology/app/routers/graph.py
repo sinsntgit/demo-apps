@@ -4,15 +4,22 @@ running queries on it - typed in the console or written by the AI for a test-bed
 Access: anyone who can view the ontology sees the mapping and the counts. The records themselves (query results,
 the picture of an answer, example values) only reach people who may use every data source the graph was built
 from. Changing the mapping and building need edit access to the ontology and use of its data sources."""
+import json
+from datetime import timedelta
+import logging
+import threading
+import time
+
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import builder, kg, security
-from ..db import get_db, now
-from ..deps import audit, current_user, get_ontology, get_settings
-from ..models import Job, TestRun, User
+from .. import builder, exports, kg, kgdocs, security
+from ..db import SessionLocal, get_db, now
+from ..deps import RANK, audit, current_user, get_ontology, get_settings, level
+from ..models import Job, KnowledgeGraph, Ontology, TestRun, User
 from .ontologies import _active_job, _get_test, _job, _launch, _model
 
 router = APIRouter(prefix="/api", tags=["knowledge graph"])
@@ -56,8 +63,9 @@ def _state(db, user, o) -> dict:
                                                    kg.data_access(db, user, [d.id for d in kg.linked(db, o.id)]))
     see = not blocked
     stats = (rec.stats if rec else None) or {}
-    job = db.scalar(select(Job).where(Job.ontology_id == o.id, Job.kind.in_(("graph", "map")), Job.status.in_(("queued", "running"))).order_by(Job.id.desc()))
-    last = db.scalar(select(Job).where(Job.ontology_id == o.id, Job.kind.in_(("graph", "map"))).order_by(Job.id.desc()))
+    kinds = ("graph", "map", "extract")
+    job = db.scalar(select(Job).where(Job.ontology_id == o.id, Job.kind.in_(kinds), Job.status.in_(("queued", "running"))).order_by(Job.id.desc()))
+    last = db.scalar(select(Job).where(Job.ontology_id == o.id, Job.kind.in_(kinds)).order_by(Job.id.desc()))
     stale = []
     if rec and rec.store:
         if rec.built_version != o.version:
@@ -72,6 +80,9 @@ def _state(db, user, o) -> dict:
             "can_see_data": see, "blocked": blocked, "can_edit": o.my_level in ("edit", "manage") and user.role != "viewer" and see,
             "job": _job(job) if job else None, "last_job": _job(last) if last and last.status in ("done", "error") else None,
             "prefixes": kg.prefixes(o.content) if o.content else {},
+            "documents": kgdocs.documents(db, o.id) if see else [],
+            "extracted": kgdocs.summary(rec.extracted) if rec and rec.extracted else None,
+            "refresh": (rec.refresh or "") if rec else "", "next_refresh_at": rec.next_refresh_at.isoformat() if rec and rec.next_refresh_at else None,
             "rows_per_table": int(get_settings(db)["graph_rows_per_table"])}
 
 
@@ -142,8 +153,8 @@ def build(oid: int, request: Request, user: User = Depends(current_user), db: Se
     _built(o)
     rec = kg.record(db, oid, create=True)
     _need_data(db, user, o, rec)
-    if not (rec.mapping or {}).get("maps"):
-        raise HTTPException(400, "Nothing is mapped yet: map at least one class to a table first.")
+    if not (rec.mapping or {}).get("maps") and not any(e["status"] == "accepted" for e in (rec.extracted or {}).get("entities", [])):
+        raise HTTPException(400, "Nothing to build from yet: map at least one class to a table, or accept facts extracted from documents.")
     if _active_job(db, oid):
         raise HTTPException(409, "A job is already running on this ontology. Wait for it to finish.")
     if not security.limiter.allow(f"graph:{user.id}", 20, 3600):
@@ -255,3 +266,236 @@ def visible_data(db, user, t: TestRun, data: dict | None) -> dict | None:
         return data
     return {"status": data.get("status"), "hidden": True, "explanation": data.get("explanation", ""), "sparql": data.get("sparql", ""),
             "no_data": data.get("no_data", []), "graph_built_at": data.get("graph_built_at")}
+
+
+# ---- facts from documents ----------------------------------------------------------------------------------
+class ExtractIn(BaseModel):
+    documents: list[str]
+    model_id: int | None = None
+
+
+@router.post("/ontologies/{oid}/graph/extract")
+def extract(oid: int, body: ExtractIn, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """The AI reads the chosen documents and proposes entities and relationships; every item is checked (kgdocs)."""
+    o = get_ontology(db, user, oid, "edit")
+    _built(o)
+    _need_data(db, user, o, kg.record(db, oid))
+    keys = list(dict.fromkeys(body.documents))
+    if not keys:
+        raise HTTPException(400, "Choose at least one document.")
+    if len(keys) > kgdocs.MAX_DOCS:
+        raise HTTPException(400, f"At most {kgdocs.MAX_DOCS} documents at a time.")
+    bad = [k for k in keys if not kgdocs.text_of(db, oid, k)]
+    if bad:
+        raise HTTPException(400, "Some of the chosen documents are not sources of this ontology.")
+    return _job(_launch(db, request, user, o, "extract", _model(db, body.model_id), {"documents": keys}))
+
+
+def _store_for(db, user, o, edit: bool = False):
+    rec = kg.record(db, o.id)
+    if edit:
+        _need_data(db, user, o, rec)
+    elif _may_see(db, user, rec) if rec else user.role == "viewer":
+        raise HTTPException(403, "The extracted facts come from documents of data sources you have no access to.")
+    if not rec or not rec.extracted:
+        raise HTTPException(404, "Nothing has been extracted from documents yet.")
+    return rec
+
+
+@router.get("/ontologies/{oid}/graph/extracted")
+def extracted(oid: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    o = get_ontology(db, user, oid)
+    rec = _store_for(db, user, o)
+    kgdocs.clean_against(o.content, rec.extracted)
+    return {**rec.extracted, "summary": kgdocs.summary(rec.extracted)}
+
+
+class StatusIn(BaseModel):
+    ids: list[str]
+    status: str
+
+
+@router.post("/ontologies/{oid}/graph/extracted/status")
+def set_status(oid: int, body: StatusIn, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Accept or reject extracted entities and relationships (only accepted ones go into the graph)."""
+    o = get_ontology(db, user, oid, "edit")
+    rec = _store_for(db, user, o, edit=True)
+    if body.status not in ("accepted", "rejected", "proposed"):
+        raise HTTPException(400, "Unknown status.")
+    store = json.loads(json.dumps(rec.extracted))
+    n = kgdocs.set_status(store, body.ids[:5000], body.status)
+    rec.extracted, rec.mapping_changed_at = store, now()
+    audit(db, request, user, f"graph.extracted_{body.status}", o.name, f"{n} item(s)")
+    db.commit()
+    return {"changed": n, "summary": kgdocs.summary(store)}
+
+
+class MergeIn(BaseModel):
+    keep: str
+    drop: str
+
+
+@router.post("/ontologies/{oid}/graph/extracted/merge")
+def merge_entities(oid: int, body: MergeIn, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    o = get_ontology(db, user, oid, "edit")
+    rec = _store_for(db, user, o, edit=True)
+    store = json.loads(json.dumps(rec.extracted))
+    names = {e["id"]: e["label"] for e in store["entities"]}
+    if not kgdocs.merge(o.content, store, body.keep, body.drop):
+        raise HTTPException(400, "These two cannot be merged (not found, or different kinds of thing).")
+    rec.extracted, rec.mapping_changed_at = store, now()
+    audit(db, request, user, "graph.extracted_merged", o.name, f"{names.get(body.drop)} into {names.get(body.keep)}")
+    db.commit()
+    return {"ok": True}
+
+
+class SuggestionIn(BaseModel):
+    a: str
+    b: str
+
+
+@router.post("/ontologies/{oid}/graph/extracted/dismiss")
+def dismiss(oid: int, body: SuggestionIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """A merge suggestion that is not the same thing."""
+    o = get_ontology(db, user, oid, "edit")
+    rec = _store_for(db, user, o, edit=True)
+    store = json.loads(json.dumps(rec.extracted))
+    store["suggestions"] = [x for x in store["suggestions"] if (x["a"], x["b"]) != (body.a, body.b)]
+    store.setdefault("dismissed", []).append([body.a, body.b])
+    rec.extracted = store
+    db.commit()
+    return {"ok": True}
+
+
+# ---- exploring records ---------------------------------------------------------------------------------------
+def _readable(db, user, oid):
+    o = get_ontology(db, user, oid)
+    rec = kg.record(db, oid)
+    if not rec or rec.status != "ready" or not rec.store:
+        raise HTTPException(400, "The knowledge graph has not been built yet.")
+    blocked = _may_see(db, user, rec)
+    if blocked:
+        raise HTTPException(403, "The knowledge graph holds data from data sources you have no access to: " + ", ".join(blocked) + ".")
+    if not security.limiter.allow(f"query:{user.id}", 120, 60):
+        raise HTTPException(429, "Too many requests in a minute. Wait a moment.")
+    return o, rec
+
+
+@router.get("/ontologies/{oid}/graph/records")
+def records(oid: int, q: str = "", cls: str = "", user: User = Depends(current_user), db: Session = Depends(get_db)):
+    o, rec = _readable(db, user, oid)
+    try:
+        return {"items": kg.search(rec, o.content, q, cls, int(get_settings(db)["graph_query_seconds"]))}
+    except kg.GraphError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.get("/ontologies/{oid}/graph/record")
+def record(oid: int, iri: str, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    o, rec = _readable(db, user, oid)
+    try:
+        out = kg.record_view(rec, o.content, iri, int(get_settings(db)["graph_query_seconds"]))
+    except kg.GraphError as e:
+        raise HTTPException(400, str(e))
+    audit(db, request, user, "graph.record_viewed", o.name, out["name"][:200])
+    db.commit()
+    return out
+
+
+# ---- downloads ------------------------------------------------------------------------------------------------
+@router.get("/ontologies/{oid}/graph/export/{fmt}")
+def export(oid: int, fmt: str, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """ttl: the whole graph with its records (needs access to the data); r2rml: the mapping (structure only)."""
+    if fmt not in ("ttl", "r2rml"):
+        raise HTTPException(404, "Unknown format")
+    if fmt == "ttl":
+        o, rec = _readable(db, user, oid)
+        try:
+            data = kg.dump_turtle(rec)
+        except kg.GraphError as e:
+            raise HTTPException(400, str(e))
+        name = exports.filename(o.name + " knowledge graph", "ttl")
+    else:
+        o = get_ontology(db, user, oid)
+        _built(o)
+        rec = kg.record(db, oid)
+        tables = kg.catalogue(db, oid)
+        mapping, _ = kg.clean_mapping(o.content, (rec.mapping if rec else None) or {}, tables)
+        if not mapping["maps"]:
+            raise HTTPException(400, "Nothing is mapped yet.")
+        data = kg.r2rml(o.content, mapping, tables).encode("utf-8")
+        name = exports.filename(o.name + " mapping r2rml", "ttl")
+    audit(db, request, user, f"graph.export_{fmt}", o.name)
+    db.commit()
+    return Response(data, media_type="text/turtle", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+# ---- scheduled rebuilds -----------------------------------------------------------------------------------------
+class RefreshIn(BaseModel):
+    refresh: str = ""
+
+
+@router.put("/ontologies/{oid}/graph/refresh")
+def set_refresh(oid: int, body: RefreshIn, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Rebuild the graph from the data every night or every week, with the access of the person who set it up."""
+    o = get_ontology(db, user, oid, "edit")
+    if body.refresh not in ("", "daily", "weekly"):
+        raise HTTPException(400, "Choose never, daily or weekly.")
+    rec = kg.record(db, oid, create=True)
+    _need_data(db, user, o, rec)
+    rec.refresh = body.refresh
+    rec.refresh_user_id = user.id if body.refresh else None
+    rec.next_refresh_at = kg.next_time(body.refresh)
+    audit(db, request, user, "graph.refresh_schedule", o.name, body.refresh or "never")
+    db.commit()
+    return _state(db, user, o)
+
+
+log = logging.getLogger("ontostudio")
+
+
+def run_due() -> int:
+    """Start the scheduled rebuilds that are due. A schedule whose owner lost access is switched off and says why."""
+    started = 0
+    with SessionLocal() as db:
+        for rec in kg.due(db):
+            o = db.get(Ontology, rec.ontology_id)
+            u = db.get(User, rec.refresh_user_id) if rec.refresh_user_id else None
+            reason = None
+            if not o or not o.content:
+                reason = "the ontology is gone"
+            elif not u or not u.is_active:
+                reason = "the person who set it up no longer has an active account"
+            elif RANK.get(level(db, u, o) or "", 0) < RANK["edit"] or u.role == "viewer":
+                reason = f"{u.email} can no longer edit the ontology"
+            elif kg.data_access(db, u, [d.id for d in kg.linked(db, o.id)] + list(rec.sources or [])):
+                reason = f"{u.email} no longer has access to all its data sources"
+            if reason:
+                rec.refresh, rec.next_refresh_at = "", None
+                rec.error = f"The scheduled rebuild was switched off: {reason}."
+                audit(db, None, u, "graph.refresh_stopped", o.name if o else str(rec.ontology_id), reason)
+                continue
+            rec.next_refresh_at = kg.next_time(rec.refresh)
+            if _active_job(db, o.id):
+                rec.next_refresh_at = now() + timedelta(hours=1)
+                continue
+            j = Job(kind="graph", ontology_id=o.id, ontology_name=o.name, user_id=u.id, user_email=u.email, model_id=None, model_label="",
+                    params={"scheduled": True}, stage="Waiting to start")
+            db.add(j)
+            audit(db, None, u, "graph.scheduled_build", o.name, rec.refresh)
+            db.commit()
+            builder.start(j.id)
+            started += 1
+        db.commit()
+    return started
+
+
+def start_scheduler():
+    def loop():
+        while True:
+            time.sleep(60)
+            try:
+                run_due()
+            except Exception:                                  # noqa: BLE001 - keep the scheduler alive; the error is logged
+                log.exception("Scheduled knowledge-graph rebuilds failed")
+    threading.Thread(target=loop, daemon=True, name="graph-scheduler").start()

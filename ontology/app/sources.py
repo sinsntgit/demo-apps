@@ -37,7 +37,7 @@ def extract(name: str, data: bytes) -> tuple[str, str, str]:
         if ext == "pdf":
             from pypdf import PdfReader
             pages = PdfReader(io.BytesIO(data)).pages
-            text = "\n\n".join((p.extract_text() or "") for p in pages)
+            text = "\n\f\n".join((p.extract_text() or "") for p in pages)      # a form feed between pages: facts can cite their page
             if len(text.strip()) < 20:
                 raise Unreadable("No text could be read - it looks like a scanned PDF (images only).")
             kind, note = "document", f"{len(pages)} pages"

@@ -344,10 +344,33 @@ Uploading a file with the same name again replaces it and keeps the descriptions
 <li>The graph is a copy taken at build time. When the data, the mapping or the ontology change, the tab says so — press <b>↻ Build again from the data</b>.</li>
 </ul>
 <p><b>What is in the graph</b> lists the records per class and the values per property, and everything worth checking: rows without an identifier, repeated identifiers, code values that match none of the ontology's controlled values (with examples), links pointing to records that are not there, values that do not fit their type, personal columns left out. These are usually data-quality findings, or mapping mistakes to correct.</p>
+<h3>From documents — judgments, opinions, contracts, policies</h3>
+<p>Records can also come from unstructured documents: the documents of the ontology's data sources, and the documents added on its own Sources tab. The <b>From documents</b> card lists them. Tick the ones to read and press <b>✨ Extract with AI</b>.</p>
+<p>The AI reads each document (a long one in parts of about 40,000 characters) and lists the <b>entities</b> it states — parties, courts, decisions, provisions, transactions… — with their attributes, and the <b>relationships</b> between them, using only this ontology's classes, properties and controlled values. For every item it must give the <b>exact words of the document</b> that state it. The application then checks every item before you see it:</p>
+<ul>
+<li>the class, property or controlled value must exist in the ontology, and a relationship must fit (its domain and range, subclasses included);</li>
+<li><b>the quoted words must really be in the document</b> — compared without regard to capitals, punctuation or line breaks. An item whose quote is not there is rejected: this is what keeps invented facts out;</li>
+<li>values are converted to the attribute's type (dates as dates, “Rs. 19,14,55,804” as 191455804); a value that does not fit is kept as text and marked ⚠.</li>
+</ul>
+<p>What fails is listed under <b>rejected by the application's checks</b>, with the reason. What the documents state but the ontology has no class or property for is listed under <b>the ontology has no place for</b> — a ready-made list of gaps.</p>
+<p><b>The same thing mentioned in several places becomes one entity.</b> Names are compared after removing differences such as capitals, punctuation, “M/s.”, and “Private Limited” versus “Pvt. Ltd.”; each mention keeps its quote and page. Names that are close but not certain — “High Court at Calcutta” and “Calcutta High Court” — are offered under <b>Possibly the same</b>: <b>Merge</b>, or <b>Not the same</b>. When a later document is read, the AI is told which entities are already known so it reuses them.</p>
+<figure><img src="/static/help/img/graph-documents.png" alt="Facts extracted from documents, to review"><figcaption>Extracted entities and relationships with the words and pages that state them, a possible duplicate, and what the checks rejected.</figcaption></figure>
+<p><b>Nothing goes into the graph until a person accepts it.</b> Filter by document and status, tick, and <b>✓ Accept ticked</b> or <b>✕ Reject ticked</b>; accepting a relationship also accepts the two entities it links. Then build the graph again. Reading a document again replaces what it proposed that was not yet accepted; what was accepted stays. In the graph, every entity keeps its other names and the documents it came from, and answers, the explorer and the console show the <b>document, page and quote</b> behind each record.</p>
+<p>The text of the documents is sent to the AI model you choose — use one your organisation allows for that material, or a self-hosted model.</p>
+<h3>Explore records</h3>
+<p>Once the graph is built, <b>Explore records</b> finds a record by name (or another name it is known by) and class, and shows its values, the records it is linked to, a picture of them, and — for records from documents — where they come from. Click a linked record or a box in the picture to open it; <b>← Back</b> returns.</p>
+<figure><img src="/static/help/img/graph-explorer.png" alt="Exploring a record"><figcaption>A record from a judgment: its values, the court, provision and party it is linked to, and the words of the document it comes from.</figcaption></figure>
 <h3>3. Ask it questions</h3>
 <p><b>Ask the graph (SPARQL)</b> runs a query and shows the rows and a picture of the records behind them. Pick an example to start from. Queries can only read — a query that tries to change the graph, or to call another server, is refused — and a query that runs longer than 20 seconds is stopped.</p>
 <figure><img src="/static/help/img/graph-console.png" alt="A query and the records behind it"><figcaption>A query: rows, and the records they come from with the records they link to.</figcaption></figure>
 <p>In the <b>Test bed</b>, tick <b>Also answer it from the knowledge graph</b>: after checking the ontology, the AI writes a query for the use case and the application runs it on your data — see <a href="#/help/testbed">Answer from your data</a>.</p>
+<h3>Downloads and scheduled rebuilds</h3>
+<ul>
+<li><b>⬇ Graph (Turtle)</b> — the ontology and all its records, to load into a triple store (GraphDB, Stardog, Neptune, Fuseki…). Only for people who may see the records.</li>
+<li><b>⬇ Mapping (R2RML)</b> — the mapping onto tables in the W3C R2RML standard, so other tools can produce the same graph from the databases. Matching code values to controlled values and joins through link tables cannot be said in R2RML; they are written as comments in the file.</li>
+<li><b>Rebuild from the data automatically</b> — never, every night (02:00, server time) or every week. The rebuild runs with the access of the person who set it up; if that person can no longer edit the ontology or use its data sources, the schedule switches itself off and the tab says why.</li>
+<li><b>Records with it</b> in “What is in the graph” is the share of a class's records that have each property — a quick view of how complete the data is.</li>
+</ul>
 <h3>Who sees the records</h3>
 <ul>
 <li>Only people who may use <b>every</b> data source the graph was built from see its records — in the console, in test results and in the examples of data problems. Everyone else who can open the ontology sees the mapping and the counts, and is told which data source they would need. Viewers see the design only.</li>
@@ -413,7 +436,7 @@ Uploading a file with the same name again replaces it and keeps the descriptions
 <tr><td><b>OWL (RDF/XML)</b></td><td>The ontology in the W3C standard format: classes, subclass links, object and datatype properties with domain and range, inverses, mandatory-property restrictions, “never overlap” axioms, individuals, labels, definitions, alignment to published terms.</td><td>Protégé, TopBraid, reasoners.</td></tr>
 <tr><td><b>Turtle (.ttl)</b></td><td>The same content in the compact Turtle syntax.</td><td>Triple stores and knowledge graphs (GraphDB, Stardog, Neptune, Fuseki).</td></tr>
 <tr><td><b>JSON-LD</b></td><td>The same content as linked-data JSON.</td><td>Web and API use.</td></tr>
-<tr><td><b>JSON</b></td><td>The application’s own complete format, including explanation, standards and use cases.</td><td>Backup; moving an ontology to another installation (Import file).</td></tr>
+<tr><td><b>JSON</b></td><td>The application’s own complete format, including explanation, standards and use cases.</td><td>Backup; moving an ontology to another installation (Import file). OWL and Turtle files from this application can also be imported and keep their modules and rules (since version 1.8); only the explanation beyond its summary and the use cases are lost.</td></tr>
 </table>
 <p>The PDF, PowerPoint and Excel are produced for the current version. OWL, Turtle and JSON of any earlier version can be downloaded from the Versions tab. Identifiers in OWL / Turtle start with the base namespace set by the administrator.</p>
 </section>
@@ -512,7 +535,7 @@ Uploading a file with the same name again replaces it and keeps the descriptions
 <li>from <a href="#/help/datasources">data sources</a>: each table's profile — row counts, types, roles, how many values are empty or distinct, ranges, references — your business descriptions, and, where the data source allows it, a few sample values per column and the value lists of code columns (never of columns that look like personal data unless the owner allows it). Statistics are computed on this server;</li>
 <li>entries from the built-in standards catalogue;</li>
 <li>the ontology itself; and, in the test bed, the use case you typed;</li>
-<li>to propose a <a href="#/help/graph">knowledge-graph</a> mapping: the table profiles, as for a build; to write a query for the test bed: which classes of the graph have records and which properties hold values — never the records.</li>
+<li>to propose a <a href="#/help/graph">knowledge-graph</a> mapping: the table profiles, as for a build; to extract facts from documents: the text of the documents you choose, with the ontology; to write a query for the test bed: which classes of the graph have records and which properties hold values — never the records.</li>
 </ul>
 <p>It never receives: whole tables or bulk rows (at most the sample values above), the records of a knowledge graph or the results of its queries, database passwords, other ontologies, user accounts, or API keys.</p>
 <p>If source documents contain confidential material, choose a model your organisation is allowed to send it to — or a <b>self-hosted model</b>, in which case nothing leaves your network. The application itself makes no other outside connections.</p>
@@ -550,6 +573,9 @@ Uploading a file with the same name again replaces it and keeps the descriptions
 <tr><td>“connect() got an unexpected keyword argument …” when connecting a database</td><td>Fixed in version 1.5 (SQL Server was given a setting meant for PostgreSQL). Update the application.</td></tr>
 <tr><td>Knowledge graph: “… was uploaded before version 1.7, when uploaded files were not kept”</td><td>Upload that file again on its data source (same name — it replaces the old one and keeps your descriptions), then build again.</td></tr>
 <tr><td>Knowledge graph: the test bed says “The query found nothing”</td><td>Look at <b>No data in the knowledge graph for</b>: map those classes or properties on the Knowledge graph tab and build again. Then press ↻ Run again. Also check “What is in the graph” for code values that match no controlled value.</td></tr>
+<tr><td>Extracting from documents: many items “rejected by the application's checks” — “the quote … is not in the document”</td><td>The model paraphrased instead of copying the words, or the PDF's text is broken (a scanned page, odd spacing). Try a more capable model; check the document's text on its data source.</td></tr>
+<tr><td>Extracting from documents: the same party appears twice</td><td>Use <b>Merge</b> under “Possibly the same”. If it is not offered, the names differ too much to be sure — reject one, or extract again after accepting the other (the AI is then told about it).</td></tr>
+<tr><td>An ontology imported from OWL or Turtle lost its rules or modules</td><td>Fixed in version 1.8: rules, modules, cardinalities, namespace and scope now come back. Import the file again.</td></tr>
 <tr><td>Knowledge graph: “The query took longer than 20 seconds”</td><td>Narrow the question (a LIMIT, fewer optional parts), or ask an administrator to raise the time limit in Settings.</td></tr>
 <tr><td>A data source shows “Not everything could be read”</td><td>The list names the tables. A table may be unreadable for the database user (grant SELECT), or the 150-second time limit for profiling was reached — those tables have their structure but no profile. Re-read, or leave large unneeded tables out.</td></tr>
 <tr><td>A join between two uploaded files was not found</td><td>Joins are inferred when a column is named after the other table and its key (<code>dealer_id</code> → <code>dealers.id</code>) and the values match. Rename the column, or describe the link in the column's business description.</td></tr>

@@ -17,6 +17,33 @@ REQUESTS: list[dict] = []
 def answer(prompt: str) -> dict | str:
     if prompt.strip() == "ping":
         return "OK"
+    if "You are populating a knowledge graph from a document" in prompt:
+        doc = prompt.split('DOCUMENT "')[1].split('"')[0]
+        if "coats-judgment" in doc:
+            return {"entities": [
+                {"id": "e1", "class": "JudicialDecision", "label": "C.I.T., Kolkata-IV v. Coats of India Ltd.", "quote": "C.I.T., KOLKATA-IV Versus M/S. COATS OF INDIA LTD.",
+                 "attributes": {"hasDecisionDate": {"value": "2008-09-08", "quote": "Date: 8th September, 2008."},
+                                "amountInDispute": {"value": "Rs. 19,14,55,804", "quote": "surplus amount of Rs. 19,14,55,804"},
+                                "hasCaseName": {"value": "Made up", "quote": "a sentence that is nowhere in the judgment"}}},
+                {"id": "e2", "class": "Court", "label": "High Court at Calcutta", "quote": "IN THE HIGH COURT AT CALCUTTA"},
+                {"id": "e3", "class": "Taxpayer", "label": "Coats of India Ltd", "aliases": ["M/S. COATS OF INDIA LTD."], "quote": "M/S. COATS OF INDIA LTD."},
+                {"id": "e4", "class": "Provision", "label": "Section 47(iv), Income-tax Act, 1961", "quote": "Section 47(iv) of Income Tax Act"},
+                {"id": "e5", "class": "Unicorn", "label": "Something", "quote": "IN THE HIGH COURT AT CALCUTTA"},
+                {"id": "e6", "class": "Court", "label": "Supreme Court", "quote": "The Supreme Court decided this in 1990"}],
+                "relations": [
+                {"subject": "e1", "property": "decidedByCourt", "object": "e2", "quote": "IN THE HIGH COURT AT CALCUTTA"},
+                {"subject": "e1", "property": "interpretsResource", "object": "e4", "quote": "as per provision of Section 47(iv) of Income Tax Act"},
+                {"subject": "e1", "property": "hasDecisionOutcome", "object": "AssesseeFavoured", "quote": "Hence the appeal is not admitted."},
+                {"subject": "e1", "property": "involvesParty", "object": "e3", "quote": "C.I.T., KOLKATA-IV Versus M/S. COATS OF INDIA LTD."},
+                {"subject": "e2", "property": "decidedByCourt", "object": "e1", "quote": "IN THE HIGH COURT AT CALCUTTA"}],
+                "notes": ["The surplus credited to capital reserve has no place in the ontology."]}
+        if "coats-note" in doc:
+            known = re.findall(r"\n- (x\d+) \| Taxpayer \| ", prompt)
+            return {"entities": [
+                {"id": "e1", "class": "Taxpayer", "label": "Coats of India Limited", "quote": "Coats of India Limited won"},
+                {"id": "e2", "class": "Court", "label": "Calcutta High Court", "quote": "in the Calcutta High Court"}],
+                "relations": [], "notes": [], "registry_seen": known}
+        return {"entities": [], "relations": []}
     if "You are mapping an ontology onto the tables" in prompt:
         if "TABLE customers" not in prompt:
             return {"maps": [], "notes": ["No tables I recognise."]}

@@ -183,6 +183,10 @@ class KnowledgeGraph(Base):
     built_by: Mapped[str] = mapped_column(String(255), default="")
     sources: Mapped[list] = mapped_column(JSON, default=list)                 # data source ids the graph holds data of
     stats: Mapped[dict] = mapped_column(JSON, default=dict)                   # counts per class / property, tables read, notes
+    extracted: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)    # facts extracted from documents (kgdocs.py), with their review status
+    refresh: Mapped[Optional[str]] = mapped_column(String(20), default="", nullable=True)   # "" | daily | weekly - scheduled rebuild
+    refresh_user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)          # whose access a scheduled rebuild runs with
+    next_refresh_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 

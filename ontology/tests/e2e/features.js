@@ -399,6 +399,48 @@ const waitJob = async () => { await page.waitForSelector('.joblog', { timeout: 8
     ok('the history shows the answer from the data', (await page.innerText('table:has(th:text-is("From the data"))')).includes('Answered from the data'));
   });
 
+  await step('knowledge graph from documents: extract, review, merge, build, explore', async () => {
+    const LEGAL = {"format": "ontostudio-ontology", "meta": {"name": "Tax cases", "namespace": "https://example.org/ontology/tax-cases#", "prefix": "tax"}, "modules": [{"id": "Law", "name": "Law"}], "classes": [{"id": "Party", "label": "Party", "parent": null, "module": "Law", "definition": "A Party."}, {"id": "Organization", "label": "Organization", "parent": "Party", "module": "Law", "definition": "A Organization."}, {"id": "Taxpayer", "label": "Taxpayer", "parent": "Organization", "module": "Law", "definition": "A Taxpayer."}, {"id": "Court", "label": "Court", "parent": "Organization", "module": "Law", "definition": "A Court."}, {"id": "LegalResource", "label": "LegalResource", "parent": null, "module": "Law", "definition": "A LegalResource."}, {"id": "Act", "label": "Act", "parent": "LegalResource", "module": "Law", "definition": "A Act."}, {"id": "Provision", "label": "Provision", "parent": "LegalResource", "module": "Law", "definition": "A Provision."}, {"id": "JudicialDecision", "label": "JudicialDecision", "parent": "LegalResource", "module": "Law", "definition": "A JudicialDecision."}, {"id": "OpinionOutcome", "label": "OpinionOutcome", "parent": null, "module": "Law", "definition": "A OpinionOutcome."}], "properties": [{"id": "decidedByCourt", "kind": "object", "domain": "JudicialDecision", "range": "Court", "cardinality": "0..1"}, {"id": "interpretsResource", "kind": "object", "domain": "LegalResource", "range": "LegalResource", "inverse": "interpretedByResource"}, {"id": "interpretedByResource", "kind": "object", "domain": "LegalResource", "range": "LegalResource", "inverse": "interpretsResource"}, {"id": "involvesParty", "kind": "object", "domain": "JudicialDecision", "range": "Party"}, {"id": "hasDecisionOutcome", "kind": "object", "domain": "JudicialDecision", "range": "OpinionOutcome", "cardinality": "0..1"}, {"id": "hasCaseName", "kind": "data", "domain": "JudicialDecision", "range": "string"}, {"id": "hasDecisionDate", "kind": "data", "domain": "JudicialDecision", "range": "date"}, {"id": "amountInDispute", "kind": "data", "domain": "JudicialDecision", "range": "decimal"}], "individuals": [{"id": "AssesseeFavoured", "type": "OpinionOutcome", "label": "Assessee favoured"}, {"id": "RevenueFavoured", "type": "OpinionOutcome", "label": "Revenue favoured"}], "rules": [{"id": "R1", "kind": "constraint", "statement": "Every decision names its court."}]};
+    const JUDGMENT = "IN THE HIGH COURT AT CALCUTTA\nSpecial Jurisdiction (Income Tax)\nC.I.T., KOLKATA-IV Versus M/S. COATS OF INDIA LTD.\nDate: 8th September, 2008.\nThe only question which is tried to be pressed before us is as per provision of Section 47(iv) of Income Tax Act whether the transfer of capital asset by a company to its wholly subsidiary company could be regarded as transfer.\n\f\nIn the process of such transfer a surplus amount of Rs. 19,14,55,804/- was credited to the accounts of the assessee.\nHence the appeal is not admitted.\n";
+    const oid = await page.evaluate(async ([legal, judgment]) => {
+      const H = { 'X-Requested-With': 'fetch', 'Content-Type': 'application/json' };
+      const fd = new FormData(); fd.append('file', new Blob([JSON.stringify(legal)], { type: 'application/json' }), 'tax-cases.json');
+      const o = await (await fetch('/api/ontologies/import', { method: 'POST', headers: { 'X-Requested-With': 'fetch' }, body: fd })).json();
+      const ds = await (await fetch('/api/datasources', { method: 'POST', headers: H, body: JSON.stringify({ name: 'Case files', kind: 'files', description: 'Judgments and notes' }) })).json();
+      const f2 = new FormData();
+      f2.append('files', new Blob([judgment], { type: 'text/plain' }), 'coats-judgment.txt');
+      f2.append('files', new Blob(['# Note\nCoats of India Limited won in the Calcutta High Court on section 47(iv).'], { type: 'text/markdown' }), 'coats-note.md');
+      await fetch(`/api/datasources/${ds.id}/files`, { method: 'POST', headers: { 'X-Requested-With': 'fetch' }, body: f2 });
+      await fetch(`/api/ontologies/${o.id}/datasources`, { method: 'POST', headers: H, body: JSON.stringify({ data_source_id: ds.id }) });
+      return o.id;
+    }, [LEGAL, JUDGMENT]);
+    await page.goto(`${BASE}/#/o/${oid}/graph`); await page.waitForSelector('h2:text-is("From documents")');
+    await page.locator('.card:has(h2:text-is("From documents")) thead input[type=checkbox]').check();
+    await page.click('button:text-is("✨ Extract with AI")'); await page.click('.modal button:text-is("Extract")');
+    await waitJob(); await page.waitForSelector('h3:has-text("Entities (")', { timeout: 20000 });
+    const rev = await page.innerText('.card:has(h2:text-is("From documents"))');
+    ok('extracted entities are listed with their quotes and pages, to review', rev.includes('Coats of India Ltd') && rev.includes('p. 2') && rev.includes('to review'), rev.replace(/\n/g, ' ').slice(0, 160));
+    ok('a possible duplicate is offered for merging', rev.includes('Possibly the same') && rev.includes('Calcutta High Court'));
+    await page.locator('summary:has-text("rejected by the application")').click();
+    ok('what the checks rejected is listed with the reason', (await page.innerText('.card:has(h2:text-is("From documents"))')).includes('not in the document'));
+    await shot('graph-documents');
+    await page.click('button:has-text("Merge into")'); await page.waitForSelector('.toast:has-text("Merged.")');
+    await page.waitForSelector('h3:has-text("Entities (4)")');
+    await page.click('button:text-is("Tick all shown")'); await page.click('button:text-is("✓ Accept ticked")');
+    await page.waitForSelector('.toast:has-text("accepted")');
+    await page.waitForSelector('button:text-is("▶ Build the knowledge graph")'); await page.click('button:text-is("▶ Build the knowledge graph")'); await waitJob();
+    await page.waitForSelector('h2:text-is("Explore records")', { timeout: 20000 });
+    await page.fill('input[placeholder="Find a record by name…"]', 'coats'); await page.click('button:text-is("Find")');
+    await page.click('button:has-text("C.I.T., Kolkata-IV v. Coats")'); await page.waitForSelector('h3:text-is("Linked records")');
+    const rec = await page.innerText('.card:has(h2:text-is("Explore records"))');
+    ok('the explorer shows a record, its links and the words of the document it comes from', rec.includes('High Court at Calcutta') && rec.includes('Sources in the documents') && rec.includes('COATS OF INDIA'), rec.replace(/\n/g, ' ').slice(0, 160));
+    await page.click('.card:has(h2:text-is("Explore records")) button:text-is("High Court at Calcutta")'); await page.waitForSelector('button:text-is("← Back")');
+    ok('following a link opens the linked record', (await page.innerText('.card:has(h2:text-is("Explore records")) h3')).includes('High Court at Calcutta'));
+    await page.click('button:text-is("← Back")'); await page.waitForSelector('h3:has-text("C.I.T., Kolkata-IV")');
+    await page.locator('.card:has(h2:text-is("Explore records"))').evaluate(e => e.scrollIntoView()); await shot('graph-explorer');
+    ok('the graph can be downloaded and rebuilt on a schedule', (await page.locator('a:text-is("⬇ Graph (Turtle)")').count()) === 1 && (await page.locator('select:has(option:text-is("every night (02:00)"))').count()) === 1);
+  });
+
   await step('viewer: read only, folder access', async () => {
     const pw = await (async () => {     // reset the viewer's password through the admin API to learn it
       const users = await page.evaluate(async () => (await fetch('/api/admin/users')).json());

@@ -5,7 +5,7 @@ import { JOB } from './workspace.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const s = (tag, attrs, ...kids) => { const el = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs || {})) el.setAttribute(k, v); el.append(...kids.flat().filter(x => x != null)); return el; };
-const KIND = { build: 'Build', refine: 'Refine', explain: 'Explanation', usecases: 'Use cases', test: 'Test bed', gaps: 'Gap review', fix: 'Fix proposals', describe: 'Data descriptions', map: 'Data mapping', answer: 'Answer from data' };
+const KIND = { build: 'Build', refine: 'Refine', explain: 'Explanation', usecases: 'Use cases', test: 'Test bed', gaps: 'Gap review', fix: 'Fix proposals', describe: 'Data descriptions', map: 'Data mapping', answer: 'Answer from data', extract: 'Facts from documents' };
 const money = v => '$' + (v >= 100 ? v.toFixed(0) : v.toFixed(2));
 
 /** Bars per day. series: [{key, label, cls}] - stacked when more than one. */

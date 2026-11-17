@@ -76,6 +76,7 @@ modules, hash routes. Run: `python -m uvicorn app.main:app --port 8000`.
 | `app/profiling.py` | Table and column profiling (types, roles, code lists, ranges, personal-data detection, inferred joins) for databases and dataset files; `describe` renders a profile for the model. Only SQLAlchemy Core SELECTs with a row limit. |
 | `app/datasources.py`, `routers/datasources.py` | The data-source library: access (`level`/`get`), reading (`read_database`, `add_files`), linking to ontologies, `material` (what a build receives). Passwords encrypted in `config_enc`, never returned. |
 | `app/kg.py`, `app/kg_worker.py`, `routers/graph.py` | Knowledge graphs: the mapping (`clean_mapping` checks every entry against the ontology and the tables; `suggest` matches by names; `merge` keeps what people confirmed), `build` (rows → pyoxigraph store in `data/graphs/<folder>`, a new folder per build), `run_query` (worker process, time limit, read-only), `shape` (result table + picture). Model prompts for mapping and querying are in `builder.py` (`MAP_PROMPT`, `QUERY_PROMPT`, `answer_from_data`). |
+| `app/kgdocs.py` | Facts from documents: `documents` / `text_of` (data-source and ontology documents), `chunks`, `accept_chunk` (**every extracted item checked**: class / property / value exist and fit, and its quote must occur in the document - `Doc.find`, which also gives the page from form feeds between PDF pages), name normalisation and merging (`name_key`, `merge`, `suggest_merges`), review status (`set_status`), `evidence`. Stored in `KnowledgeGraph.extracted`; only `accepted` items are built (IRIs `<data base>/doc/<id>`). Prompt `EXTRACT_PROMPT` and job `_extract` in `builder.py`. |
 | `app/library.py`, `library/*.onto` | The pre-built library: plain-text ontology files (format documented at the top of `library.py`), parsed and validated at first use; a bad file is logged and skipped. The retail sample is added as the `retail` entry. |
 | `app/sample.py` | Hand-written retail ontology installed on first run; also the stand-in model's canned answer. |
 | `app/routers/ontologies.py` | Library, folders, sources, jobs, edit, diagrams, versions, exports, test bed, reasoner, usage. |
@@ -130,9 +131,12 @@ range, cardinality, inverse, derived_from), `individuals[]`, `rules[]` (kind `di
 15. Jobs of kind `graph` call no model (`builder.NO_MODEL`): no AI slot, excluded from the AI usage dashboard. The test job
     commits the design result before answering from the data, so a failure there never loses the test. `_job()` drops a result
     key named `proposed` — do not use that name in a job result.
-16. A pyoxigraph store left open blocks deleting its folder on Windows; old stores are removed after each build and at start-up
+16. Scheduled rebuilds: `routers/graph.run_due` is called every minute by a thread started in `main.lifespan`; a rebuild runs as the
+    person who set it up (`refresh_user_id`) and is switched off when they lost access. A summary dict must not use the key
+    `proposed` either (it travels in job results) - hence `to_review`.
+17. A pyoxigraph store left open blocks deleting its folder on Windows; old stores are removed after each build and at start-up
     (`kg.cleanup`), ignoring errors.
-17. Help screenshots are produced by `tests/e2e/features.js` and copied by name into `static/help/img/`.
+18. Help screenshots are produced by `tests/e2e/features.js` and copied by name into `static/help/img/`.
     Check for drift: every `img/*.png` named in `help.html` must exist.
 
 ## Verification — non-negotiable

@@ -17,7 +17,7 @@ In-app **Help** (menu → Help) is the full user and administrator manual, with 
 | **Diagram & visual editing** | Class hierarchy, relationships of a module, everything around one class. Expand / collapse branches (or all at once), show / hide attributes, maximise to the full window. Click a box or a line to edit; add classes, subclasses, relationships, attributes and metadata from the diagram. |
 | **Use cases** | Required (yours), AI-written, manual. Each with a diagram of the part of the model that answers it, the path, SPARQL and an example answer. |
 | **Proposed changes** | The reasoner proposes the changes that remove each contradiction (with alternatives where it is a business choice); “Propose fixes with AI” turns reasoner and modelling-check findings into add / change / delete items with reasons; the gap review and the test bed use the same tick-and-apply list, with dependencies kept together. |
-| **Knowledge graph** | The ontology filled with your actual records. Map classes to tables, attributes to columns, relationships to joins and controlled values to code columns — matched by names, proposed by AI (every entry checked against the ontology and the tables), reviewed as drafts. Build it from the data sources (read-only, up to 10,000 rows per table by default; personal columns left out unless the owner allows them), see records and values per class and property and the data problems found, and query it (SPARQL, read-only, time-limited) with a table of results and a picture of the records behind them. Only people with access to every data source behind it see its records. |
+| **Knowledge graph** | The ontology filled with your actual records. Map classes to tables, attributes to columns, relationships to joins and controlled values to code columns — matched by names, proposed by AI (every entry checked against the ontology and the tables), reviewed as drafts. Build it from the data sources (read-only, up to 10,000 rows per table by default; personal columns left out unless the owner allows them), see records and values per class and property and the data problems found, and query it (SPARQL, read-only, time-limited) with a table of results and a picture of the records behind them. **From documents** too: the AI extracts entities and relationships from judgments, opinions, contracts or policies using the ontology as its only vocabulary; every item must quote the document's own words, which the application checks; the same thing mentioned in different documents is merged; nothing enters the graph until a person accepts it, and every record keeps the document, page and quote it came from. An **explorer** to find records and follow their links; downloads of the graph (Turtle) and the mapping (W3C R2RML); nightly or weekly rebuilds. Only people with access to every data source behind it see its records. |
 | **Test bed** | Enter any use case → requirement-by-requirement coverage, verdict, gaps, a picture with the proposed additions, tick which to add, then “Test again” re-checks the same requirements so the scores compare. The application verifies the model's claims and computes the score itself. With a knowledge graph built, the use case is also **answered from your data**: the AI writes a query, the application runs it, and you see the rows, the records behind them and what has no data — the results never go to the AI. |
 | **Quality & reasoning** | Automatic modelling checks (score / 100) · OWL reasoner: built-in OWL 2 RL, and HermiT when Java is present · AI gap review by any configured model, applied only on request. |
 | **Library** | Nested folders with access levels (view / edit / owner), private or shared ontologies, import of OWL / Turtle / JSON-LD / JSON files. |
@@ -85,7 +85,7 @@ of their content). A page that was left open during the update offers to reload.
 The domain, scope, required use cases, requirements and notes of the ontology; the text extracted from its source
 documents and the *structure* of its databases; entries of the standards catalogue; the ontology itself; and the use
 case typed into the test bed; to propose a knowledge-graph mapping, the table profiles; to write a query for the test bed, which
-classes of the graph have records and which properties hold values. Never: bulk database rows, the records of a knowledge graph or
+classes of the graph have records and which properties hold values; to extract facts, the text of the documents chosen. Never: bulk database rows, the records of a knowledge graph or
 the results of its queries, passwords, API keys, other ontologies.
 Use a self-hosted model if the source material must not leave your network. The application makes no other outside
 connections; it does not look anything up on the internet.
@@ -118,11 +118,21 @@ Verified here, with a stand-in AI model that returns a fixed retail ontology (`t
   queries that write or call other servers refused, syntax errors reported, the test bed answering a use case from the data (with one
   correction of a broken query), query results never reaching the model, records hidden from people without access to the data
   source (ontologist and viewer), the old store removed after a rebuild and the graph removed with its ontology;
+- knowledge graphs from documents: invented classes, quotes not in the document and relationships with the wrong domain rejected with
+  their reason; amounts and dates converted; pages found from the quote; the same company named differently in two documents merged and
+  the second document told about it; near-duplicates offered for merging; nothing in the graph before acceptance; re-reading a document
+  keeps what was accepted; answers, the explorer and the console citing document, page and quote; records hidden from people without
+  access; quotes and pages also checked on the user's three real judgments (PDF, up to 57 pages); the explorer, Turtle and R2RML
+  downloads (both re-parsed); scheduled rebuilds, including one switched off because its owner lost access;
+- OWL and Turtle import keeping modules, rules (incl. disjoint classes), cardinalities, namespace and scope (round trip of the sample;
+  the user's 69-class tax ontology comes back with its 8 modules and 50 rules);
 - every screen in a headless browser, including visual editing on the diagram, as administrator and as viewer;
 - the Anthropic SDK code path (streaming, effort, token accounting) against an Anthropic-shaped stand-in server.
 
 **Not** verified:
 
+- **Extraction quality with a real model.** The checks were exercised with a stand-in model's planted mistakes; how much a real model
+  finds in a long judgment, how often it paraphrases instead of quoting, and what it costs per document are unmeasured.
 - **Real AI models.** No call was made to the real Anthropic or OpenAI APIs, or to a real self-hosted model. How good
   and how complete a real model's ontology is, how long a build takes and what it costs are therefore unmeasured.
   The first real build is the real test — start with a Standard-size ontology.
@@ -142,6 +152,6 @@ Verified here, with a stand-in AI model that returns a fixed retail ontology (`t
 
 Not built: single sign-on; user groups (access is per person or “everyone”); free positioning of boxes in diagrams
 (layout is automatic); looking standards up live on the internet; reading rows of data to infer an ontology;
-scheduled re-tests; email notifications. Knowledge graphs (version 1.7) are a first phase: not yet built are an explorer for
-browsing records and their links, Turtle / R2RML downloads of the graph and its mapping, scheduled refresh, querying a database
-in place without copying it, and loading into an external graph database; a class is mapped with a single identifying column.
+scheduled re-tests; email notifications. Knowledge graphs: not yet built are querying a database in place without copying it,
+loading into an external graph database, linking a record from documents to the same record from tables (they stay separate), and
+mapping a class with more than one identifying column. Scanned PDFs (images only) cannot be read.

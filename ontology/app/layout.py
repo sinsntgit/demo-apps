@@ -300,23 +300,30 @@ def instances(c: dict, pic: dict, data_base: str) -> dict | None:
         names += [p["label"] or p["id"] for p in back if not any(q.get("inverse") == p["id"] or p.get("inverse") == q["id"] for q in props)]
         done.add((a, b))
         edges.append({"a": a, "b": b, "label": ", ".join(dict.fromkeys(names[:2])) + (f" +{len(names) - 2}" if len(names) > 2 else ""), "style": "rel"})
-    cols = {i: [x for x in nodes if info[x]["cls"] == k] for i, k in enumerate(lanes)}
+    if len([x for x in focus if x in nodes]) == 1:      # one record: it on the left, everything it links to stacked on the right
+        one = next(x for x in focus if x in nodes)
+        rest = sorted((x for x in nodes if x != one), key=lambda x: (lanes.index(info[x]["cls"]), nodes[x]["label"]))
+        cols = {0: [one], 1: rest} if rest else {0: [one]}
+        lanes_x = {x: (0 if x == one else 1) for x in nodes}
+    else:
+        cols = {i: [x for x in nodes if info[x]["cls"] == k] for i, k in enumerate(lanes)}
+        lanes_x = {x: lanes.index(info[x]["cls"]) for x in nodes}
     heights = {i: sum(nodes[x]["h"] + 22 for x in v) - 22 for i, v in cols.items()}
     tall = max(heights.values(), default=0)
     x, right = PAD, PAD
-    for i in range(len(lanes)):
+    for i in range(len(cols)):
         w = max(nodes[n]["w"] for n in cols[i]) if cols[i] else 100
         y = PAD + (tall - heights[i]) / 2
         for n in cols[i]:
             nodes[n]["x"], nodes[n]["y"] = x + w / 2, y + nodes[n]["h"] / 2
             y += nodes[n]["h"] + 22
-        longest = max([len(e["label"]) for e in edges if {info[e["a"]]["cls"], info[e["b"]]["cls"]} & {lanes[i]}] or [0])
+        longest = max([len(e["label"]) for e in edges if i in (lanes_x[e["a"]], lanes_x[e["b"]])] or [0])
         right = x + w + PAD
         x += w + max(90, min(230, longest * 6 + 60))
     bends = 0
     for e in edges:                                      # a link between records of the same class bows out to the right
         a, b = nodes[e["a"]], nodes[e["b"]]
-        if info[e["a"]]["cls"] == info[e["b"]]["cls"]:
+        if lanes_x[e["a"]] == lanes_x[e["b"]]:
             e["cx"] = a["x"] + a["w"] / 2 + 60 + 22 * (bends % 4)
             e["cy"] = (a["y"] + b["y"]) / 2
             right = max(right, e["cx"] + 20 + len(e["label"]) * 3.2)

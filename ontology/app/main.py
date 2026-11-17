@@ -67,6 +67,7 @@ def bootstrap():
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     bootstrap()
+    graph.start_scheduler()
     yield
 
 

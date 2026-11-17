@@ -420,7 +420,7 @@ def suggest(c: dict, tables: list) -> dict:
 
 
 # ---- text for the AI model (structure only, never rows) ---------------------------------------------
-def describe(c: dict, mapping: dict, stats: dict | None) -> str:
+def describe(c: dict, mapping: dict, stats: dict | None, extracted: dict | None = None) -> str:
     """How the graph is shaped, for the model that writes a query: which classes have records, how they are named,
     which properties hold values. Counts and values are not given."""
     ix = onto.index(c)
@@ -435,6 +435,17 @@ def describe(c: dict, mapping: dict, stats: dict | None) -> str:
         if attrs:
             bits.append("with " + ", ".join(":" + a for a in attrs))
         lines.append(" ".join(bits))
+    docs: dict = {}
+    for e in (extracted or {}).get("entities", []):
+        if e["status"] == "accepted" and e["class"] in ix["classes"]:
+            docs.setdefault(e["class"], set()).update(e["attrs"])
+    acc = {e["id"]: e["class"] for e in (extracted or {}).get("entities", []) if e["status"] == "accepted"}
+    for r in (extracted or {}).get("relations", []):
+        if r["status"] == "accepted" and r["s"] in acc:
+            docs.setdefault(acc[r["s"]], set()).add(r["p"])
+    for k, props in docs.items():
+        lines.append(f"- :{k} records extracted from documents" + (" with " + ", ".join(":" + p for p in sorted(props)) if props else "") +
+                     " (also skos:altLabel for other names, prov:wasDerivedFrom the document)")
     empty = []
     if stats and stats.get("classes") is not None:
         empty = [k["id"] for k in c["classes"] if not stats["classes"].get(k["id"]) and not any(i["type"] == k["id"] for i in c["individuals"])]
@@ -609,8 +620,10 @@ def build(db, o, rec: KnowledgeGraph, cap: int, stage) -> dict:
     ix = onto.index(c)
     mapping, problems = clean_mapping(c, rec.mapping or {}, catalogue(db, o.id))
     maps = mapping["maps"]
-    if not maps:
-        raise GraphError("Nothing is mapped yet: map at least one class to a table first.")
+    ext = rec.extracted or {}
+    docs_e = [e for e in ext.get("entities", []) if e["status"] == "accepted" and e["class"] in ix["classes"]]
+    if not maps and not docs_e:
+        raise GraphError("Nothing to build from yet: map at least one class to a table, or accept facts extracted from documents.")
     ns, base = c["meta"]["namespace"], data_base(c)
     by_id = {m["id"]: m for m in maps}
     folder = f"{o.id}-{uuid.uuid4().hex[:10]}"
@@ -636,7 +649,7 @@ def build(db, o, rec: KnowledgeGraph, cap: int, stage) -> dict:
             if t["total"] > len(t["rows"]):
                 notes.append(f"{t['ds'].name} / {t['item'].name}: the first {len(t['rows']):,} of {t['total']:,} rows were loaded "
                              f"(the limit per table is set by an administrator). Links to rows that were not loaded show as missing.")
-        if not read:
+        if maps and not read and not docs_e:
             raise GraphError("None of the mapped tables could be read: " + " ".join(notes[:3]))
 
         T = px.NamedNode
@@ -650,9 +663,13 @@ def build(db, o, rec: KnowledgeGraph, cap: int, stage) -> dict:
         per_map = []
         g = px.DefaultGraph()
 
+        filled: dict = {}               # property -> records that have it (for coverage figures)
+
         def add(s, p, o_):
             if total[0] >= MAX_TRIPLES:
                 return
+            if p.value.startswith(ns):
+                filled.setdefault(p.value[len(ns):], set()).add(s.value)
             batch.append(px.Quad(s, p, o_, g))
             total[0] += 1
             if len(batch) >= 50_000:
@@ -810,6 +827,50 @@ def build(db, o, rec: KnowledgeGraph, cap: int, stage) -> dict:
                         counts_p[p["inverse"]] = counts_p.get(p["inverse"], 0) + 1
                 counts_p[p["id"]] = counts_p.get(p["id"], 0) + made
                 st["links"][p["id"]] = {"made": made, "dangling": dangling, "to": to["class"]}
+        doc_rel = 0
+        if docs_e:                       # facts extracted from documents and accepted by a person (kgdocs.py)
+            stage("Loading the facts accepted from documents", 90)
+            derived, alt = T("http://www.w3.org/ns/prov#wasDerivedFrom"), T("http://www.w3.org/2004/02/skos/core#altLabel")
+            live = {e["id"] for e in docs_e}
+            for k, d in ext.get("documents", {}).items():
+                add(T(f"{base}document/{k}"), label, px.Literal(d["name"]))
+            for e in docs_e:
+                s_ = T(f"{base}doc/{e['id']}")
+                for k in [e["class"]] + onto.ancestors(ix, e["class"]):
+                    add(s_, rdf_type, cls_node[k])
+                    counts_c.setdefault(cls_node[k].value, set()).add(s_.value)
+                add(s_, label, px.Literal(e["label"]))
+                for a in e["aliases"]:
+                    add(s_, alt, px.Literal(a))
+                for d in dict.fromkeys(m["doc"] for m in e["mentions"]):
+                    add(s_, derived, T(f"{base}document/{d}"))
+                for pid, vals in e["attrs"].items():
+                    if pid not in ix["props"]:
+                        continue
+                    for v in vals:
+                        lit = _literal(px, v["value"], ix["props"][pid]["range"])[0] if v["fits"] else px.Literal(v["value"])
+                        if lit is not None:
+                            add(s_, prop_node[pid], lit)
+                            counts_p[pid] = counts_p.get(pid, 0) + 1
+            for r in ext.get("relations", []):
+                if r["status"] != "accepted" or r["p"] not in ix["props"] or r["s"] not in live:
+                    continue
+                if r["o"].startswith("ind:"):
+                    if r["o"][4:] not in ix["individuals"]:
+                        continue
+                    o_ = T(ns + r["o"][4:])
+                elif r["o"] in live:
+                    o_ = T(f"{base}doc/{r['o']}")
+                else:
+                    continue
+                s_ = T(f"{base}doc/{r['s']}")
+                add(s_, prop_node[r["p"]], o_)
+                counts_p[r["p"]] = counts_p.get(r["p"], 0) + 1
+                doc_rel += 1
+                inv = ix["props"][r["p"]].get("inverse")
+                if inv in ix["props"] and not r["o"].startswith("ind:"):
+                    add(o_, prop_node[inv], s_)
+                    counts_p[inv] = counts_p.get(inv, 0) + 1
         if batch:
             store.bulk_extend(batch)
         if total[0] >= MAX_TRIPLES:
@@ -828,10 +889,14 @@ def build(db, o, rec: KnowledgeGraph, cap: int, stage) -> dict:
     old = rec.store
     rec.store, rec.status, rec.error = folder, "ready", ""
     rec.built_at, rec.built_version = now(), o.version
-    rec.sources = sorted({m["source"] for m in maps if m["item"] in read})
+    doc_keys = {m["doc"] for e in docs_e for m in e["mentions"]}
+    rec.sources = sorted({m["source"] for m in maps if m["item"] in read} |
+                         {d["source"] for k, d in ext.get("documents", {}).items() if k in doc_keys and d.get("source")})
     classes = {k: len(counts_c.get(ns + k, ())) for k in ix["classes"]}
     stats = {"classes": classes, "properties": {p: counts_p.get(p, 0) for p in ix["props"]}, "facts": total[0],
-             "records": sum(st["records"] for st in per_map), "tables": tables, "maps": per_map, "notes": notes, "problems": problems,
+             "records": sum(st["records"] for st in per_map) + len(docs_e), "tables": tables,
+             "filled": {p: len(v) for p, v in filled.items() if p in ix["props"]},
+             "documents": {"entities": len(docs_e), "relations": doc_rel, "documents": len(doc_keys)}, "maps": per_map, "notes": notes, "problems": problems,
              "seconds": round(time.time() - t0, 1), "rows_per_table": cap}
     rec.stats = stats
     if old and old != folder:
@@ -872,7 +937,7 @@ def check_query(sparql: str) -> str:
     return q
 
 
-def run_query(rec: KnowledgeGraph, c: dict, sparql: str, seconds: int, limit: int = CONSOLE_ROWS, picture: bool = True) -> dict:
+def run_query(rec: KnowledgeGraph, c: dict, sparql: str, seconds: int, limit: int = CONSOLE_ROWS, picture: bool = True, focus: list | None = None) -> dict:
     if not rec or rec.status != "ready" or not rec.store:
         raise GraphError("The knowledge graph has not been built yet.")
     q = check_query(sparql)
@@ -880,7 +945,7 @@ def run_query(rec: KnowledgeGraph, c: dict, sparql: str, seconds: int, limit: in
     if not store.is_dir():
         raise GraphError("The knowledge graph's files are missing. Build it again.")
     req = {"store": str(store), "query": q, "prefixes": prefixes(c), "limit": limit,
-           "picture": {"data": data_base(c), "max": PICTURE_RECORDS} if picture else None}
+           "picture": {"data": data_base(c), "max": PICTURE_RECORDS, "focus": focus} if picture else None}
     if not _queries.acquire(timeout=30):
         raise GraphError("Too many queries are running at once. Try again in a moment.")
     t0 = time.time()
@@ -901,7 +966,170 @@ def run_query(rec: KnowledgeGraph, c: dict, sparql: str, seconds: int, limit: in
         lead = {"syntax": "The query is not valid SPARQL: ", "run": "The query failed: "}.get(out["error"], "")
         raise GraphError(lead + out["message"])
     out["seconds"] = round(time.time() - t0, 2)
-    return shape(c, out)
+    res = shape(c, out)
+    res["evidence"] = _evidence(rec, c, res)
+    return res
+
+
+def _evidence(rec, c: dict, res: dict) -> list:
+    """For records extracted from documents: the document, page and quote they come from."""
+    from . import kgdocs
+    if not rec.extracted:
+        return []
+    pre = data_base(c) + "doc/"
+    iris = [x["iri"] for r in res.get("rows", []) for x in r if x and x.get("iri", "").startswith(pre)]
+    iris += [n["id"] for n in ((res.get("picture") or {}).get("nodes") or []) if str(n["id"]).startswith(pre)]
+    names = {k: d["name"] for k, d in rec.extracted.get("documents", {}).items()}
+    return kgdocs.evidence(rec.extracted, list(dict.fromkeys(i[len(pre):] for i in iris))[:20], names)
+
+
+# ---- exploring records ---------------------------------------------------------------------------------
+def _lit(s: str) -> str:
+    return '"' + str(s).replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ").replace("\r", " ") + '"'
+
+
+def search(rec, c: dict, text: str, cls: str, seconds: int) -> list[dict]:
+    """Records whose name (or other name) contains the text, optionally of one class (or its subclasses)."""
+    ix = onto.index(c)
+    if cls and cls not in ix["classes"]:
+        raise GraphError("Unknown class.")
+    q = (f"SELECT DISTINCT ?r ?name WHERE {{ ?r {'a :' + cls + ' ; ' if cls else ''}rdfs:label ?name . "
+         f"FILTER(STRSTARTS(STR(?r), {_lit(data_base(c))}) && !STRSTARTS(STR(?r), {_lit(data_base(c) + 'document/')})) "
+         + (f"OPTIONAL {{ ?r skos:altLabel ?alt }} FILTER(CONTAINS(LCASE(STR(?name)), {_lit(text.lower()[:100])}) || "
+            f"CONTAINS(LCASE(STR(COALESCE(?alt, \"\"))), {_lit(text.lower()[:100])})) " if text.strip() else "")
+         + "} ORDER BY ?name LIMIT 100")
+    res = run_query(rec, c, q, seconds, 100, picture=False)
+    return [{"iri": r[0]["iri"], "name": r[1]["v"]} for r in res["rows"] if r[0] and r[1]]
+
+
+SAFE_IRI = re.compile(r'^https?://[^<>"{}|^`\\\s]+$')
+
+
+def record_view(rec, c: dict, iri: str, seconds: int) -> dict:
+    """One record: its classes, values, links in both directions, the records around it, where it comes from."""
+    ix = onto.index(c)
+    ns = c["meta"]["namespace"]
+    if not SAFE_IRI.match(iri or "") or not iri.startswith(data_base(c)):
+        raise GraphError("Not a record of this knowledge graph.")
+    q = (f"SELECT ?dir ?p ?o ?name WHERE {{ {{ <{iri}> ?p ?o . BIND(\"out\" AS ?dir) }} UNION {{ ?o ?p <{iri}> . BIND(\"in\" AS ?dir) }} "
+         f"OPTIONAL {{ ?o rdfs:label ?name }} }} LIMIT 2000")
+    res = run_query(rec, c, q, seconds, 2000, picture=True, focus=[iri])
+    name, classes, values, links = "", [], [], []
+    for d, p, o, n in res["rows"]:
+        pid = p["iri"][len(ns):] if p and p.get("iri", "").startswith(ns) else None
+        if d["v"] == "out" and p.get("iri") == LABEL:
+            name = name or o["v"]
+        elif d["v"] == "out" and p.get("iri") == RDF_TYPE and pid is None and o.get("iri", "").startswith(ns):
+            classes.append(o["iri"][len(ns):])
+        elif pid in ix["props"]:
+            prop = ix["props"][pid]
+            if o.get("t") == "iri" and o["iri"].startswith(data_base(c)):
+                links.append({"dir": d["v"], "property": pid, "label": prop["label"] if d["v"] == "out" else f"{prop['label']} (from)",
+                              "iri": o["iri"], "name": (n or {}).get("v") or o["v"]})
+            elif d["v"] == "out":
+                values.append({"property": pid, "label": prop["label"], "value": o["v"]})
+    classes = [k for k in dict.fromkeys(classes) if k in ix["classes"]]
+    most = [k for k in classes if not any(k in onto.ancestors(ix, x) for x in classes if x != k)]
+    if d_ := [x for x in links if x["dir"] == "in"]:                    # an incoming link already shown by its inverse goes
+        inv = {(ix["props"][x["property"]].get("inverse"), x["iri"]) for x in links if x["dir"] == "out"}
+        links = [x for x in links if x["dir"] == "out" or (x["property"], x["iri"]) not in inv]
+    from . import kgdocs
+    ev = []
+    if rec.extracted and iri.startswith(data_base(c) + "doc/"):
+        names = {k: d["name"] for k, d in rec.extracted.get("documents", {}).items()}
+        ev = kgdocs.evidence(rec.extracted, [iri.rsplit("/", 1)[1]], names)
+    return {"iri": iri, "name": name, "classes": most, "all_classes": classes, "values": values, "links": links[:300],
+            "picture": res["picture"], "evidence": ev, "from_documents": iri.startswith(data_base(c) + "doc/")}
+
+
+# ---- downloads ----------------------------------------------------------------------------------------
+def dump_turtle(rec) -> bytes:
+    """The whole graph - ontology and records - as Turtle. Opened read-only and closed again at once."""
+    import pyoxigraph as px
+    path = config.GRAPHS_DIR / (rec.store or "")
+    if not rec.store or not path.is_dir():
+        raise GraphError("The knowledge graph has not been built yet.")
+    store = px.Store.read_only(str(path))
+    try:
+        import io
+        buf = io.BytesIO()
+        store.dump(buf, px.RdfFormat.TURTLE, from_graph=px.DefaultGraph())
+        return buf.getvalue()
+    finally:
+        del store
+        gc.collect()
+
+
+def r2rml(c: dict, mapping: dict, tables: list) -> str:
+    """The mapping as W3C R2RML (Turtle), for other tools that turn tables into RDF. Table and column names are used as
+    they are; for uploaded files the file's table name stands in for a database table. Two things R2RML cannot say
+    directly are written as comments: matching code values to controlled values, and joins through link tables."""
+    ns, base = c["meta"]["namespace"], data_base(c)
+    ix = onto.index(c)
+    by_item = {t["item"]: t for t in tables}
+
+    def tq(x: str) -> str:                       # a Turtle string
+        return '"' + str(x).replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ") + '"'
+
+    def ident(x: str) -> str:                    # a quoted SQL identifier
+        return '"' + str(x).replace('"', '""') + '"'
+
+    def sval(x: str) -> str:                     # an SQL string
+        return "'" + str(x).replace("'", "''") + "'"
+
+    out = ["@prefix rr: <http://www.w3.org/ns/r2rml#> .", "@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .",
+           "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .", f"@prefix : <{ns}> .", f"@prefix map: <{base}mapping/> .", "",
+           f"# R2RML mapping of the ontology {tq(c['meta']['name'])} onto its data sources, written by OntoStudio.",
+           f"# Records are identified as <{base}s<data source>/<table>/<identifier>>, as in the knowledge graph the application builds.", ""]
+    for m in mapping.get("maps", []):
+        t = by_item.get(m["item"], {"source_name": "?"})
+        slug = re.sub(r"[^A-Za-z0-9_-]+", "-", m["table"]).strip("-").lower() or "t"
+        if m["where"]["column"]:
+            sql = f"SELECT * FROM {ident(m['table'])} WHERE CAST({ident(m['where']['column'])} AS VARCHAR(400)) = {sval(m['where']['value'])}"
+            logical = f"rr:sqlQuery {tq(sql)}"
+        else:
+            logical = f"rr:tableName {tq(ident(m['table']))}"
+        subject = f'rr:template "{base}s{m["source"]}/{slug}/{{{m["key"]}}}"' if m["key"] else "rr:termType rr:BlankNode"
+        parts = [f"rr:logicalTable [ {logical} ]", f"rr:subjectMap [ {subject} ; rr:class :{m['class']} ]"]
+        notes = []
+        if m["label"]:
+            parts.append(f"rr:predicateObjectMap [ rr:predicate rdfs:label ; rr:objectMap [ rr:column {tq(m['label'])} ] ]")
+        for a in m["attributes"]:
+            rng = ix["props"].get(a["property"], {}).get("range", "string")
+            parts.append(f"rr:predicateObjectMap [ rr:predicate :{a['property']} ; rr:objectMap [ rr:column {tq(a['column'])} ; rr:datatype xsd:{rng} ] ]")
+        for v in m["values"]:
+            notes.append(f"# :{v['property']} - the values of column {v['column']} are matched to the ontology's controlled values by name or id;"
+                         " R2RML has no way to say this - use an SQL view (CASE ... WHEN ... THEN) if your tool needs it.")
+        for ln in m["links"]:
+            to = next((x for x in mapping["maps"] if x["id"] == ln["to"]), None)
+            if not to:
+                continue
+            if ln["side"] in ("from", "to"):
+                child, parent = (ln["column"], to["key"]) if ln["side"] == "from" else (m["key"], ln["column"])
+                parts.append(f"rr:predicateObjectMap [ rr:predicate :{ln['property']} ; rr:objectMap [ rr:parentTriplesMap map:{to['id']} ; "
+                             f"rr:joinCondition [ rr:child {tq(child)} ; rr:parent {tq(parent)} ] ] ]")
+            else:
+                notes.append(f"# :{ln['property']} - joins through the link table {ln['link_table']} ({ln['column']} -> {ln['to_column']});"
+                             " write it as a TriplesMap over that table if your tool needs it.")
+        out.append(f"# {ix['classes'].get(m['class'], {}).get('label', m['class'])} <- {t['source_name']} / {m['table']}")
+        out += notes
+        out.append(f"map:{m['id']} a rr:TriplesMap ;\n  " + " ;\n  ".join(parts) + " .\n")
+    return "\n".join(out)
+
+
+# ---- scheduled rebuilds ----------------------------------------------------------------------------------
+def next_time(kind: str, after=None):
+    """Next run of a daily / weekly rebuild: 02:00 server time, the next day (or seven days on)."""
+    import datetime as _dt
+    after = after or now()
+    if kind not in ("daily", "weekly"):
+        return None
+    day = (after + _dt.timedelta(days=1 if kind == "daily" else 7)).replace(hour=2, minute=0, second=0, microsecond=0)
+    return day
+
+
+def due(db) -> list:
+    return list(db.scalars(select(KnowledgeGraph).where(KnowledgeGraph.refresh.in_(("daily", "weekly")), KnowledgeGraph.next_refresh_at <= now())))
 
 
 def shape(c: dict, out: dict) -> dict:

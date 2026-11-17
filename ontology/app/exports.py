@@ -176,14 +176,56 @@ def import_file(name: str, data: bytes) -> dict:
             dom = next((ids[o] for o in g.objects(u, RDFS.domain) if o in ids), "")
             rng = next((o for o in g.objects(u, RDFS.range) if isinstance(o, URIRef)), None)
             inv = next((local(o) for o in g.objects(u, OWL.inverseOf)), "")
+            functional = (u, RDF.type, OWL.FunctionalProperty) in g
+            mandatory = any((r, OWL.onProperty, u) in g and any(int(str(m)) >= 1 for m in g.objects(r, OWL.minCardinality))
+                            for r in g.subjects(RDF.type, OWL.Restriction))
             props.append({"id": local(u), "label": lit(u, RDFS.label), "definition": lit(u, SKOS.definition, IAO_DEF, RDFS.comment), "kind": kind,
                           "domain": dom, "range": (ids.get(rng, "") if kind == "object" else local(rng)) if rng is not None else "",
-                          "inverse": inv, "cardinality": "0..1" if (u, RDF.type, OWL.FunctionalProperty) in g else ""})
+                          "inverse": inv, "cardinality": ("1" if functional else "1..*") if mandatory else "0..1" if functional else "",
+                          "derived_from": _derived(lit(u, SKOS.note))})
     inds = [{"id": local(s), "label": lit(s, RDFS.label), "type": ids[o], "definition": lit(s, SKOS.definition, RDFS.comment)}
             for s, o in g.subject_objects(RDF.type) if o in ids and isinstance(s, URIRef) and s not in ids]
     head = next(iter(g.subjects(RDF.type, OWL.Ontology)), None)
-    return {"meta": {"name": lit(head, RDFS.label, DCTERMS.title) if head is not None else ""},
-            "modules": [{"id": "Imported", "name": "Imported", "description": "Classes read from the imported file."}],
-            "classes": classes, "properties": props, "individuals": inds,
+    # modules: this application writes each class's module as an annotation "<namespace>module"
+    mod_props = [p for p in set(g.predicates()) if local(p) == "module" and p not in (RDF.type,)]
+    mods: dict = {}
+    for k, u in zip(classes, sorted(cls, key=str)):
+        k["derived_from"] = _derived(lit(u, SKOS.note))
+        name = next((str(o) for mp in mod_props for o in g.objects(u, mp) if isinstance(o, Literal)), "")
+        if name:
+            k["module"] = mods.setdefault(name, onto.ident(name, True) or "Imported")
+    modules = [{"id": i, "name": n, "description": ""} for n, i in mods.items()]
+    if any(k["module"] == "Imported" for k in classes) or not modules:
+        modules.append({"id": "Imported", "name": "Imported", "description": "Classes read from the imported file."})
+    # rules: written as editorial notes "R1 (constraint): ..." on the ontology; disjoint classes as owl:disjointWith
+    rules = []
+    for note in (g.objects(head, SKOS.editorialNote) if head is not None else []):
+        m = re.match(r"\s*([A-Za-z]{0,3}\d{1,4})\s*\((constraint|disjoint|derivation|definition)\)\s*:\s*(.+)", str(note), re.S)
+        if m:
+            rules.append({"id": m.group(1), "kind": m.group(2), "statement": m.group(3).strip(), "applies_to": []})
+    groups: list = []
+    for a, b in g.subject_objects(OWL.disjointWith):
+        if a in ids and b in ids:
+            hit = [x for x in groups if ids[a] in x or ids[b] in x]
+            merged = set().union(*hit) | {ids[a], ids[b]} if hit else {ids[a], ids[b]}
+            groups = [x for x in groups if x not in hit] + [merged]
+    for r in rules:
+        if r["kind"] == "disjoint" and groups:
+            r["applies_to"] = sorted(groups.pop(0))
+    for x in groups:
+        rules.append({"id": f"R{len(rules) + 1}", "kind": "disjoint", "statement": "These classes never overlap: " + ", ".join(sorted(x)) + ".",
+                      "applies_to": sorted(x)})
+    rules.sort(key=lambda r: (int(re.sub(r"\D", "", r["id"]) or 0), r["id"]))
+    # namespace: where the classes live, so identifiers keep their addresses
+    spaces = {re.match(r"(.*[#/])", str(u)).group(1) for u in cls if re.match(r"(.*[#/])", str(u))}
+    ns = spaces.pop() if len(spaces) == 1 else ""
+    prefix = next((p for p, n in g.namespaces() if str(n) == ns and p), "") if ns else ""
+    return {"meta": {"name": lit(head, RDFS.label, DCTERMS.title) if head is not None else "", "namespace": ns, "prefix": prefix,
+                     "scope": lit(head, SKOS.scopeNote) if head is not None else ""},
+            "modules": modules, "classes": classes, "properties": props, "individuals": inds, "rules": rules,
             "explanation": {"summary": lit(head, DCTERMS.description, RDFS.comment) if head is not None else ""},
             "_dropped": {"properties": sum(1 for p in props if not p["domain"] or not p["range"])}}
+
+
+def _derived(note: str) -> str:
+    return note[len("Derived from: "):] if note.startswith("Derived from: ") else ""

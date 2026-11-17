@@ -82,7 +82,7 @@ def main():
             out = {"kind": "select", "columns": names, "rows": rows, "count": n, "more": n >= COUNT_MAX}
             pic = req.get("picture")
             if pic:
-                focus = [c["v"] for r in rows for c in r if c and c["t"] == "iri" and c["v"].startswith(pic["data"])]
+                focus = pic.get("focus") or [c["v"] for r in rows for c in r if c and c["t"] == "iri" and c["v"].startswith(pic["data"])]
                 out["picture"] = picture(px, store, focus, pic["data"], int(pic.get("max") or 30))
             return out
         triples = []                                          # CONSTRUCT / DESCRIBE

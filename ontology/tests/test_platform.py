@@ -811,6 +811,11 @@ def test_knowledge_graph_from_data(admin, fake_llm):
     assert set(cm["masked"]) == {"full_name", "email"} and st["properties"]["email"] == 0
     assert st["properties"]["places"] == 119                                          # inverse added
     assert g["coverage"]["classes_with_data"] >= 4
+    assert st["filled"]["orderTotal"] == 120 and "email" not in st["filled"]                                # coverage per attribute
+    rr = c.get(f"/api/ontologies/{oid}/graph/export/r2rml")
+    assert rr.status_code == 200 and b"rr:TriplesMap" in rr.content and b"rr:joinCondition" in rr.content
+    r2 = Graph().parse(data=rr.content, format="turtle")                                # valid Turtle
+    assert len(list(r2.subjects(predicate=None, object=__import__("rdflib").URIRef("http://www.w3.org/ns/r2rml#TriplesMap")))) == 4
     # queries: read-only, no other servers, results with the picture of the records
     q = c.post(f"/api/ontologies/{oid}/graph/query", headers=H, json={"sparql": "SELECT ?o ?t WHERE { ?o a :Order ; :orderTotal ?t ; :hasStatus :Paid } ORDER BY ?t"}).json()
     assert q["count"] == 30 and q["rows"][0][1]["v"] == "10.5" and q["picture"]["nodes"]
@@ -925,3 +930,152 @@ def test_knowledge_graph_from_a_database(admin):
     finally:
         srcmod.db_url = real
         c.put("/api/admin/settings", headers=H, json={"graph_rows_per_table": 10000})
+
+
+LEGAL = {"format": "ontostudio-ontology", "meta": {"name": "Tax cases", "namespace": "https://example.org/ontology/tax-cases#", "prefix": "tax"},
+         "modules": [{"id": "Law", "name": "Law"}],
+         "classes": [{"id": c, "label": c, "parent": p, "module": "Law", "definition": f"A {c}."} for c, p in (
+             ("Party", None), ("Organization", "Party"), ("Taxpayer", "Organization"), ("Court", "Organization"), ("LegalResource", None),
+             ("Act", "LegalResource"), ("Provision", "LegalResource"), ("JudicialDecision", "LegalResource"), ("OpinionOutcome", None))],
+         "properties": [
+             {"id": "decidedByCourt", "kind": "object", "domain": "JudicialDecision", "range": "Court", "cardinality": "0..1"},
+             {"id": "interpretsResource", "kind": "object", "domain": "LegalResource", "range": "LegalResource", "inverse": "interpretedByResource"},
+             {"id": "interpretedByResource", "kind": "object", "domain": "LegalResource", "range": "LegalResource", "inverse": "interpretsResource"},
+             {"id": "involvesParty", "kind": "object", "domain": "JudicialDecision", "range": "Party"},
+             {"id": "hasDecisionOutcome", "kind": "object", "domain": "JudicialDecision", "range": "OpinionOutcome", "cardinality": "0..1"},
+             {"id": "hasCaseName", "kind": "data", "domain": "JudicialDecision", "range": "string"},
+             {"id": "hasDecisionDate", "kind": "data", "domain": "JudicialDecision", "range": "date"},
+             {"id": "amountInDispute", "kind": "data", "domain": "JudicialDecision", "range": "decimal"}],
+         "individuals": [{"id": "AssesseeFavoured", "type": "OpinionOutcome", "label": "Assessee favoured"},
+                         {"id": "RevenueFavoured", "type": "OpinionOutcome", "label": "Revenue favoured"}],
+         "rules": [{"id": "R1", "kind": "constraint", "statement": "Every decision names its court."}]}
+JUDGMENT = ("IN THE HIGH COURT AT CALCUTTA\nSpecial Jurisdiction (Income Tax)\nC.I.T., KOLKATA-IV Versus M/S. COATS OF INDIA LTD.\nDate: 8th September, 2008.\n"
+            "The only question which is tried to be pressed before us is as per provision of Section 47(iv) of Income Tax Act whether the transfer "
+            "of capital asset by a company to its wholly subsidiary company could be regarded as transfer.\n\f\nIn the process of such transfer a "
+            "surplus amount of Rs. 19,14,55,804/- was credited to the accounts of the assessee.\nHence the appeal is not admitted.\n")
+
+
+def test_knowledge_graph_from_documents(admin, fake_llm):
+    """Entities and relationships extracted from documents: every item checked against the ontology and against the
+    document's own words, duplicates merged, nothing in the graph until a person accepts it; answers cite their source."""
+    from app.routers import graph as graph_router
+    from app.db import SessionLocal
+    from app.models import KnowledgeGraph
+    c, mid = admin
+    oid = c.post("/api/ontologies/import", headers=H, files={"file": ("tax.json", json.dumps(LEGAL).encode(), "application/json")}).json()["id"]
+    ds = c.post("/api/datasources", headers=H, json={"name": "Case files", "kind": "files"}).json()
+    c.post(f"/api/datasources/{ds['id']}/files", headers=H, files=[("files", ("coats-judgment.txt", JUDGMENT.encode(), "text/plain")),
+                                                                   ("files", ("coats-note.md", b"# Note\nCoats of India Limited won in the Calcutta High Court on section 47(iv).", "text/markdown"))])
+    c.post(f"/api/ontologies/{oid}/datasources", headers=H, json={"data_source_id": ds["id"]})
+    g = c.get(f"/api/ontologies/{oid}/graph").json()
+    docs = {d["name"]: d for d in g["documents"]}
+    assert set(docs) == {"coats-judgment.txt", "coats-note.md"} and docs["coats-judgment.txt"]["pages"] == 2
+    assert c.post(f"/api/ontologies/{oid}/graph/extract", headers=H, json={"documents": ["ds999999"], "model_id": mid}).status_code == 400
+    j = wait_job(c, c.post(f"/api/ontologies/{oid}/graph/extract", headers=H,
+                           json={"documents": [docs["coats-judgment.txt"]["key"], docs["coats-note.md"]["key"]], "model_id": mid}).json()["id"])
+    assert j["status"] == "done", j
+    x = c.get(f"/api/ontologies/{oid}/graph/extracted").json()
+    ents = {e["label"]: e for e in x["entities"]}
+    reasons = " | ".join(r["reason"] for r in x["rejected"])
+    assert "is not a class of the ontology" in reasons                                 # Unicorn
+    assert reasons.count("quote given as evidence is not in the document") == 2        # the invented Supreme Court and the made-up case name
+    assert "decidedByCourt starts from JudicialDecision" in reasons                    # wrong domain
+    assert "Supreme Court" not in ents and set(ents) == {"C.I.T., Kolkata-IV v. Coats of India Ltd.", "High Court at Calcutta", "Coats of India Ltd",
+                                                          "Section 47(iv), Income-tax Act, 1961", "Calcutta High Court"}
+    coats = ents["Coats of India Ltd"]                                                 # one entity, mentioned in both documents
+    assert "M/S. COATS OF INDIA LTD." not in coats["aliases"] and {m["doc"] for m in coats["mentions"]} == set(d["key"] for d in docs.values())
+    dec = ents["C.I.T., Kolkata-IV v. Coats of India Ltd."]
+    assert dec["attrs"]["amountInDispute"][0] == {**dec["attrs"]["amountInDispute"][0], "value": "191455804", "fits": True, "page": 2}
+    assert dec["attrs"]["hasDecisionDate"][0]["value"] == "2008-09-08" and "hasCaseName" not in dec["attrs"]
+    assert all(e["status"] == "proposed" for e in x["entities"]) and len(x["relations"]) == 4
+    note = x["documents"][docs["coats-judgment.txt"]["key"]]
+    assert note["rejected"] == 4 and "capital reserve" in note["notes"][0]
+    assert len(x["suggestions"]) == 1                                                   # the two names of the court
+    sent = json.dumps(fake_llm.REQUESTS[-1])
+    assert "Coats of India Ltd" in sent                                                # the second document was told what is already known
+    # nothing goes into the graph until accepted
+    assert c.post(f"/api/ontologies/{oid}/graph/build", headers=H).status_code == 400
+    sug = x["suggestions"][0]
+    assert c.post(f"/api/ontologies/{oid}/graph/extracted/merge", headers=H, json={"keep": sug["a"], "drop": sug["b"]}).json()["ok"]
+    x = c.get(f"/api/ontologies/{oid}/graph/extracted").json()
+    assert len(x["entities"]) == 4 and not x["suggestions"]
+    r = c.post(f"/api/ontologies/{oid}/graph/extracted/status", headers=H, json={"ids": [r["id"] for r in x["relations"]], "status": "accepted"}).json()
+    assert r["summary"]["accepted"] == 8                                               # accepting a relationship accepts both ends
+    wait_job(c, c.post(f"/api/ontologies/{oid}/graph/build", headers=H).json()["id"])
+    g = c.get(f"/api/ontologies/{oid}/graph").json()
+    assert g["status"] == "ready" and g["stats"]["documents"] == {"entities": 4, "relations": 4, "documents": 2}
+    assert g["stats"]["classes"]["Party"] == 2 and g["stats"]["properties"]["interpretedByResource"] == 1     # Court and Taxpayer; inverse added
+    q = c.post(f"/api/ontologies/{oid}/graph/query", headers=H, json={"sparql":
+        "SELECT ?d ?court ?amount WHERE { ?d a :JudicialDecision ; :decidedByCourt/rdfs:label ?court ; :amountInDispute ?amount ; :hasDecisionOutcome :AssesseeFavoured }"}).json()
+    assert q["count"] == 1 and q["rows"][0][2]["v"] == "191455804"
+    assert any(e["page"] == 1 and "COATS OF INDIA" in e["quote"] for e in q["evidence"])   # the answer says where it comes from
+    # the explorer
+    found = c.get(f"/api/ontologies/{oid}/graph/records", params={"q": "coats"}).json()["items"]
+    assert {f["name"] for f in found} >= {"Coats of India Ltd", "C.I.T., Kolkata-IV v. Coats of India Ltd."}
+    assert [f["name"] for f in c.get(f"/api/ontologies/{oid}/graph/records", params={"q": "", "cls": "Court"}).json()["items"]] == ["High Court at Calcutta"]
+    rv = c.get(f"/api/ontologies/{oid}/graph/record", params={"iri": next(f["iri"] for f in found if f["name"].startswith("C.I.T"))}).json()
+    assert rv["classes"] == ["JudicialDecision"] and {l["property"] for l in rv["links"]} >= {"decidedByCourt", "interpretsResource", "involvesParty"}
+    assert any(v["property"] == "hasDecisionDate" and v["value"] == "2008-09-08" for v in rv["values"]) and rv["evidence"] and rv["picture"]["nodes"]
+    assert c.get(f"/api/ontologies/{oid}/graph/record", params={"iri": "https://evil.example/x> } DROP ALL"}).status_code == 400
+    ttl = c.get(f"/api/ontologies/{oid}/graph/export/ttl")
+    assert ttl.status_code == 200 and b"Coats of India" in ttl.content and Graph().parse(data=ttl.content, format="turtle")
+    assert c.get(f"/api/ontologies/{oid}/graph/export/r2rml").status_code == 400                  # nothing mapped from tables
+    # the test bed's query writer is told what the documents provide
+    n = len(fake_llm.REQUESTS)
+    t = c.post(f"/api/ontologies/{oid}/tests", headers=H, json={"text": "Which decisions favoured the assessee?", "model_id": mid, "data": True}).json()
+    wait_job(c, t["job"]["id"])
+    assert "extracted from documents" in json.dumps(fake_llm.REQUESTS[n:])
+    # extracting a document again keeps what was accepted
+    wait_job(c, c.post(f"/api/ontologies/{oid}/graph/extract", headers=H, json={"documents": [docs["coats-judgment.txt"]["key"]], "model_id": mid}).json()["id"])
+    x = c.get(f"/api/ontologies/{oid}/graph/extracted").json()
+    assert sum(e["status"] == "accepted" for e in x["entities"]) == 4 and len(x["entities"]) == 4
+    # people without access to the data source see none of it
+    eve = make_user(c, "doc-eve@test.local", "ontologist")
+    c.put(f"/api/ontologies/{oid}", headers=H, json={"name": "Tax cases", "visibility": "shared"})
+    assert eve.get(f"/api/ontologies/{oid}/graph/extracted").status_code == 403
+    assert eve.get(f"/api/ontologies/{oid}/graph/records", params={"q": "coats"}).status_code == 403
+    assert eve.get(f"/api/ontologies/{oid}/graph/export/ttl").status_code == 403
+    # scheduled rebuilds: run with the access of the person who set them up, and stop when it is gone
+    g = c.put(f"/api/ontologies/{oid}/graph/refresh", headers=H, json={"refresh": "daily"}).json()
+    assert g["refresh"] == "daily" and g["next_refresh_at"]
+    with SessionLocal() as db:
+        rec = db.scalar(__import__("sqlalchemy").select(KnowledgeGraph).where(KnowledgeGraph.ontology_id == oid))
+        built = rec.built_at
+        rec.next_refresh_at = rec.next_refresh_at.replace(year=2000)
+        db.commit()
+    assert graph_router.run_due() == 1
+    import time as _t
+    for _ in range(100):
+        if c.get(f"/api/ontologies/{oid}/graph").json()["built_at"] != built.isoformat():
+            break
+        _t.sleep(0.1)
+    g = c.get(f"/api/ontologies/{oid}/graph").json()
+    assert g["built_at"] != built.isoformat() and g["next_refresh_at"] > "2001"
+    with SessionLocal() as db:
+        rec = db.scalar(__import__("sqlalchemy").select(KnowledgeGraph).where(KnowledgeGraph.ontology_id == oid))
+        rec.refresh_user_id = c.get("/api/admin/users").json()[0]["id"] if False else eve.get("/api/auth/me").json()["id"]
+        rec.next_refresh_at = rec.next_refresh_at.replace(year=2000)
+        db.commit()
+    assert graph_router.run_due() == 0
+    g = c.get(f"/api/ontologies/{oid}/graph").json()
+    assert g["refresh"] == "" and "switched off" in g["error"]
+    c.delete(f"/api/ontologies/{oid}", headers=H)
+    c.delete(f"/api/datasources/{ds['id']}", headers=H)
+
+
+def test_owl_and_turtle_import_keep_rules_and_modules():
+    """An ontology downloaded as OWL or Turtle comes back with its modules, rules, disjoint classes, cardinalities,
+    namespace and scope (before 1.7 the rules and modules were lost)."""
+    from app import exports, onto, sample
+    s = sample.content()
+    for fmt in ("owl", "ttl"):
+        data, _, _ = exports.export(s, fmt)
+        r = onto.clean(exports.import_file("x." + fmt, data), 600)
+        assert sorted(m["name"] for m in r["modules"]) == sorted(m["name"] for m in s["modules"])
+        assert [(x["id"], x["kind"], x["statement"]) for x in r["rules"]] == [(x["id"], x["kind"], x["statement"]) for x in s["rules"]]
+        assert next(x for x in r["rules"] if x["kind"] == "disjoint")["applies_to"] == sorted(next(x for x in s["rules"] if x["kind"] == "disjoint")["applies_to"])
+        card = {p["id"]: p["cardinality"] for p in s["properties"]}
+        assert all(card[p["id"]] == p["cardinality"] for p in r["properties"])
+        assert r["meta"]["namespace"] == s["meta"]["namespace"]
+        mn = lambda c: {m["id"]: m["name"] for m in c["modules"]}                                   # noqa: E731
+        assert {k["id"]: mn(r)[k["module"]] for k in r["classes"]} == {k["id"]: mn(s)[k["module"]] for k in s["classes"]}

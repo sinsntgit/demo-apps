@@ -13,7 +13,7 @@ const EXPORTS = [['pdf', '📕 Handbook (PDF)', 'Full explanation with diagrams'
   ['xlsx', '📗 Workbook (Excel)', 'Every element in readable sheets'], ['owl', '🦉 OWL (RDF/XML)', 'For Protégé and reasoners'], ['ttl', '🐢 Turtle (.ttl)', 'For triple stores'],
   ['jsonld', '{ } JSON-LD', 'Linked data as JSON'], ['json', '{ } JSON', 'This application’s own format']];
 export const JOB = { build: 'Building the ontology', refine: 'Refining the ontology', explain: 'Rewriting the explanation', usecases: 'Writing use cases', gaps: 'Reviewing for gaps', fix: 'Proposing fixes', test: 'Testing a use case',
-  map: 'Proposing a data mapping', graph: 'Building the knowledge graph', answer: 'Answering from the data' };
+  map: 'Proposing a data mapping', graph: 'Building the knowledge graph', answer: 'Answering from the data', extract: 'Reading documents for the knowledge graph' };
 
 export async function workspaceView(root, id, tab, arg) {
   const ctx = { id: Number(id), models: await api('GET', '/api/models').catch(() => []) };
@@ -95,6 +95,7 @@ export async function workspaceView(root, id, tab, arg) {
           h('p', { class: 'small muted' }, 'Nothing was changed. You can try again, choose another model, or narrow the scope.')));
         else if (job.kind === 'gaps' || job.kind === 'fix') toast('Proposals ready — see Quality & reasoning.');
         else if (job.kind === 'map') toast(`Mapping proposed: ${job.result.suggested} class mapping(s) — check them on the Knowledge graph tab.`);
+        else if (job.kind === 'extract') toast(`Read ${job.result.documents} document(s): ${job.result.to_review} item(s) to review on the Knowledge graph tab.`);
         else if (job.kind === 'graph') toast(`Knowledge graph built: ${job.result.records.toLocaleString()} records.`); else toast(doneText(job));
         return ctx.reload();
       }
