@@ -16,6 +16,10 @@ log = logging.getLogger("ontostudio")
 STATIC = config.BASE_DIR / "static"
 
 
+ASSET_TAG = config.ASSET_TAG
+ASSET_PREFIX = f"/static/v-{ASSET_TAG}/"
+
+
 def upgrade_schema():
     """Lightweight upgrade step: add columns that newer versions introduced to existing tables.
     New tables are handled by create_all. Never rename or drop a column - add a new one."""
@@ -69,6 +73,12 @@ app = FastAPI(title=f"{config.APP_NAME} - ontology studio", lifespan=lifespan, d
 
 @app.middleware("http")
 async def security_layer(request: Request, call_next):
+    path = request.scope["path"]
+    versioned = path.startswith("/static/v-")
+    if versioned:                                   # /static/v-<tag>/js/app.js is /static/js/app.js; the tag only defeats old caches
+        rest = path.split("/", 3)[3] if path.count("/") >= 3 else ""
+        request.scope["path"] = "/static/" + rest
+        request.scope["raw_path"] = request.scope["path"].encode()
     # CSRF: state-changing API calls must come from our own front end (a custom header cannot be set
     # cross-site without CORS, which is not enabled) - on top of SameSite=Strict cookies.
     if request.url.path.startswith("/api/") and request.method not in ("GET", "HEAD", "OPTIONS") \
@@ -83,6 +93,10 @@ async def security_layer(request: Request, call_next):
         "script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
     if request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"
+    elif versioned and response.status_code == 200:
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"     # a new version has a new address
+    elif path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache"                               # always check with the server
     if config.COOKIE_SECURE:
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
@@ -104,4 +118,6 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 def spa(path: str):
     if path.startswith("api/"):
         return JSONResponse({"detail": "Not found"}, status_code=404)
-    return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})
+    from fastapi.responses import HTMLResponse
+    html = (STATIC / "index.html").read_text(encoding="utf-8").replace('"/static/', '"' + ASSET_PREFIX)
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})

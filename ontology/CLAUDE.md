@@ -109,7 +109,11 @@ range, cardinality, inverse, derived_from), `individuals[]`, `rules[]` (kind `di
 13. A library ontology must survive `onto.clean` without losing anything - `library.parse` raises if a property or
     class is dropped. The test `test_every_library_ontology_is_sound` holds every file to the same bar; run it after
     adding or editing a `.onto` file. Library content is never edited at run time: users work on copies (`_new_copy`).
-14. Help screenshots are produced by `tests/e2e/features.js` and copied by name into `static/help/img/`.
+14. Front-end files are served under `/static/v-<ASSET_TAG>/` (a hash of the files, `config.ASSET_TAG`), injected into
+    `index.html` by `main.spa`; the middleware maps it back to `/static/`. Before this, browsers kept lazy-loaded
+    modules from earlier versions and updates "did not show". Keep module imports relative (`./x.js`) so they stay
+    under the versioned prefix.
+15. Help screenshots are produced by `tests/e2e/features.js` and copied by name into `static/help/img/`.
     Check for drift: every `img/*.png` named in `help.html` must exist.
 
 ## Verification — non-negotiable

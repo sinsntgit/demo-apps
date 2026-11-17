@@ -11,7 +11,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 DATABASE_URL = os.environ.get("ONTO_DATABASE_URL", f"sqlite:///{DATA_DIR / 'ontostudio.db'}")
 
 APP_NAME = os.environ.get("ONTO_APP_NAME", "OntoStudio")
-VERSION = "1.5"
+VERSION = "1.6"
 COOKIE_NAME = "onto_session"
 COOKIE_SECURE = os.environ.get("ONTO_COOKIE_SECURE", "0") == "1"   # set to 1 behind HTTPS
 
@@ -62,3 +62,19 @@ ACCENTS = {"blue": ("#2a78d6", "#5a9cec"), "teal": ("#0e7c86", "#4fc3cc"), "gree
 
 # How many classes the builder aims for at each depth.
 DEPTHS = {"compact": (15, 25), "standard": (35, 55), "comprehensive": (70, 100)}
+
+
+def _asset_tag() -> str:
+    """A fingerprint of the front-end files. The page loads its scripts and styles from /static/v-<tag>/..., so
+    after an update every browser fetches the new files instead of reusing copies it kept from before (lazy-loaded
+    screens such as Admin or Data sources would otherwise stay on the old version, even after Ctrl+F5)."""
+    import hashlib
+    h = hashlib.sha1(VERSION.encode())
+    static = BASE_DIR / "static"
+    for f in sorted(p for p in static.rglob("*") if p.is_file() and p.suffix in (".js", ".css", ".html")):
+        h.update(f.relative_to(static).as_posix().encode())
+        h.update(f.read_bytes())
+    return h.hexdigest()[:12]
+
+
+ASSET_TAG = _asset_tag()

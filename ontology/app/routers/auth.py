@@ -53,7 +53,7 @@ def _finish(response: Response, db: Session, user: User) -> dict:
 
 def _me(user: User, db: Session, scope: str) -> dict:
     settings = get_settings(db)
-    return {"id": user.id, "email": user.email, "name": user.name, "role": user.role, "version": config.VERSION,
+    return {"id": user.id, "email": user.email, "name": user.name, "role": user.role, "version": config.VERSION, "assets": config.ASSET_TAG,
             "totp_enabled": user.totp_enabled, "recovery_codes_left": len(user.recovery_codes or []),
             "requirements": _requirements(user, settings), "scope": scope, "app_name": settings["app_title"] or config.APP_NAME,
             "enforce_2fa": settings["enforce_2fa"]}

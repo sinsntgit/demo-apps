@@ -20,11 +20,21 @@ const ROUTES = [
 const allowed = r => !r.roles || r.roles.includes(state.me.role);
 const ROLE = { admin: 'Administrator', ontologist: 'Ontologist', viewer: 'Viewer' };
 
+// The page's own files carry the fingerprint they were loaded with (/static/v-<tag>/...). If the server now
+// serves a different one, the application was updated while this page was open: say so, offer a reload.
+const LOADED = (import.meta.url.match(/\/static\/v-([0-9a-f]+)\//) || [])[1];
+function staleCheck(me) {
+  if (!LOADED || !me?.assets || me.assets === LOADED || document.getElementById('stale')) return;
+  document.body.prepend(h('div', { id: 'stale', class: 'banner warn', style: 'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:90;box-shadow:var(--shadow)' },
+    `A newer version (${me.version}) has been installed. `, h('button', { class: 'btn sm primary', onclick: () => location.reload() }, 'Reload now')));
+}
+
 async function boot() {
   try { applyBranding(await api('GET', '/api/auth/branding')); } catch { /* keep the defaults */ }
   try { state.me = await api('GET', '/api/auth/me'); }
   catch { state.me = null; return fill(app, loginView(boot)); }
   document.title = state.brand?.app_name || state.me.app_name;
+  staleCheck(state.me);
   if (state.me.requirements.length || state.me.scope !== 'full') return fill(app, setupView(boot));
   shell();
 }
@@ -41,7 +51,7 @@ async function recheck() {
     const me = await api('GET', '/api/auth/me');
     const changed = me.id !== state.me.id || me.role !== state.me.role || me.scope !== state.me.scope || me.requirements.length !== state.me.requirements.length;
     if (changed) { document.querySelectorAll('.overlay').forEach(o => o.remove()); await boot(); }
-    else state.me = me;
+    else { state.me = me; staleCheck(me); }
     return changed;
   } catch { state.me = null; await boot(); return true; } finally { checking = false; }
 }

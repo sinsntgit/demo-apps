@@ -69,9 +69,15 @@ Optional extras:
 
 ### Updating
 
-Replace the application files with the new ones and **keep your `data` folder**. New database columns are added
-automatically at start-up. Run `pip install -r requirements.txt` again if the release notes say requirements changed.
-Press Ctrl+F5 in the browser afterwards.
+1. Stop the application (Ctrl+C in its window).
+2. Replace the application files with the new ones and **keep your `data` folder**. New database columns are added
+   automatically at start-up.
+3. Run `pip install -r requirements.txt` again if the release notes say requirements changed.
+4. Start the application again **from the folder you updated**.
+5. Check the version shown at the bottom of the menu.
+
+The browser always fetches the new screens after an update (since version 1.6 the files are served under a fingerprint
+of their content). A page that was left open during the update offers to reload.
 
 ## What is sent to the AI model
 
