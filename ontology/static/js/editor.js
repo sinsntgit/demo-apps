@@ -3,6 +3,8 @@
 import { h, fill, api, busy, fail, toast, modal, field, check, select, confirmDialog, fmtTime, pct } from './core.js';
 import { diagram } from './diagram.js';
 import { ucForm } from './workspace.js';
+import { resultView, noDataView } from './kg.js';
+const DATA = { answered: ['good', 'Answered from the data'], empty: ['warn', 'The query found nothing'], error: ['bad', 'The query failed'], not_built: ['', 'No knowledge graph'] };
 
 const XSD = [['string', 'Text'], ['integer', 'Whole number'], ['decimal', 'Number / amount'], ['boolean', 'Yes / no'], ['date', 'Date'], ['dateTime', 'Date and time'],
   ['time', 'Time'], ['gYear', 'Year'], ['duration', 'Duration'], ['anyURI', 'Web address']];
@@ -334,7 +336,9 @@ export function useCasesTab(el, ctx) {
 
 // ---- Test bed ----------------------------------------------------------------------------------
 export async function testTab(el, ctx) {
-  const data = await api('GET', `/api/ontologies/${ctx.id}/tests`);
+  const [data, graph] = await Promise.all([api('GET', `/api/ontologies/${ctx.id}/tests`), api('GET', `/api/ontologies/${ctx.id}/graph`).catch(() => null)]);
+  const canData = !!(graph && graph.status === 'ready' && graph.can_see_data);
+  const useData = canData ? check('Also answer it from the knowledge graph', true, null, 'The AI writes a query for the use case and it runs on your data. You see the records it returns; they are never sent to the AI.') : null;
   const detail = h('div', {});
   const text = h('textarea', { rows: 4, placeholder: 'Describe a use case, question or report in your own words.\ne.g. For every dealer, show the loans disbursed last quarter, the tractor model financed and whether the first instalment was paid on time.' });
   const model = ctx.modelSelect();
@@ -343,8 +347,10 @@ export async function testTab(el, ctx) {
   const run = h('button', { class: 'btn primary', disabled: !ctx.models.length, onclick: () => start(text.value) }, '🧪 Run test');
   async function start(t, baseline) {
     await busy(run, async () => {
-      const r = await api('POST', `/api/ontologies/${ctx.id}/tests`, { text: t, model_id: Number(model.value), baseline_id: baseline || null });
-      fill(detail, h('div', { class: 'card row' }, h('span', { class: 'spinner' }), h('span', {}, baseline ? 'Re-checking the same requirements against the current ontology… (usually under a minute)' : 'Breaking the use case into requirements and checking each one against the ontology… (usually under a minute)')));
+      const withData = !!useData?.input.checked;
+      const r = await api('POST', `/api/ontologies/${ctx.id}/tests`, { text: t, model_id: Number(model.value), baseline_id: baseline || null, data: withData });
+      fill(detail, h('div', { class: 'card row' }, h('span', { class: 'spinner' }), h('span', {}, (baseline ? 'Re-checking the same requirements against the current ontology' : 'Breaking the use case into requirements and checking each one against the ontology') +
+        (withData ? ', then answering it from your data' : '') + '… (usually under a minute)')));
       detail.scrollIntoView({ block: 'nearest' });
       for (;;) {
         await new Promise(res => setTimeout(res, 1300));
@@ -362,6 +368,41 @@ export async function testTab(el, ctx) {
     try { fill(detail, result(await api('GET', `/api/ontologies/${ctx.id}/tests/${id}`))); } catch (e) { fill(detail, h('div', { class: 'banner bad' }, e.message)); }
     el.querySelectorAll('tr[data-id]').forEach(tr => tr.style.background = tr.dataset.id === String(id) ? 'var(--accent-soft)' : '');
   };
+  async function answer(btn, t) {
+    await busy(btn, async () => {
+      const r = await api('POST', `/api/ontologies/${ctx.id}/tests/${t.id}/answer`, { model_id: Number(model.value) });
+      toast('Writing a query and running it on the knowledge graph…');
+      for (;;) {
+        await new Promise(res => setTimeout(res, 1300));
+        if (!detail.isConnected) return;
+        const j = await api('GET', `/api/jobs/${r.job.id}`);
+        if (j.status === 'error') { toast(j.error, true); break; }
+        if (j.status === 'done') break;
+      }
+      open(t.id);
+    });
+  }
+  function dataSection(t) {
+    const d = t.result.data;
+    if (!d) return canData ? h('div', { class: 'card stack', style: 'background:var(--surface-2)' }, h('h3', { style: 'margin:0' }, 'Answer it from your data'),
+      h('p', { class: 'small muted', style: 'margin:0' }, 'The knowledge graph of this ontology is built. The AI can write a query for this use case and run it on your records, so you see whether the data answers it and what the answer is.'),
+      h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: e => answer(e.target, t) }, '🔎 Answer from the knowledge graph'))) : null;
+    const [cls, lab] = DATA[d.status] || ['', d.status];
+    return h('div', { class: 'card stack', style: 'background:var(--surface-2)' },
+      h('div', { class: 'row wrap' }, h('h3', { style: 'margin:0;flex:1' }, 'Answer from your data'), h('span', { class: 'badge ' + cls, style: 'font-size:13px;padding:3px 12px' }, lab),
+        !d.hidden && d.sparql && canData ? h('button', { class: 'btn sm', title: 'Run the same query again on the graph as it is now (no AI)', onclick: e => busy(e.target, async () => { await api('POST', `/api/ontologies/${ctx.id}/tests/${t.id}/rerun`); open(t.id); }) }, '↻ Run again') : null,
+        !d.hidden && d.sparql && canData ? h('button', { class: 'btn sm', onclick: () => { sessionStorage.setItem('onto-graph-query', d.sparql); ctx.go('graph'); } }, 'Open in the query console') : null,
+        canData ? h('button', { class: 'btn sm ghost', title: 'Let the AI write the query afresh', onclick: e => answer(e.target, t) }, 'New query') : null),
+      d.hidden ? h('div', { class: 'banner info' }, 'This use case was answered from the knowledge graph, but the records are not shown to you: you have no access to the data sources it was built from.') : null,
+      d.explanation ? h('p', { style: 'margin:0' }, d.explanation) : null,
+      d.cannot_answer ? h('div', { class: 'banner warn' }, h('b', {}, 'What the data lacks, according to the AI: '), d.cannot_answer) : null,
+      d.status === 'error' ? h('div', { class: 'banner bad' }, d.error) : null,
+      d.status === 'not_built' ? h('div', { class: 'banner info' }, 'The knowledge graph was not built when this test ran.') : null,
+      noDataView(ctx, d.no_data),
+      !d.hidden && d.result ? resultView(ctx, d.result, { meaning: d.columns_meaning }) : null,
+      d.graph_built_at ? h('div', { class: 'small dim' }, `Run on the knowledge graph built from version ${d.graph_version}, ${fmtTime(d.graph_built_at)}` + (d.rerun_at ? ` · run again ${fmtTime(d.rerun_at)}` : '') + (d.model ? ` · query written by ${d.model}` : '')) : null,
+      d.sparql ? h('details', {}, h('summary', { style: 'cursor:pointer;color:var(--accent)' }, 'The query that was run (SPARQL)'), h('pre', { class: 'code', style: 'margin-top:8px' }, d.sparql)) : null);
+  }
   function result(t) {
     if (t.status === 'running') return h('div', { class: 'card row' }, h('span', { class: 'spinner' }), 'This test is still running.');
     if (t.status === 'error') return h('div', { class: 'card stack' }, h('b', {}, t.text), h('div', { class: 'banner bad' }, t.error));
@@ -396,6 +437,7 @@ export async function testTab(el, ctx) {
               ['missing', 'partial', 'covered'].indexOf(x.status) > ['missing', 'partial', 'covered'].indexOf(x.before) ? '▲' : '▼') : null),
           h('td', {}, x.mapped.length ? x.mapped.map((m, i) => [i ? ', ' : '', m.type === 'class' ? h('a', { href: `#/o/${ctx.id}/diagram/${m.id}` }, label(ctx, m.id)) : h('span', { title: m.type }, ctx.c.properties.find(p => p.id === m.id)?.label || m.id)]) : h('span', { class: 'dim' }, '—')),
           h('td', { class: 'small' }, x.note, x.check ? h('div', { style: 'color:var(--warn);margin-top:3px' }, 'Checked: ' + x.check) : null))))))),
+      dataSection(t),
       t.diagram && t.diagram.nodes.length ? h('div', {}, h('h3', {}, 'What it touches in the ontology'), diagram(t.diagram, { maxHeight: 460 })) : null,
       r.disconnected.length ? h('div', { class: 'banner warn' }, h('b', {}, 'Not joined up: '), 'the use case needs these groups of classes together, but no relationship links them to the rest — ',
         r.disconnected.map(g => g.map(x => label(ctx, x)).join(', ')).join('; '), '.') : null,
@@ -409,15 +451,16 @@ export async function testTab(el, ctx) {
   fill(el, h('div', { class: 'stack' },
     h('div', { class: 'card stack' }, h('h2', { style: 'margin:0' }, 'Does the ontology address this use case?'),
       h('p', { class: 'muted', style: 'margin:0' }, 'Enter any use case. It is broken into the concepts, relationships, attributes and rules it needs; each is checked against the ontology; and you get the coverage, the gaps, a picture, and the additions that would close the gaps.'),
-      ctx.noModel(), text, h('div', { class: 'row wrap' }, run, h('label', { class: 'small dim' }, 'AI model '), model,
+      ctx.noModel(), text, useData, h('div', { class: 'row wrap' }, run, h('label', { class: 'small dim' }, 'AI model '), model,
         ctx.c.use_cases.length ? h('span', { class: 'small dim' }, 'or pick one: ') : null,
         ctx.c.use_cases.length ? select([['', '— a use case of this ontology —'], ...ctx.c.use_cases.map(u => [u.id, `${u.id} ${u.title}`])], '', v => { const u = ctx.c.use_cases.find(x => x.id === v); if (u) text.value = u.question || u.title; }, { class: 'inline', style: 'max-width:300px' }) : null)),
     s.tested ? h('div', { class: 'kpis' }, kpi('Use cases tested', s.tested, 'latest result of each'), kpi('Average coverage', pct(s.average)), kpi('Addressed', s.addressed), kpi('Partly addressed', s.partly), kpi('Not addressed', s.not_addressed)) : null,
     detail,
     data.items.length ? h('div', {}, h('h2', {}, 'Test history'), h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' },
-      h('thead', {}, h('tr', {}, ['Use case', 'Coverage', 'Verdict', 'Version', 'When', ''].map(x => h('th', {}, x)))),
+      h('thead', {}, h('tr', {}, ['Use case', 'Coverage', 'Verdict', 'From the data', 'Version', 'When', ''].map(x => h('th', {}, x)))),
       h('tbody', {}, data.items.map(t => h('tr', { class: 'click', 'data-id': t.id, onclick: () => open(t.id) }, h('td', {}, h('b', {}, t.title || t.text.slice(0, 70)), t.title ? h('div', { class: 'small dim clip', style: 'max-width:520px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, t.text) : null),
         h('td', { class: 'num' }, t.status === 'done' ? pct(t.score) : '—'), h('td', {}, t.status === 'done' ? h('span', { class: 'badge ' + VERDICT[t.verdict][0] }, VERDICT[t.verdict][1]) : h('span', { class: 'badge ' + (t.status === 'error' ? 'bad' : 'info') }, t.status)),
+        h('td', {}, t.data_status ? h('span', { class: 'badge ' + (DATA[t.data_status] || [''])[0] }, (DATA[t.data_status] || ['', t.data_status])[1]) : h('span', { class: 'dim' }, '—')),
         h('td', { class: 'num' }, t.version + (t.version !== data.version ? ' (older)' : '')), h('td', { class: 'small nowrap' }, `${fmtTime(t.at)} · ${t.user}`),
         h('td', { class: 'right' }, h('button', { class: 'btn sm ghost', title: 'Delete', onclick: async e => { e.stopPropagation(); if (await confirmDialog('Delete this test result?', t.title || t.text.slice(0, 80), 'Delete')) { await api('DELETE', `/api/ontologies/${ctx.id}/tests/${t.id}`).catch(fail); ctx.arg = null; testTab(el, ctx); } } }, '✕')))))))) : null));
   if (ctx.arg && /^\d+$/.test(ctx.arg)) open(Number(ctx.arg));

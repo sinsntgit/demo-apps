@@ -22,7 +22,7 @@ def _summary(db: Session, ds: DataSource, lvl: str) -> dict:
     return {"id": ds.id, "name": ds.name, "description": ds.description, "kind": ds.kind, "owner": ds.owner_email, "visibility": ds.visibility,
             "level": lvl, "status": ds.status, "error": ds.error, "notes": ds.notes or [], "tables": counts.get("table", 0),
             "documents": counts.get("document", 0), "documentation": ds.documentation, "sample_values": ds.sample_values, "personal_samples": ds.personal_samples,
-            "refreshed_at": ds.refreshed_at.isoformat() if ds.refreshed_at else None,
+            "graph_personal": bool(ds.graph_personal), "refreshed_at": ds.refreshed_at.isoformat() if ds.refreshed_at else None,
             "used_by": db.scalar(select(func.count(OntologyDataSource.id)).where(OntologyDataSource.data_source_id == ds.id)),
             "connection": {k: cfg.get(k, "") for k in DB_PUBLIC} | {"has_password": bool(cfg.get("password"))} if cfg else None,
             "db_label": f"{sources.DB_TYPES.get(cfg.get('db_type'), {}).get('label', '')} {cfg.get('database', '')} on {cfg.get('host', '')}".strip() if cfg else ""}
@@ -59,6 +59,7 @@ class SourceIn(BaseModel):
     visibility: str = "private"
     sample_values: bool = True
     personal_samples: bool = False
+    graph_personal: bool | None = None   # personal columns may be loaded into knowledge graphs; None on update = keep
 
 
 def _apply(ds: DataSource, body: SourceIn, creating: bool):
@@ -72,6 +73,8 @@ def _apply(ds: DataSource, body: SourceIn, creating: bool):
     if body.documentation is not None:
         ds.documentation = onto.text(body.documentation, 60000)
     ds.sample_values, ds.personal_samples = body.sample_values, body.personal_samples
+    if body.graph_personal is not None:
+        ds.graph_personal = body.graph_personal
     if ds.kind == "database":
         if body.db_type not in sources.DB_TYPES or not body.host.strip() or not body.database.strip():
             raise HTTPException(400, "Choose the database type and enter the host and the database name.")
@@ -119,7 +122,8 @@ def get_source(dsid: int, user: User = Depends(current_user), db: Session = Depe
     return {**_summary(db, ds, ds.my_level), "used_by_list": used,
             "job": _describe_job(db, dsid),
             "items": [{"id": i.id, "kind": i.kind, "name": i.name, "file_name": i.file_name, "size": i.size, "chars": i.chars, "note": i.note,
-                       "description": i.description, "ai": i.described_by_ai, "include": i.include, "profile": i.profile, "updated_at": i.updated_at.isoformat()} for i in items]}
+                       "description": i.description, "ai": i.described_by_ai, "include": i.include, "profile": i.profile,
+                       "kept": bool(i.stored) if ds.kind == "files" and i.kind == "table" else None, "updated_at": i.updated_at.isoformat()} for i in items]}
 
 
 @router.put("/datasources/{dsid}")
@@ -127,7 +131,7 @@ def update_source(dsid: int, body: SourceIn, request: Request, user: User = Depe
     ds = dsrc.get(db, user, dsid, "manage")
     before = (ds.sample_values, ds.personal_samples)
     _apply(ds, body, False)
-    audit(db, request, user, "datasource.updated", ds.name, f"visibility={ds.visibility} samples={ds.sample_values} personal={ds.personal_samples}")
+    audit(db, request, user, "datasource.updated", ds.name, f"visibility={ds.visibility} samples={ds.sample_values} personal={ds.personal_samples} graph_personal={bool(ds.graph_personal)}")
     db.commit()
     out = _summary(db, ds, ds.my_level)
     out["reread_needed"] = (not before[1]) and ds.personal_samples       # samples of personal columns are only collected on the next read
@@ -152,7 +156,7 @@ def set_documentation(dsid: int, body: DocIn, request: Request, user: User = Dep
 def refresh_source(dsid: int, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
     ds = dsrc.get(db, user, dsid, "manage")
     if ds.kind != "database":
-        raise HTTPException(400, "Uploaded files are not kept, so they cannot be re-read. Upload a newer version of a file to replace it.")
+        raise HTTPException(400, "Uploaded files are re-read when you upload a newer version of them (a file with the same name replaces the earlier one).")
     if not security.limiter.allow(f"dbread:{user.id}", 20, 600):
         raise HTTPException(429, "Too many database reads. Try again in a few minutes.")
     try:
@@ -242,6 +246,7 @@ def delete_item(dsid: int, iid: int, request: Request, user: User = Depends(curr
     audit(db, request, user, "datasource.item_deleted", ds.name, i.name)
     db.delete(i)
     db.flush()
+    dsrc.forget_files(db, ds, [i])
     dsrc.relink(db, ds)
     db.commit()
     return {"ok": True}
@@ -253,6 +258,7 @@ def delete_source(dsid: int, request: Request, user: User = Depends(current_user
     audit(db, request, user, "datasource.deleted", ds.name)
     db.delete(ds)
     db.commit()
+    dsrc.forget_files(db, ds)
     return {"ok": True}
 
 

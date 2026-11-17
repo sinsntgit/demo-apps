@@ -40,7 +40,7 @@ def usage(days: int = 30, user_id: int = 0, model: str = "", kind: str = "", use
     from datetime import timedelta
     days = max(1, min(days, 366))
     since = now() - timedelta(days=days)
-    q = select(Job).where(Job.created_at >= since)
+    q = select(Job).where(Job.created_at >= since, Job.kind.not_in(tuple(builder.NO_MODEL)))     # graph builds call no model
     if user.role != "admin":
         q = q.where(Job.user_id == user.id)
     elif user_id:
@@ -95,7 +95,7 @@ def usage_csv(days: int = 30, user_id: int = 0, user: User = Depends(current_use
     import csv
     import io
     from datetime import timedelta
-    q = select(Job).where(Job.created_at >= now() - timedelta(days=max(1, min(days, 366))))
+    q = select(Job).where(Job.created_at >= now() - timedelta(days=max(1, min(days, 366))), Job.kind.not_in(tuple(builder.NO_MODEL)))
     if user.role != "admin":
         q = q.where(Job.user_id == user.id)
     elif user_id:
@@ -399,7 +399,7 @@ def duplicate(oid: int, body: CopyIn, request: Request, user: User = Depends(bui
 
 
 def _active_job(db: Session, oid: int) -> Job | None:
-    return db.scalar(select(Job).where(Job.ontology_id == oid, Job.status.in_(("queued", "running")), Job.kind != "test").order_by(Job.id.desc()))
+    return db.scalar(select(Job).where(Job.ontology_id == oid, Job.status.in_(("queued", "running")), Job.kind.not_in(("test", "answer"))).order_by(Job.id.desc()))
 
 
 def _job(j: Job) -> dict:
@@ -454,6 +454,8 @@ def remove(oid: int, request: Request, user: User = Depends(current_user), db: S
     if _active_job(db, oid):
         raise HTTPException(400, "An AI job is still running on this ontology. Wait for it to finish.")
     audit(db, request, user, "ontology.deleted", o.name)
+    from .. import kg
+    kg.drop(db, oid)
     db.delete(o)
     db.commit()
     return {"ok": True}
@@ -580,7 +582,7 @@ def _launch(db, request, user, o: Ontology, kind: str, model: LLMModel, params: 
         raise HTTPException(429, "You have reached the hourly limit for AI runs. Try again later, or ask an administrator to raise it.")
     if limit_key == "tests" and not security.limiter.allow(f"test:{user.id}", int(cfg["tests_per_min"]), 60):
         raise HTTPException(429, "Too many tests in a short time. Wait a minute and try again.")
-    if kind != "test" and _active_job(db, o.id):
+    if kind not in ("test", "answer") and _active_job(db, o.id):
         raise HTTPException(409, "An AI job is already running on this ontology. Wait for it to finish.")
     j = Job(kind=kind, ontology_id=o.id, ontology_name=o.name, user_id=user.id, user_email=user.email, model_id=model.id,
             model_label=model.name, params=params, stage="Waiting to start")
@@ -898,12 +900,14 @@ class TestIn(BaseModel):
     text: str
     model_id: int | None = None
     baseline_id: int | None = None   # re-check the same requirements as this earlier test
+    data: bool = False               # also answer it from the knowledge graph (when built and the person may see its data)
 
 
 def _test(t: TestRun, c: dict | None = None, full: bool = False) -> dict:
     out = {"id": t.id, "text": t.text, "status": t.status, "score": t.score, "verdict": t.verdict, "version": t.version, "error": t.error,
            "model": t.model_label, "user": t.user_email, "at": t.created_at.isoformat(), "fixes_applied": t.fixes_applied,
-           "title": (t.result or {}).get("title", ""), "counts": (t.result or {}).get("counts")}
+           "title": (t.result or {}).get("title", ""), "counts": (t.result or {}).get("counts"),
+           "data_status": ((t.result or {}).get("data") or {}).get("status")}
     if full and t.result:
         out["result"] = t.result
         try:
@@ -932,7 +936,12 @@ def run_test(oid: int, body: TestIn, request: Request, user: User = Depends(curr
                 baseline_id=base.id if base else None)
     db.add(t)
     db.flush()
-    j = _launch(db, request, user, o, "test", model, {"test_run_id": t.id, "baseline_id": base.id if base else None}, "tests")
+    data = False
+    if body.data:
+        from .. import kg
+        rec = kg.record(db, oid)
+        data = bool(rec and rec.status == "ready" and user.role != "viewer" and not kg.data_access(db, user, rec.sources))
+    j = _launch(db, request, user, o, "test", model, {"test_run_id": t.id, "baseline_id": base.id if base else None, "data": data}, "tests")
     return {"job": _job(j), "test": _test(t)}
 
 
@@ -965,6 +974,9 @@ def test_detail(oid: int, tid: int, user: User = Depends(current_user), db: Sess
         except HTTPException:
             c = None
     out = {**_test(t, c, True), "current_version": o.version}
+    if out.get("result") and out["result"].get("data"):
+        from .graph import visible_data
+        out["result"] = {**out["result"], "data": visible_data(db, user, t, out["result"]["data"])}
     if t.status == "done":
         out["items"] = _test_items(o, t)
     return out

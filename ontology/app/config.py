@@ -6,12 +6,14 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.environ.get("ONTO_DATA_DIR", BASE_DIR / "data")).resolve()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+GRAPHS_DIR = DATA_DIR / "graphs"          # knowledge-graph stores, one folder per build
+DATASETS_DIR = DATA_DIR / "datasets"      # kept copies of uploaded dataset files (needed to build knowledge graphs)
 
 # Metadata store. SQLite by default; point at Postgres for multi-instance deployments.
 DATABASE_URL = os.environ.get("ONTO_DATABASE_URL", f"sqlite:///{DATA_DIR / 'ontostudio.db'}")
 
 APP_NAME = os.environ.get("ONTO_APP_NAME", "OntoStudio")
-VERSION = "1.6"
+VERSION = "1.7"
 COOKIE_NAME = "onto_session"
 COOKIE_SECURE = os.environ.get("ONTO_COOKIE_SECURE", "0") == "1"   # set to 1 behind HTTPS
 
@@ -49,7 +51,9 @@ DEFAULT_SETTINGS = {
     "default_use_cases": 8,        # use cases generated with a new ontology
     "max_classes": 250,            # hard cap on classes in one ontology
     "base_namespace": "https://example.org/ontology/",   # prefix of the IRIs in OWL / Turtle exports
-    "share_sample_values": True,   # data sources may send sample values (not only statistics) to the AI model
+    "share_sample_values": True,
+    "graph_rows_per_table": 10000, # knowledge graphs: rows read from each mapped table
+    "graph_query_seconds": 20,     # knowledge graphs: time limit of one query   # data sources may send sample values (not only statistics) to the AI model
     # appearance (Admin > Appearance)
     "app_title": "",               # name shown in the menu, sign-in page and documents; blank = ONTO_APP_NAME
     "accent": "blue",              # blue | teal | green | purple | orange | red | slate

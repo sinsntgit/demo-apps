@@ -226,3 +226,100 @@ def test(c: dict, res: dict) -> dict:
         if g.get("parent") in ix["classes"] and g["parent"] not in classes:
             classes.append(g["parent"])
     return relations(c, classes, prop_ids=props, hit=set(res["hit_classes"]), gap_classes=sug["classes"], gap_props=sug["properties"])
+
+
+RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
+LANE_MAX = 12
+
+
+def instances(c: dict, pic: dict, data_base: str) -> dict | None:
+    """Records from a knowledge graph and the links between them: one column per class, in the order the
+    classes first appear in the answer. Records that are in the answer are highlighted; the records they link to
+    are drawn plainly. pic = {"focus": [IRI], "extra": [IRI], "triples": [[s, p, {t, v}]]} (kg_worker.picture)."""
+    ix = onto.index(c)
+    ns = c["meta"]["namespace"]
+    focus = list(pic.get("focus", []))
+    ents = focus + [x for x in pic.get("extra", []) if x not in focus]
+    info = {e: {"types": [], "label": "", "attrs": []} for e in ents}
+    links: dict = {}
+    for s, p, o in pic.get("triples", []):
+        e = info.get(s)
+        if e is None:
+            continue
+        if p == RDF_TYPE:
+            if o["t"] == "iri" and o["v"].startswith(ns) and o["v"][len(ns):] in ix["classes"]:
+                e["types"].append(o["v"][len(ns):])
+        elif p == RDFS_LABEL:
+            if o["t"] == "lit" and not e["label"]:
+                e["label"] = o["v"]
+        elif p.startswith(ns) and p[len(ns):] in ix["props"]:
+            prop = ix["props"][p[len(ns):]]
+            if o["t"] == "iri" and o["v"] in info:
+                links.setdefault((s, o["v"]), []).append(prop)
+            elif o["t"] == "iri" and o["v"].startswith(ns):                 # a controlled value
+                ind = ix["individuals"].get(o["v"][len(ns):])
+                e["attrs"].append(f"• {prop['label']}: {ind['label'] if ind else o['v'][len(ns):]}")
+            elif o["t"] == "lit" and s in focus:
+                e["attrs"].append(f"• {prop['label']}: {o['v']}")
+    for e in info.values():                              # the most specific class: not an ancestor of another one
+        ts = list(dict.fromkeys(e["types"]))
+        e["cls"] = next((t for t in ts if not any(t in onto.ancestors(ix, u) for u in ts if u != t)), None)
+    ents = [x for x in ents if info[x]["cls"]]
+    if not ents:
+        return None
+    lanes: list = []
+    for x in ents:
+        if info[x]["cls"] not in lanes:
+            lanes.append(info[x]["cls"])
+    shown, hidden = {}, {}
+    for x in ents:
+        k = info[x]["cls"]
+        if sum(1 for y in shown if info[y]["cls"] == k) < LANE_MAX:
+            shown[x] = True
+        else:
+            hidden[k] = hidden.get(k, 0) + 1
+    nodes = {}
+    for x in shown:
+        e = info[x]
+        attrs = [a if len(a) <= 40 else a[:39] + "…" for a in e["attrs"][:4]] + ([f"• … {len(e['attrs']) - 4} more"] if len(e["attrs"]) > 4 else [])
+        lab = (e["label"] or x.rsplit("/", 1)[-1])[:44]
+        nodes[x] = {"id": x, "label": lab, "group": lanes.index(e["cls"]), "sub": "", "attrs": attrs,
+                    "style": "hit" if x in focus else "class", "w": _w(lab, attrs), "h": 30 + 15 * len(attrs)}
+    for k, n in hidden.items():
+        nid = f"more:{k}"
+        lab = f"… {n} more {ix['classes'][k]['label']}"
+        nodes[nid] = {"id": nid, "label": lab, "group": lanes.index(k), "sub": "", "attrs": [], "style": "dim", "w": _w(lab), "h": 30}
+        info[nid] = {"cls": k}
+    edges, done = [], set()
+    for (a, b), props in links.items():
+        if a not in nodes or b not in nodes or (b, a) in done:
+            continue
+        back = links.get((b, a), [])
+        names = [p["label"] or p["id"] for p in props]
+        names += [p["label"] or p["id"] for p in back if not any(q.get("inverse") == p["id"] or p.get("inverse") == q["id"] for q in props)]
+        done.add((a, b))
+        edges.append({"a": a, "b": b, "label": ", ".join(dict.fromkeys(names[:2])) + (f" +{len(names) - 2}" if len(names) > 2 else ""), "style": "rel"})
+    cols = {i: [x for x in nodes if info[x]["cls"] == k] for i, k in enumerate(lanes)}
+    heights = {i: sum(nodes[x]["h"] + 22 for x in v) - 22 for i, v in cols.items()}
+    tall = max(heights.values(), default=0)
+    x, right = PAD, PAD
+    for i in range(len(lanes)):
+        w = max(nodes[n]["w"] for n in cols[i]) if cols[i] else 100
+        y = PAD + (tall - heights[i]) / 2
+        for n in cols[i]:
+            nodes[n]["x"], nodes[n]["y"] = x + w / 2, y + nodes[n]["h"] / 2
+            y += nodes[n]["h"] + 22
+        longest = max([len(e["label"]) for e in edges if {info[e["a"]]["cls"], info[e["b"]]["cls"]} & {lanes[i]}] or [0])
+        right = x + w + PAD
+        x += w + max(90, min(230, longest * 6 + 60))
+    bends = 0
+    for e in edges:                                      # a link between records of the same class bows out to the right
+        a, b = nodes[e["a"]], nodes[e["b"]]
+        if info[e["a"]]["cls"] == info[e["b"]]["cls"]:
+            e["cx"] = a["x"] + a["w"] / 2 + 60 + 22 * (bends % 4)
+            e["cy"] = (a["y"] + b["y"]) / 2
+            right = max(right, e["cx"] + 20 + len(e["label"]) * 3.2)
+            bends += 1
+    return {"kind": "instances", "nodes": list(nodes.values()), "edges": edges, "width": max(right, 200), "height": tall + PAD * 2,
+            "legend": [{"group": i, "name": ix["classes"][k]["label"]} for i, k in enumerate(lanes)]}

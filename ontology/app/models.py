@@ -121,6 +121,7 @@ class DataSource(Base):
     documentation: Mapped[str] = mapped_column(Text, default="")             # what the data means: glossary, rules, data dictionary - by people
     sample_values: Mapped[bool] = mapped_column(Boolean, default=True)        # sample values may go to the AI model
     personal_samples: Mapped[bool] = mapped_column(Boolean, default=False)    # ...including columns that look like personal data
+    graph_personal: Mapped[Optional[bool]] = mapped_column(Boolean, default=False, nullable=True)  # personal columns may be loaded into knowledge graphs
     status: Mapped[str] = mapped_column(String(20), default="empty")          # empty | ready | error
     error: Mapped[str] = mapped_column(Text, default="")
     notes: Mapped[list] = mapped_column(JSON, default=list)                   # what could not be read, from the last read
@@ -152,6 +153,7 @@ class DataSourceItem(Base):
     description: Mapped[str] = mapped_column(Text, default="")                # business description, written by a person (or drafted by AI)
     described_by_ai: Mapped[bool] = mapped_column(Boolean, default=False)     # the table description is an AI draft nobody has confirmed
     include: Mapped[bool] = mapped_column(Boolean, default=True)              # used when an ontology is built
+    stored: Mapped[Optional[str]] = mapped_column(String(300), default="", nullable=True)  # kept copy of an uploaded dataset (data/datasets/...)
     note: Mapped[str] = mapped_column(String(500), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
@@ -163,6 +165,25 @@ class OntologyDataSource(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     ontology_id: Mapped[int] = mapped_column(ForeignKey("ontologies.id", ondelete="CASCADE"), index=True)
     data_source_id: Mapped[int] = mapped_column(ForeignKey("data_sources.id", ondelete="CASCADE"), index=True)
+
+
+class KnowledgeGraph(Base):
+    """The knowledge graph of an ontology: how its classes and properties map onto tables and columns of its data
+    sources, and the graph built from the rows (an embedded store in data/graphs/<store>)."""
+    __tablename__ = "knowledge_graphs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ontology_id: Mapped[int] = mapped_column(ForeignKey("ontologies.id", ondelete="CASCADE"), unique=True, index=True)
+    mapping: Mapped[dict] = mapped_column(JSON, default=dict)                 # kg.clean_mapping shape
+    mapping_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="none")           # none | building | ready | error
+    error: Mapped[str] = mapped_column(Text, default="")
+    store: Mapped[str] = mapped_column(String(200), default="")               # folder name under data/graphs
+    built_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    built_version: Mapped[int] = mapped_column(Integer, default=0)            # ontology version it was built from
+    built_by: Mapped[str] = mapped_column(String(255), default="")
+    sources: Mapped[list] = mapped_column(JSON, default=list)                 # data source ids the graph holds data of
+    stats: Mapped[dict] = mapped_column(JSON, default=dict)                   # counts per class / property, tables read, notes
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 
 class OntologyVersion(Base):

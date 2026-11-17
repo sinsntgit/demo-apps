@@ -85,7 +85,8 @@ async function detailView(root, id) {
       onchange: e => api('PUT', `/api/datasources/${id}/items/${i.id}`, { include: e.target.checked }).then(() => toast(e.target.checked ? 'Included' : 'Left out')).catch(fail) });
     const refs = p.columns.filter(c => c.ref);
     return h('tr', { class: 'click', onclick: e => { if (e.target.tagName !== 'INPUT') tableDialog(i); } }, h('td', { style: 'width:30px' }, include),
-      h('td', {}, h('b', {}, i.name), i.description ? h('div', { class: 'small muted' }, i.ai ? [h('span', { class: 'badge warn', title: 'Drafted by AI — check it; editing it makes it yours' }, 'AI draft'), ' '] : null, i.description) : null, i.file_name && i.file_name !== i.name ? h('div', { class: 'small dim' }, 'from ' + i.file_name) : null),
+      h('td', {}, h('b', {}, i.name), i.description ? h('div', { class: 'small muted' }, i.ai ? [h('span', { class: 'badge warn', title: 'Drafted by AI — check it; editing it makes it yours' }, 'AI draft'), ' '] : null, i.description) : null, i.file_name && i.file_name !== i.name ? h('div', { class: 'small dim' }, 'from ' + i.file_name) : null,
+        i.kept === false ? h('div', { class: 'small', style: 'color:var(--warn)', title: 'Uploaded before version 1.7, when files were not kept' }, 'Upload this file again to use its rows in knowledge graphs') : null),
       h('td', { class: 'num' }, p.row_count == null ? '—' : p.row_count.toLocaleString()), h('td', { class: 'num' }, p.columns.length),
       h('td', { class: 'small' }, refs.length ? refs.map(c => `${c.name} → ${c.ref}${c.ref_declared === false ? ' (inferred)' : ''}`).join('; ') : h('span', { class: 'dim' }, '—')),
       h('td', { class: 'small' }, p.columns.filter(c => c.role === 'code').map(c => c.name).join(', ') || h('span', { class: 'dim' }, '—')));
@@ -144,7 +145,7 @@ async function detailView(root, id) {
           tabs.docList()));
     },
     files: () => h('div', { class: 'stack' }, filePicker(upload),
-      h('p', { class: 'small muted' }, h('b', {}, 'Datasets'), ' — CSV, TSV, Excel (each sheet), SQLite files and JSON lists of records — are profiled: rows, columns, types, keys, code lists, likely joins. The data itself is not kept. ',
+      h('p', { class: 'small muted' }, h('b', {}, 'Datasets'), ' — CSV, TSV, Excel (each sheet), SQLite files and JSON lists of records — are profiled: rows, columns, types, keys, code lists, likely joins. A copy of the file is kept on this server so that knowledge graphs can be built from its rows; it is deleted with the file or the data source. ',
         h('b', {}, 'Documents'), ' — PDF, Word, PowerPoint, Markdown, text, JSON, XML, HTML, SQL scripts — are read and their text kept. A file with the same name as one already here replaces it, keeping the descriptions you wrote.'),
       tables.filter(t => t.file_name).length ? h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', {}, h('tr', {}, ['Dataset file', 'Tables', 'Size', ''].map(x => h('th', {}, x)))),
         h('tbody', {}, [...new Set(tables.map(t => t.file_name))].filter(Boolean).map(f => {
@@ -202,10 +203,11 @@ function settingsPane(d, reload) {
   const name = h('input', { type: 'text', value: d.name }), desc = h('textarea', { rows: 3 }, d.description || '');
   const samples = check('Share sample values with the AI model', d.sample_values, null, 'Example values per column and the full list of values of code columns. Untick to send statistics only.');
   const personal = check('Also for columns that look like personal data', d.personal_samples, null, 'Names, emails, phone numbers, ID numbers, addresses, dates of birth. Off by default. Takes effect for values read from now on — re-read or re-upload.');
+  const graphPersonal = check('Load personal data into knowledge graphs', d.graph_personal, null, 'Columns that look like personal data are left out of knowledge graphs built from this data source unless this is ticked. Only people who may use this data source see a graph’s records. Takes effect at the next build.');
   const db = d.kind === 'database' ? dbForm({ dataSource: true }) : null;
   if (db && d.connection) db.set(d.connection);
   const save = h('button', { class: 'btn primary', onclick: () => busy(save, async () => {
-    const payload = { name: name.value, description: desc.value, kind: d.kind, visibility: d.visibility, sample_values: samples.input.checked, personal_samples: personal.input.checked };
+    const payload = { name: name.value, description: desc.value, kind: d.kind, visibility: d.visibility, sample_values: samples.input.checked, personal_samples: personal.input.checked, graph_personal: graphPersonal.input.checked };
     if (db) { const v = db.value(); Object.assign(payload, v || {}); }
     const r = await api('PUT', `/api/datasources/${d.id}`, payload);
     toast(r.reread_needed ? 'Saved. Re-read the data source (or re-upload the files) to collect values of personal columns.' : 'Saved'); reload();
@@ -221,7 +223,7 @@ function settingsPane(d, reload) {
       }) }, 'Save access'))));
   }).catch(fail);
   return h('div', { class: 'grid2', style: 'align-items:start' },
-    h('div', { class: 'card stack' }, h('h2', {}, 'Settings'), field('Name', name), field('Description', desc, 'tells the AI what this data is about'), samples, personal,
+    h('div', { class: 'card stack' }, h('h2', {}, 'Settings'), field('Name', name), field('Description', desc, 'tells the AI what this data is about'), samples, personal, graphPersonal,
       db ? [h('h3', {}, 'Connection'), db] : null, h('div', { class: 'row' }, save, h('span', { class: 'spacer' }),
         h('button', { class: 'btn danger', onclick: async () => { if (!await confirmDialog('Delete this data source?', `${d.name} will be removed${d.used_by ? ` and unlinked from ${d.used_by} ontolog${d.used_by === 1 ? 'y' : 'ies'} (they keep what was built)` : ''}.`, 'Delete')) return;
           try { await api('DELETE', '/api/datasources/' + d.id); location.hash = '#/datasources'; } catch (e) { fail(e); } } }, 'Delete data source'))),

@@ -131,8 +131,8 @@ export function diagram(spec, opts = {}) {
   const legend = opts.legend === false || !spec.legend?.length ? null :
     h('div', { class: 'dg-legend' }, spec.legend.map(l => h('span', {}, h('i', { class: 'g' + (l.group % 9) }), l.name)),
       spec.nodes.some(n => n.style === 'gap') ? h('span', {}, h('i', { class: 'gapbox' }), 'Proposed addition (not in the ontology yet)') : null,
-      spec.nodes.some(n => n.style === 'hit') ? h('span', {}, h('i', { class: 'hitbox' }), spec.kind === 'relations' && opts.hitLabel ? opts.hitLabel : 'Used by this use case') : null,
-      spec.nodes.some(n => n.style === 'dim') ? h('span', {}, h('i', { class: 'dimbox' }), 'Other module') : null);
+      spec.nodes.some(n => n.style === 'hit') ? h('span', {}, h('i', { class: 'hitbox' }), spec.kind === 'instances' ? 'In the answer' : spec.kind === 'relations' && opts.hitLabel ? opts.hitLabel : 'Used by this use case') : null,
+      spec.nodes.some(n => n.style === 'dim') ? h('span', {}, h('i', { class: 'dimbox' }), spec.kind === 'instances' ? 'More records, not drawn' : 'Other module') : null);
   const el = h('div', { class: 'dg' }, bar, scroller, legend);
   el.fit = fit;
   label();

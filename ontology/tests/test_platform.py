@@ -748,3 +748,180 @@ def test_cost_is_captured_or_flagged(admin, fake_llm):
     c.delete(f"/api/ontologies/{oid}", headers=H)
     for x in made:
         c.delete(f"/api/admin/models/{x['id']}", headers=H)
+
+
+def _shop_files():
+    import random
+    random.seed(11)
+    cust = "customer_id,full_name,email,since,tier\n" + "".join(
+        f"{i},Person-{i:03d},p{i}@mail.example,2023-0{i % 9 + 1}-1{i % 9},{['Gold', 'Silver'][i % 2]}\n" for i in range(1, 41))
+    status = ["Placed", "Paid", "Shipped", "lost in transit"]
+    orders = "order_id,order_no,customer_id,order_date,total,status\n" + "".join(
+        f"{i},{'ZZ-SENTINEL-0099' if i == 77 else f'O-{i:04d}'},{999 if i == 5 else random.randint(1, 40)},2025-03-{i % 28 + 1:02d} 10:30,{i * 10.5},{status[i % 4]}\n"
+        for i in range(1, 121))
+    lines = "line_id,order_id,product_id,qty,price\n" + "".join(f"{i},{i % 120 + 1},{i % 15 + 1},{i % 4 + 1},{9.99 + i}\n" for i in range(1, 301))
+    prods = "product_id,sku,product_name\n" + "".join(f"{i},SKU{i:03d},Product {i}\n" for i in range(1, 16))
+    return [("files", (n, d.encode(), "text/csv")) for n, d in
+            (("customers.csv", cust), ("orders.csv", orders), ("order_lines.csv", lines), ("products.csv", prods))]
+
+
+def test_knowledge_graph_from_data(admin, fake_llm):
+    """Mapping (AI-proposed, checked), building the graph from kept files, queries (read-only, time-limited),
+    answers in the test bed, personal data held back, and data shown only to people who may use the data source."""
+    from app import config
+    c, mid = admin
+    oid = c.post("/api/ontologies", headers=H, json={"name": "Shop graph", "domain": "Retail", "visibility": "shared"}).json()["id"]
+    assert wait_job(c, c.post(f"/api/ontologies/{oid}/build", headers=H, json={"model_id": mid, "use_cases": 0}).json()["id"])["status"] == "done"
+    ds = c.post("/api/datasources", headers=H, json={"name": "Shop data", "kind": "files"}).json()
+    up = c.post(f"/api/datasources/{ds['id']}/files", headers=H, files=_shop_files()).json()
+    assert len(up["added"]) == 4
+    d = c.get(f"/api/datasources/{ds['id']}").json()
+    assert all(i["kept"] for i in d["items"])                                        # dataset files are kept, to build graphs from
+    assert len(list((config.DATASETS_DIR / str(ds["id"])).iterdir())) == 4
+    g = c.get(f"/api/ontologies/{oid}/graph").json()
+    assert g["status"] == "none" and g["tables"] == []                              # no data source linked yet
+    c.post(f"/api/ontologies/{oid}/datasources", headers=H, json={"data_source_id": ds["id"]})
+    assert c.post(f"/api/ontologies/{oid}/graph/build", headers=H).status_code == 400   # nothing mapped
+    # names alone already find most of it
+    m = c.post(f"/api/ontologies/{oid}/graph/match", headers=H, json={}).json()
+    assert {x["class"] for x in m["mapping"]["maps"]} >= {"Customer", "Order", "Product"}
+    c.put(f"/api/ontologies/{oid}/graph/mapping", headers=H, json={"mapping": {"maps": []}})
+    # the AI proposal: everything that does not exist is dropped and reported
+    n = len(fake_llm.REQUESTS)
+    j = wait_job(c, c.post(f"/api/ontologies/{oid}/graph/propose", headers=H, json={"model_id": mid}).json()["id"])
+    assert j["status"] == "done", j
+    probs = " ".join(j["result"]["problems"])
+    assert "Unicorn" in probs and "no_such_table" in probs and "no_such_column" in probs
+    g = c.get(f"/api/ontologies/{oid}/graph").json()
+    maps = {x["class"]: x for x in g["mapping"]["maps"]}
+    assert set(maps) == {"Customer", "Order", "OrderLine", "Product"} and all(x["ai"] for x in maps.values())
+    assert maps["Order"]["links"][0] == {**maps["Order"]["links"][0], "property": "placedBy", "to": maps["Customer"]["id"], "side": "from", "column": "customer_id"}
+    assert not any(a["property"] == "gtin" for a in maps["Product"]["attributes"])
+    assert "TABLE customers" in json.dumps(fake_llm.REQUESTS[n:])
+    # build: the rows are loaded; personal columns stay out unless the owner allows them
+    j = wait_job(c, c.post(f"/api/ontologies/{oid}/graph/build", headers=H).json()["id"])
+    assert j["status"] == "done", j
+    g = c.get(f"/api/ontologies/{oid}/graph").json()
+    st = g["stats"]
+    assert g["status"] == "ready" and st["classes"]["Order"] == 120 and st["classes"]["Customer"] == 40 and st["classes"]["Party"] == 40
+    om = next(x for x in st["maps"] if x["class"] == "Order")
+    assert om["links"]["placedBy"]["dangling"] == 1                                 # order 5 points at customer 999
+    assert om["values"]["hasStatus"]["unmatched"] == 30 and om["values"]["hasStatus"]["examples"] == ["lost in transit"]
+    cm = next(x for x in st["maps"] if x["class"] == "Customer")
+    assert set(cm["masked"]) == {"full_name", "email"} and st["properties"]["email"] == 0
+    assert st["properties"]["places"] == 119                                          # inverse added
+    assert g["coverage"]["classes_with_data"] >= 4
+    # queries: read-only, no other servers, results with the picture of the records
+    q = c.post(f"/api/ontologies/{oid}/graph/query", headers=H, json={"sparql": "SELECT ?o ?t WHERE { ?o a :Order ; :orderTotal ?t ; :hasStatus :Paid } ORDER BY ?t"}).json()
+    assert q["count"] == 30 and q["rows"][0][1]["v"] == "10.5" and q["picture"]["nodes"]
+    assert any(e["label"] for e in q["picture"]["edges"]) and q["picture"]["legend"][0]["name"] == "Order"
+    for bad in ("INSERT DATA { :x a :Order }", "SELECT * WHERE { SERVICE <http://example.org/sparql> { ?s ?p ?o } }", "SELECT ?x WHERE {"):
+        r = c.post(f"/api/ontologies/{oid}/graph/query", headers=H, json={"sparql": bad})
+        assert r.status_code == 400, bad
+    agg = c.post(f"/api/ontologies/{oid}/graph/query", headers=H, json={"sparql": "SELECT (COUNT(?l) AS ?n) WHERE { ?o :hasLine ?l }"}).json()
+    assert agg["rows"][0][0]["v"] == "300" and agg["picture"] is None
+    # the test bed answers the use case from the data; the AI never sees the rows
+    n = len(fake_llm.REQUESTS)
+    r = c.post(f"/api/ontologies/{oid}/tests", headers=H, json={"text": "Show orders by customer with their totals", "model_id": mid, "data": True}).json()
+    assert wait_job(c, r["job"]["id"])["status"] == "done"
+    t = c.get(f"/api/ontologies/{oid}/tests/{r['test']['id']}").json()
+    data = t["result"]["data"]
+    assert data["status"] == "answered" and data["result"]["count"] == 89 and data["result"]["picture"]["nodes"]   # 119 linked orders minus 30 "lost"
+    assert "ZZ-SENTINEL" in json.dumps(data) and "ZZ-SENTINEL" not in json.dumps(fake_llm.REQUESTS[n:])
+    assert "placedBy" in json.dumps(fake_llm.REQUESTS[n:])                           # the shape of the graph was given
+    # a broken query is corrected once from the engine's message; a query that writes is refused
+    r = c.post(f"/api/ontologies/{oid}/tests", headers=H, json={"text": "BAD-QUERY: orders by customer", "model_id": mid, "data": True}).json()
+    wait_job(c, r["job"]["id"])
+    assert c.get(f"/api/ontologies/{oid}/tests/{r['test']['id']}").json()["result"]["data"]["status"] == "answered"
+    r = c.post(f"/api/ontologies/{oid}/tests", headers=H, json={"text": "CHANGE-DATA orders by customer", "model_id": mid, "data": True}).json()
+    wait_job(c, r["job"]["id"])
+    bad = c.get(f"/api/ontologies/{oid}/tests/{r['test']['id']}").json()
+    assert bad["status"] == "done" and bad["result"]["data"]["status"] == "error"          # the design result still stands
+    # a test without data can be answered afterwards, and re-run without AI
+    r = c.post(f"/api/ontologies/{oid}/tests", headers=H, json={"text": "Which warranty claims are open?", "model_id": mid}).json()
+    wait_job(c, r["job"]["id"])
+    tid = r["test"]["id"]
+    assert "data" not in c.get(f"/api/ontologies/{oid}/tests/{tid}").json()["result"]
+    wait_job(c, c.post(f"/api/ontologies/{oid}/tests/{tid}/answer", headers=H, json={"model_id": mid}).json()["job"]["id"])
+    w = c.get(f"/api/ontologies/{oid}/tests/{tid}").json()["result"]["data"]
+    assert w["status"] == "empty" and w["cannot_answer"]
+    assert c.post(f"/api/ontologies/{oid}/tests/{tid}/rerun", headers=H).json()["status"] == "empty"
+    # people without access to the data source see the design, never the rows
+    assert c.put(f"/api/ontologies/{oid}", headers=H, json={"name": "Shop graph", "domain": "Retail", "visibility": "shared"}).status_code == 200
+    bob = make_user(c, "kg-bob@test.local", "ontologist")
+    vic = make_user(c, "kg-vic@test.local", "viewer")
+    for who in (bob, vic):
+        gg = who.get(f"/api/ontologies/{oid}/graph").json()
+        assert gg["can_see_data"] is False and gg["tables"] == [] and gg["stats"]["classes"]["Order"] == 120
+        assert all(not v["examples"] for x in gg["stats"]["maps"] for v in x["values"].values())
+        assert who.post(f"/api/ontologies/{oid}/graph/query", headers=H, json={"sparql": "SELECT * WHERE { ?s ?p ?o } LIMIT 1"}).status_code == 403
+        td = who.get(f"/api/ontologies/{oid}/tests/{t['id']}").json()["result"]["data"]
+        assert td["hidden"] and "result" not in td and "ZZ-SENTINEL" not in json.dumps(td)
+        assert who.post(f"/api/ontologies/{oid}/tests/{t['id']}/rerun", headers=H).status_code == 403
+    assert bob.put(f"/api/ontologies/{oid}/graph/mapping", headers=H, json={"mapping": {"maps": []}}).status_code in (403, 404)
+    # given access, Bob sees the data
+    c.put(f"/api/datasources/{ds['id']}/access", headers=H, json={"visibility": "private", "users": [bob.get("/api/auth/me").json()["id"]]})
+    assert bob.post(f"/api/ontologies/{oid}/graph/query", headers=H, json={"sparql": "SELECT * WHERE { ?s ?p ?o } LIMIT 1"}).status_code == 200
+    # the owner allows personal data: names and e-mail addresses are loaded at the next build
+    s = c.get(f"/api/datasources/{ds['id']}").json()
+    c.put(f"/api/datasources/{ds['id']}", headers=H, json={"name": s["name"], "kind": "files", "graph_personal": True})
+    old = c.get(f"/api/ontologies/{oid}/graph").json()
+    wait_job(c, c.post(f"/api/ontologies/{oid}/graph/build", headers=H).json()["id"])
+    g = c.get(f"/api/ontologies/{oid}/graph").json()
+    assert g["stats"]["properties"]["email"] == 40
+    q = c.post(f"/api/ontologies/{oid}/graph/query", headers=H, json={"sparql": "SELECT ?n WHERE { ?c a :Customer ; rdfs:label ?n } ORDER BY ?n LIMIT 1"}).json()
+    assert q["rows"][0][0]["v"] == "Person-001"
+    live = {p.name for p in config.GRAPHS_DIR.iterdir()}
+    assert len([x for x in live if x.startswith(f"{oid}-")]) == 1                    # the previous build was removed
+    # a dataset uploaded before files were kept: the build says what to do
+    from app.db import SessionLocal
+    from app.models import DataSourceItem
+    with SessionLocal() as db:
+        it = db.scalar(select_item(ds["id"], "products"))
+        it.stored = ""
+        db.commit()
+    j = wait_job(c, c.post(f"/api/ontologies/{oid}/graph/build", headers=H).json()["id"])
+    assert j["status"] == "done" and any("Upload it again" in x for x in j["result"]["notes"])
+    # deleting: the graph goes with the ontology, kept files with the data source
+    c.delete(f"/api/ontologies/{oid}", headers=H)
+    assert not [p for p in config.GRAPHS_DIR.iterdir() if p.name.startswith(f"{oid}-")]
+    c.delete(f"/api/datasources/{ds['id']}", headers=H)
+    assert not (config.DATASETS_DIR / str(ds["id"])).exists()
+    assert old["status"] == "ready"
+
+
+def select_item(dsid, name):
+    from sqlalchemy import select
+    from app.models import DataSourceItem
+    return select(DataSourceItem).where(DataSourceItem.data_source_id == dsid, DataSourceItem.name == name)
+
+
+def test_knowledge_graph_from_a_database(admin):
+    """Rows of a live database are read with SELECTs and a row limit per table; the graph says what was left out."""
+    c, mid = admin
+    path = tempfile.mktemp(suffix=".db")
+    _lending_db(path)
+    from app import sources as srcmod
+    real = srcmod.db_url
+    srcmod.db_url = lambda *a, **k: f"sqlite:///{path}"
+    try:
+        ds = c.post("/api/datasources", headers=H, json={"name": "Lending DB", "kind": "database", "db_type": "postgresql", "host": "db.internal",
+                                                         "database": "lending", "user": "reader", "password": "pw-secret"}).json()
+        oid = c.post("/api/ontologies", headers=H, json={"name": "Lending graph"}).json()["id"]
+        c.post(f"/api/ontologies/{oid}/datasources", headers=H, json={"data_source_id": ds["id"]})
+        assert wait_job(c, c.post(f"/api/ontologies/{oid}/build", headers=H, json={"model_id": mid, "use_cases": 0}).json()["id"])["status"] == "done"
+        g = c.post(f"/api/ontologies/{oid}/graph/match", headers=H, json={}).json()
+        maps = {m["class"]: m for m in g["mapping"]["maps"]}
+        assert maps["Loan"]["table"] == "loans" and maps["Customer"]["table"] == "customers" and maps["Customer"]["key"] == "id"
+        c.put("/api/admin/settings", headers=H, json={"graph_rows_per_table": 100})
+        j = wait_job(c, c.post(f"/api/ontologies/{oid}/graph/build", headers=H).json()["id"])
+        assert j["status"] == "done", j
+        st = c.get(f"/api/ontologies/{oid}/graph").json()["stats"]
+        assert st["classes"]["Loan"] == 100 and any(t["capped"] and t["total"] == 600 for t in st["tables"])
+        assert any("first 100 of 600 rows" in n for n in st["notes"])
+        assert "pw-secret" not in json.dumps(st)
+        c.delete(f"/api/ontologies/{oid}", headers=H)
+        c.delete(f"/api/datasources/{ds['id']}", headers=H)
+    finally:
+        srcmod.db_url = real
+        c.put("/api/admin/settings", headers=H, json={"graph_rows_per_table": 10000})

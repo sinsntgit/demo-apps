@@ -5,13 +5,15 @@ import { filePicker, uploadFiles, dbForm, failedList, fmtSize } from './sources.
 import { LEVEL } from './library.js';
 import { pickDataSources } from './datasources.js';
 import { diagramTab, modelTab, useCasesTab, testTab, qualityTab } from './editor.js';
+import { graphTab } from './kg.js';
 
 const TABS = [['overview', 'Overview'], ['standards', 'Standards'], ['diagram', 'Diagram'], ['model', 'Classes & properties'], ['usecases', 'Use cases'],
-  ['test', 'Test bed'], ['quality', 'Quality & reasoning'], ['sources', 'Sources'], ['versions', 'Versions']];
+  ['test', 'Test bed'], ['graph', 'Knowledge graph'], ['quality', 'Quality & reasoning'], ['sources', 'Sources'], ['versions', 'Versions']];
 const EXPORTS = [['pdf', '📕 Handbook (PDF)', 'Full explanation with diagrams'], ['pptx', '📊 Presentation (PowerPoint)', 'Slides for a walkthrough'],
   ['xlsx', '📗 Workbook (Excel)', 'Every element in readable sheets'], ['owl', '🦉 OWL (RDF/XML)', 'For Protégé and reasoners'], ['ttl', '🐢 Turtle (.ttl)', 'For triple stores'],
   ['jsonld', '{ } JSON-LD', 'Linked data as JSON'], ['json', '{ } JSON', 'This application’s own format']];
-export const JOB = { build: 'Building the ontology', refine: 'Refining the ontology', explain: 'Rewriting the explanation', usecases: 'Writing use cases', gaps: 'Reviewing for gaps', fix: 'Proposing fixes', test: 'Testing a use case' };
+export const JOB = { build: 'Building the ontology', refine: 'Refining the ontology', explain: 'Rewriting the explanation', usecases: 'Writing use cases', gaps: 'Reviewing for gaps', fix: 'Proposing fixes', test: 'Testing a use case',
+  map: 'Proposing a data mapping', graph: 'Building the knowledge graph', answer: 'Answering from the data' };
 
 export async function workspaceView(root, id, tab, arg) {
   const ctx = { id: Number(id), models: await api('GET', '/api/models').catch(() => []) };
@@ -76,7 +78,7 @@ export async function workspaceView(root, id, tab, arg) {
     const paint = job => {
       stage.textContent = job.stage || 'Starting…'; bar2.style.width = Math.max(job.progress, 3) + '%';
       fill(log, job.log.map(l => h('li', {}, l.text)));
-      meta.textContent = `${job.model} · ${job.calls} model call${job.calls === 1 ? '' : 's'} · ~$${job.cost.toFixed(2)}`;
+      meta.textContent = job.model ? `${job.model} · ${job.calls} model call${job.calls === 1 ? '' : 's'} · ~$${job.cost.toFixed(2)}` : 'no AI model used';
       log.scrollTop = log.scrollHeight;
     };
     fill(jobBox, h('div', { class: 'card stack', style: 'margin-bottom:14px;border-color:var(--accent)' },
@@ -91,7 +93,9 @@ export async function workspaceView(root, id, tab, arg) {
       if (job.status === 'done' || job.status === 'error') {
         if (job.status === 'error') modal('The AI job did not finish', h('div', { class: 'stack' }, h('div', { class: 'banner bad' }, job.error),
           h('p', { class: 'small muted' }, 'Nothing was changed. You can try again, choose another model, or narrow the scope.')));
-        else if (job.kind === 'gaps' || job.kind === 'fix') toast('Proposals ready — see Quality & reasoning.'); else toast(doneText(job));
+        else if (job.kind === 'gaps' || job.kind === 'fix') toast('Proposals ready — see Quality & reasoning.');
+        else if (job.kind === 'map') toast(`Mapping proposed: ${job.result.suggested} class mapping(s) — check them on the Knowledge graph tab.`);
+        else if (job.kind === 'graph') toast(`Knowledge graph built: ${job.result.records.toLocaleString()} records.`); else toast(doneText(job));
         return ctx.reload();
       }
       paint(job); setTimeout(tick, 1500);
@@ -106,11 +110,11 @@ export async function workspaceView(root, id, tab, arg) {
     bar.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.key === current));
     const el = h('div', {});
     fill(body, el);
-    const needs = ['standards', 'diagram', 'model', 'usecases', 'test', 'quality'];
+    const needs = ['standards', 'diagram', 'model', 'usecases', 'test', 'quality', 'graph'];
     if (!ctx.built && needs.includes(current) && !(current === 'diagram' || current === 'model'))
       return fill(el, h('div', { class: 'card empty' }, 'This ontology has no classes yet. Build it from the Overview tab, or draw it on the Diagram tab.'));
     try {
-      ({ overview: overviewTab, standards: standardsTab, diagram: diagramTab, model: modelTab, usecases: useCasesTab, test: testTab, quality: qualityTab,
+      ({ overview: overviewTab, standards: standardsTab, diagram: diagramTab, model: modelTab, usecases: useCasesTab, test: testTab, graph: graphTab, quality: qualityTab,
         sources: sourcesTab, versions: versionsTab })[current](el, ctx);
     } catch (e) { fill(el, h('div', { class: 'banner bad' }, e.message)); }
   }

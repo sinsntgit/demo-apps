@@ -17,7 +17,8 @@ In-app **Help** (menu → Help) is the full user and administrator manual, with 
 | **Diagram & visual editing** | Class hierarchy, relationships of a module, everything around one class. Expand / collapse branches (or all at once), show / hide attributes, maximise to the full window. Click a box or a line to edit; add classes, subclasses, relationships, attributes and metadata from the diagram. |
 | **Use cases** | Required (yours), AI-written, manual. Each with a diagram of the part of the model that answers it, the path, SPARQL and an example answer. |
 | **Proposed changes** | The reasoner proposes the changes that remove each contradiction (with alternatives where it is a business choice); “Propose fixes with AI” turns reasoner and modelling-check findings into add / change / delete items with reasons; the gap review and the test bed use the same tick-and-apply list, with dependencies kept together. |
-| **Test bed** | Enter any use case → requirement-by-requirement coverage, verdict, gaps, a picture with the proposed additions, tick which to add, then “Test again” re-checks the same requirements so the scores compare. The application verifies the model's claims and computes the score itself. |
+| **Knowledge graph** | The ontology filled with your actual records. Map classes to tables, attributes to columns, relationships to joins and controlled values to code columns — matched by names, proposed by AI (every entry checked against the ontology and the tables), reviewed as drafts. Build it from the data sources (read-only, up to 10,000 rows per table by default; personal columns left out unless the owner allows them), see records and values per class and property and the data problems found, and query it (SPARQL, read-only, time-limited) with a table of results and a picture of the records behind them. Only people with access to every data source behind it see its records. |
+| **Test bed** | Enter any use case → requirement-by-requirement coverage, verdict, gaps, a picture with the proposed additions, tick which to add, then “Test again” re-checks the same requirements so the scores compare. The application verifies the model's claims and computes the score itself. With a knowledge graph built, the use case is also **answered from your data**: the AI writes a query, the application runs it, and you see the rows, the records behind them and what has no data — the results never go to the AI. |
 | **Quality & reasoning** | Automatic modelling checks (score / 100) · OWL reasoner: built-in OWL 2 RL, and HermiT when Java is present · AI gap review by any configured model, applied only on request. |
 | **Library** | Nested folders with access levels (view / edit / owner), private or shared ontologies, import of OWL / Turtle / JSON-LD / JSON files. |
 | **Versions** | Every change is a version with a diff; restore any time. |
@@ -83,7 +84,9 @@ of their content). A page that was left open during the update offers to reload.
 
 The domain, scope, required use cases, requirements and notes of the ontology; the text extracted from its source
 documents and the *structure* of its databases; entries of the standards catalogue; the ontology itself; and the use
-case typed into the test bed. Never: database rows (they are not read), passwords, API keys, other ontologies.
+case typed into the test bed; to propose a knowledge-graph mapping, the table profiles; to write a query for the test bed, which
+classes of the graph have records and which properties hold values. Never: bulk database rows, the records of a knowledge graph or
+the results of its queries, passwords, API keys, other ontologies.
 Use a self-hosted model if the source material must not leave your network. The application makes no other outside
 connections; it does not look anything up on the internet.
 
@@ -109,6 +112,12 @@ Verified here, with a stand-in AI model that returns a fixed retail ontology (`t
 - data sources: profiling of a SQLite database and of CSV files (keys, inferred joins across files, code lists, personal-data detection), business descriptions reaching the model, personal values never sent, statistics-only mode, access rules, encrypted database password and re-read, building an ontology from a data source alone;
 - all 22 pre-built ontologies: parsed without loss, quality score 93+, valid Turtle export, consistent under the reasoner;
   copy and duplicate with their access rules;
+- knowledge graphs: AI-proposed mapping checked (non-existent classes, tables and columns dropped and reported), matching by names,
+  building from kept CSV files and from a database (SQLite standing in for a live server) with the row limit per table, types of
+  ancestor classes and inverse links added, dangling links and unmatched code values counted, personal columns left out unless allowed,
+  queries that write or call other servers refused, syntax errors reported, the test bed answering a use case from the data (with one
+  correction of a broken query), query results never reaching the model, records hidden from people without access to the data
+  source (ontologist and viewer), the old store removed after a rebuild and the graph removed with its ontology;
 - every screen in a headless browser, including visual editing on the diagram, as administrator and as viewer;
 - the Anthropic SDK code path (streaming, effort, token accounting) against an Anthropic-shaped stand-in server.
 
@@ -120,7 +129,11 @@ Verified here, with a stand-in AI model that returns a fixed retail ontology (`t
 - **Live database servers.** Reading structure and profiling were run against SQLite only. For PostgreSQL, MySQL, SingleStore, SQL Server, Oracle and Snowflake the drivers were installed and checked to accept their connection settings and reach the network (no server was available to log in to). PostgreSQL, MySQL, SQL Server and Oracle
   use the same code path through their own drivers and were not run against live servers.
 - Windows, and Python versions other than 3.13.
-- Very large inputs (hundreds of documents; ontologies near the class limit).
+- Very large inputs (hundreds of documents; ontologies near the class limit). Knowledge graphs were built from a few hundred rows;
+  build times and query speed for tables of 100,000+ rows were not measured.
+- Knowledge graphs against live PostgreSQL, MySQL, SQL Server, Oracle, Snowflake or SingleStore servers (the same SQLAlchemy code path
+  as profiling, run against SQLite only). The query time limit relies on stopping a separate process; that was checked on Linux,
+  not on Windows.
 - The reused terms the AI lists for a standard are not checked against the standard itself — the UI says so.
 - **The pre-built ontologies are starter models written for this application**, aligned to the published standards from
   knowledge of them. They were not compared term by term with the official ontology files (which could not be
@@ -129,4 +142,6 @@ Verified here, with a stand-in AI model that returns a fixed retail ontology (`t
 
 Not built: single sign-on; user groups (access is per person or “everyone”); free positioning of boxes in diagrams
 (layout is automatic); looking standards up live on the internet; reading rows of data to infer an ontology;
-scheduled re-tests; email notifications; a SPARQL endpoint or instance data store.
+scheduled re-tests; email notifications. Knowledge graphs (version 1.7) are a first phase: not yet built are an explorer for
+browsing records and their links, Turtle / R2RML downloads of the graph and its mapping, scheduled refresh, querying a database
+in place without copying it, and loading into an external graph database; a class is mapped with a single identifying column.

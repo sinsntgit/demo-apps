@@ -17,6 +17,33 @@ REQUESTS: list[dict] = []
 def answer(prompt: str) -> dict | str:
     if prompt.strip() == "ping":
         return "OK"
+    if "You are mapping an ontology onto the tables" in prompt:
+        if "TABLE customers" not in prompt:
+            return {"maps": [], "notes": ["No tables I recognise."]}
+        return {"maps": [
+            {"class": "Customer", "source": "Shop data", "table": "customers", "key": "customer_id", "label": "full_name",
+             "attributes": {"email": "email", "customerSince": "since", "loyaltyTier": "tier"}},
+            {"class": "Order", "table": "orders", "key": "order_id", "label": "order_no",
+             "attributes": {"orderNumber": "order_no", "orderDate": "order_date", "orderTotal": "total"}, "values": {"hasStatus": "status"},
+             "links": [{"property": "placedBy", "to_class": "Customer", "side": "from", "column": "customer_id"}]},
+            {"class": "OrderLine", "table": "order_lines", "key": "line_id", "attributes": {"quantity": "qty", "unitPrice": "price"},
+             "links": [{"property": "lineOf", "to_class": "Order", "side": "from", "column": "order_id"},
+                       {"property": "forProduct", "to_class": "Product", "side": "from", "column": "product_id"}]},
+            {"class": "Product", "table": "products", "key": "product_id", "label": "product_name",
+             "attributes": {"sku": "sku", "productName": "product_name", "gtin": "no_such_column"}},
+            {"class": "Unicorn", "table": "customers"},
+            {"class": "Brand", "table": "no_such_table"}], "notes": ["Brands are not in the data."]}
+    if "Its knowledge graph holds records" in prompt:
+        text = prompt.split("<use_case>")[1].split("</use_case>")[0]
+        good = ("SELECT ?order ?number ?customer ?name ?total ?status WHERE { ?order a :Order ; :orderNumber ?number ; :placedBy ?customer ; "
+                ":orderTotal ?total ; :hasStatus ?status . ?customer rdfs:label ?name } ORDER BY ?number LIMIT 200")
+        if "BAD-QUERY" in text and "was refused by the query engine" not in prompt:
+            return {"sparql": "SELECT ?x WHERE { ?x a :Order ", "explanation": "Broken on purpose."}
+        if "CHANGE-DATA" in text:
+            return {"sparql": "INSERT DATA { :x a :Order }", "explanation": "Tries to write."}
+        if "warranty" in text.lower():
+            return {"sparql": "SELECT ?w WHERE { ?w a :Warranty }", "explanation": "Warranties.", "cannot_answer": "No warranty data."}
+        return {"sparql": good, "explanation": "Lists each order with its customer, total and status.", "columns": {"order": "the order", "name": "customer"}}
     if "extract everything an ontology" in prompt:
         return {"concepts": [{"term": "Gift voucher", "definition": "A prepaid voucher redeemable against orders.", "kind_of": "", "also_called": ["gift card"]}],
                 "relationships": ["Customer - redeems - Gift voucher"], "attributes": ["Gift voucher: balance (amount)"],

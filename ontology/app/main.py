@@ -10,7 +10,7 @@ from sqlalchemy import select
 from . import builder, config, onto, sample, security
 from .db import Base, SessionLocal, engine
 from .models import LLMModel, Ontology, User
-from .routers import admin, auth, datasources, ontologies
+from .routers import admin, auth, datasources, graph, ontologies
 
 log = logging.getLogger("ontostudio")
 STATIC = config.BASE_DIR / "static"
@@ -40,6 +40,9 @@ def bootstrap():
     Base.metadata.create_all(engine)
     upgrade_schema()
     builder.recover()
+    from . import kg
+    with SessionLocal() as db:
+        kg.cleanup(db)
     with SessionLocal() as db:
         if db.scalar(select(User.id).limit(1)):
             return
@@ -102,7 +105,7 @@ async def security_layer(request: Request, call_next):
     return response
 
 
-for r in (auth.router, ontologies.router, datasources.router, admin.router):
+for r in (auth.router, ontologies.router, graph.router, datasources.router, admin.router):
     app.include_router(r)
 
 

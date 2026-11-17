@@ -139,7 +139,7 @@
 <p><b>＋ New data source</b>, then choose:</p>
 <ul>
 <li><b>Upload datasets and documents</b> — then <b>＋ Add files</b>: choose files, a whole folder, or drop them. You can mix:
-<ul><li><b>Datasets</b> — CSV / TSV, Excel (each sheet is a table), SQLite files (each table), JSON files holding lists of records. They are profiled; the data itself is not kept.</li>
+<ul><li><b>Datasets</b> — CSV / TSV, Excel (each sheet is a table), SQLite files (each table), JSON files holding lists of records. They are profiled, and a copy of each file is kept on the server so that <a href="#/help/graph">knowledge graphs</a> can be built from its rows (it is deleted with the file or the data source).</li>
 <li><b>Documents</b> — PDF, Word, PowerPoint, Markdown, text, JSON, XML, HTML, YAML, SQL scripts. Their text is kept.</li></ul>
 Uploading a file with the same name again replaces it and keeps the descriptions you wrote.</li>
 <li><b>Connect a database</b> — PostgreSQL, MySQL / MariaDB, SingleStore, Microsoft SQL Server, Oracle or Snowflake: host, database, user, password (for Snowflake: the <i>account identifier</i> from your Snowflake web address, e.g. <code>orgname-accountname</code>, plus the warehouse and, optionally, the role and schema; for Oracle the database is the <i>service name</i>). The driver for that kind of database must be installed on the server — see <code>requirements-drivers.txt</code>; if it is not, the message names the package to install. The password is stored <b>encrypted</b> so that <b>↻ Re-read database</b> can profile it again later; it is never shown again. Use a read-only user. Each table is profiled from at most 2,000 rows; nothing is ever written to the database, and only queries built by the application are run.</li>
@@ -182,6 +182,7 @@ Uploading a file with the same name again replaces it and keeps the descriptions
 <li><b>Also for columns that look like personal data</b> (off by default).</li>
 <li>An administrator can stop all data sources sending values: Admin › Settings › Data sources.</li>
 <li><b>Access</b>: a data source is private to its owner and administrators until shared with named ontologists or with everyone who builds ontologies. Those people can build from it and read its profiles; only the owner and administrators can change, re-read or delete it. Viewers do not see data sources. If an ontology uses a data source someone has no access to, a build by that person is refused and says which one.</li>
+<li><b>Load personal data into knowledge graphs</b> (off by default): whether columns that look like personal data are loaded when a <a href="#/help/graph">knowledge graph</a> is built from this data source.</li>
 <li>Deleting a data source unlinks it from its ontologies; what was already built stays.</li>
 </ul>
 </section>
@@ -307,6 +308,53 @@ Uploading a file with the same name again replaces it and keeps the descriptions
 <figure><img src="/static/help/img/test-compare.png" alt="A re-test compared with the earlier result"><figcaption>Re-test of the same requirements, compared with the earlier result.</figcaption></figure>
 <p>The tiles above the history summarise the latest result of each distinct use case. Results are kept per version: an older result says “(older)” and offers Test again. Test results are included in the PDF, PowerPoint and Excel downloads.</p>
 <figure><img src="/static/help/img/test-changes.png" alt="Proposed changes from a test, with checkboxes"><figcaption>The changes a test proposes, ready to tick and apply.</figcaption></figure>
+<h3 id="testbed-data">Answer from your data</h3>
+<p>When the ontology's <a href="#/help/graph">knowledge graph</a> is built and you have access to its data sources, the test bed shows <b>Also answer it from the knowledge graph</b> (ticked). The AI then writes a query for the use case — it is given the ontology and the shape of the graph, never the records — and the application checks it and runs it on your data. The result shows:</p>
+<ul>
+<li>a verdict: <b>Answered from the data</b> (the query returned records), <b>The query found nothing</b>, or <b>The query failed</b> (with the reason; a query the engine rejects is corrected once by the AI, from the engine's message only);</li>
+<li>in plain words, what the query looks for; and what the data lacks, if the AI finds something missing;</li>
+<li><b>No data in the knowledge graph for: …</b> — elements the use case or the query needs that exist in the ontology but have no records or values, because nothing is mapped to them or the columns are empty. This is the usual reason for an empty answer;</li>
+<li>the rows returned, and <b>the records behind the answer</b> as a picture, one colour per class;</li>
+<li>the query itself, with <b>Open in the query console</b> to adjust it, and <b>↻ Run again</b> to run it on the graph as it is now (no AI, so no cost).</li>
+</ul>
+<figure><img src="/static/help/img/test-data-answer.png" alt="A use case answered from the data"><figcaption>A use case answered from the data: the rows, and the records they come from.</figcaption></figure>
+<p>An earlier test can be answered afterwards with <b>🔎 Answer from the knowledge graph</b>. The test history shows the answer in the <b>From the data</b> column. People without access to the data sources see that a test was answered, and the query, but not the records.</p>
+</section>
+
+<section id="graph" data-title="Knowledge graph">
+<h2>Knowledge graph — your ontology filled with your data</h2>
+<p>The test bed tells you whether the <i>ontology</i> can represent a use case. The <b>knowledge graph</b> goes one step further: it loads your actual records — customers, orders, loans, dealers — into the ontology, so you can see whether <b>your data</b> answers the question, and what the answer is. It is on the <b>Knowledge graph</b> tab of an ontology that uses at least one <a href="#/help/datasources">data source</a>.</p>
+<figure><img src="/static/help/img/graph-built.png" alt="The Knowledge graph tab after a build"><figcaption>A built graph: records, facts, tables read, and the mapping it was built from.</figcaption></figure>
+<h3>1. Map the ontology onto your tables</h3>
+<p>The mapping says, for each class, which table holds its records; for each attribute, which column; for each relationship, how the tables join; and for each controlled value, which code column holds it. Three ways to make it:</p>
+<ul>
+<li><b>Match by names</b> — instant, no AI: tables named like classes, columns named like properties, and the references found when the data source was profiled.</li>
+<li><b>✨ Propose with AI</b> — the AI reads the ontology and the table profiles (the same information it gets for a build) and proposes a full mapping. Anything it names that does not exist — a class, a table, a column — is <b>left out and listed</b>, so a wrong guess never reaches the graph.</li>
+<li><b>＋ Map a class</b> / <b>Edit</b> — the form: choose the class and its table, the column that identifies a record (other tables refer to it) and the one that names it, then a column for each attribute and controlled value, and for each relationship where the link is: a column in this table holding the other record's identifier (a foreign key), a column in the other table holding this record's identifier, or a separate link table. If only some rows of a table belong to a class (for example a <code>type</code> column), set <b>Only some rows of the table are this class</b>.</li>
+</ul>
+<figure><img src="/static/help/img/graph-mapping.png" alt="The mapping, proposed by AI"><figcaption>A mapping proposed by AI: each class mapping is a <b>draft</b> until someone confirms it.</figcaption></figure>
+<figure><img src="/static/help/img/graph-map-form.png" alt="The mapping form of one class"><figcaption>Mapping one class: its table, identifier and name, attributes, and how its relationships join.</figcaption></figure>
+<p>Proposals are marked <b>draft</b>. Check that the table really holds that class and that the columns mean what the properties say, then press <b>✓ Confirm</b>. Mappings you confirmed or edited are kept when you ask for a new proposal; proposals add only what is missing.</p>
+<h3>2. Build the graph</h3>
+<p><b>▶ Build the knowledge graph</b> reads the mapped tables — read-only, with queries built by the application — and loads the records. No AI is involved. Each record gets the type of its class <i>and of every parent class</i>, and a name; relationships are stored in both directions where the ontology names an inverse. The build runs in the background with progress at the top.</p>
+<ul>
+<li>At most <b>10,000 rows per table</b> are read (an administrator can change this). A table read in part says so; links to rows that were not loaded show as missing.</li>
+<li>Uploaded datasets are read from the copy kept when they were uploaded. Files uploaded before version 1.7 were not kept: upload them again (same name) before building.</li>
+<li>Columns that look like <b>personal data</b> are not loaded unless the data source's owner ticks <b>Load personal data into knowledge graphs</b> in its Settings. A record whose name column is personal is shown as, for example, “Customer 17”.</li>
+<li>The graph is a copy taken at build time. When the data, the mapping or the ontology change, the tab says so — press <b>↻ Build again from the data</b>.</li>
+</ul>
+<p><b>What is in the graph</b> lists the records per class and the values per property, and everything worth checking: rows without an identifier, repeated identifiers, code values that match none of the ontology's controlled values (with examples), links pointing to records that are not there, values that do not fit their type, personal columns left out. These are usually data-quality findings, or mapping mistakes to correct.</p>
+<h3>3. Ask it questions</h3>
+<p><b>Ask the graph (SPARQL)</b> runs a query and shows the rows and a picture of the records behind them. Pick an example to start from. Queries can only read — a query that tries to change the graph, or to call another server, is refused — and a query that runs longer than 20 seconds is stopped.</p>
+<figure><img src="/static/help/img/graph-console.png" alt="A query and the records behind it"><figcaption>A query: rows, and the records they come from with the records they link to.</figcaption></figure>
+<p>In the <b>Test bed</b>, tick <b>Also answer it from the knowledge graph</b>: after checking the ontology, the AI writes a query for the use case and the application runs it on your data — see <a href="#/help/testbed">Answer from your data</a>.</p>
+<h3>Who sees the records</h3>
+<ul>
+<li>Only people who may use <b>every</b> data source the graph was built from see its records — in the console, in test results and in the examples of data problems. Everyone else who can open the ontology sees the mapping and the counts, and is told which data source they would need. Viewers see the design only.</li>
+<li>Changing the mapping and building need edit access to the ontology and access to its data sources.</li>
+<li><b>Query results are never sent to the AI model.</b> To write a query it receives the ontology and the <i>shape</i> of the graph — which classes have records and which properties hold values — not the records.</li>
+<li>Every query is recorded in the audit log. <b>Delete graph</b> removes the copy of the data; the mapping stays. Deleting the ontology deletes its graph.</li>
+</ul>
 </section>
 
 <section id="quality" data-title="Quality, reasoner &amp; gap review">
@@ -447,10 +495,12 @@ Uploading a file with the same name again replaces it and keeps the descriptions
 <tr><td>AI jobs running at the same time</td><td>3</td><td>Others wait in a queue.</td></tr>
 <tr><td>Use cases written with a new ontology</td><td>8</td><td>Used when the wizard’s number is not set.</td></tr>
 <tr><td>Maximum classes in one ontology</td><td>250</td><td>Larger imports are cut at this limit and say so.</td></tr>
+<tr><td>Knowledge graphs: rows read per table</td><td>10,000</td><td>Larger tables are loaded in part, and the graph says which. Up to 200,000.</td></tr>
+<tr><td>Knowledge graphs: time limit of one query</td><td>20 seconds</td><td>A longer query is stopped.</td></tr>
 <tr><td>Base namespace</td><td>https://example.org/ontology/</td><td>The web address that prefixes identifiers in OWL / Turtle exports of <i>new</i> ontologies. Set it to an address your organisation owns.</td></tr>
 </table>
 <h3>AI activity and audit log</h3>
-<p><b>AI activity</b> lists the last 200 AI jobs with status, tokens and cost (the AI usage dashboard has the charts and filters). The <b>Audit log</b> records sign-ins, changes to users, models and settings, every creation, edit, build, export and deletion of an ontology, folder access changes, database reads and tests — searchable and downloadable as CSV.</p>
+<p><b>AI activity</b> lists the last 200 AI jobs with status, tokens and cost (the AI usage dashboard has the charts and filters). The <b>Audit log</b> records sign-ins, changes to users, models and settings, every creation, edit, build, export and deletion of an ontology, folder access changes, database reads, tests, and knowledge-graph mappings, builds and queries — searchable and downloadable as CSV.</p>
 </section>
 
 <section id="privacy" data-title="What the AI receives">
@@ -461,9 +511,10 @@ Uploading a file with the same name again replaces it and keeps the descriptions
 <li>the text extracted from its source documents, and the structure of its databases (table and column names, types, keys, comments);</li>
 <li>from <a href="#/help/datasources">data sources</a>: each table's profile — row counts, types, roles, how many values are empty or distinct, ranges, references — your business descriptions, and, where the data source allows it, a few sample values per column and the value lists of code columns (never of columns that look like personal data unless the owner allows it). Statistics are computed on this server;</li>
 <li>entries from the built-in standards catalogue;</li>
-<li>the ontology itself; and, in the test bed, the use case you typed.</li>
+<li>the ontology itself; and, in the test bed, the use case you typed;</li>
+<li>to propose a <a href="#/help/graph">knowledge-graph</a> mapping: the table profiles, as for a build; to write a query for the test bed: which classes of the graph have records and which properties hold values — never the records.</li>
 </ul>
-<p>It never receives: whole tables or bulk rows (at most the sample values above), database passwords, other ontologies, user accounts, or API keys.</p>
+<p>It never receives: whole tables or bulk rows (at most the sample values above), the records of a knowledge graph or the results of its queries, database passwords, other ontologies, user accounts, or API keys.</p>
 <p>If source documents contain confidential material, choose a model your organisation is allowed to send it to — or a <b>self-hosted model</b>, in which case nothing leaves your network. The application itself makes no other outside connections.</p>
 <p>What comes back from a model is never used as it is: it is rebuilt field by field, references to things that do not exist are repaired or dropped, and test-bed scores are computed by the application.</p>
 </section>
@@ -497,6 +548,9 @@ Uploading a file with the same name again replaces it and keeps the descriptions
 <tr><td>After an update, screens still look like the old version</td><td>Check the version at the bottom of the menu. If it shows the old number, the server is still running the old copy: stop it (Ctrl+C in its window) and start it again from the folder you updated. If it shows the new number, reload the page. From version 1.6 the browser always fetches the new files after an update, and a page left open during an update says “A newer version has been installed — Reload now”.</td></tr>
 <tr><td>A model's cost shows $0 on the AI usage dashboard</td><td>The model has no prices. Admin › AI models › Edit: enter the price per million input and output tokens and tick “Apply these prices to earlier AI jobs of this model”.</td></tr>
 <tr><td>“connect() got an unexpected keyword argument …” when connecting a database</td><td>Fixed in version 1.5 (SQL Server was given a setting meant for PostgreSQL). Update the application.</td></tr>
+<tr><td>Knowledge graph: “… was uploaded before version 1.7, when uploaded files were not kept”</td><td>Upload that file again on its data source (same name — it replaces the old one and keeps your descriptions), then build again.</td></tr>
+<tr><td>Knowledge graph: the test bed says “The query found nothing”</td><td>Look at <b>No data in the knowledge graph for</b>: map those classes or properties on the Knowledge graph tab and build again. Then press ↻ Run again. Also check “What is in the graph” for code values that match no controlled value.</td></tr>
+<tr><td>Knowledge graph: “The query took longer than 20 seconds”</td><td>Narrow the question (a LIMIT, fewer optional parts), or ask an administrator to raise the time limit in Settings.</td></tr>
 <tr><td>A data source shows “Not everything could be read”</td><td>The list names the tables. A table may be unreadable for the database user (grant SELECT), or the 150-second time limit for profiling was reached — those tables have their structure but no profile. Re-read, or leave large unneeded tables out.</td></tr>
 <tr><td>A join between two uploaded files was not found</td><td>Joins are inferred when a column is named after the other table and its key (<code>dealer_id</code> → <code>dealers.id</code>) and the values match. Rename the column, or describe the link in the column's business description.</td></tr>
 <tr><td>I want to change a pre-built ontology</td><td>You cannot change the library itself. Open it and press ＋ Use this ontology — the copy is yours to change.</td></tr>

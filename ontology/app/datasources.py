@@ -1,13 +1,15 @@
 """Reusable data sources: access, reading (profiling tables, extracting documents) and the material an
 ontology build receives from them."""
+import hashlib
 import json
 import re
+import shutil
 
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import profiling, security, sources
+from . import config as appconfig, profiling, security, sources
 from .db import now
 from .models import DataSource, DataSourceAccess, DataSourceItem, User
 
@@ -111,8 +113,38 @@ def read_database(db: Session, ds: DataSource):
     return res
 
 
+def _keep_file(ds: DataSource, name: str, data: bytes) -> str:
+    """A dataset file is kept (data/datasets/<data source>/...) so that knowledge graphs can be built from its rows.
+    -> the path relative to the datasets folder."""
+    ext = name.rsplit(".", 1)[-1].lower() if "." in name else "bin"
+    rel = f"{ds.id}/{hashlib.sha1(name.encode()).hexdigest()[:20]}.{re.sub(r'[^a-z0-9]', '', ext)[:8] or 'bin'}"
+    path = appconfig.DATASETS_DIR / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    return rel
+
+
+def stored_path(item: DataSourceItem):
+    """The kept copy of the dataset a table came from, or None (uploaded before version 1.7, or a database table)."""
+    if not item.stored:
+        return None
+    p = (appconfig.DATASETS_DIR / item.stored).resolve()
+    return p if p.is_file() and appconfig.DATASETS_DIR.resolve() in p.parents else None
+
+
+def forget_files(db: Session, ds: DataSource, items: list | None = None):
+    """Delete kept dataset copies nobody refers to any more (all of them when the data source is deleted)."""
+    if items is None:
+        shutil.rmtree(appconfig.DATASETS_DIR / str(ds.id), ignore_errors=True)
+        return
+    still = set(db.scalars(select(DataSourceItem.stored).where(DataSourceItem.data_source_id == ds.id)))
+    for i in items:
+        if i.stored and i.stored not in still and (p := stored_path(i)):
+            p.unlink(missing_ok=True)
+
+
 def add_files(db: Session, ds: DataSource, files: list[tuple[str, bytes]]) -> tuple[list, list]:
-    """Datasets are profiled (the file itself is not kept); documents are read (the text is kept).
+    """Datasets are profiled and a copy kept (to build knowledge graphs from); documents are read (the text is kept).
     A file with the same name as an earlier one replaces it."""
     added, failed = [], []
     for name, data in files:
@@ -124,6 +156,7 @@ def add_files(db: Session, ds: DataSource, files: list[tuple[str, bytes]]) -> tu
                 if len(data) > sources.MAX_FILE:
                     raise profiling.ProfileError("Larger than 25 MB.")
                 tables = profiling.profile_file(name, data, allow_personal=ds.personal_samples)
+                kept = _keep_file(ds, name, data)
                 old = list(db.scalars(select(DataSourceItem).where(DataSourceItem.data_source_id == ds.id, DataSourceItem.file_name == name)))
                 keep = {i.name: i for i in old if i.kind == "table"}
                 for i in old:
@@ -132,10 +165,10 @@ def add_files(db: Session, ds: DataSource, files: list[tuple[str, bytes]]) -> tu
                 for t in tables:
                     if t["name"] in keep:
                         keep[t["name"]].profile = _keep_descriptions(keep[t["name"]].profile, t)
-                        keep[t["name"]].note, keep[t["name"]].size = _table_note(t), len(data)
+                        keep[t["name"]].note, keep[t["name"]].size, keep[t["name"]].stored = _table_note(t), len(data), kept
                     else:
                         db.add(DataSourceItem(data_source_id=ds.id, kind="table", name=t["name"][:500], file_name=name, size=len(data),
-                                              profile=t, note=_table_note(t), include=not technical(t["name"])))
+                                              profile=t, note=_table_note(t), include=not technical(t["name"]), stored=kept))
                 added.append({"name": name, "kind": "dataset", "tables": len(tables), "note": "; ".join(_table_note(t) for t in tables[:3])})
             else:
                 kind, text, note = sources.extract(name, data)

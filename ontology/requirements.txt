@@ -13,6 +13,7 @@ qrcode>=7.4
 rdflib>=7.0
 owlrl>=7.1
 owlready2>=0.46        # HermiT reasoner; only used when Java is installed on the server
+pyoxigraph>=0.4        # knowledge graphs: embedded store and SPARQL engine (wheels for Windows, macOS, Linux)
 # Handbook (PDF), deck (PowerPoint) and the diagrams inside them
 fpdf2>=2.8
 matplotlib>=3.8

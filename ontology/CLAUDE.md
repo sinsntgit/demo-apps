@@ -35,6 +35,13 @@ Turtle / JSON-LD / JSON. Roles: `viewer` (read, export, test) · `ontologist` (c
    an API response, logs, audit or error messages. Only profiles and (where allowed) a few sample values go to a model;
    values of personal-looking columns only if the data source owner allows it; the admin setting `share_sample_values`
    switches all values off.
+   Knowledge graphs (`kg.py`) read the rows of mapped tables, again only with SQLAlchemy Core SELECTs and a row limit
+   (`graph_rows_per_table`), or the kept copy of an uploaded dataset (`data/datasets/`, `DataSourceItem.stored`).
+   Personal-looking columns are not loaded unless the data source allows it (`graph_personal`).
+   **Records of a knowledge graph and query results never go to a model** — the model that writes a query gets
+   `kg.describe` (which classes have records, which properties hold values), nothing more. Records reach a person
+   only through `graph.visible_data` / `_may_see`: they must be able to use every data source the graph was built from.
+   Queries run in `kg_worker.py`, a separate process with a time limit, on a store opened read-only; SERVICE is refused.
 6. **`builder.py` is the only place content is assembled for a model.** Source material and user text are wrapped in
    tags and described as material, not instructions. Nothing is truncated silently — what was not read is reported.
 7. **Secrets are encrypted at rest** (`security.encrypt`) and never returned by an API.
@@ -54,7 +61,7 @@ modules, hash routes. Run: `python -m uvicorn app.main:app --port 8000`.
 |---|---|
 | `app/main.py` | App, security headers / CSRF middleware, `bootstrap()` (tables, first admin, sample ontology), `upgrade_schema()`. |
 | `app/config.py` | Env vars, `DEFAULT_SETTINGS` (admin-editable, incl. appearance), `DEPTHS`, `ACCENTS`. |
-| `app/models.py` | `User`, `LLMModel`, `Ontology` (current content), `OntologyVersion`, `Folder`, `FolderAccess`, `Source`, `TestRun`, `Job`, `AuditLog`, `Setting`. |
+| `app/models.py` | `User`, `LLMModel`, `Ontology` (current content), `OntologyVersion`, `KnowledgeGraph`, `Folder`, `FolderAccess`, `Source`, `TestRun`, `Job`, `AuditLog`, `Setting`. |
 | `app/deps.py` | Current user, role guards, settings, audit, `folder_level` / `level` / `get_ontology` / `get_folder`. |
 | `app/security.py`, `routers/auth.py` | Passwords, sessions, TOTP, encryption, rate limiter; `/api/auth/branding` is public. |
 | `app/onto.py` | **The ontology document**: shape, `clean`, `merge`, graph helpers, `quality`, `outline` (prompt form), `verify_test`. |
@@ -68,6 +75,7 @@ modules, hash routes. Run: `python -m uvicorn app.main:app --port 8000`.
 | `app/reasoner.py` | OWL 2 RL with probe individuals; HermiT via owlready2; structural contradictions. |
 | `app/profiling.py` | Table and column profiling (types, roles, code lists, ranges, personal-data detection, inferred joins) for databases and dataset files; `describe` renders a profile for the model. Only SQLAlchemy Core SELECTs with a row limit. |
 | `app/datasources.py`, `routers/datasources.py` | The data-source library: access (`level`/`get`), reading (`read_database`, `add_files`), linking to ontologies, `material` (what a build receives). Passwords encrypted in `config_enc`, never returned. |
+| `app/kg.py`, `app/kg_worker.py`, `routers/graph.py` | Knowledge graphs: the mapping (`clean_mapping` checks every entry against the ontology and the tables; `suggest` matches by names; `merge` keeps what people confirmed), `build` (rows → pyoxigraph store in `data/graphs/<folder>`, a new folder per build), `run_query` (worker process, time limit, read-only), `shape` (result table + picture). Model prompts for mapping and querying are in `builder.py` (`MAP_PROMPT`, `QUERY_PROMPT`, `answer_from_data`). |
 | `app/library.py`, `library/*.onto` | The pre-built library: plain-text ontology files (format documented at the top of `library.py`), parsed and validated at first use; a bad file is logged and skipped. The retail sample is added as the `retail` entry. |
 | `app/sample.py` | Hand-written retail ontology installed on first run; also the stand-in model's canned answer. |
 | `app/routers/ontologies.py` | Library, folders, sources, jobs, edit, diagrams, versions, exports, test bed, reasoner, usage. |
@@ -78,8 +86,14 @@ modules, hash routes. Run: `python -m uvicorn app.main:app --port 8000`.
 | `static/js/workspace.js` | One ontology: header, AI menu, job progress, Overview, Standards, Sources, Versions. |
 | `static/js/editor.js` | Diagram editor, class / property forms, tables, Use cases, Test bed, Quality & reasoning. |
 | `static/js/diagram.js` | SVG renderer for a layout spec (zoom, pan, click). |
+| `static/js/kg.js` | Knowledge graph tab (status, mapping list and form, coverage, query console); `resultView` is reused by the test bed. |
 | `static/js/templates.js` | Pre-built library screen: filter, preview, copy (optionally with an AI instruction). |
 | `static/js/usage.js`, `admin.js`, `help.js`, `auth.js`, `account.js` | As named. |
+
+Knowledge graph (`KnowledgeGraph`, one per ontology): `mapping = {"maps": [{id, class, source, item, table, key, label,
+where{column,value}, ai, attributes[{property, column}], values[{property, column}], links[{property, to (map id), side
+from|to|link, column, link_item, link_table, to_column}]}]}`; `stats` from the last build; `sources` = data source ids it holds data
+of (decides who sees records). Record IRIs: `<namespace without #>/data/s<source>/<table>/<key>`.
 
 Content shape (`Ontology.content`): `meta`, `standards[]`, `modules[]`, `classes[]` (id, label, definition, parent,
 module, aligned_to, alignment, synonyms, abstract, derived_from), `properties[]` (id, label, kind object|data, domain,
@@ -113,7 +127,12 @@ range, cardinality, inverse, derived_from), `individuals[]`, `rules[]` (kind `di
     `index.html` by `main.spa`; the middleware maps it back to `/static/`. Before this, browsers kept lazy-loaded
     modules from earlier versions and updates "did not show". Keep module imports relative (`./x.js`) so they stay
     under the versioned prefix.
-15. Help screenshots are produced by `tests/e2e/features.js` and copied by name into `static/help/img/`.
+15. Jobs of kind `graph` call no model (`builder.NO_MODEL`): no AI slot, excluded from the AI usage dashboard. The test job
+    commits the design result before answering from the data, so a failure there never loses the test. `_job()` drops a result
+    key named `proposed` — do not use that name in a job result.
+16. A pyoxigraph store left open blocks deleting its folder on Windows; old stores are removed after each build and at start-up
+    (`kg.cleanup`), ignoring errors.
+17. Help screenshots are produced by `tests/e2e/features.js` and copied by name into `static/help/img/`.
     Check for drift: every `img/*.png` named in `help.html` must exist.
 
 ## Verification — non-negotiable

@@ -336,53 +336,70 @@ def _json_tables(name: str, obj) -> list:
     return []
 
 
+def read_tables(name: str, data: bytes, max_rows: int = FILE_ROWS):
+    """A dataset file -> [(table name, columns, rows, total row count)], at most `max_rows` rows each.
+    One table per CSV, Excel sheet or JSON record list. (SQLite files are read as databases.)"""
+    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    base = re.sub(r"\.\w+$", "", name.rsplit("/", 1)[-1])
+    out = []
+    if ext in ("csv", "tsv"):
+        text = data.decode("utf-8-sig", "replace")
+        try:
+            dialect = csv.Sniffer().sniff(text[:20000], delimiters=",;\t|") if ext == "csv" else csv.excel_tab
+        except csv.Error:
+            dialect = csv.excel
+        reader = csv.reader(io.StringIO(text), dialect)
+        header = next(reader, [])
+        rows, total = [], 0
+        for r in reader:
+            total += 1
+            if len(rows) < max_rows:
+                rows.append(r)
+        if not header:
+            raise ProfileError("The file is empty.")
+        out.append((base, [h.strip() or f"column_{i + 1}" for i, h in enumerate(header)], rows, total))
+    elif ext in ("xlsx", "xlsm"):
+        import openpyxl
+        wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+        for ws in wb.worksheets:
+            it = ws.iter_rows(values_only=True)
+            header = None
+            for r in it:                                 # the first row with at least two filled cells is the header
+                if r and sum(c is not None and str(c).strip() != "" for c in r) >= 2:
+                    header = r
+                    break
+            if not header:
+                continue
+            rows, total = [], 0
+            for r in it:
+                if r is None or all(c is None for c in r):
+                    continue
+                total += 1
+                if len(rows) < max_rows:
+                    rows.append(r)
+            tname = base if len(wb.worksheets) == 1 else f"{base} - {ws.title}"
+            out.append((tname, [str(h).strip() if h is not None else f"column_{i + 1}" for i, h in enumerate(header)], rows, total))
+    elif ext == "json":
+        for tname, recs in _json_tables(name, json.loads(data.decode("utf-8", "replace"))):
+            cols = []
+            for r in recs[:max_rows]:
+                for k in (r.keys() if isinstance(r, dict) else []):
+                    if k not in cols:
+                        cols.append(k)
+            rows = [tuple((json.dumps(r.get(c)) if isinstance(r.get(c), (dict, list)) else r.get(c)) for c in cols)
+                    for r in recs[:max_rows] if isinstance(r, dict)]
+            out.append((tname, [str(c) for c in cols], rows, len(recs)))
+    else:
+        raise ProfileError(f"Files of type .{ext} are not datasets.")
+    return out
+
+
 def profile_file(name: str, data: bytes, allow_personal: bool = False) -> list[dict]:
     """A dataset file -> table profiles (one per CSV, sheet, SQLite table or JSON record list)."""
     ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
-    base = re.sub(r"\.\w+$", "", name.rsplit("/", 1)[-1])
     out, values = [], {}
     try:
-        if ext in ("csv", "tsv"):
-            text = data.decode("utf-8-sig", "replace")
-            try:
-                dialect = csv.Sniffer().sniff(text[:20000], delimiters=",;\t|") if ext == "csv" else csv.excel_tab
-            except csv.Error:
-                dialect = csv.excel
-            reader = csv.reader(io.StringIO(text), dialect)
-            header = next(reader, [])
-            rows, total = [], 0
-            for r in reader:
-                total += 1
-                if len(rows) < FILE_ROWS:
-                    rows.append(r)
-            if not header:
-                raise ProfileError("The file is empty.")
-            p, v = profile_table(base, [h.strip() or f"column_{i + 1}" for i, h in enumerate(header)], rows, row_count=total, allow_personal=allow_personal)
-            out.append(p); values[base] = v
-        elif ext in ("xlsx", "xlsm"):
-            import openpyxl
-            wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
-            for ws in wb.worksheets:
-                it = ws.iter_rows(values_only=True)
-                header = None
-                for r in it:                                 # the first row with at least two filled cells is the header
-                    if r and sum(c is not None and str(c).strip() != "" for c in r) >= 2:
-                        header = r
-                        break
-                if not header:
-                    continue
-                rows, total = [], 0
-                for r in it:
-                    if r is None or all(c is None for c in r):
-                        continue
-                    total += 1
-                    if len(rows) < FILE_ROWS:
-                        rows.append(r)
-                tname = base if len(wb.worksheets) == 1 else f"{base} - {ws.title}"
-                p, v = profile_table(tname, [str(h).strip() if h is not None else f"column_{i + 1}" for i, h in enumerate(header)], rows,
-                                     row_count=total, allow_personal=allow_personal)
-                out.append(p); values[tname] = v
-        elif ext in ("db", "sqlite", "sqlite3"):
+        if ext in ("db", "sqlite", "sqlite3"):
             fd, path = tempfile.mkstemp(suffix=".sqlite")
             try:
                 with os.fdopen(fd, "wb") as f:
@@ -390,19 +407,9 @@ def profile_file(name: str, data: bytes, allow_personal: bool = False) -> list[d
                 return profile_database(f"sqlite:///{path}", allow_personal=allow_personal)["tables"]
             finally:
                 os.unlink(path)
-        elif ext == "json":
-            for tname, recs in _json_tables(name, json.loads(data.decode("utf-8", "replace"))):
-                cols = []
-                for r in recs[:FILE_ROWS]:
-                    for k in (r.keys() if isinstance(r, dict) else []):
-                        if k not in cols:
-                            cols.append(k)
-                rows = [tuple((json.dumps(r.get(c)) if isinstance(r.get(c), (dict, list)) else r.get(c)) for c in cols)
-                        for r in recs[:FILE_ROWS] if isinstance(r, dict)]
-                p, v = profile_table(tname, [str(c) for c in cols], rows, row_count=len(recs), allow_personal=allow_personal)
-                out.append(p); values[tname] = v
-        else:
-            raise ProfileError(f"Files of type .{ext} are not datasets.")
+        for tname, cols, rows, total in read_tables(name, data):
+            p, v = profile_table(tname, cols, rows, row_count=total, allow_personal=allow_personal)
+            out.append(p); values[tname] = v
     except ProfileError:
         raise
     except Exception as e:

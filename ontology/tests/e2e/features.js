@@ -349,6 +349,56 @@ const waitJob = async () => { await page.waitForSelector('.joblog', { timeout: 8
     ok('no literal "null" or "undefined" in the help', !/\bundefined\b/.test(await page.innerText('.help-body')));
   });
 
+  await step('knowledge graph: mapping, build, query, answer from the data', async () => {
+    const oid = await page.evaluate(async () => {
+      const H = { 'X-Requested-With': 'fetch', 'Content-Type': 'application/json' };
+      const lib = await (await fetch('/api/library')).json();
+      const o = lib.ontologies.find(x => x.name.startsWith('Sample:'));
+      const ds = await (await fetch('/api/datasources', { method: 'POST', headers: H, body: JSON.stringify({ name: 'Shop data', kind: 'files', description: 'Web shop exports' }) })).json();
+      const rows = (n, f) => Array.from({ length: n }, (_, i) => f(i + 1)).join('\n');
+      const files = {
+        'customers.csv': 'customer_id,full_name,email,since,tier\n' + rows(30, i => `${i},Customer ${i},c${i}@mail.example,2023-0${i % 9 + 1}-1${i % 9},${['Gold', 'Silver'][i % 2]}`),
+        'orders.csv': 'order_id,order_no,customer_id,order_date,total,status\n' + rows(80, i => `${i},O-${String(i).padStart(4, '0')},${i % 30 + 1},2025-03-${String(i % 28 + 1).padStart(2, '0')} 10:30,${(i * 12.5).toFixed(2)},${['Placed', 'Paid', 'Shipped', 'Delivered'][i % 4]}`),
+        'order_lines.csv': 'line_id,order_id,product_id,qty,price\n' + rows(200, i => `${i},${i % 80 + 1},${i % 12 + 1},${i % 4 + 1},${(9.99 + i).toFixed(2)}`),
+        'products.csv': 'product_id,sku,product_name\n' + rows(12, i => `${i},SKU${String(i).padStart(3, '0')},${['Tea', 'Coffee', 'Mug', 'Kettle', 'Grinder', 'Filter'][i % 6]} ${i}`) };
+      const fd = new FormData();
+      for (const [n, t] of Object.entries(files)) fd.append('files', new Blob([t], { type: 'text/csv' }), n);
+      await fetch(`/api/datasources/${ds.id}/files`, { method: 'POST', headers: { 'X-Requested-With': 'fetch' }, body: fd });
+      await fetch(`/api/ontologies/${o.id}/datasources`, { method: 'POST', headers: H, body: JSON.stringify({ data_source_id: ds.id }) });
+      return o.id;
+    });
+    await page.goto(`${BASE}/#/o/${oid}/graph`); await page.waitForSelector('h2:text-is("Mapping")');
+    ok('the Knowledge graph tab offers to map the data', (await page.locator('button:text-is("✨ Propose with AI")').count()) === 1);
+    await page.click('button:text-is("✨ Propose with AI")'); await page.click('.modal button:text-is("Propose")');
+    await waitJob(); await page.waitForSelector('td:has-text("order_lines")', { timeout: 20000 });
+    const mapTxt = await page.innerText('.card:has(h2:text-is("Mapping"))');
+    ok('the AI mapping is checked and shown as drafts', mapTxt.includes('draft') && mapTxt.includes('placed by → Customer') && mapTxt.includes('left out of the mapping'), mapTxt.replace(/\n/g, ' ').slice(0, 160));
+    await shot('graph-mapping');
+    await page.click('tr:has-text("order_lines") button:text-is("Edit")'); await page.waitForSelector('.modal h3:text-is("Relationships")');
+    ok('the mapping form shows columns and joins', (await page.innerText('.modal')).includes('quantity') && (await page.locator('.modal select').count()) > 6);
+    await shot('graph-map-form');
+    await page.click('.modal button:text-is("Cancel")');
+    await page.click('button:text-is("▶ Build the knowledge graph")'); await waitJob();
+    await page.waitForSelector('.kpi:has-text("Records")', { timeout: 30000 });
+    const kp = await page.innerText('.kpis');
+    ok('the graph is built from the uploaded files', /Records\s*\n\s*322/.test(kp), kp.replace(/\n/g, ' '));
+    ok('personal columns are left out and said so', (await page.innerText('.card:has(h2:text-is("What is in the graph"))')).includes('look like personal data'));
+    await shot('graph-built');
+    await page.selectOption('.card:has(h2:has-text("Ask the graph")) select', { label: 'Records of Order' });
+    await page.click('button:text-is("▶ Run query")'); await page.waitForSelector('.card:has(h2:has-text("Ask the graph")) .dg-svg .dg-node');
+    const res = await page.innerText('.card:has(h2:has-text("Ask the graph"))');
+    ok('a console query returns rows and a picture of the records', res.includes('O-0001') && (await drawn('.dg-svg')) > 5);
+    await page.locator('.card:has(h2:has-text("Ask the graph")) .dg-svg').scrollIntoViewIfNeeded(); await shot('graph-console');
+    await page.click('.tabs button:text-is("Test bed")'); await page.waitForSelector('label:has-text("Also answer it from the knowledge graph") input:checked');
+    await page.fill('textarea', 'Show orders by customer with their totals and status');
+    await page.click('button:text-is("🧪 Run test")'); await page.waitForSelector('h3:text-is("Answer from your data")', { timeout: 30000 });
+    const ans = await page.locator('.card:has(h3:text-is("Answer from your data"))').last().innerText();
+    ok('the test bed answers the use case from the data', ans.includes('Answered from the data') && ans.includes('O-0001') && ans.includes('Customer'), ans.replace(/\n/g, ' ').slice(0, 160));
+    ok('the records behind the answer are drawn', (await drawn('.dg-svg')) > 5);
+    await page.locator('.card:has(h3:text-is("Answer from your data"))').last().evaluate(e => e.scrollIntoView()); await shot('test-data-answer');
+    ok('the history shows the answer from the data', (await page.innerText('table:has(th:text-is("From the data"))')).includes('Answered from the data'));
+  });
+
   await step('viewer: read only, folder access', async () => {
     const pw = await (async () => {     // reset the viewer's password through the admin API to learn it
       const users = await page.evaluate(async () => (await fetch('/api/admin/users')).json());

@@ -230,7 +230,8 @@ def test_model(model_id: int, _: User = Depends(admin_only), db: Session = Depen
 
 # ---- settings ----------------------------------------------------------------------
 _LIMITS = {"session_hours": (1, 168), "lockout_attempts": (3, 20), "lockout_minutes": (1, 1440), "builds_per_hour": (1, 500),
-           "tests_per_min": (1, 120), "max_parallel_jobs": (1, 8), "default_use_cases": (0, 15), "max_classes": (20, 600)}
+           "tests_per_min": (1, 120), "max_parallel_jobs": (1, 8), "default_use_cases": (0, 15), "max_classes": (20, 600),
+           "graph_rows_per_table": (100, 200000), "graph_query_seconds": (5, 120)}
 
 
 @router.get("/settings")
