@@ -91,8 +91,8 @@ to verified outcomes.
 | A1 | Volume | **100K sessions in total, 7 traces per session** | 100,000 synthetic sessions, **mean 7.0 traces/session** (≈700K traces). Lengths vary realistically (range 3–14, sd ≈ 2), because the real sample varies (1–13). `--fixed-traces 7` exists if exactly 7 is required. Single batch, plus the incremental daily mode for future feeds. G9 checks the volume shape |
 | A2 | Episode | We proposed; the user accepted the three-layer model | §2.5 |
 | A3 | Customer ID | Not available yet (requested). Use `previous_session_id` only | `thread_id` from `previous_session_id` chains is the only linkage. Every repeat/recurrence metric is labelled **"thread-linked"**: it misses repeat contacts the platform didn't link. `customer_key` stays a nullable column so the logic switches over when a key arrives |
-| A4 | Location | Format unknown; probably the **customer service location** | `location_type='service'`. Insights are phrased "by service location", never "where the customer is". Places in text are typed separately (destination / current / unknown). Read through `config.LOCATION_PATHS`; one config change when the schema arrives |
-| A5 | LLMs | Allowed, but **minimise usage and guarantee correctness** | §2.6 LLM policy |
+| A4 | Location | Format unknown; probably the **customer service location**. User: assume a format | Contract in §2.7. Insights are phrased "by service location", never "where the customer is". Places in text are typed separately (destination / current / unknown) |
+| A5 | LLMs | Allowed, but **minimise usage and guarantee correctness**. Use **Claude Sonnet or Haiku** | §2.6 LLM policy and model assignment |
 | — | Languages | Not discussed | English primary; Spanish/Portuguese detected and tagged (`lang`) at the real-sample rate; `UNKNOWN` intent when rules and the LLM have no coverage |
 | — | Synthetic date range | Not discussed | 12 weeks ending 2026-11-15 |
 | — | Approvers | Not discussed | The UI records reviewer and time; the approver role is configurable |
@@ -135,15 +135,59 @@ Principle: **deterministic first, LLM by exception, and nothing published on the
 4. **Agreement routing.** If the rule label and the LLM label agree, accept. If they disagree, mark
    `needs_review` and show it in the UI review queue. Only labels accepted or human-confirmed feed
    patterns and cards.
-5. **Reproducibility.** Store prompt version, model ID and parameters on each row (`method='llm'`). Temperature 0.
-   Cache responses by hash of (prompt version, input) in `llm_cache`. Reruns don't call again.
+5. **Reproducibility.** Current Claude models reject `temperature`/`top_p`/`top_k`, so never send them. Reproducibility comes
+   from storing prompt version, model ID and effort on each row (`method='llm'`) and caching responses by hash of
+   (prompt version, model, input) in `llm_cache`. Reruns never call again.
 6. **Measured accuracy.** Gate G10 audits LLM-assisted labels against the human gold set. If precision falls
    below threshold, that use is disabled automatically (`LLM_USES_ENABLED`).
-7. **Privacy and provider.** Send only redacted, re-scrubbed turn text, never raw payloads or metrics. Use the
-   customer-approved provider through `cie/adapters/llm.py`; the traces show Verizon runs its own model
-   gateway, so it is the likely candidate. With no provider configured, everything runs and U2 cases stay
-   `needs_review`.
-8. **Cost and usage report.** Calls, tokens and share of sessions touched, per run, shown on the Pipeline page.
+7. **Privacy and provider.** Provider: **Anthropic Claude API** (user decision, 2026-11-18), behind
+   `cie/adapters/llm.py` so another gateway can be swapped in. Send only redacted, re-scrubbed turn text, never
+   raw payloads or metrics. With no API key configured, everything still runs and U2 cases stay `needs_review`.
+8. **Cost and usage report.** Calls, tokens, cache hits and share of sessions touched, per run, shown on the Pipeline page.
+
+**Model assignment and API usage** (official `anthropic` Python SDK; exact model IDs, no date suffixes):
+
+| Use | Model | Why | Call pattern |
+|---|---|---|---|
+| U2 low-confidence adjudication (≤ 5% of sessions, ≤ 5K calls) | `claude-haiku-5-5` | Closed-label classification on short redacted transcripts; cheapest current model | **Message Batches API** (overnight, asynchronous, 50% cost); structured output via `output_config.format` (JSON schema, closed enums of taxonomy and signal IDs); `output_config.effort: "low"`; `max_tokens` ≈ 1024 |
+| U1 taxonomy discovery (≤ 50 clusters per run) | `claude-sonnet-5-5` | Needs judgment to name and define categories and write inclusion/exclusion criteria | `messages.parse()` with a schema; effort `medium`; server-side `fallbacks: "default"` (beta `server-side-fallback-2026-07-01`) for refusals |
+| U3 gold-set pre-labelling (36 real + ~1.5K audit sessions) | `claude-sonnet-5-5` | Gold quality matters more than cost; small volume | Batches API + schema; effort `medium`; a human confirms every label |
+| U4 card wording (optional, off) | `claude-haiku-5-5` | Rephrasing only | schema with the numbers echoed and checked |
+
+Implementation rules:
+- **Prompt caching.** The taxonomy definitions and signal catalogue are a frozen system prompt with a `cache_control`
+  breakpoint, followed by the per-session transcript. Check `usage.cache_read_input_tokens` > 0 in tests.
+- **Always check `stop_reason`.** Before reading content, check it: `refusal` or `max_tokens` → `needs_review`, never a label.
+- **Errors.** Catch typed SDK errors most-specific first (rate limit and 5xx are retried by the SDK; 400 is a bug).
+- **Results.** Key batch results by `custom_id`, never by position.
+- **Credentials.** `ANTHROPIC_API_KEY` comes from the environment and is never committed. Tests use a recorded fake client; no API calls in CI.
+- **Budget.** At ≤ 5K Haiku calls of about 4K input tokens (mostly cached), plus Sonnet for discovery and gold, a full
+  run costs single-digit dollars. `LLM_MAX_USD_PER_RUN` (default $25) hard-stops the adapter.
+
+### 2.7 Assumed location contract (until Verizon sends the schema)
+
+The export is from the Galileo observability platform (Luna evaluator metrics, annotation queues, metric batches).
+Galileo's `user_metadata` is a **flat string → string map** on the session (and optionally on each trace). We
+assume Verizon will add the service location there with flat keys:
+
+```json
+"user_metadata": {
+  "svc_city": "Orlando", "svc_state": "FL", "svc_zip3": "328",
+  "svc_market": "Central Florida", "svc_region": "Southeast",
+  "geo_level": "service_address", "geo_asof": "2026-09-14"
+}
+```
+
+| Rule | Detail |
+|---|---|
+| Lookup order (`config.LOCATION_PATHS`) | session `user_metadata.svc_*`, then a nested `user_metadata.location{city,state,zip,market}`, then the first trace's `user_metadata`, then `tags` like `"svc_state:FL"`. First hit wins; `geo_source` records which |
+| Normalisation | City title-cased and matched to the gazetteer; state as a 2-letter code; region from the gazetteer when absent |
+| ZIP | A 5-digit ZIP, if one is ever sent, is **truncated to ZIP3 at ingest** and never stored whole |
+| Market | `svc_market` is stored as sent. Our synthetic markets are invented, labelled assumed, and not Verizon's real market names |
+| Missing or unknown | `city='UNKNOWN'`, `geo_source='none'`; counted in coverage, excluded from geo patterns |
+| Semantics | `location_type='service'`: the account/service address, *not* where the caller is. Text places stay separate signals |
+| Change cost | When the real schema arrives, only `LOCATION_PATHS` and the key map in `config.py` change |
+
 
 ---
 
@@ -569,4 +613,5 @@ Parallel lanes for agents:
 | 2026-11-18 | SQLite as POC store with portable SQL; raw landing as gzipped files + offset index | User request; payload size measurement |
 | 2026-11-18 | Separate score dimensions; composite is provisional until approved | Design baseline |
 | 2026-11-18 | Volume = 100K sessions total, ~7 traces each; no customer ID, so linkage via `previous_session_id` only; location = service location; LLM allowed, minimal use, verified | User (A1, A3–A5) |
+| 2026-11-18 | LLM provider = Claude API: Haiku 5.5 for adjudication, Sonnet 5.5 for taxonomy and gold; assumed location contract §2.7 (Galileo `user_metadata` flat keys, service location) | User |
 | 2026-11-18 | Three-layer episode model (session / episode = need within a session / need journey across a thread); LLM policy U1–U4 with grounding and agreement checks | Proposed and adopted (A2, A5) |
