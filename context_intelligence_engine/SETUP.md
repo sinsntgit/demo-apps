@@ -31,12 +31,18 @@ pip install -r requirements.txt
 
 Windows (PowerShell):
 ```powershell
-py -3.11 -m venv .venv
+py --version
+py -3 -m venv .venv
 .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
+On Windows use `py` (or `python`), **never `python3`**: `python3` is usually a Microsoft Store shortcut that fails with
+"The system cannot find the file specified". If `py --version` fails or shows a version below 3.11, install Python
+from https://www.python.org/downloads/windows/ with **"Add python.exe to PATH"** ticked, then switch off the
+python/python3 entries under Settings > Apps > Advanced app settings > App execution aliases, and reopen PowerShell.
 If PowerShell blocks the activate script, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once.
+After activation, use `python` for every command in this guide.
 
 ## 4. (Optional) Add the real Verizon sample
 
@@ -94,6 +100,7 @@ Never commit the key. Results and costs show on the Pipeline page; a run stops i
 
 | Symptom | Fix |
 |---|---|
+| Windows: `Program 'python3.exe' failed to run: The system cannot find the file specified` | Use `py -3 -m venv .venv` (see section 3); `python3` on Windows is a Store shortcut, not Python |
 | `ModuleNotFoundError: sklearn` / `yaml` | The virtual environment is not active, or `pip install -r requirements.txt` was skipped |
 | `Address already in use` | Another program uses port 8080: `python run_all.py --skip-build --port 9000` |
 | First page load is slow | Normal for about 30 seconds after start while caches warm; then pages answer in under 100 ms |
