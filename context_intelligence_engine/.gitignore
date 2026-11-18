@@ -1,0 +1,7 @@
+data/*.sqlite*
+data/*.jsonl*
+data/*.npy
+data/*.pkl
+__pycache__/
+.pytest_cache/
+sample/*.jsonl
