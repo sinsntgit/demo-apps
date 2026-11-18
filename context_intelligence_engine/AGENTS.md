@@ -1,384 +1,522 @@
-# Context Intelligence Engine (Phase 1) — Instructions for Development Agents
+# Context Intelligence Engine (Phase 1 POC) — Instructions for Development Agents
 
-Read this whole file before writing code. It is the source of truth for scope, contracts,
-work packages and acceptance gates. If something here conflicts with code, this file wins;
-if you must deviate, update this file in the same commit and say why.
+Read this whole file before writing code. It is the build contract for scope, data model, work
+packages and acceptance gates. If code and this file disagree, this file wins. If you must
+deviate, update this file in the same commit and record the reason in §13 (Decision log).
 
----
-
-## 1. Goal
-
-Turn VzGPT voice-agent traces into **governed, reviewable evidence cards** about recurring
-customer needs, journey friction, buying signals and temporal patterns, by behavioural segment
-and geography.
-
-```
-Traces → signals → episodes → clusters → patterns → score → evidence cards
-                                                         ↘ persistent facts (dated)
-                         retrieval (BM25 + dense + filters + as-of)  →  UI
-```
-
-**In scope:** traces only, 100K sessions (synthetic + the real sample), a batch pipeline,
-SQLite, a local web UI, retrieval, and a validation report.
-
-**Out of scope (Phase 1):** Customer 360, Network 360, any PII/CPNI, authoritative
-eligibility, price, inventory or consent, and revenue in dollars (show an *opportunity index*
-instead and label it as such).
+Baseline documents (both are git-ignored inputs; ask the user if they are missing):
+- Customer brief: *Context Intelligence Engine – Phase 1* (one-page PDF).
+- Design baseline: *Phase 1 Findings and POC Design* (markdown, produced with ChatGPT). This file
+  adopts it, with the changes listed in §2.
 
 ---
 
-## 2. Facts about the input you must design for
+## 1. Goal and scope
 
-Source: `sample/verizon_traces_example.jsonl` (36 sessions, 241 traces). It is git-ignored;
-ask the user for it if it is missing. Never commit it.
+Turn VzGPT customer–agent traces into **governed, traceable evidence cards** about recurring needs,
+buying signals, retention risk, journey friction, value signals and geographic patterns.
 
-| Fact | Consequence |
+```
+Raw landing → canonical session model → intents + signals → episodes → features
+  → cluster families → patterns → score dimensions → evidence cards → UI / retrieval
+                                         ↘ dated, superseded facts (point-in-time)
+```
+
+| In scope (Phase 1) | Out of scope |
 |---|---|
-| Each line is a `session` with `traces[]`; each trace has `spans[]` → `workflow` span → nested `llm` / `tool` spans | Walk spans recursively; never assume depth |
-| Trace order in the file is arbitrary; turn number comes from `name` = `"turn N workflow"` and does **not** start at 1 | Sort by parsed N, fall back to `created_at` |
-| `input`/`output` are JSON **strings** of `[{role, content}]`; `output` can be `null` (≈5%) | Defensive parsing; a null output is not an error |
-| `output[].role` is the **agent/skill name** (`bill_explain_with_mcp`, `plan_add_change`, `unauth_bill_explain`, `Root_agent` vs `root_agent`) | Lower-case roles; role changes help mark episode boundaries |
-| Customer `content` can be a system event: `<event>session start</event>`, `<event>sys.remote-call-disconnected</event>`, `<context>user pressed 0 on keypad.</context>`, `<context>no user activity detected for 9 seconds.</context>`, `<context>function [...] completed ...</context>` | Store as `kind='event'` with `event_type`; these are friction signals, not utterances |
-| Tool `mandatory_set_intent_for_next_step` input has `intent_name` (`head_intent.charge_dispute`, `head_intent.bill_reduce`, …) and `requested_operator` | The **strongest intent signal**: extract it first-class |
-| Tools `retrieve_intent_matches.user_intent`, `explain_bill_init_mcp.query`, `handle_out_of_scope.topic` hold an agent paraphrase of the issue | Clean, short intent text: use it as clustering text |
-| Tools whose name contains `transfer` (`updated_billing_transfer_call`, `pac_transfer_call`, …) | Escalation actually executed |
-| `invalid_auth`, `action_validate_account_pin` failures, `enhanced_secure_pin` loops | Authentication-friction signals |
-| Agent text has lower-case markup: `[prosody rate="64%"][warm][short pause]` | Strip it; keep UPPER-case redaction placeholders (`[LOCATION]`, `[CUSTOM_NUMBER_SEQUENCE]`, `[PERSON_NAME]`, `[URL]`, `[GENERIC_ID]`) |
-| `input == redacted_input` everywhere in the sample, yet a place name leaked ("Lake Mary Florida") and dollar amounts appear verbatim | Read **only** `redacted_*`; run our own PII scrub too; sanitise quotes again before they reach a card |
-| Session `metrics` hold LLM-judge scores (`conversation_quality`, `agentic_session_success`, `agent_efficiency`, `agent_flow`; values may be `[x]`, float or string) and `cm_policy_metric` (JSON string with `journey`, `overall_compliance_rate`) | Parse scalars robustly; any of them may be missing |
-| `previous_session_id` is **null in all 36 sessions** | Repeat-contact and sequence features depend on it. Build them, but degrade gracefully and report coverage (see Open Questions) |
-| Real mix is billing/IVR/auth-heavy: 86% of sessions transfer, 31% explicitly ask for an agent, almost no upsell language, locations mostly masked | Real-data insights will be mostly *risk/friction*. Need/value/geo insights rely on volume; never inflate them |
+| Ingesting the real sample + **100,000 synthetic complete conversations** | Customer 360, Network 360, PII/CPNI enrichment |
+| Session-centric canonical model with raw lineage | Authoritative price, eligibility, inventory, consent |
+| Discovery, definition and versioning of an **L1–L4 intent taxonomy** | Actual revenue, conversion, churn or save validation |
+| Signals, episodes, features, four cluster families, patterns, score dimensions | Real-time intervention or autonomous offers |
+| Evidence cards with review workflow; persistent dated facts | Production agent changes |
+| **Retrieval pipeline**, **web UI**, overnight batch, validation report, runbook | |
+
+Every output must keep five things distinguishable: (1) observations from the real sample;
+(2) synthetic scenarios and their generated outcomes; (3) model/rule-inferred signals and
+classifications; (4) customer-approved taxonomy and definitions; (5) business hypotheses as opposed
+to verified outcomes.
 
 ---
 
-## 3. Plan review: changes from the first draft (already decided)
+## 2. How this plan reconciles the inputs
 
-1. **Vertical slice first.** Milestone 1 runs the real 36 sessions end-to-end (ingest → signals →
-   episodes → API → Session Explorer) before any 100K work.
-2. **Calibrate synthetic data to the real sample.** The draft generator gives 7.7 turns/session
-   (real 6.7), 46% transfers (real 86%), 18% agent requests (real 31%). Add a `--profile`
-   switch: `real_calibrated` (default; matches the real observable marginals within tolerance)
-   and `opportunity_rich` (more upsell variety, for demos). The 36-session sample is small and
-   probably biased toward transferred calls, so tolerances are loose (§9 gate G0).
-3. **Cluster goal episodes only.** Authentication/IVR episodes would dominate the clusters, so they
-   are excluded from clustering and reported as risk patterns instead. Cluster features =
-   platform `intent_name` + agent paraphrase text + cleaned customer text + behavioural tokens.
-4. **Re-sanitise evidence quotes.** Before a quote reaches a card, mask dollar amounts, digit
-   runs ≥3 and any place below city level. Only quote sessions from cells that meet k-anonymity.
-5. **Use an external-content FTS5 table** (`content='episodes'`, `content_rowid='episode_id'`)
-   so `snippet()`/`highlight()` work. The draft used contentless tables, which can't do that.
-6. **Real-sample gold set.** Hand-label the 36 real sessions (`tests/gold/real_gold.jsonl`:
-   platform intent, escalated?, auth-failed?, signal types per turn). This is the only check of
-   extractor accuracy on real language. An agent drafts the labels; a human must review them,
-   and the file is flagged `reviewed: false` until they do.
-7. **Geography must be Phase-2 ready.** Add `geo_source` (`text_gazetteer` now; `account`/`market`
-   later) and always report geo coverage. Rates for sparse cells are shrunk.
-8. **LLM is optional and off by default.** Define a `SignalExtractor` / `Labeller` interface with the
-   rule-based implementation as default, so an LLM can replace it in Phase 2 without schema
-   change. No network calls in the default pipeline.
-9. **Review decisions survive reruns.** Card identity = a stable `pattern_key` (kind|cluster stable
-   id|dim_type|dim_value). A rerun creates a new card version, supersedes the old one
-   (`valid_to`, `superseded_by`) and carries its review status forward.
+### 2.1 Confirmed by the customer
 
----
+| # | Decision | Consequence |
+|---|---|---|
+| C1 | One session = one complete conversation. A session contains many traces (one per turn), spans and tool calls | The session is the business unit. A trace is never treated as a conversation |
+| C2 | No master intent taxonomy exists | Taxonomy discovery, definition, SME review and versioning are core scope (WP4) |
+| C3 | 100,000 synthetic **complete conversations**; child records come on top of that | Count distinct `session_id`s, not rows |
+| C4 | The sample is redacted production data and is **representative** | Calibrate synthetic data to it (gate G0) |
+| C5 | `previous_session_id` is populated in production (assumed for now) | Thread linkage, repeat contact and A→B sequences are first-class |
+| C6 | Structured session location will be supplied (schema pending) | Geography comes from a structured field; text places are secondary and typed (§6.6) |
+| C7 | City-level aggregates and redacted quotes are acceptable under the CPNI policy | Quotes allowed; k-anonymity and quote sanitising are kept as defence in depth |
+| C8 | No `head_intent.*` reference list is available | Use the platform intents seen in the data as *evidence* for the taxonomy, not as the taxonomy |
 
-## 4. Repository layout and conventions
+### 2.2 Adopted from the design baseline (it is right about these)
 
-```
-context_intelligence_engine/
-  AGENTS.md            ← this file
-  README.md            ← runbook for humans (WP11)
-  requirements.txt     numpy, scikit-learn, scipy, pytest (no other runtime deps)
-  cie/
-    config.py lexicon.py db.py        (exist, drafted)
-    synth.py                          (exists, has known bugs: §6 WP0)
-    ingest.py signals.py episodes.py cluster.py patterns.py cards.py facts.py
-    retrieval.py server.py validate.py run_pipeline.py
-  ui/ index.html app.js style.css     vanilla JS, no CDN, no build step
-  tests/ test_*.py  gold/real_gold.jsonl
-  data/   (git-ignored: cie.sqlite, synthetic_*.gz, models)
-  reports/ validation.json, validation.md (committed)
-  sample/ (git-ignored: Verizon file)
-```
+- Immutable raw landing; every derived row is traceable to session, turn and trace.
+- Normalised evaluation records: value, scale, status, evaluator, rationale and version kept separately.
+  Similarly named metrics are not assumed comparable. A status code is not proof of resolution.
+- A governed L1–L4 taxonomy with definitions, inclusion/exclusion criteria, examples, `UNKNOWN`, stable IDs,
+  versions and SME approval. One primary + zero or more secondary intents per session. Optional turn-level intent.
+- **Score dimensions are kept separate**: prevalence, recurrence, trend, evidence strength, business
+  relevance, geographic concentration. A composite exists only as a configurable, *provisional* view
+  until the customer approves weights.
+- Cluster families overlap (a session can belong to several). Machine cluster IDs are never exposed as
+  taxonomy; governed stable IDs are.
+- Scenario-first synthetic generation with scenario/template ID, generator version, seed and batch on every
+  record. Evaluation values derive from ground truth through a rubric, not at random. Tool failures and
+  retries, multi-intent calls, silence and repetition are included. Held-out test sessions are kept separate.
+- Four weekly exit gates with SME review (§10).
+- Its logical table names (§5) are adopted so the customer-facing design and the code use the same vocabulary.
 
-Rules:
-- Python 3.11+, stdlib + numpy/scikit-learn/scipy only. Server: `http.server.ThreadingHTTPServer`.
-- Every stage is a function `run(con, run_id, **cfg) -> dict(stats)` and is **idempotent**: it
-  deletes and recomputes its own outputs for the run.
-- All thresholds live in `config.py`. No magic numbers in stage code.
-- Deterministic: every random call takes a seed from config.
-- The pipeline **must never read** `data/synthetic_ground_truth.json.gz`. Only `validate.py` and
-  tests may read it. Enforce this with a test that greps `cie/` for the filename.
-- Text read from traces is untrusted data. Never `eval` it and never render it as HTML in the UI
-  (use `textContent`).
-- Commit messages: imperative, scoped (`ingest: …`). Never commit data files or the Verizon sample.
+### 2.3 Added or corrected here (missing from the design baseline)
 
----
-
-## 5. Data contract (SQLite)
-
-`cie/db.py` is the schema source of truth. Required changes:
-- `sessions`: add `geo_source TEXT`.
-- `episodes_fts`: external content on `episodes(text)`; `cards_fts` external content on `evidence_cards`.
-- `evidence_cards`: add `pattern_key TEXT` plus an index on it.
-- `clusters`: add `stable_id INTEGER` (persists across runs).
-
-Volumes at 100K: ~700K `turns`, ~150–250K `episodes`, ~1–3M `signals`, DB < 1.5 GB.
-Load in batches of 5,000 sessions in one transaction with `PRAGMA synchronous=OFF` during bulk load.
-
-Signal taxonomy (`signals.family/type`). Do not add types without updating `lexicon.py` and this table.
-
-| family | types |
+| Topic | What we do |
 |---|---|
-| need | upgrade_device, add_line, plan_question, hotspot_home_internet, travel_intl, coverage_availability, service_request |
-| value | willingness, price_sensitivity, feature_comparison, device_replacement, multi_line_expansion |
-| risk | escalation_request, agent_handoff (tool), churn_intent, complaint, repeat_contact_language, repeat_contact (metadata), repeat_same_issue (thread), dispute, payment_difficulty, auth_failure, no_input, dtmf_operator, agent_loop, customer_repeat, abandoned, out_of_scope |
-| geo | city_mention (value = canonical city), location_unresolved (`[LOCATION]`), local_event, coverage_local |
+| **Retrieval and UI** (explicitly requested by the user) | WP9 and WP11 |
+| Platform intent labels exist in tool spans (`mandatory_set_intent_for_next_step.intent_name`, `requested_operator`, agent paraphrases in `retrieve_intent_matches.user_intent` / `explain_bill_init_mcp.query` / `handle_out_of_scope.topic`) | Strongest evidence for taxonomy discovery and classification; extracted first-class |
+| Real sample profile: 6.7 turns/session, 86% transferred, 31% explicitly ask for an agent, 32% of turns are system events, 5% null outputs, some Spanish/Portuguese turns | G0 calibration targets; multilingual tolerance in extractors |
+| Raw payload is **~549 KB/session (~103 KB gzipped)**, mostly nested LLM span prompts, so 100K sessions is ~56 GB raw / ~10.5 GB gzipped | Raw landing is **gzipped files plus a byte-offset index**, not database blobs. Synthetic spans are schema-faithful but slim (§6.1) |
+| Redaction is imperfect: "Lake Mary Florida" and exact dollar amounts appear in redacted text | A second PII scrub at ingest and a quote sanitiser before cards |
+| Statistical rigour for patterns | Rate shrinkage, Wilson CIs, Benjamini–Hochberg FDR, k-anonymity floor |
+| Validation against planted truth | Synthetic effects with known truth (city×intent lifts, time-boxed events, sequences); recovery and false-discovery measured |
+| Storage choice | **SQLite**, as the user asked; it is fine for 100K conversations. All SQL stays portable to the customer's Postgres/warehouse (§4) |
 
-Every signal row carries `source ∈ {lexicon, platform_intent, tool, event, metadata, derived}` and `conf`.
+### 2.4 Still open (build with the default; don't block)
+
+| # | Question | Default we build |
+|---|---|---|
+| O1 | Is "100000" the overnight feed volume **per day**, or the total POC volume? | Total = 100K synthetic conversations (C3). The pipeline is still incremental per day, and the scale gate G9 runs only if per-day is confirmed |
+| O2 | Episode definition: whole session, a need within a session, or a sequence of sessions? | **A distinct need within a session** (`session_episode`). Threads (sequences of sessions) are modelled separately; switching is a config flag |
+| O3 | Is a stable pseudonymous customer key available beyond `previous_session_id`? | Thread = linkage via `previous_session_id`; `customer_key` column nullable |
+| O4 | Structured location schema and location type (home, service or current)? | `user_metadata.location = {city, state, zip3?, market?, type?}`, read through `config.LOCATION_PATHS`; type defaults to `service` |
+| O5 | Approved LLM/embedding services and processing location? | None. The rule-based + TF-IDF/LSA path runs offline; LLM and embedding adapters are pluggable and disabled by default |
+| O6 | Languages? | English primary; Spanish detected and tagged (`lang`), included in synthetic data at the real-sample rate, routed to `UNKNOWN` intent when rules have no coverage |
+| O7 | Synthetic date range | 12 weeks ending 2026-11-15 |
+| O8 | Who approves taxonomy, clusters, scores and cards? | The UI records reviewer and time; the approver role is configurable |
+
+---
+
+## 3. Facts about the input you must design for
+
+Source: `sample/verizon_traces_example.jsonl` (36 sessions, 241 traces, one day: 2026-09-14). It is
+git-ignored and must never be committed.
+
+- A line is a `session` with `traces[]`. Each trace has `spans[]` → a `workflow` span → nested `llm`
+  and `tool` spans. Recurse; never assume depth.
+- Trace order in the file is arbitrary. Turn number = N in `name` (`"turn N workflow"`); numbering
+  can start above 1 because exports are windows. Fall back to `created_at`.
+- `input`/`output` are JSON **strings** of `[{role, content}]`. `output` may be `null`. `content` may be
+  a dict (tool payloads).
+- `output[].role` is the agent/skill name. Lower-case it (`Root_agent` and `root_agent` are the same).
+- System turns arrive as customer content: `<event>session start</event>`,
+  `<event>sys.remote-call-disconnected</event>`, `<context>user pressed N on keypad.</context>`,
+  `<context>no user activity detected for 9 seconds.</context>`, `<context>function [...] completed ...</context>`.
+- Tool names containing `transfer` mean a handoff was executed. `invalid_auth`,
+  `action_validate_account_pin`, and `esp_*` loops mean authentication friction.
+- Agent text contains lower-case markup (`[prosody rate="64%"][warm]`). Strip it. Keep UPPER-case
+  redaction placeholders (`[LOCATION]`, `[CUSTOM_NUMBER_SEQUENCE]`, `[PERSON_NAME]`, `[URL]`, `[GENERIC_ID]`).
+- `input == redacted_input` throughout the sample. Read **only** `redacted_*`.
+- Session metrics have 132 fields and trace metrics about 153: LLM-judge scores (values may be `[x]`, a
+  float or a string), rationales, statuses, token/cost fields, and `cm_policy_metric` (a JSON string with
+  `journey`, compliance rates and per-policy verdicts). Tokens and costs are operational. Judge
+  `*_status: not_applicable` and `*_error_message` mean "no value", not 0.
+
+---
+
+## 4. Engineering rules
+
+- Python 3.11+. Dependencies: numpy, scikit-learn (which includes HDBSCAN), scipy, pytest. The server
+  uses `http.server`. The UI is vanilla JS/SVG with no CDN and no build step.
+- **SQLite** in WAL mode for the canonical store, with external-content FTS5 for search. Keep SQL portable:
+  FTS5 is isolated in `retrieval.py` and no SQLite-only functions are used elsewhere. Target: 100K
+  conversations → about 700K turns, about 150–250K episodes and 1–3M signals; DB < 2 GB.
+- Every stage is `run(con, run_id, cfg) -> stats`. Stages are idempotent and deterministic (seeded),
+  and record themselves in `processing_run`.
+- All thresholds, weights and paths live in `config.py`. Versions (taxonomy, rules, model, scoring,
+  generator) are recorded on every derived row via `run_id` → `processing_run`.
+- The pipeline **never reads ground truth** (`data/synthetic_ground_truth*`). Only `validate.py` and tests
+  may. A test greps `cie/` to enforce this.
+- Trace text is untrusted. Never `eval` it; render it with `textContent` only.
+- Never commit data, the Verizon sample or the baseline documents. Commit messages are imperative and scoped.
+
+Layout:
+```
+cie/ config.py lexicon.py db.py synth.py locate_sample.py ingest.py evaluations.py taxonomy.py
+     signals.py episodes.py features.py cluster.py patterns.py scoring.py cards.py facts.py
+     retrieval.py server.py validate.py run_pipeline.py adapters/(llm.py, embed.py: disabled stubs)
+ui/  index.html app.js style.css
+tests/ test_*.py   gold/real_gold.jsonl (needs human review)   taxonomy/taxonomy_v0.yaml
+landing/ (git-ignored) <source>/<day>/*.jsonl.gz + index      reports/ validation.{json,md}
+```
+
+---
+
+## 5. Canonical data model
+
+The logical names follow the design baseline; `db.py` is the physical source of truth. Every table has
+`run_id`, and rows from generated data have `is_synthetic` / `provenance_id`.
+
+| Group | Table | Grain / key columns |
+|---|---|---|
+| Raw | `raw_trace_session` | one row per source session: `session_id, source, file, byte_offset, byte_len, sha256, landed_at` (payload stays in the gzipped landing file) |
+| Conversation | `conversation_session` | `session_id` PK; `external_id, source, created_at, day, week, previous_session_id, thread_id, thread_pos, customer_key?, lang, n_turns, auth_state, city, state, region, market, zip3, geo_source, location_type, outcome, outcome_basis, is_synthetic, provenance_id` |
+| | `conversation_turn` | (`session_id, turn_no`): `trace_id, ts, kind (utterance/event), event_type, event_value, user_text, agent_text, agent_role, roles` |
+| Execution | `conversation_trace` | `trace_id` PK, `session_id, turn_no, created_at, status_code, is_complete` |
+| | `trace_span` | `span_id, trace_id, parent_id, type, name, step_number` (llm span bodies are not stored) |
+| | `tool_call` | `trace_id, session_id, turn_no, tool, intent_name, query, requested_operator, failed` |
+| Evaluation | `agent_evaluation` | `entity_type (session/trace), entity_id, metric, value, scale, status, evaluator/model_alias, rationale, scorer_version`. Token/cost fields are excluded. `cm_policy_metric` is exploded into `policy_verdict(session_id, policy_id, verdict, severity, policy_type)` |
+| Taxonomy | `dim_intent` | `intent_id` (stable), `level`, `parent_id`, `code`, `name`, `taxonomy_version`, `status` |
+| | `intent_definition` | `intent_id, definition, include_criteria, exclude_criteria, examples, platform_intent_patterns, keyword_rules` |
+| Classification | `session_intent` | `session_id, intent_id, role (primary/secondary), confidence, method, taxonomy_version` |
+| | `turn_intent` | `session_id, turn_no, intent_id, confidence, method` |
+| Signals | `session_signal` | `signal_id, session_id, turn_no, trace_id, family, category, type, value, text, confidence, method, rule_version, ts, is_synthetic` |
+| Episodes | `session_episode` | `episode_id, session_id, ep_no, kind (auth/goal), start_turn, end_turn, intent_id, domain_agent, text, outcome, friction` |
+| Geography | `dim_geography` | `city, state, region, market, lat, lon` |
+| Features | `session_feature` | `session_id` plus behavioural/temporal features (friction, n_escalation_requests, auth_failures, repeat_contact_7d, days_since_prev, opp/value/risk flags, segment, style) |
+| Clustering | `cluster_master` | `cluster_id` (governed, stable), `family`, `version`, `label`, `status`, `stability`, `centroid` |
+| | `session_cluster_membership` | `session_id` (or `episode_id`), `cluster_id, family, distance, run_id` |
+| Patterns | `pattern_master` | `pattern_id, pattern_key, kind, family, cluster_id, dim_type, dim_value, period, support, denominator, rate, baseline, lift, ci_lo, ci_hi, qval, version` |
+| Scoring | `pattern_score` | `pattern_id, dimension, value, method, scoring_version` (+ a `composite_provisional` row) |
+| Evidence | `evidence_card`, `evidence_ref` | card fields (§7, WP10); `evidence_ref(card_id, session_id, turn_no, trace_id, quote)` |
+| Persistent context | `fact` | `scope_type, scope_id, attribute, value, valid_from, valid_to, recorded_at, superseded_by, source_session, source_turn` |
+| Governance | `processing_run`, `data_provenance`, `review_log`, `decision_log` | run, stage, versions, watermark; synthetic batch/scenario/template/generator version/seed; who approved what and when |
+| Aggregates | `agg_daily_cluster`, `agg_daily_signal` | daily counts that feed patterns over rolling windows (7/28/84 days) |
+| Search | `episode_fts`, `card_fts` | external-content FTS5 |
+
+Rules: every trace links to a valid session; unknown or ambiguous values are explicit (`UNKNOWN`), not
+null-by-accident; raw metric names and values are retained next to canonical mappings.
 
 ---
 
 ## 6. Work packages
 
-Each WP lists inputs → outputs, the definition of done (DoD), and dependencies. A WP is done only when
-its tests pass and its stats appear in `pipeline_runs`.
+Each WP lists what it does and its Definition of Done (DoD). Gates (G*) are defined in §8.
 
-### WP0 Fix and calibrate the synthetic generator (`synth.py`). No dependencies.
-Known bugs to fix:
-- Follow-up sequence probability (`SEQUENCES[...] / max(p_follow,.01) * .5`) is ad hoc. Replace it
-  with: if the prior is unresolved and its intent is in `SEQUENCES`, force the mapped follow-up with
-  the stated probability; otherwise, with p=.68, force the same intent.
-- `agent_msgs.insert(...) if ... else None` is an expression used as a statement. Rewrite it.
-- Second-episode detail count uses the wrong arithmetic. Make turns/session target a calibrated mean.
-- `role` from the last plan item is reused in assembly. Pass it explicitly.
-Add `--profile real_calibrated|opportunity_rich`. DoD: gate G0 passes; 100K sessions generate
-in < 3 min on 4 cores; ground truth includes the planted effects list and per-session planted signals.
+### WP0 Synthetic generator (`synth.py`, draft exists)
+- **Scenario catalogue** in `tests/taxonomy/scenarios.yaml`: scenario family, ground-truth L1–L3 intent,
+  preconditions, workflow, tool events, outcome rules, signal propensities, persona and geography effects.
+  It covers every family in the design baseline §10.3, including tool failures/retries, silence, repetition,
+  multi-intent and intent change.
+- **Calibrate** to the real profile (§2.3) through `--profile real_calibrated`, the default.
+  `opportunity_rich` is for UI demos only and is never validated.
+- Every session carries `user_metadata.location`, `previous_session_id` chains,
+  provenance (`batch, scenario_id, template_id, generator_version, seed`) and a `split` value (`discovery` 80%
+  / `test` 20%, by thread).
+- Evaluations (judge scores, `cm_policy_metric` journey and verdicts) are **derived from ground truth via a
+  documented rubric**.
+- Two phrasing banks: A for development and B as held-out paraphrases. Spanish turns appear at the real-sample rate.
+- Spans are schema-faithful but slim: `workflow` → `tool` spans with real names and payload keys; no LLM
+  prompt bodies.
+- Plant known effects: city×intent lifts, two time-boxed emerging events, four A→B sequences, and personas.
+  Truth goes only to `data/synthetic_ground_truth.json.gz`.
+- Fix the draft's bugs:
+  - the ad hoc sequence-probability formula;
+  - an expression used as a statement (`agent_msgs.insert(...) if ... else None`);
+  - wrong second-episode turn arithmetic;
+  - an implicit `role` carried into assembly.
+- Also: `locate_sample.py` writes a git-ignored copy of the real sample with a seeded assumed location
+  (`geo_source='assumed_sample'`). Delete it once real locations arrive.
 
-### WP1 Ingestion (`ingest.py`). Depends on: none.
-Inputs: `.jsonl` or `.jsonl.gz`, `--source verizon_sample|synthetic`. Streaming parser that:
-- reads only `redacted_*`;
-- parses turns, events, tool calls (with `intent_name`, `query`/`user_intent`/`topic`, `requested_operator`);
-- strips markup;
-- runs the PII scrub and counts hits;
-- writes rejects with line number and reason;
-- upserts by `session_id`;
-- resolves `thread_id` from `previous_session_id` chains (union-find) and sets `thread_pos`;
-- derives `day`, ISO `week`, `journey`, `auth_state` and the judge metrics.
-DoD: the real sample loads with 36 sessions and 241 turns, 0 rejects, and correct turn order (unit test
-on session `d9b52d90…`, whose turns 10–22 arrive shuffled). 100K load in < 4 min. Re-running doesn't
-duplicate anything.
+**DoD:** G0 passes; 100K sessions generate in < 5 min on 4 cores; 100% of records carry provenance.
 
-### WP2 Signals (`signals.py`). Depends on: WP1.
-Lexicon signals on customer utterances; platform-intent mapping; tool, event and metadata signals;
-derived signals:
-- `agent_loop`: agent text token-Jaccard ≥ .8 with an earlier agent turn;
-- `customer_repeat`: same test on customer turns, ≥ .7;
-- `abandoned`: the last event is a disconnect or ≥2 no-inputs with no transfer;
-- `repeat_same_issue`: same platform intent as the previous session in the thread.
-City attribution = the most frequent `city_mention` (ties → earliest); `geo_conf` = share.
-DoD: gold-set and synthetic metrics reported (G2); ~2 min on 100K.
+### WP1 Raw landing and ingestion (`ingest.py`)
+- Landing: copy each input to `landing/<source>/<day>/` (gzip), record a sha256, and index each session's
+  byte offset in `raw_trace_session`. Landing files are immutable.
+- Parse into the canonical tables:
+  - turn ordering and event typing;
+  - markup stripping;
+  - a second PII scrub (email, phone, card, SSN), with hits counted;
+  - tool calls with `intent_name`, `query`, `user_intent`, `topic`, `requested_operator`;
+  - language tagging;
+  - structured location via `LOCATION_PATHS` → `dim_geography`; unknown cities get `region='Unmapped'`;
+  - thread resolution via union-find, including parents that arrive on later days.
+- Rejects are written with line number and reason. Upsert by `session_id`. A `processed_day` watermark
+  makes reruns idempotent.
 
-### WP3 Episodes and segments (`episodes.py`). Depends on: WP2.
-Boundaries: a change of non-generic domain agent role, or a new `intent_name`. The leading
-auth/bootstrap span is `kind='auth'`; the rest are `kind='goal'`.
-Per episode: text (agent paraphrase + platform intent + cleaned customer text), outcome
-(escalated if a transfer tool fires or the agent says it will connect; abandoned; else resolved),
-friction (weighted, documented in code), signal types, and family mask.
-Session rollups: `outcome`, `escalated`, `repeat_flag`, `followup_7d`, `need/value/risk/opp_flag`.
-Behavioural `segment` is scored from signal weights in `config.py`, with fixed precedence on ties:
-Churn-risk, Deal-seeker, Household expander, Upgrade intender, Traveler, Connectivity-dependent,
-Billing-focused, Access-blocked, General. `style` is `self-serve` or `agent-seeking`.
-DoD: G3.
+**DoD:** G1. On the real sample: 36 sessions and 241 traces; the turns of session `d9b52d90…` come out in
+order. 100K sessions ingest in < 6 min.
 
-### WP4 Clustering (`cluster.py`). Depends on: WP3.
-Goal episodes only. Features: TF-IDF (1–2 grams, min_df 5, sublinear) concatenated with token
-features `__pi_<intent>`, `__sig_<type>`, `__tool_<name>`, `__role_<agent>`, then TruncatedSVD
-(`SVD_DIM`) and L2 normalisation, then MiniBatchKMeans. Choose k from `K_CANDIDATES` by silhouette on
-a 20K sample.
-Stability: run `N_BOOT` bootstrap fits, match clusters to the reference by Hungarian on centroid
-cosine, and set stability = mean Jaccard of matched member sets. Publish a cluster only if
-stability ≥ `MIN_STABILITY`.
-Stable IDs: match to the previous run's centroids (cosine ≥ .8) and inherit `stable_id`.
-Label = top c-TF-IDF terms + dominant platform intent + dominant signal; `family` = most enriched
-signal family.
-Persist the vectorizer and SVD to `data/` for retrieval.
-DoD: G4.
+### WP2 Evaluation mapping (`evaluations.py`)
+Explode session and trace metrics into `agent_evaluation`. Keep raw names. Map them to a small canonical
+set: quality, task success, efficiency, flow, context recall, tamper protection, and policy compliance.
+Each mapping documents its scale. Explode `cm_policy_metric` verdicts into `policy_verdict`.
 
-### WP5 Patterns and scoring (`patterns.py`). Depends on: WP4.
-Pattern kinds:
-- `geo_mix`: cluster × city or region; denominator = goal episodes with a known city.
-- `segment_mix`: cluster × segment.
-- `risk_rate`: escalation, abandonment, repeat-contact and auth-failure rate by cluster, city and segment.
-- `emerging`: weekly share; last 2 weeks vs the prior 6, by cluster and by cluster × region.
-- `sequence`: P(next session in the thread is cluster B | cluster A) vs P(B).
-- `kpi`: global KPI proxies.
-Statistics:
-- Beta-binomial shrinkage toward the baseline (`SHRINK_M`).
-- Wilson CI.
-- Two-proportion z-test, then Benjamini–Hochberg across *all* tested cells (`FDR_Q`).
-- Keep a pattern only if support ≥ `K_ANON` sessions, shrunk lift ≥ `MIN_LIFT` (or ≤ 1/`MIN_LIFT` for risk), and q ≤ `FDR_Q`.
-Score (0–100) = `W_EFFECT·effect + W_SUPPORT·support + W_SIG·significance + W_TREND·trend`, each
-normalised to [0,1] by a documented formula. Tier A ≥ 70, B ≥ 50, else C.
-KPI proxies, each named exactly as below and labelled "proxy" in the UI:
+**DoD:** a mapping table is documented in code; `not_applicable` and error statuses are never coerced to 0.
+
+### WP3 Signals (`signals.py`, lexicons in `lexicon.py`)
+Families and types:
+
+| Family (design baseline §7.1) | Types |
+|---|---|
+| Customer need | billing_clarification, payment_issue, account_access, service_request, coverage_availability |
+| Buying intent | upgrade_device, add_line, plan_question, hotspot_home_internet, travel_intl |
+| Value signal | willingness, price_sensitivity, feature_comparison, device_replacement, multi_line_expansion |
+| Retention risk | churn_intent, complaint, dispute, payment_difficulty, repeat_contact_language |
+| Journey friction | escalation_request, agent_handoff (tool), auth_failure, no_input, dtmf_operator, agent_loop, customer_repeat, tool_failure, abandoned, out_of_scope |
+| Experience | frustration, confusion, positive_response |
+| Geographic | city_mention (typed: destination / current / residence / unknown), location_mismatch, location_unresolved, local_event, coverage_local |
+| Temporal | repeat_contact, repeat_same_issue, days_since_prev |
+
+Each signal carries a confidence, a method (`lexicon` / `platform_intent` / `tool` / `event` / `metadata` / `derived` / `llm`),
+a rule version, and evidence turn and trace IDs.
+
+**DoD:** G2.
+
+### WP4 Intent taxonomy and classification (`taxonomy.py`)
+1. **Seed (v0):** the L1 domains and L2 candidates from design baseline §6.2, stored in
+   `tests/taxonomy/taxonomy_v0.yaml` with draft definitions.
+2. **Discover:**
+   - Profile the platform `intent_name` values and agent paraphrases.
+   - Run HDBSCAN on episode vectors from the discovery split, using LSA by default or the embedding adapter if one is approved.
+   - Propose L3/L4 candidates, including any clusters not covered by v0.
+   - Output a review pack with representative quotes per candidate.
+3. **SME review in the UI** (Taxonomy page): approve, rename, merge or split; edit definitions and criteria.
+   Each action writes `review_log` and produces a new `taxonomy_version`.
+4. **Classify** sessions, turns and episodes against the approved version. Rules (platform-intent patterns +
+   keyword rules from `intent_definition`) come first, then nearest-centroid backoff, with a calibrated confidence.
+   Below `MIN_INTENT_CONF` → `UNKNOWN`. Output one primary intent and the secondaries.
+5. **Gap loop:** report the low-confidence and `UNKNOWN` share by candidate theme.
+
+**DoD:** G3. Taxonomy v1 is published with definitions for every L3; the review log is complete.
+
+### WP5 Episodes and features (`episodes.py`, `features.py`)
+- Episode = a distinct need within a session (O2, configurable). A boundary is a change of domain agent,
+  a new `intent_name`, or a turn-level intent change held for 2 turns. The leading auth/bootstrap span is
+  `kind='auth'`.
+- Outcome: escalated (transfer tool), abandoned (disconnect or ≥2 no-inputs without handoff), or
+  resolved-proxy. Record `outcome_basis`; never use `status_code`.
+- Session features (§5), behavioural segment (rule-scored in config) and style (`self-serve` / `agent-seeking`).
+
+**DoD:** goal-episode count matches the planted intents on ≥ 85% of synthetic sessions.
+
+### WP6 Cluster families (`cluster.py`)
+- Four overlapping families, each clustered on its own feature view:
+  - **Need/upsell:** goal-episode text + need/buying signals.
+  - **Risk/retention:** friction, risk and temporal features + text.
+  - **Value:** value-signal profile + text.
+  - **Geographic:** cluster × geography demand profiles (city vectors of intent shares).
+- Method:
+  1. TF-IDF + token features (`__pi_`, `__sig_`, `__tool_`, `__role_`), then TruncatedSVD and L2 normalisation.
+  2. HDBSCAN for exploration, MiniBatchKMeans for stable assignment.
+  3. Choose k by silhouette.
+- Stability: bootstrap, Hungarian matching and Jaccard. Publish only if stability ≥ `MIN_STABILITY`.
+- Governed IDs: a new run matches previous centroids (cos ≥ .8) and inherits their IDs. Labels need SME review
+  (`cluster_master.status`).
+- Daily mode assigns to published centroids only. An episode with low similarity to every centroid goes to
+  `novel`; a refit alert fires when the novel share stays high.
+
+**DoD:** G4.
+
+### WP7 Patterns (`patterns.py`)
+- Compute from `agg_daily_*` over rolling windows.
+- Pattern kinds:
+  - intent or cluster × city / region / market;
+  - × segment;
+  - risk rates (escalation, abandonment, repeat contact, auth failure);
+  - emerging (last 2 weeks vs prior 6);
+  - sequences across threads (A → B within 7 days);
+  - recurrence (repeat same issue).
+- Statistics: Beta-binomial shrinkage, Wilson CI, two-proportion z-test, Benjamini–Hochberg across all cells.
+- Keep a pattern only if support ≥ `K_ANON` sessions, |shrunk lift| clears `MIN_LIFT`, and q ≤ `FDR_Q`.
+- Every pattern records its denominator, period and coverage.
+
+**DoD:** G5.
+
+### WP8 Scoring (`scoring.py`)
+Store six dimensions in [0, 1], each with a documented formula and version:
+- **prevalence:** support share;
+- **recurrence:** repeat across sessions/threads;
+- **trend:** slope or emerging z;
+- **evidence strength:** q-value, CI width, extraction confidence, quote count;
+- **business relevance:** a configured family weight;
+- **geographic concentration:** a Gini/HHI-style concentration measure.
+
+`composite_provisional` uses config weights, is labelled *provisional* everywhere, and is recomputable from
+stored dimensions.
+
+**DoD:** recalculation test passes (same inputs + version → same scores).
+
+### WP9 Retrieval (`retrieval.py`)
+- Sparse: FTS5 BM25 over episodes and cards.
+- Dense: LSA vectors reused from WP6, stored as float16 `.npy`, searched with cosine. The embedding
+  adapter replaces this if one is approved.
+- Hybrid: RRF (k=60).
+- Filters: intent (any level), family, cluster, city, region, segment, outcome, week range, source,
+  is_synthetic, split.
+- As-of: return only data with `created_at ≤ asof`, and attach `facts_as_of(thread)` to each hit.
+- `ask(q)`:
+  1. parse filters (gazetteer, taxonomy names, family words);
+  2. rank cards, then episodes;
+  3. return a templated answer that cites card, session and turn IDs.
+  No LLM unless the adapter is enabled.
+
+**DoD:** G7.
+
+### WP10 Evidence cards and persistent facts (`cards.py`, `facts.py`)
+- **Card fields** (design baseline §9):
+  - title, category, observation;
+  - population (support / denominator);
+  - period vs comparison period;
+  - segment/geography, only from structured or reliable attributes;
+  - trend with its method;
+  - 3–5 evidence quotes (`evidence_ref`, sanitised; diverse sessions);
+  - confidence;
+  - score dimensions + provisional composite;
+  - business hypothesis;
+  - caveats (auto: synthetic origin, coverage, proxies, sample size);
+  - governance (run, taxonomy / model / rules / scoring versions, review status);
+  - `pattern_key` and version.
+- **Reruns:** a rerun creates a new version, closes the old one (`valid_to`, `superseded_by`) and carries
+  its review status forward.
+- **Quote sanitiser:** before display, mask dollar amounts, runs of ≥3 digits, and places below city.
+- **Facts:** per thread — `open_issue` (superseded by `issue_resolved`), `stated_interest`,
+  `price_sensitive`, `last_outcome`, `primary_intent`. Per card: its versions.
+
+**DoD:** G6.
+
+### WP11 API and UI (`server.py`, `ui/`)
+API (JSON). List endpoints take `limit`, `offset` and the common filters.
+
+| Route | Returns |
+|---|---|
+| `GET /api/overview` | volumes, funnel per stage, family mix, KPI proxies, coverage, provenance split |
+| `GET /api/taxonomy` | the taxonomy tree |
+| `POST /api/taxonomy/review` | records an SME action |
+| `GET /api/intents/{id}` | definition, volumes, examples, confusion |
+| `GET /api/cards` | card list |
+| `GET /api/cards/{id}` | card detail |
+| `POST /api/cards/{id}/review` | records a review decision |
+| `GET /api/clusters?family=` | cluster list |
+| `GET /api/clusters/{id}` | cluster detail |
+| `POST /api/clusters/{id}/review` | records a review decision |
+| `GET /api/patterns?kind=` | pattern list |
+| `GET /api/geo` | per-city view |
+| `GET /api/sessions` | session list |
+| `GET /api/sessions/{id}` | transcript, signals, episodes, tools, evaluations, policy verdicts, thread, facts as-of |
+| `GET /api/search?q=&method=&asof=` | search results |
+| `GET /api/ask?q=` | templated answer with citations |
+| `GET /api/validation` | validation report |
+| `GET /api/runs` | pipeline run history |
+
+UI pages, all hash-routed, in light and dark themes, working at 1280 px and 390 px:
+1. **Overview.** Volumes and coverage.
+2. **Insight Backlog.** Evidence cards with a review drawer.
+3. **Taxonomy.** Tree, definitions and SME review.
+4. **Clusters.** By family, with label review.
+5. **Geography.** US dot map and city table.
+6. **Journeys & Trends.** Emerging patterns, sequences, repeat contact.
+7. **Session Explorer.** Transcript with highlighted signals, episode bands, tool chips, evaluation panel and as-of facts timeline.
+8. **Ask / Search.**
+9. **Validation.**
+10. **Pipeline & Governance.** Runs, versions, thresholds, decision log.
+
+On every page:
+- Synthetic data carries a visible badge.
+- KPI proxies are labelled "proxy" and show no dollar figures.
+- Each number has a tooltip with its definition.
+
+**DoD:** G8.
+
+### WP12 Validation, orchestration, docs (`validate.py`, `run_pipeline.py`, `README.md`)
+- `run_pipeline` modes: full, `--daily --inbox`, `--refit`, `--from-stage`, `--only`.
+- Each run records itself in `processing_run`, logs exceptions, and is resumable.
+- Retention (`RAW_RETENTION_DAYS`) applies to normalised raw turns; landing files are kept per policy.
+- `validate.py` writes `reports/validation.{json,md}` covering every gate. It states plainly that synthetic
+  results show pipeline capability, not real-world accuracy.
+- The README contains the runbook, the data dictionary (generated from `db.py`) and the architecture diagram.
+
+---
+
+## 7. KPI proxies (labelled "proxy" everywhere)
 
 | Proxy | Definition |
 |---|---|
-| qualified opportunity volume | goal episodes with a need or value signal and no churn_intent |
-| conversion proxy | share of those episodes with `willingness` |
-| unmet-need share | need episodes that ended escalated or abandoned |
-| repeat-contact rate | sessions with `followup_7d` |
-| escalation rate | sessions that escalated |
-| save-rate proxy | churn-intent sessions with no escalation and no follow-up in 7 days |
-| opportunity density | qualified opportunities per 100 sessions |
-| opportunity index | opportunity density × conversion proxy, indexed to 100 = global |
+| Qualified opportunity volume | sessions with a buying-intent or value signal and no churn intent |
+| Conversion proxy | share of those sessions with `willingness` |
+| Unmet-need share | buying/need episodes that ended escalated or abandoned |
+| Repeat-contact rate | sessions followed by another session in the same thread within 7 days |
+| Escalation rate | sessions with an executed handoff |
+| Save-rate proxy | churn-intent sessions with no handoff and no repeat within 7 days |
+| Opportunity density | qualified opportunities per 100 sessions |
+| Opportunity index | density × conversion proxy, indexed so the global value = 100 |
 
-DoD: G5.
-
-### WP6 Evidence cards and persistent facts (`cards.py`, `facts.py`). Depends on: WP5.
-Card fields:
-- `title` and `headline` from templates: "{Cluster} is {lift}× more common in {city} ({rate} vs {baseline})";
-- `kpi` and `hypothesis`, taken from the PDF KPI table for the family;
-- `action` (a hypothesis, never a promise);
-- `caveats`, auto-generated: geo coverage, sample size, synthetic origin, proxy KPIs;
-- metrics JSON;
-- 3–5 quotes: diverse sessions, highest-confidence signals, re-sanitised, each with `session_id` and `turn_no`;
-- `data_origin` (`synthetic` / `verizon_sample` / `mixed`);
-- `pattern_key`, status, and version.
-Cards over the top `MAX_CARDS` patterns, with at most 3 per cluster.
-Facts store:
-- one row per (scope, attribute, value, valid_from, valid_to);
-- per thread: `open_issue`, superseded by `issue_resolved`; `stated_interest`; `price_sensitive`; `last_outcome`;
-- per card: version history.
-Superseded rows keep their dates. Expose `facts_as_of(scope_id, ts)`.
-DoD: G6.
-
-### WP7 Retrieval (`retrieval.py`). Depends on: WP4 (index) and WP6 (cards).
-- Sparse: FTS5 BM25 over episodes and cards.
-- Dense: LSA vectors (reuse WP4's vectorizer and SVD), float16 `.npy`, brute-force cosine.
-- Hybrid: RRF (k=60).
-- Filters: city, region, segment, family, cluster, week range, source, outcome.
-- As-of: limit to sessions with `created_at ≤ asof`, and attach `facts_as_of` for each hit's thread.
-- `ask(question)`:
-  1. parse filters from the text (gazetteer, family lexicon, segment names);
-  2. rank cards, then episodes;
-  3. return a templated answer that cites card and session IDs.
-  No LLM.
-DoD: G7.
-
-### WP8 API server (`server.py`). Depends on: WP1 (works with partial data).
-Serves `ui/` and JSON. Read-only connections, except review POSTs. Every list endpoint takes
-`limit`/`offset` and the common filters (`city, region, segment, family, source, week_from, week_to`).
-
-| Method & path | Returns |
-|---|---|
-| GET /api/overview | KPI proxies, funnel counts per stage, family mix, weekly volume, data origin, geo coverage |
-| GET /api/cards?status=&family=&min_score= | card list |
-| GET /api/cards/{id} | card + version history |
-| POST /api/cards/{id}/review `{status, reviewer, note}` | updated card (status ∈ draft, in_review, approved, rejected) |
-| GET /api/clusters, /api/clusters/{id} | list; detail with terms, signals, outcome rates, weekly series, city mix, sample quotes |
-| GET /api/geo | per-city rows: lat, lon, sessions, coverage, intent mix, opportunity index, risk index |
-| GET /api/patterns?kind= | pattern rows |
-| GET /api/sessions/{id} | turns, signals, episodes, tools, thread, facts timeline |
-| GET /api/sessions?random=1&filters | session list |
-| GET /api/search?q=&method=bm25\|dense\|hybrid&asof= | ranked hits with scores and the reason they matched |
-| GET /api/ask?q= | answer + cited cards/sessions |
-| GET /api/validation | `reports/validation.json` |
-| GET /api/runs | pipeline run history and stage timings |
-
-DoD: p95 < 500 ms on 100K for every GET (measured in G8). Errors return JSON `{error}` with a 4xx/5xx status.
-
-### WP9 UI (`ui/`). Depends on: the WP8 contract (can start against stub JSON).
-A single-page app with hash routing. Light and dark themes via CSS tokens. Works at 1280px and 390px.
-Charts are hand-made SVG. No external assets.
-Pages:
-1. **Overview**: KPI tiles, a pipeline funnel (sessions → episodes → clusters → patterns → cards), family mix, weekly trend, data-origin banner.
-2. **Insight Backlog**: card list with filters; a detail drawer (metrics, quotes linking to sessions, caveats, version history); approve/reject/note.
-3. **Geography**: US dot map (lat/lon projection, simple outline), plus a sortable city table with intent-mix bars, coverage, and opportunity and risk indexes.
-4. **Clusters**: a table, then detail (terms, signals, outcome rates, weekly sparkline, top cities, quotes).
-5. **Journeys and Trends**: emerging patterns, sequence A→B lifts, repeat-contact funnel.
-6. **Session Explorer**: transcript with signals highlighted inline, episode boundaries, tool chips, thread timeline, and an as-of facts panel.
-7. **Ask / Search**: query box, method toggle, filters, results with scores.
-8. **Validation**: gates with pass/fail and metric tables.
-9. **Pipeline**: runs, stage timings, governance thresholds (read-only).
-Every number shown names its definition in a tooltip. Synthetic data is always visibly labelled.
-
-### WP10 Validation and tests (`validate.py`, `tests/`). Depends on: all WPs.
-Produces `reports/validation.json` + `.md` with every gate in §9. Unit tests cover:
-- turn ordering;
-- event parsing;
-- span recursion;
-- PII scrub;
-- the lexicon on gold phrases;
-- shrinkage, BH and Wilson against hand-computed values;
-- Hungarian stable-ID matching;
-- facts supersession and as-of;
-- RRF;
-- each API route (smoke test);
-- the "pipeline never reads ground truth" grep test.
-
-### WP11 Orchestrator and runbook (`run_pipeline.py`, `README.md`). Depends on: all WPs.
-```
-python -m cie.synth --sessions 100000 --profile real_calibrated
-python -m cie.run_pipeline --ingest sample/verizon_traces_example.jsonl:verizon_sample --ingest data/synthetic_traces.jsonl.gz:synthetic
-python -m cie.validate
-python -m cie.server --port 8080
-```
-`run_pipeline` supports `--from-stage` and `--only` and records each stage in `pipeline_runs`. A run is
-the "overnight batch": ingest new files, recompute downstream stages, version the cards.
+No revenue, margin, churn or save **outcomes** are claimed (design baseline §15).
 
 ---
 
-## 7. Milestones (target delivery Dec 18)
-
-| Milestone | Content | By |
-|---|---|---|
-| M1 Vertical slice | WP1, WP2, WP3 on the real 36; WP8 session endpoints; WP9 Session Explorer; gold set drafted | Nov 25 |
-| M2 Scale | WP0 calibrated; 100K ingested; G0 and G1 pass | Nov 28 |
-| M3 Intelligence | WP4, WP5, WP6; G3–G6 pass | Dec 5 |
-| M4 Retrieval + full UI | WP7, WP8, WP9 complete; G7 and G8 pass | Dec 12 |
-| M5 Hardening | WP10 report, WP11 runbook, demo script, review with the user | Dec 16 |
-
-Parallelism: WP0 runs in parallel with WP1; WP9 runs in parallel from M1 against stub JSON;
-WP7 and WP10 test scaffolding start once WP4 lands.
-
----
-
-## 8. Governance rules (must hold at all times)
-
-- No pattern, card, geo cell or quote is published with support below `K_ANON` sessions.
-- Quotes pass the second sanitiser (§3.4). A test scans every card's quotes for phone, email,
-  card, SSN, `$amount`, `\d{3,}` and gazetteer-external addresses; the count must be 0.
-- Every card has ≥3 evidence quotes, caveats and a data origin. Cards from synthetic data say so in the title badge.
-- Only cards with `status='approved'` count as "published". Review status changes are logged with the reviewer and time.
-- KPIs that are proxies are labelled "proxy". No dollar figures.
-
----
-
-## 9. Acceptance gates (`validate.py` must compute all of them)
+## 8. Acceptance gates (`validate.py` computes all of them)
 
 | Gate | Check | Threshold |
 |---|---|---|
-| G0 Calibration | synthetic vs real: mean turns, event share, transfer share, agent-request share, null-output share | each within ±25% relative, or within the real sample's 95% CI |
-| G1 Ingest integrity | sessions and turns reconcile with the source; 0 duplicate keys; rejects logged; PII hits post-scrub = 0; real sample turn order correct | exact |
-| G2 Signals | synthetic per-type precision / recall, bank A vs bank B; gold-set precision on real data | A: precision ≥ .90, recall ≥ .85. B: report only (the gap is the finding). Gold: precision ≥ .80 for escalation_request, dispute, auth_failure, price_sensitivity |
-| G3 Episodes and segments | goal-episode count = planted intents per session; segment vs latent persona (NMI) | exact-count accuracy ≥ .85; NMI reported |
-| G4 Clusters | ARI and NMI vs primary planted intent on goal episodes; bootstrap stability; silhouette | ARI ≥ .50; ≥ 80% of clusters stable ≥ .60 |
-| G5 Patterns | recovery of the 11 planted city×intent effects (incl. 2 time-boxed); FDR on null cells; sequence recovery (outage→churn, coverage→churn, dispute→bill, damage→upgrade) | ≥ 9/11 recovered; empirical FDR ≤ .10; both emerging events flagged inside their window; ≥ 3/4 sequences |
-| G6 Cards and facts | governance rules in §8; facts as-of returns the value valid at that time (property test) | 0 violations |
-| G7 Retrieval | 60 GT queries (intent × city): P@10, MRR, nDCG@10 for bm25 / dense / hybrid; filter correctness | hybrid MRR ≥ max(bm25, dense) − .02; filters 100% correct |
-| G8 Performance | 100K end-to-end pipeline on 4 cores; API p95 | pipeline ≤ 20 min; p95 < 500 ms |
-
-The report must also state, in plain words, what the synthetic gates do **not** prove: that the
-language extractors work on real Verizon traffic. G2-gold is the only evidence of that.
+| G0 Calibration | synthetic vs real: mean turns, event share, transfer share, agent-request share, null-output share, auth-failure share, platform-intent family mix | proportions inside the real 95% Wilson CI; mean turns inside the bootstrap CI; intent-mix total variation distance ≤ .15 |
+| G1 Data integrity | 100,000 distinct synthetic sessions; 100% of traces link to a session; schema conformity 100%; provenance on 100% of synthetic rows; 0 duplicate keys; post-scrub PII hits = 0; real-sample turn order correct; landing sha256 verified | exact |
+| G2 Signals | per-type precision and recall vs planted truth, bank A vs bank B; gold-set precision on real data (after human review) | A: precision ≥ .90, recall ≥ .85. B: report the gap. Gold: precision ≥ .80 for escalation_request, dispute, auth_failure, price_sensitivity |
+| G3 Intent classification | macro-F1 on the held-out `test` split (L2 and L3) against scenario ground truth; on the reviewed real gold set; `UNKNOWN` rate | macro-F1 ≥ .85 (L2) on synthetic test; real gold reported with its n; `UNKNOWN` ≤ 10% |
+| G4 Clusters | ARI/NMI vs ground-truth intent (need family); bootstrap stability; silhouette; SME label review recorded | ARI ≥ .50; ≥ 80% of clusters with stability ≥ .60 |
+| G5 Patterns | recovery of planted city×intent effects; empirical FDR on null cells; time-boxed events flagged inside their window; sequence recovery | ≥ 9/11 effects; FDR ≤ .10; both events; ≥ 3/4 sequences |
+| G6 Cards and facts | every card has evidence refs, denominator, period, caveats, versions; k-anonymity holds; 0 sanitiser violations; point-in-time reconstruction test passes | 0 violations |
+| G7 Retrieval | 60 ground-truth queries (intent × city): P@10, MRR, nDCG@10 for bm25 / dense / hybrid; filter correctness; as-of correctness | hybrid MRR ≥ max(bm25, dense) − .02; filters and as-of 100% |
+| G8 UI/API and performance | every route smoke-tested; API p95 < 500 ms on 100K; full pipeline on 100K ≤ 30 min on 4 cores; the overnight daily run is idempotent | as stated |
+| G9 Scale (only if O1 = per day) | 7 consecutive daily batches of 100K in incremental mode | each day ≤ 30 min; DB growth within retention plan |
 
 ---
 
-## 10. Open questions for Verizon (track them; don't block on them)
+## 9. Governance rules (must always hold)
 
-1. Is `previous_session_id` populated in production exports? Repeat-contact and sequence insights depend on it.
-2. Can a non-PII geography key (market, DMA or state) be supplied in Phase 1? Text-only geography will be sparse (`[LOCATION]` masking).
-3. Is the 36-session sample representative, or filtered to transferred calls? (It shows 86% transfers.)
-4. What is the full `head_intent.*` taxonomy? The real file shows 19 values; we map them in `lexicon.PLATFORM_INTENT_MAP`.
-5. Are city-level aggregates and redacted quotes acceptable in evidence cards under the CPNI policy?
-6. What volume and frequency will the overnight feed have (files/day, sessions/day)?
+- Nothing is published below `K_ANON` = 30 sessions: no pattern, card, geo cell or quote.
+- Only `approved` cards, clusters and taxonomy versions count as published. Every review writes `review_log`.
+- Synthetic, sample and mixed provenance is visible on every card and chart.
+- Geography always states its `geo_source` and `location_type`. A mentioned place is never inferred to be the
+  customer's residence.
+- Everything is versioned: taxonomy, rules/lexicon, models, scoring, generator.
+
+---
+
+## 10. Four-week plan (today 2026-11-18, delivery 2026-12-18)
+
+| Week | Build | Exit gate (customer review) |
+|---|---|---|
+| **W1** (Nov 18–25) Discovery and design + vertical slice | Profiling report on the real sample; db.py schema + ERD + source-to-target mapping; taxonomy v0; signal catalogue; episode definition proposal (O2); scenario catalogue + generator spec. **Vertical slice:** WP1 → WP3 → WP5 on the real 36 sessions; Session Explorer; real gold set drafted | Schema, taxonomy v0, episode definition, scenario catalogue approved; open questions O1–O8 answered or defaults accepted |
+| **W2** (Nov 26–Dec 2) Data + intelligence foundation | WP0 complete (100K, G0); WP1/WP2 at scale (G1); WP3 (G2); WP4 discovery + review pack; WP5 features | 100K count, linkage, provenance, scenario coverage, taxonomy v1 approved |
+| **W3** (Dec 3–9) Clusters, patterns, scoring | WP4 classification (G3); WP6 (G4); WP7 (G5); WP8; Taxonomy/Clusters/Geo/Journeys UI pages | Cluster families, pattern definitions, score dimensions and evidence examples reviewed |
+| **W4** (Dec 10–16, buffer to Dec 18) Cards, retrieval, batch, handover | WP10 (G6); WP9 (G7); WP11 complete (G8); WP12 overnight mode, validation report, runbook; G9 if O1 = per day; demo | End-to-end demo; card review; Phase 1 acceptance |
+
+Parallel lanes for agents:
+- **Data:** WP0, WP1, WP2, WP12 orchestration.
+- **Intelligence:** WP3, WP4, WP5, WP6, WP7, WP8.
+- **Product:** WP9, WP10, WP11 (the UI can start in W1 against stub JSON).
+- **QA:** gold set, tests and `validate.py` from W1.
+
+---
+
+## 11. Synthetic data controls
+
+- Fictional identifiers only. No real phone numbers, cards, addresses or credentials.
+- Every record is labelled with `is_synthetic` and its provenance (batch, scenario, template, generator version, seed).
+- Tool outcomes and final outcomes are consistent with the dialogue. Evaluations come from the rubric, not at random.
+- Discovery and test splits are separated by thread. Taxonomy discovery and threshold tuning use **discovery only**.
+- Distributions are documented in `reports/synthetic_profile.md` and never presented as population statistics.
+
+---
+
+## 12. Definition of done (every PR)
+
+- Tests pass (`pytest -q`); the relevant gate(s) are computed by `validate.py`.
+- No thresholds hard-coded outside `config.py`; versions are bumped when rules or scoring change.
+- Docs updated: this file (if the contract changed), the README runbook, the data dictionary.
+- No data, sample or baseline documents committed.
+
+---
+
+## 13. Decision log
+
+| Date | Decision | Source |
+|---|---|---|
+| 2026-11-18 | Session = complete conversation; no taxonomy; 100K synthetic complete conversations | Design baseline (customer clarifications) |
+| 2026-11-18 | Sample is representative; `previous_session_id` is available; structured location will be supplied; city-level aggregates and redacted quotes OK under CPNI; no `head_intent` list | User |
+| 2026-11-18 | SQLite as POC store with portable SQL; raw landing as gzipped files + offset index | User request; payload size measurement |
+| 2026-11-18 | Separate score dimensions; composite is provisional until approved | Design baseline |
+| 2026-11-18 | Default episode = need within session; default volume reading = 100K total (O1, O2 still open) | This plan |
