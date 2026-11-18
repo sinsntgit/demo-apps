@@ -288,8 +288,17 @@ class Handler(BaseHTTPRequestHandler):
 
 def serve(port=8080, host="127.0.0.1", db_path=None):
     Handler.db_path = db_path or DB_PATH
-    srv = ThreadingHTTPServer((host, port), Handler)
-    print(f"Context Intelligence Engine UI on http://{host}:{port}")
+    srv = None
+    for p in range(port, port + 20):                 # port busy or reserved (e.g. Windows WinError 10013) -> try the next one
+        try:
+            srv = ThreadingHTTPServer((host, p), Handler)
+            break
+        except OSError as e:
+            print(f"port {p} unavailable ({e.__class__.__name__}: {e}); trying {p + 1}", flush=True)
+    if srv is None:
+        raise SystemExit(f"no free port between {port} and {port + 19}; try: python run_all.py --port 18080")
+    port = srv.server_address[1]
+    print(f"\n>>> Context Intelligence Engine UI: open http://{host}:{port}   (Ctrl+C to stop)\n", flush=True)
 
     def warm():
         import urllib.request

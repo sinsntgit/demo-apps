@@ -46,7 +46,7 @@ def main():
         args = ["cie.run_pipeline", "--rebuild"] + (["--reset-cards"] if a.reset or not db_exists else [])
         step("Building the pipeline (about 5 minutes for 100K sessions; longer on Windows)", args)
         step("Validating", ["cie.validate"])
-    print(f"\n=== Starting the UI: open http://127.0.0.1:{a.port}  (Ctrl+C to stop) ===", flush=True)
+    print(f"\n=== Starting the UI (port {a.port}, or the next free one; the address is printed below) ===", flush=True)
     subprocess.run([sys.executable, "-m", "cie.server", "--port", str(a.port)], cwd=ROOT, env=ENV)
 
 

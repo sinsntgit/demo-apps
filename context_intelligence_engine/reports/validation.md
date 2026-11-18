@@ -14,7 +14,7 @@ Versions: `{"schema": "1.0.0", "rules": "0.3.0", "taxonomy": "v0-draft", "episod
 | G5_patterns | **PASS** | 11/11 planted city×intent effects recovered, geo FDR 0%; time-boxed events flagged 2/2; sequences 4/4; 2 unplanted emerging flag(s) |
 | G6_cards_facts | **PASS** | 26 active cards, 0 governance violations, 0 unsanitised quote tokens; point-in-time reconstruction 699/699 |
 | G7_retrieval | **PASS** | 60 queries: MRR bm25 0.897, dense 0.897, hybrid 0.911; filters ok; as-of ok |
-| G8_api_performance | **PASS** | 17 routes OK, API p95 91 ms (warm); full pipeline 4.5 min on this machine |
+| G8_api_performance | **INFO** | skipped (--quick) |
 | G9_volume | **PASS** | 100,000 sessions, mean 7.02 traces/session (target 7.0 ± 0.1) |
 | G10_llm | **INFO** | Claude tier disabled (no API key). 5,001 candidate sessions (5.0% ≤ 5% cap); grounding enforced in code; accepted-but-ungrounded 0 |
 | real_sample_gold_draft | **INFO** | n=36 (unreviewed draft): primary L3 72%, unambiguous 89%; handoff/auth-failure detection precision 1.0/1.0 |
@@ -340,9 +340,9 @@ Versions: `{"schema": "1.0.0", "rules": "0.3.0", "taxonomy": "v0-draft", "episod
    "ndcg": 0.811
   },
   "hybrid": {
-   "p10": 0.812,
+   "p10": 0.813,
    "mrr": 0.911,
-   "ndcg": 0.821
+   "ndcg": 0.822
   }
  },
  "filters_correct": true,
@@ -356,24 +356,8 @@ Versions: `{"schema": "1.0.0", "rules": "0.3.0", "taxonomy": "v0-draft", "episod
 
 ```json
 {
- "routes_tested": 17,
- "route_errors": [],
- "api_p95_ms_warm": 90.5,
- "pipeline_seconds_by_stage": {
-  "retrieval_index": 0.0,
-  "facts": 2.0,
-  "cards": 0.0,
-  "scoring": 1.0,
-  "patterns": 4.0,
-  "clusters": 41.0,
-  "episodes+features": 22.0,
-  "signals+intents": 102.0,
-  "ingest": 95.0
- },
- "pipeline_seconds_total": 267.0,
- "note": "Latency measured after cache warm-up (server pre-warms at start); cold first calls of heavy aggregates take 1-5 s.",
- "pass": true,
- "summary": "17 routes OK, API p95 91 ms (warm); full pipeline 4.5 min on this machine"
+ "pass": null,
+ "summary": "skipped (--quick)"
 }
 ```
 

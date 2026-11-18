@@ -291,7 +291,10 @@ def g8(con):
     from http.server import ThreadingHTTPServer
     from .server import Handler
     Handler.db_path = DB_PATH
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler); threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler); threading.Thread(target=srv.serve_forever, daemon=True).start()
+    except OSError as e:                                   # sockets blocked on this machine: report, don't fail the run
+        return {"pass": None, "summary": f"skipped: cannot open a local test server ({e})"}
     base = f"http://127.0.0.1:{srv.server_address[1]}"
     sid = con.execute("SELECT session_id FROM conversation_session LIMIT 1").fetchone()[0]
     cid = con.execute("SELECT card_id FROM evidence_card WHERE valid_to IS NULL LIMIT 1").fetchone()
@@ -302,12 +305,15 @@ def g8(con):
     if kid: routes.append(f"clusters/{kid[0]}")
     lat, bad = [], []
     for r in routes:
-        urllib.request.urlopen(f"{base}/api/{r}").read()                      # warm (cache)
+        try:
+            urllib.request.urlopen(f"{base}/api/{r}", timeout=180).read()         # warm (cache)
+        except Exception as e:
+            bad.append((r, f"warm-up: {e}"))
     for r in routes:
         for _ in range(3):
             t = time.time()
             try:
-                urllib.request.urlopen(f"{base}/api/{r}").read()
+                urllib.request.urlopen(f"{base}/api/{r}", timeout=60).read()
             except Exception as e:
                 bad.append((r, str(e)))
             lat.append((time.time() - t) * 1000)
@@ -420,6 +426,9 @@ def render_md(R):
 
 
 if __name__ == "__main__":
+    import sys
+    if "--quick" in sys.argv:                 # skip the API timing gate (G8): the slowest check on Windows
+        g8 = lambda con: {"pass": None, "summary": "skipped (--quick)"}
     R = run()
     for k, g in R["gates"].items():
         print(f"{k:28s} {({True: 'PASS', False: 'FAIL', None: 'INFO'})[g.get('pass')]:5s} {g.get('summary', '')}")

@@ -107,6 +107,8 @@ Never commit the key. Results and costs show on the Pipeline page; a run stops i
 |---|---|
 | Windows: `Program 'python3.exe' failed to run: The system cannot find the file specified` | Use `py -3 -m venv .venv` (see section 3); `python3` on Windows is a Store shortcut, not Python |
 | `ModuleNotFoundError: sklearn` / `yaml` | The virtual environment is not active, or `pip install -r requirements.txt` was skipped |
+| `PermissionError: [WinError 10013]` or `Address already in use` | Port 8080 is taken or reserved. The server now moves to the next free port by itself: open the address it prints (">>> ... open http://127.0.0.1:NNNN"). To free a port: `netstat -ano \| findstr :8080`, then `tasklist /FI "PID eq <pid>"` to see what it is, and `Stop-Process -Id <pid> -Force` only if it is not something you need |
+| Validation seems stuck on Windows | `python -m cie.validate --quick` skips the slowest check (API timing); the Validation page shows it as skipped |
 | `Address already in use` | Another program uses port 8080: `python run_all.py --skip-build --port 9000` |
 | First page load is slow | Normal for about 30 seconds after start while caches warm; then pages answer in under 100 ms |
 | `no such module: fts5` | Your Python's SQLite lacks full-text search (rare): install Python from python.org or use a conda Python |
