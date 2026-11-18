@@ -6,7 +6,7 @@
   "episode_model": "1.0.0",
   "fixtures": "1.0.0"
  },
- "generated_seconds": 41.2,
+ "generated_seconds": 124.2,
  "gates": {
   "G0_calibration": {
    "pass": true,
@@ -648,9 +648,9 @@
      "ndcg": 0.811
     },
     "hybrid": {
-     "p10": 0.812,
+     "p10": 0.813,
      "mrr": 0.911,
-     "ndcg": 0.821
+     "ndcg": 0.822
     }
    },
    "filters_correct": true,
@@ -661,7 +661,7 @@
   "G8_api_performance": {
    "routes_tested": 17,
    "route_errors": [],
-   "api_p95_ms_warm": 83.9,
+   "api_p95_ms_warm": 84.3,
    "pipeline_seconds_by_stage": {
     "retrieval_index": 0.0,
     "facts": 2.0,

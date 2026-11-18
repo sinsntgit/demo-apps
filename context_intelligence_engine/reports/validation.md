@@ -340,9 +340,9 @@ Versions: `{"schema": "1.0.0", "rules": "0.3.0", "taxonomy": "v0-draft", "episod
    "ndcg": 0.811
   },
   "hybrid": {
-   "p10": 0.812,
+   "p10": 0.813,
    "mrr": 0.911,
-   "ndcg": 0.821
+   "ndcg": 0.822
   }
  },
  "filters_correct": true,
@@ -358,7 +358,7 @@ Versions: `{"schema": "1.0.0", "rules": "0.3.0", "taxonomy": "v0-draft", "episod
 {
  "routes_tested": 17,
  "route_errors": [],
- "api_p95_ms_warm": 83.9,
+ "api_p95_ms_warm": 84.3,
  "pipeline_seconds_by_stage": {
   "retrieval_index": 0.0,
   "facts": 2.0,
