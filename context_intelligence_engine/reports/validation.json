@@ -6,7 +6,7 @@
   "episode_model": "1.0.0",
   "fixtures": "1.0.0"
  },
- "generated_seconds": 35.2,
+ "generated_seconds": 41.2,
  "gates": {
   "G0_calibration": {
    "pass": true,
@@ -109,9 +109,9 @@
     22
    ],
    "landing_sha256_checked": 300,
-   "landing_sha256_mismatch": 300,
-   "pass": false,
-   "summary": "100,000 synthetic + 36 real sessions; 0 orphans/duplicates expected; PII hits 0; sha256 verified on 300 landed lines (300 mismatches)"
+   "landing_sha256_mismatch": 0,
+   "pass": true,
+   "summary": "100,000 synthetic + 36 real sessions; 0 orphans/duplicates expected; PII hits 0; sha256 verified on 300 landed lines (0 mismatches)"
   },
   "G2_signals": {
    "per_type": {
@@ -523,8 +523,8 @@
   },
   "G4_clusters": {
    "episodes_scored": 97423,
-   "ARI_need_vs_intent": 0.491,
-   "NMI_need_vs_intent": 0.78,
+   "ARI_need_vs_intent": 0.54,
+   "NMI_need_vs_intent": 0.798,
    "families": {
     "geo": {
      "clusters": 4,
@@ -532,24 +532,24 @@
      "mean_stability": 0.573
     },
     "need": {
-     "clusters": 34,
-     "stable_share": 0.735,
-     "mean_stability": 0.746
+     "clusters": 36,
+     "stable_share": 0.806,
+     "mean_stability": 0.762
     },
     "risk": {
-     "clusters": 8,
-     "stable_share": 0.5,
-     "mean_stability": 0.583
+     "clusters": 6,
+     "stable_share": 0.667,
+     "mean_stability": 0.68
     },
     "value": {
      "clusters": 6,
-     "stable_share": 1.0,
-     "mean_stability": 0.873
+     "stable_share": 0.833,
+     "mean_stability": 0.779
     }
    },
    "sme_label_reviews": 0,
-   "pass": false,
-   "summary": "Need clusters vs true intent: ARI 0.49, NMI 0.78; need stable share 0.735; SME label reviews 0"
+   "pass": true,
+   "summary": "Need clusters vs true intent: ARI 0.54, NMI 0.80; need stable share 0.806; SME label reviews 0"
   },
   "G5_patterns": {
    "planted_city_intent_effects": 11,
@@ -629,7 +629,7 @@
    "point_in_time_checks": 699,
    "point_in_time_failures": 0,
    "superseded_facts_on_record": 54141,
-   "card_versions": 61,
+   "card_versions": 26,
    "pass": true,
    "summary": "26 active cards, 0 governance violations, 0 unsanitised quote tokens; point-in-time reconstruction 699/699"
   },
@@ -661,22 +661,22 @@
   "G8_api_performance": {
    "routes_tested": 17,
    "route_errors": [],
-   "api_p95_ms_warm": 74.1,
+   "api_p95_ms_warm": 83.9,
    "pipeline_seconds_by_stage": {
-    "retrieval_index": 1.0,
-    "cards": 27.0,
-    "scoring": 0.0,
-    "patterns": 4.0,
+    "retrieval_index": 0.0,
     "facts": 2.0,
-    "clusters": 25.0,
-    "episodes+features": 20.0,
-    "signals+intents": 97.0,
-    "ingest": 96.0
+    "cards": 0.0,
+    "scoring": 1.0,
+    "patterns": 4.0,
+    "clusters": 41.0,
+    "episodes+features": 22.0,
+    "signals+intents": 102.0,
+    "ingest": 95.0
    },
-   "pipeline_seconds_total": 272.0,
+   "pipeline_seconds_total": 267.0,
    "note": "Latency measured after cache warm-up (server pre-warms at start); cold first calls of heavy aggregates take 1-5 s.",
    "pass": true,
-   "summary": "17 routes OK, API p95 74 ms (warm); full pipeline 4.5 min on this machine"
+   "summary": "17 routes OK, API p95 84 ms (warm); full pipeline 4.5 min on this machine"
   },
   "G9_volume": {
    "synthetic_sessions": 100000,

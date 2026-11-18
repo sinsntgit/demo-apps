@@ -127,6 +127,11 @@ class Retriever:
             return []
         cards = {c["card_id"]: dict(c) for c in self.con.execute(f"SELECT * FROM evidence_card WHERE card_id IN ({','.join('?' * len(ids))})", ids)}
         out = [cards[i] for i in ids if i in cards]
+        if filters and (filters.get("city") or filters.get("intent")):      # a named city/need narrows the cards when any match it
+            names = {n["intent_id"]: n["name"] for n in self.tax.nodes}
+            keep = [c for c in out if (filters.get("city") and filters["city"] in (c["title"] or "") + (c["scope"] or ""))
+                    or (filters.get("intent") and names.get(filters["intent"], "@") in (c["title"] or ""))]
+            out = keep or out
         if filters and filters.get("city"):
             out = sorted(out, key=lambda c: filters["city"] not in (c["scope"] or "") and filters["city"] not in (c["title"] or ""))
         if filters and filters.get("family"):

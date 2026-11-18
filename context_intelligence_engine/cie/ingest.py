@@ -273,8 +273,11 @@ def ingest_file(con, path, source):
     # content-addressed: the same name with different content lands as a new file; landed files are never overwritten
     landed = land_dir / f"{h.hexdigest()[:16]}_{path.name if path.suffix == '.gz' else path.name + '.gz'}"
     if not landed.exists():
-        with open(path, "rb") as src, gzip.open(landed, "wb") as dst:
-            shutil.copyfileobj(src, dst)
+        if path.suffix == ".gz":
+            shutil.copyfile(path, landed)                     # already gzipped: land the exact bytes
+        else:
+            with open(path, "rb") as src, gzip.open(landed, "wb") as dst:
+                shutil.copyfileobj(src, dst)
     opener = gzip.open if path.suffix == ".gz" else open
     counter = [0]
     with db.stage(con, f"ingest:{source}", VERSIONS) as (run_id, stats):
