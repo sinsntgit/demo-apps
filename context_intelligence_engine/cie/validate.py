@@ -382,8 +382,10 @@ def run(db=DB_PATH):
     gt = load_gt()
     t0 = time.time()
     G = {}
-    G["G0_calibration"] = g0(con, tax)
-    G["G1_integrity"] = g1(con)
+    say = lambda k: print(f"  {k}: {({True: 'PASS', False: 'FAIL', None: 'INFO'})[G[k].get('pass')]} ({time.time() - t0:.0f}s)", flush=True)
+    print("  checking G0 calibration, G1 integrity (scans all turns and landed files)...", flush=True)
+    G["G0_calibration"] = g0(con, tax); say("G0_calibration")
+    G["G1_integrity"] = g1(con); say("G1_integrity")
     g2, g3 = g2_g3(con, gt, tax)
     if g2: G["G2_signals"] = g2
     if g3: G["G3_intent_classification"] = g3
@@ -391,7 +393,7 @@ def run(db=DB_PATH):
                      ("G7_retrieval", lambda: g7(con, gt, tax)), ("G8_api_performance", lambda: g8(con)), ("G9_volume", lambda: g9(con)), ("G10_llm", lambda: g10(con))):
         r = fn()
         if r:
-            G[name] = r
+            G[name] = r; say(name)
     rg = real_gold(con, tax)
     if rg: G["real_sample_gold_draft"] = rg
     G["governance"] = {"pipeline_modules_reading_truth": [p.name for p in (ROOT / "cie").glob("*.py") if p.name not in ("validate.py", "fixtures.py", "synth.py", "config.py")
