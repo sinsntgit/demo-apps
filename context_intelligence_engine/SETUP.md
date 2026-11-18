@@ -59,11 +59,16 @@ This generates 100,000 synthetic sessions (about 10 seconds), builds every stage
 validation (about 40 seconds) and starts the UI. Open **http://127.0.0.1:8080**. The first page loads can take a
 few seconds while the server warms its caches. Stop with Ctrl+C.
 
+The synthetic file is generated **once** (fixed seed, so regenerating gives identical data) and the database is
+built **once**: afterwards `python run_all.py` just starts the UI on the existing build, keeping your reviews.
+
 | Option | Effect |
 |---|---|
-| `python run_all.py --sessions 20000` | Smaller, faster build for a laptop demo (about 1 minute; the volume gate G9 will then report FAIL, as it checks for 100,000) |
+| `python run_all.py --rebuild` | Rebuild the database (keeps card and cluster review decisions) |
+| `python run_all.py --rebuild --reset` | Rebuild from scratch, dropping review history |
+| `python run_all.py --regenerate --sessions 50000` | Regenerate the synthetic file (needed only to change its size) and rebuild |
+| `python run_all.py --regenerate --sessions 20000` | Smaller, faster build for a laptop demo (about 1 minute; the volume gate G9 will then report FAIL, as it checks for 100,000) |
 | `python run_all.py --port 9000` | Use another port |
-| `python run_all.py --skip-build` | Only start the UI on the existing database |
 
 ## 6. Or run the steps one by one
 
