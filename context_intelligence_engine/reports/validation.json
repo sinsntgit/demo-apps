@@ -6,14 +6,92 @@
   "episode_model": "1.0.0",
   "fixtures": "1.0.0"
  },
+ "generated_seconds": 35.2,
  "gates": {
+  "G0_calibration": {
+   "pass": true,
+   "metrics": {
+    "transfer": {
+     "real": 0.778,
+     "real_ci": [
+      0.619,
+      0.883
+     ],
+     "synthetic": 0.794,
+     "inside": true
+    },
+    "asks_human": {
+     "real": 0.556,
+     "real_ci": [
+      0.396,
+      0.705
+     ],
+     "synthetic": 0.538,
+     "inside": true
+    },
+    "unauth": {
+     "real": 0.583,
+     "real_ci": [
+      0.422,
+      0.729
+     ],
+     "synthetic": 0.587,
+     "inside": true
+    },
+    "billing_l1": {
+     "real": 0.75,
+     "real_ci": [
+      0.589,
+      0.862
+     ],
+     "synthetic": 0.651,
+     "inside": true
+    },
+    "event_share": {
+     "real": 0.344,
+     "real_ci": [
+      0.287,
+      0.406
+     ],
+     "synthetic": 0.366,
+     "inside": true
+    },
+    "null_output_share": {
+     "real": 0.075,
+     "real_ci": [
+      0.048,
+      0.115
+     ],
+     "synthetic": 0.051,
+     "inside": true
+    },
+    "mean_traces": {
+     "real": 6.69,
+     "real_ci": [
+      5.75,
+      7.56
+     ],
+     "synthetic": 7.02,
+     "inside": true,
+     "note": "User requirement is 7 traces/session; the real sample mean is 6.69 with a CI of about 5.7-7.7."
+    },
+    "intent_L1_mix_tvd": {
+     "value": 0.301,
+     "inside": null,
+     "note": "Synthetic deliberately adds product/service/retention volume so every insight family exists (approved spec); TVD is reported."
+    }
+   },
+   "summary": "7/8 marginals inside the real sample's 95% CI; intent-mix TVD 0.30"
+  },
   "G1_integrity": {
+   "synthetic_sessions": 100000,
    "real_sessions": 36,
    "real_traces": 241,
    "orphan_traces": 0,
    "duplicate_turn_keys": 0,
    "synthetic_without_provenance": 0,
    "sessions_without_raw_lineage": 0,
+   "rejects": 0,
    "pii_hits_after_scrub": 0,
    "real_turn_order_d9b52d90": [
     10,
@@ -30,231 +108,598 @@
     21,
     22
    ],
-   "rejects": 0,
-   "pass": true
+   "landing_sha256_checked": 300,
+   "landing_sha256_mismatch": 300,
+   "pass": false,
+   "summary": "100,000 synthetic + 36 real sessions; 0 orphans/duplicates expected; PII hits 0; sha256 verified on 300 landed lines (300 mismatches)"
   },
-  "fixtures_truth": {
-   "sessions": 77,
-   "primary_intent_accuracy_L3": 1.0,
-   "macro_f1_L3": 1.0,
-   "macro_f1_L2": 1.0,
-   "goal_episode_count_accuracy": 1.0,
-   "outcome_accuracy": 1.0,
-   "signal_recall_planted": 1.0,
-   "per_signal": {
-    "abandoned": {
-     "precision": 1.0,
-     "recall": 1.0,
-     "f1": 1.0,
-     "tp": 12,
-     "fp": 0,
-     "fn": 0
+  "G2_signals": {
+   "per_type": {
+    "A": {
+     "abandoned": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "tp": 3636,
+      "fp": 0,
+      "fn": 0
+     },
+     "agent_handoff": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "tp": 47885,
+      "fp": 0,
+      "fn": 0
+     },
+     "agent_loop": {
+      "precision": 0.324,
+      "recall": 1.0,
+      "f1": 0.49,
+      "tp": 10829,
+      "fp": 22561,
+      "fn": 0
+     },
+     "auth_failure": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "tp": 34318,
+      "fp": 0,
+      "fn": 0
+     },
+     "churn_intent": {
+      "precision": 0.462,
+      "recall": 0.913,
+      "f1": 0.613,
+      "tp": 1049,
+      "fp": 1222,
+      "fn": 100
+     },
+     "city_mention": {
+      "precision": 1.0,
+      "recall": 0.994,
+      "f1": 0.997,
+      "tp": 5291,
+      "fp": 0,
+      "fn": 30
+     },
+     "complaint": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "tp": 5720,
+      "fp": 0,
+      "fn": 0
+     },
+     "confusion": {
+      "precision": 1.0,
+      "recall": 0.967,
+      "f1": 0.983,
+      "tp": 8608,
+      "fp": 0,
+      "fn": 290
+     },
+     "customer_repeat": {
+      "precision": 0.779,
+      "recall": 1.0,
+      "f1": 0.876,
+      "tp": 5347,
+      "fp": 1515,
+      "fn": 0
+     },
+     "device_replacement": {
+      "precision": 0.46,
+      "recall": 1.0,
+      "f1": 0.63,
+      "tp": 348,
+      "fp": 408,
+      "fn": 0
+     },
+     "dtmf_operator": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "tp": 5248,
+      "fp": 0,
+      "fn": 0
+     },
+     "escalation_request": {
+      "precision": 1.0,
+      "recall": 0.961,
+      "f1": 0.98,
+      "tp": 36482,
+      "fp": 0,
+      "fn": 1491
+     },
+     "feature_comparison": {
+      "precision": 0.922,
+      "recall": 0.893,
+      "f1": 0.907,
+      "tp": 4452,
+      "fp": 379,
+      "fn": 536
+     },
+     "frustration": {
+      "precision": 0.417,
+      "recall": 1.0,
+      "f1": 0.588,
+      "tp": 3508,
+      "fp": 4907,
+      "fn": 0
+     },
+     "local_event": {
+      "precision": 0.723,
+      "recall": 1.0,
+      "f1": 0.839,
+      "tp": 999,
+      "fp": 382,
+      "fn": 0
+     },
+     "multi_line_expansion": {
+      "precision": 1.0,
+      "recall": 0.955,
+      "f1": 0.977,
+      "tp": 2377,
+      "fp": 0,
+      "fn": 113
+     },
+     "no_input": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "tp": 17354,
+      "fp": 0,
+      "fn": 0
+     },
+     "positive_response": {
+      "precision": 1.0,
+      "recall": 0.963,
+      "f1": 0.981,
+      "tp": 7727,
+      "fp": 0,
+      "fn": 299
+     },
+     "price_sensitivity": {
+      "precision": 0.879,
+      "recall": 0.987,
+      "f1": 0.93,
+      "tp": 10984,
+      "fp": 1516,
+      "fn": 142
+     },
+     "repeat_contact_language": {
+      "precision": 0.926,
+      "recall": 0.984,
+      "f1": 0.954,
+      "tp": 9068,
+      "fp": 722,
+      "fn": 151
+     },
+     "tool_failure": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "tp": 5285,
+      "fp": 0,
+      "fn": 0
+     },
+     "willingness": {
+      "precision": 1.0,
+      "recall": 0.912,
+      "f1": 0.954,
+      "tp": 6058,
+      "fp": 0,
+      "fn": 582
+     }
     },
-    "agent_handoff": {
-     "precision": 1.0,
-     "recall": 1.0,
-     "f1": 1.0,
-     "tp": 25,
-     "fp": 0,
-     "fn": 0
-    },
-    "agent_loop": {
-     "precision": 0.171,
-     "recall": 1.0,
-     "f1": 0.292,
-     "tp": 7,
-     "fp": 34,
-     "fn": 0
-    },
-    "auth_failure": {
-     "precision": 0.485,
-     "recall": 1.0,
-     "f1": 0.653,
-     "tp": 16,
-     "fp": 17,
-     "fn": 0
-    },
-    "city_mention": {
-     "precision": 1.0,
-     "recall": 1.0,
-     "f1": 1.0,
-     "tp": 2,
-     "fp": 0,
-     "fn": 0
-    },
-    "complaint": {
-     "precision": 1.0,
-     "recall": 1.0,
-     "f1": 1.0,
-     "tp": 5,
-     "fp": 0,
-     "fn": 0
-    },
-    "confusion": {
-     "precision": 1.0,
-     "recall": 1.0,
-     "f1": 1.0,
-     "tp": 2,
-     "fp": 0,
-     "fn": 0
-    },
-    "coverage_local": {
-     "precision": 0.375,
-     "recall": 1.0,
-     "f1": 0.545,
-     "tp": 3,
-     "fp": 5,
-     "fn": 0
-    },
-    "customer_repeat": {
-     "precision": 1.0,
-     "recall": 1.0,
-     "f1": 1.0,
-     "tp": 7,
-     "fp": 0,
-     "fn": 0
-    },
-    "device_replacement": {
-     "precision": 0.5,
-     "recall": 1.0,
-     "f1": 0.667,
-     "tp": 1,
-     "fp": 1,
-     "fn": 0
-    },
-    "dtmf_operator": {
-     "precision": 1.0,
-     "recall": 1.0,
-     "f1": 1.0,
-     "tp": 6,
-     "fp": 0,
-     "fn": 0
-    },
-    "escalation_request": {
-     "precision": 1.0,
-     "recall": 1.0,
-     "f1": 1.0,
-     "tp": 28,
-     "fp": 0,
-     "fn": 0
-    },
-    "feature_comparison": {
-     "precision": 0.75,
-     "recall": 1.0,
-     "f1": 0.857,
-     "tp": 3,
-     "fp": 1,
-     "fn": 0
-    },
-    "frustration": {
-     "precision": 0.889,
-     "recall": 1.0,
-     "f1": 0.941,
-     "tp": 8,
-     "fp": 1,
-     "fn": 0
-    },
-    "local_event": {
-     "precision": 0.75,
-     "recall": 1.0,
-     "f1": 0.857,
-     "tp": 3,
-     "fp": 1,
-     "fn": 0
-    },
-    "location_unresolved": {
-     "precision": 1.0,
-     "recall": 1.0,
-     "f1": 1.0,
-     "tp": 1,
-     "fp": 0,
-     "fn": 0
-    },
-    "multi_line_expansion": {
-     "precision": 1.0,
-     "recall": 1.0,
-     "f1": 1.0,
-     "tp": 2,
-     "fp": 0,
-     "fn": 0
-    },
-    "no_input": {
-     "precision": 1.0,
-     "recall": 1.0,
-     "f1": 1.0,
-     "tp": 16,
-     "fp": 0,
-     "fn": 0
-    },
-    "out_of_scope": {
-     "precision": 1.0,
-     "recall": 1.0,
-     "f1": 1.0,
-     "tp": 1,
-     "fp": 0,
-     "fn": 0
-    },
-    "payment_difficulty": {
-     "precision": 0.25,
-     "recall": 1.0,
-     "f1": 0.4,
-     "tp": 1,
-     "fp": 3,
-     "fn": 0
-    },
-    "positive_response": {
-     "precision": 1.0,
-     "recall": 1.0,
-     "f1": 1.0,
-     "tp": 4,
-     "fp": 0,
-     "fn": 0
-    },
-    "price_sensitivity": {
-     "precision": 0.455,
-     "recall": 1.0,
-     "f1": 0.625,
-     "tp": 5,
-     "fp": 6,
-     "fn": 0
-    },
-    "repeat_contact_language": {
-     "precision": 0.75,
-     "recall": 1.0,
-     "f1": 0.857,
-     "tp": 3,
-     "fp": 1,
-     "fn": 0
-    },
-    "tool_failure": {
-     "precision": 1.0,
-     "recall": 1.0,
-     "f1": 1.0,
-     "tp": 6,
-     "fp": 0,
-     "fn": 0
-    },
-    "willingness": {
-     "precision": 1.0,
-     "recall": 1.0,
-     "f1": 1.0,
-     "tp": 7,
-     "fp": 0,
-     "fn": 0
+    "B": {
+     "abandoned": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "tp": 2391,
+      "fp": 0,
+      "fn": 0
+     },
+     "agent_handoff": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "tp": 31546,
+      "fp": 0,
+      "fn": 0
+     },
+     "agent_loop": {
+      "precision": 0.316,
+      "recall": 1.0,
+      "f1": 0.48,
+      "tp": 6938,
+      "fp": 15022,
+      "fn": 0
+     },
+     "auth_failure": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "tp": 22508,
+      "fp": 0,
+      "fn": 0
+     },
+     "churn_intent": {
+      "precision": 0.092,
+      "recall": 0.073,
+      "f1": 0.081,
+      "tp": 55,
+      "fp": 543,
+      "fn": 699
+     },
+     "city_mention": {
+      "precision": 1.0,
+      "recall": 0.995,
+      "f1": 0.997,
+      "tp": 3582,
+      "fp": 0,
+      "fn": 18
+     },
+     "complaint": {
+      "precision": 1.0,
+      "recall": 0.493,
+      "f1": 0.66,
+      "tp": 1914,
+      "fp": 0,
+      "fn": 1971
+     },
+     "confusion": {
+      "precision": 1.0,
+      "recall": 0.61,
+      "f1": 0.758,
+      "tp": 3410,
+      "fp": 0,
+      "fn": 2179
+     },
+     "customer_repeat": {
+      "precision": 0.779,
+      "recall": 1.0,
+      "f1": 0.876,
+      "tp": 3528,
+      "fp": 1001,
+      "fn": 0
+     },
+     "device_replacement": {
+      "precision": 0.555,
+      "recall": 0.615,
+      "f1": 0.583,
+      "tp": 152,
+      "fp": 122,
+      "fn": 95
+     },
+     "dtmf_operator": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "tp": 3536,
+      "fp": 0,
+      "fn": 0
+     },
+     "escalation_request": {
+      "precision": 1.0,
+      "recall": 0.695,
+      "f1": 0.82,
+      "tp": 17330,
+      "fp": 0,
+      "fn": 7591
+     },
+     "feature_comparison": {
+      "precision": 0.519,
+      "recall": 0.035,
+      "f1": 0.065,
+      "tp": 111,
+      "fp": 103,
+      "fn": 3092
+     },
+     "frustration": {
+      "precision": 0.046,
+      "recall": 0.174,
+      "f1": 0.072,
+      "tp": 410,
+      "fp": 8570,
+      "fn": 1943
+     },
+     "local_event": {
+      "precision": null,
+      "recall": 0.0,
+      "f1": null,
+      "tp": 0,
+      "fp": 0,
+      "fn": 647
+     },
+     "multi_line_expansion": {
+      "precision": null,
+      "recall": 0.0,
+      "f1": null,
+      "tp": 0,
+      "fp": 0,
+      "fn": 1613
+     },
+     "no_input": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "tp": 11240,
+      "fp": 0,
+      "fn": 0
+     },
+     "positive_response": {
+      "precision": 1.0,
+      "recall": 0.493,
+      "f1": 0.66,
+      "tp": 2570,
+      "fp": 0,
+      "fn": 2642
+     },
+     "price_sensitivity": {
+      "precision": 0.485,
+      "recall": 0.057,
+      "f1": 0.102,
+      "tp": 424,
+      "fp": 451,
+      "fn": 6999
+     },
+     "repeat_contact_language": {
+      "precision": 0.942,
+      "recall": 0.507,
+      "f1": 0.659,
+      "tp": 3106,
+      "fp": 190,
+      "fn": 3019
+     },
+     "tool_failure": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "tp": 3559,
+      "fp": 0,
+      "fn": 0
+     },
+     "willingness": {
+      "precision": 0.083,
+      "recall": 0.02,
+      "f1": 0.033,
+      "tp": 86,
+      "fp": 950,
+      "fn": 4149
+     }
     }
    },
-   "note": "Planted-signal precision counts a detection in a session where the type was not deliberately planted as FP; fixtures contain incidental mentions, so precision here is a lower bound.",
-   "pass": true
+   "lexicon_types": [
+    "churn_intent",
+    "complaint",
+    "confusion",
+    "device_replacement",
+    "escalation_request",
+    "feature_comparison",
+    "frustration",
+    "local_event",
+    "multi_line_expansion",
+    "positive_response",
+    "price_sensitivity",
+    "repeat_contact_language",
+    "willingness"
+   ],
+   "structural_types": [
+    "abandoned",
+    "agent_handoff",
+    "agent_loop",
+    "auth_failure",
+    "city_mention",
+    "customer_repeat",
+    "dtmf_operator",
+    "no_input",
+    "tool_failure"
+   ],
+   "A_mean_precision": 0.83,
+   "A_mean_recall": 0.964,
+   "B_mean_precision": 0.611,
+   "B_mean_recall": 0.29,
+   "structural_recall": 0.999,
+   "note": "Precision counts any detection in a session where the type was not deliberately planted as FP; generated dialogue contains incidental mentions, so precision is a lower bound.",
+   "pass": true,
+   "summary": "Lexicon signals: bank A precision 0.83, recall 0.964; held-out bank B precision 0.611, recall 0.29; structural recall 0.999"
   },
-  "real_gold_draft": {
+  "G3_intent_classification": {
+   "test_sessions": 20043,
+   "macro_f1_L3": 0.883,
+   "macro_f1_L2": 0.879,
+   "accuracy_L3": 0.887,
+   "accuracy_L3_by_bank": {
+    "A": 0.952,
+    "B": 0.788
+   },
+   "unknown_rate": 0.025,
+   "llm_note": "Bank-B (held-out wording) errors are the target of the Claude adjudication tier, which is disabled until an API key is configured.",
+   "pass": true,
+   "summary": "Held-out test split (20,043): macro-F1 L2 0.879, L3 0.883; accuracy A 0.952, B 0.788; UNKNOWN 2.5%"
+  },
+  "G4_clusters": {
+   "episodes_scored": 97423,
+   "ARI_need_vs_intent": 0.491,
+   "NMI_need_vs_intent": 0.78,
+   "families": {
+    "geo": {
+     "clusters": 4,
+     "stable_share": 0.0,
+     "mean_stability": 0.573
+    },
+    "need": {
+     "clusters": 34,
+     "stable_share": 0.735,
+     "mean_stability": 0.746
+    },
+    "risk": {
+     "clusters": 8,
+     "stable_share": 0.5,
+     "mean_stability": 0.583
+    },
+    "value": {
+     "clusters": 6,
+     "stable_share": 1.0,
+     "mean_stability": 0.873
+    }
+   },
+   "sme_label_reviews": 0,
+   "pass": false,
+   "summary": "Need clusters vs true intent: ARI 0.49, NMI 0.78; need stable share 0.735; SME label reviews 0"
+  },
+  "G5_patterns": {
+   "planted_city_intent_effects": 11,
+   "recovered_as_geo_mix": 11,
+   "geo_false_discoveries": [],
+   "geo_empirical_FDR": 0.0,
+   "time_boxed_events": [
+    {
+     "city": "Houston",
+     "intent": "SERVICE.OUTAGE.DISRUPTION",
+     "planted_weeks": [
+      8,
+      10
+     ],
+     "flagged": true,
+     "flagged_windows": [
+      [
+       8,
+       9
+      ]
+     ]
+    },
+    {
+     "city": "Atlanta",
+     "intent": "ADDSVC.TRAVEL.INTERNATIONAL",
+     "planted_weeks": [
+      9,
+      11
+     ],
+     "flagged": true,
+     "flagged_windows": [
+      [
+       10,
+       11
+      ]
+     ]
+    }
+   ],
+   "sequences_recovered": "4/4",
+   "emerging_unplanted": [
+    [
+     "ADDSVC.TRAVEL.INTERNATIONAL",
+     "Denver"
+    ],
+    [
+     "ADDSVC.TRAVEL.INTERNATIONAL",
+     "Mountain"
+    ]
+   ],
+   "tests_and_kept": {
+    "aggregate_rows": 79468,
+    "tested": {
+     "geo_mix": 1472,
+     "segment_mix": 231,
+     "risk_rate": 312,
+     "opportunity": 46,
+     "sequence": 522,
+     "emerging": 1418
+    },
+    "kept": {
+     "geo_mix": 11,
+     "segment_mix": 6,
+     "risk_rate": 14,
+     "sequence": 13,
+     "emerging": 4
+    },
+    "total_tests": 4001,
+    "window_start": "2026-08-24"
+   },
+   "pass": true,
+   "summary": "11/11 planted city\u00d7intent effects recovered, geo FDR 0%; time-boxed events flagged 2/2; sequences 4/4; 2 unplanted emerging flag(s)"
+  },
+  "G6_cards_facts": {
+   "active_cards": 26,
+   "card_violations": [],
+   "quote_sanitiser_violations": 0,
+   "point_in_time_checks": 699,
+   "point_in_time_failures": 0,
+   "superseded_facts_on_record": 54141,
+   "card_versions": 61,
+   "pass": true,
+   "summary": "26 active cards, 0 governance violations, 0 unsanitised quote tokens; point-in-time reconstruction 699/699"
+  },
+  "G7_retrieval": {
+   "queries": 60,
+   "query_text": "first 'include' phrase of the intent definition (not the generated wording)",
+   "by_method": {
+    "bm25": {
+     "p10": 0.432,
+     "mrr": 0.897,
+     "ndcg": 0.535
+    },
+    "dense": {
+     "p10": 0.798,
+     "mrr": 0.897,
+     "ndcg": 0.811
+    },
+    "hybrid": {
+     "p10": 0.812,
+     "mrr": 0.911,
+     "ndcg": 0.821
+    }
+   },
+   "filters_correct": true,
+   "asof_correct": true,
+   "pass": true,
+   "summary": "60 queries: MRR bm25 0.897, dense 0.897, hybrid 0.911; filters ok; as-of ok"
+  },
+  "G8_api_performance": {
+   "routes_tested": 17,
+   "route_errors": [],
+   "api_p95_ms_warm": 74.1,
+   "pipeline_seconds_by_stage": {
+    "retrieval_index": 1.0,
+    "cards": 27.0,
+    "scoring": 0.0,
+    "patterns": 4.0,
+    "facts": 2.0,
+    "clusters": 25.0,
+    "episodes+features": 20.0,
+    "signals+intents": 97.0,
+    "ingest": 96.0
+   },
+   "pipeline_seconds_total": 272.0,
+   "note": "Latency measured after cache warm-up (server pre-warms at start); cold first calls of heavy aggregates take 1-5 s.",
+   "pass": true,
+   "summary": "17 routes OK, API p95 74 ms (warm); full pipeline 4.5 min on this machine"
+  },
+  "G9_volume": {
+   "synthetic_sessions": 100000,
+   "mean_traces": 7.018,
+   "min_traces": 4,
+   "pass": true,
+   "summary": "100,000 sessions, mean 7.02 traces/session (target 7.0 \u00b1 0.1)"
+  },
+  "G10_llm": {
+   "enabled": false,
+   "candidate_sessions": 5001,
+   "candidate_share": 0.05,
+   "labels": {},
+   "accepted_ungrounded": 0,
+   "pass": null,
+   "summary": "Claude tier disabled (no API key). 5,001 candidate sessions (5.0% \u2264 5% cap); grounding enforced in code; accepted-but-ungrounded 0"
+  },
+  "real_sample_gold_draft": {
    "sessions": 36,
    "reviewed": 0,
-   "primary_accuracy_L3": 0.75,
-   "primary_accuracy_L2": 0.75,
-   "primary_accuracy_L1": 0.778,
-   "macro_f1_L3": 0.7,
-   "macro_f1_L2": 0.596,
-   "unambiguous_primary_accuracy_L3": 0.926,
+   "primary_accuracy_L3": 0.722,
+   "primary_accuracy_L2": 0.722,
+   "unambiguous_accuracy_L3": 0.889,
    "flags": {
     "handoff": {
      "precision": 1.0,
@@ -388,6 +833,13 @@
      "note": "Repeats 'customer service'; Spanish; platform guessed bill_breakdown"
     },
     {
+     "session": "CID-1606408318",
+     "gold": "REFUND.REQUEST.OVERPAYMENT",
+     "pipeline": "BILL.CHARGE.DISPUTE",
+     "ambiguous": false,
+     "note": "Credit balance back to bank account"
+    },
+    {
      "session": "CID-1589049708",
      "gold": "PAY.MAKE.ONE_TIME",
      "pipeline": "BILL.EXPLAIN.CHARGES",
@@ -444,23 +896,15 @@
      "note": "Wants code sent to new mobile number; 'Get someone on the phone now'"
     }
    ],
-   "caveat": "Draft labels (pre-labelled by Claude, reviewed=false). n=36 is too small for stable estimates. Rules were adjusted after reviewing disagreements on this same set, so these agreement figures are optimistic; G3 needs a fresh SME-reviewed held-out set."
+   "caveat": "Draft labels (Claude pre-label, reviewed=false); n=36; rules were tuned after seeing these disagreements, so figures are optimistic until an SME-reviewed held-out set exists.",
+   "pass": null,
+   "summary": "n=36 (unreviewed draft): primary L3 72%, unambiguous 89%; handoff/auth-failure detection precision 1.0/1.0"
   },
   "governance": {
-   "ground_truth_read_by_pipeline": [],
-   "unknown_primary_share": 0,
-   "llm_calls": 0,
-   "pass": true
+   "pipeline_modules_reading_truth": [],
+   "pass": true,
+   "summary": "pipeline never reads ground truth or gold files"
   }
  },
- "not_yet_computed": [
-  "G0 calibration (needs 100K synthetic)",
-  "G4 clusters",
-  "G5 patterns",
-  "G6 cards/facts",
-  "G7 retrieval",
-  "G8 performance",
-  "G9 volume shape",
-  "G10 LLM correctness"
- ]
+ "statement": "Synthetic gates prove pipeline capability and statistical behaviour on a generated population with known truth. They do not prove accuracy on real Verizon conversations; the real-sample gold set (draft, needs SME review) is the only real-language evidence."
 }

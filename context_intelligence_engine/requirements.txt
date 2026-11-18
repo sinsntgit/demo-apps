@@ -1,4 +1,6 @@
 numpy>=1.26
 scikit-learn>=1.4
 scipy>=1.11
+pyyaml>=6
 pytest>=8
+# optional: anthropic>=1.0  (only to enable the Claude tier)

@@ -8,12 +8,18 @@
 </head>
 <body>
 <header>
-  <div class="title">Context Intelligence Engine<small>Phase 1 · traces-only · Week 1 build</small></div>
+  <div class="title">Context Intelligence Engine<small>Phase 1 · traces-only · POC</small></div>
   <nav id="nav">
     <a href="#/overview" data-r="overview">Overview</a>
-    <a href="#/sessions" data-r="sessions">Session Explorer</a>
+    <a href="#/insights" data-r="insights">Insights</a>
+    <a href="#/geo" data-r="geo">Geography</a>
+    <a href="#/journeys" data-r="journeys">Journeys &amp; Trends</a>
+    <a href="#/clusters" data-r="clusters">Clusters</a>
+    <a href="#/ask" data-r="ask">Ask</a>
+    <a href="#/sessions" data-r="sessions">Sessions</a>
     <a href="#/taxonomy" data-r="taxonomy">Taxonomy</a>
-    <a href="#/signals" data-r="signals">Signal Catalogue</a>
+    <a href="#/signals" data-r="signals">Signals</a>
+    <a href="#/validation" data-r="validation">Validation</a>
     <a href="#/pipeline" data-r="pipeline">Pipeline</a>
   </nav>
   <div class="hdr-right">
@@ -21,13 +27,14 @@
     <select id="src" aria-label="Data source">
       <option value="all">All sources</option>
       <option value="verizon_sample">Real sample (36)</option>
-      <option value="fixtures">Scenario fixtures (synthetic)</option>
+      <option value="synthetic">Synthetic (100K)</option>
     </select>
     <button id="theme" title="Toggle light/dark theme" aria-label="Toggle theme">Theme</button>
   </div>
 </header>
 <main id="app"><div class="empty">Loading…</div></main>
 <div id="tip" role="tooltip"></div>
+<script src="pages2.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -46,8 +46,8 @@ def _choose_k(X, ks, seed, sample=8000):
 
 
 def _fit(X, k, seed):
-    km = MiniBatchKMeans(k, random_state=seed, n_init=5, batch_size=4096, max_iter=200).fit(X)
-    return km
+    # full k-means (not mini-batch) for the published fit and the bootstrap refits: steadier centroids -> stabler clusters
+    return KMeans(k, random_state=seed, n_init=4, max_iter=300).fit(X)
 
 
 def _match(c_ref, c_new):

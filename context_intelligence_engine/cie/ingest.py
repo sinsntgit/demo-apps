@@ -266,8 +266,13 @@ def ingest_file(con, path, source):
     day = dt.date.today().isoformat()
     land_dir = LANDING / source / day
     land_dir.mkdir(parents=True, exist_ok=True)
-    landed = land_dir / (path.name if path.suffix == ".gz" else path.name + ".gz")
-    if not landed.exists():                                   # immutable: never overwrite a landed file
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for blk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(blk)
+    # content-addressed: the same name with different content lands as a new file; landed files are never overwritten
+    landed = land_dir / f"{h.hexdigest()[:16]}_{path.name if path.suffix == '.gz' else path.name + '.gz'}"
+    if not landed.exists():
         with open(path, "rb") as src, gzip.open(landed, "wb") as dst:
             shutil.copyfileobj(src, dst)
     opener = gzip.open if path.suffix == ".gz" else open

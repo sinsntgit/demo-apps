@@ -1,44 +1,69 @@
 # Context Intelligence Engine: Phase 1 (traces-only)
 
 Turns VzGPT customer-agent traces into governed, evidence-backed insights:
-`traces -> signals -> episodes -> clusters -> patterns -> score -> evidence cards`.
+`traces -> signals -> episodes -> clusters -> patterns -> score -> evidence cards`, served in a web UI with search,
+an "ask" box, review workflows and a validation report.
 
 - **Build contract for development agents:** [`AGENTS.md`](AGENTS.md) (scope, decisions, work packages, gates).
-- **Status:** Week 1 delivered (discovery, design and vertical slice). Clusters, patterns, cards, retrieval and the 100K synthetic set are Weeks 2-4.
+- **Customer-facing application guide:** the Claude Doc *Context Intelligence Engine: Application Guide* (navigation, demo script, FAQ).
+- **Status:** Phase-1 POC complete: 100K synthetic + 36 real sessions, all stages, UI, retrieval, validation. Open items are Verizon decisions (AGENTS.md §2.4 / guide "Limits and Phase 2").
 
 ## Run it
 
-Requires Python 3.11+ (`pip install -r requirements.txt`; only `pyyaml` is needed for Week 1, and `numpy`/`scikit-learn` are needed from Week 2 on).
+Python 3.11+, `pip install -r requirements.txt` (numpy, scikit-learn, scipy, pyyaml, pytest; `anthropic` only to enable the Claude tier).
 
 ```bash
-# 1. put the Verizon export (git-ignored) at sample/verizon_traces_example.jsonl  (optional: fixtures run without it)
-python -m cie.fixtures                    # (re)build the 77 scenario fixtures (already committed)
-python -m cie.run_pipeline --rebuild      # ingest real sample + fixtures -> signals -> intents -> episodes
-python -m cie.validate                    # writes reports/validation.{json,md}
-python -m cie.docs                        # regenerates generated docs (profile, catalogue, taxonomy, dictionary)
-python -m cie.server --port 8080          # UI at http://127.0.0.1:8080
-python -m pytest -q                       # 16 tests
+python -m cie.synth --sessions 100000 --seed 7        # 100K synthetic sessions (+ ground truth for validation only), ~10 s
+python -m cie.run_pipeline --rebuild                  # real sample (if present) + synthetic -> all stages, ~5 min
+python -m cie.validate                                # all acceptance gates -> reports/validation.{json,md}
+python -m cie.server --port 8080                      # UI at http://127.0.0.1:8080 (pre-warms caches for ~30 s)
+python -m pytest -q                                   # 24 tests (fixtures-based, no network)
 ```
 
-## Week-1 deliverables
+| Mode | Command |
+|---|---|
+| Overnight batch (new files only, by checksum; downstream stages re-run; reviews kept) | `python -m cie.run_pipeline --daily --inbox landing_inbox/` |
+| Weekly cluster refit (stable ids preserved) | `python -m cie.run_pipeline --refit` |
+| Re-run from a stage / one stage | `--from-stage patterns` / `--only cards` |
+| Clean rebuild including card history | `--rebuild --reset-cards` |
+| Claude tier (low-confidence adjudication) | set `ANTHROPIC_API_KEY`, then `python -c "from cie import db; from cie.adapters.llm import Adjudicator; print(Adjudicator(db.connect()).run())"` |
 
-| # | Deliverable (design baseline §12, Week 1) | Where |
+The real sample goes at `sample/verizon_traces_example.jsonl` (git-ignored). Without it everything runs on synthetic data.
+
+## Modules
+
+| Stage | Module | Output tables |
 |---|---|---|
-| 1 | Source data profiling and assessment | [`docs/W1_source_profile.md`](docs/W1_source_profile.md) (generated) |
-| 2 | Canonical data model and ERD | [`docs/data_model.md`](docs/data_model.md), [`docs/data_dictionary.md`](docs/data_dictionary.md), `cie/db.py` |
-| 3 | Source-to-target mapping | [`docs/source_to_target.md`](docs/source_to_target.md) |
-| 4 | Intent taxonomy draft (v0, 11 L1 / 24 L2 / 32 L3) | [`taxonomy/taxonomy_v0.yaml`](taxonomy/taxonomy_v0.yaml), [`docs/taxonomy_v0.md`](docs/taxonomy_v0.md) |
-| 5 | Signal catalogue (8 families, 41 types) | [`docs/signal_catalogue.md`](docs/signal_catalogue.md), `cie/lexicon.py` |
-| 6 | Episode definition (proposal) | [`docs/episode_definition.md`](docs/episode_definition.md) |
-| 7 | Scenario catalogue + 100K generation spec | [`docs/scenario_catalogue.md`](docs/scenario_catalogue.md), [`samples/`](samples/) |
-| 8 | Architecture and governance design | [`AGENTS.md`](AGENTS.md) §2-§9 |
-| + | Vertical slice: ingest -> intents -> signals -> episodes -> UI | `cie/`, `ui/` |
-| + | Draft real gold set (36 sessions, needs SME review) | `tests/gold/` |
-| + | Validation report | [`reports/validation.md`](reports/validation.md) |
+| Raw landing + ingest + evaluation mapping | `cie/ingest.py` | `raw_trace_session`, `conversation_*`, `trace_span`, `tool_call`, `agent_evaluation`, `policy_verdict` |
+| Intents + signals | `cie/taxonomy.py`, `cie/signals.py`, `cie/lexicon.py`, `taxonomy/taxonomy_v0.yaml` | `turn_intent`, `session_intent`, `session_signal` |
+| Episodes, need journeys, features | `cie/episodes.py` | `session_episode`, `need_journey`, `session_feature` |
+| Cluster families + L4 discovery | `cie/cluster.py` | `cluster_master`, `session_cluster_membership`, `taxonomy_candidate` |
+| Patterns (+ daily aggregates) | `cie/patterns.py` | `agg_daily_intent`, `pattern_master` |
+| Scoring (six dimensions + provisional composite) | `cie/scoring.py` | `pattern_score` |
+| Evidence cards (versioned) | `cie/cards.py` | `evidence_card`, `evidence_ref` |
+| Persistent context (dated facts) | `cie/facts.py` | `fact` |
+| Retrieval (BM25 + LSA + RRF, as-of) | `cie/retrieval.py` | `search_doc`, `search_fts` |
+| Claude tier (off by default) | `cie/adapters/llm.py` | `llm_cache`, `llm_label` |
+| API + UI | `cie/server.py`, `cie/api_insights.py`, `ui/` | (reads) |
+| Synthetic generator / fixtures | `cie/synth.py`, `cie/fixtures.py` | files in `data/`, `samples/` |
+| Validation | `cie/validate.py` | `reports/validation.{json,md}` |
+
+## Documents
+
+| Deliverable | Where |
+|---|---|
+| Source data profile | [`docs/W1_source_profile.md`](docs/W1_source_profile.md) |
+| Data model, ERD, dictionary | [`docs/data_model.md`](docs/data_model.md), [`docs/data_dictionary.md`](docs/data_dictionary.md) |
+| Source-to-target mapping | [`docs/source_to_target.md`](docs/source_to_target.md) |
+| Intent taxonomy v0 (11 L1 / 24 L2 / 32 L3) | [`taxonomy/taxonomy_v0.yaml`](taxonomy/taxonomy_v0.yaml), [`docs/taxonomy_v0.md`](docs/taxonomy_v0.md) |
+| Signal catalogue (8 families, 41 types) | [`docs/signal_catalogue.md`](docs/signal_catalogue.md) |
+| Episode definition | [`docs/episode_definition.md`](docs/episode_definition.md) |
+| Scenario catalogue + generator spec | [`docs/scenario_catalogue.md`](docs/scenario_catalogue.md) |
+| Validation report | [`reports/validation.md`](reports/validation.md) |
 
 ## Data handling
 
-- Only `redacted_*` fields are read; a second PII scrub runs at ingest. Raw lines are landed immutably under `landing/` (git-ignored) with sha256 lineage.
-- The real sample, landed files and the database are **never committed**. The committed `samples/` are synthetic fixtures (77 scripted sessions), clearly labelled in data and UI.
-- Real-sample service locations are **assumed** (deterministic, `geo_source=structured:flat`, `geo_level=assumed_sample`) until Verizon supplies the field.
-- No LLM calls in Week 1. The Claude adapter (Haiku 5.5 adjudication, Sonnet 5.5 discovery/gold) is specified in AGENTS.md §2.6 and arrives with an API key.
+- Only `redacted_*` fields are read; a second PII scrub runs at ingest; card quotes are re-masked.
+- Raw files land immutably and content-addressed under `landing/` (git-ignored), with per-session line + SHA-256 lineage.
+- The real sample, landed files, database and models are **never committed**. Synthetic data is labelled in every view.
+- Real-sample service locations are **assumed** placeholders until Verizon supplies the field (AGENTS.md §2.7).

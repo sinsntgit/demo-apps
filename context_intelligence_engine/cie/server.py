@@ -7,6 +7,7 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from .config import DB_PATH, UI_DIR, VERSIONS, K_ANON
 from .lexicon import TEXT_SIGNALS, DERIVED_SIGNALS, FAMILY_CATEGORY
+from . import api_insights as X
 
 FAMILY_ORDER = ["need", "buying", "value", "risk", "friction", "experience", "geo", "temporal"]
 STATIC = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml"}
@@ -18,7 +19,7 @@ def q(con, sql, args=()):
 
 def _src_filter(p, alias="s"):
     src = (p.get("source") or ["all"])[0]
-    if src in ("verizon_sample", "fixtures"):
+    if src in ("verizon_sample", "fixtures", "synthetic"):
         return f" AND {alias}.source=? ", [src]
     return " ", []
 
@@ -51,7 +52,10 @@ def overview(con, p):
         "kpi": {"sessions": funnel[0][1], "avg_friction": round(feat[0] or 0, 3), "opportunity_sessions": feat[1] or 0,
                 "repeat_contact_sessions": feat[2] or 0, "buying_sessions": feat[3] or 0, "value_sessions": feat[4] or 0,
                 "risk_sessions": feat[5] or 0, "geo_coverage": round(geo_cov or 0, 3)},
-        "versions": VERSIONS, "k_anon": K_ANON,
+        "versions": VERSIONS, "k_anon": K_ANON, "proxies": X.kpis(con, p),
+        "cards": con.execute("SELECT COUNT(*) FROM evidence_card WHERE valid_to IS NULL").fetchone()[0],
+        "clusters": con.execute("SELECT COUNT(*) FROM cluster_master").fetchone()[0],
+        "patterns": con.execute("SELECT COUNT(*) FROM pattern_master").fetchone()[0],
     }
 
 
@@ -108,7 +112,8 @@ def session_detail(con, sid):
     verdicts = q(con, "SELECT policy_id, verdict, severity, policy_type, evidence, reason FROM policy_verdict WHERE session_id=?", (sid,))
     feat = q(con, "SELECT * FROM session_feature WHERE session_id=?", (sid,))
     raw = q(con, "SELECT landing_file, line_no, sha256 FROM raw_trace_session WHERE session_id=?", (sid,))
-    return {"session": s, "turns": turns, "intents": intents, "episodes": eps, "thread": thread, "journeys": journeys,
+    ctx = X.session_context(con, sid)
+    return {**ctx, "session": s, "turns": turns, "intents": intents, "episodes": eps, "thread": thread, "journeys": journeys,
             "evaluations": evals, "policy": verdicts, "features": feat[0] if feat else None, "raw": raw[0] if raw else None}
 
 
@@ -161,13 +166,25 @@ def runs(con, p):
 
 def review(con_rw, body):
     import datetime as dt
-    if body.get("object_type") not in ("intent", "card", "cluster") or not body.get("object_id") or body.get("action") not in ("approve", "reject", "comment", "rename", "merge", "split"):
+    if body.get("object_type") not in ("intent", "card", "cluster", "candidate") or not body.get("object_id") or body.get("action") not in ("approve", "reject", "comment", "rename", "merge", "split"):
         raise ValueError("object_type, object_id and a valid action are required")
     con_rw.execute("INSERT INTO review_log(object_type,object_id,action,reviewer,note,at) VALUES(?,?,?,?,?,?)",
                    (body["object_type"], body["object_id"], body["action"], (body.get("reviewer") or "anonymous")[:80],
                     (body.get("note") or "")[:2000], dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")))
     con_rw.commit()
     return {"ok": True}
+
+
+import threading
+_CACHE, _CACHE_LOCK = {}, threading.Lock()
+CACHEABLE = ("/api/overview", "/api/signals", "/api/geo", "/api/taxonomy", "/api/journeys", "/api/kpis", "/api/patterns", "/api/clusters",
+             "/api/cards", "/api/taxonomy/candidates", "/api/validation")
+
+
+def _version(con):
+    """Cache key part: changes whenever a pipeline stage or a review writes."""
+    r = con.execute("SELECT (SELECT MAX(run_id) FROM processing_run), (SELECT MAX(review_id) FROM review_log)").fetchone()
+    return f"{r[0]}:{r[1]}"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -190,6 +207,14 @@ class Handler(BaseHTTPRequestHandler):
         con.row_factory = sqlite3.Row
         return con
 
+    def _send_cached(self, key, payload):
+        body = json.dumps(payload, default=str).encode()
+        with _CACHE_LOCK:
+            if len(_CACHE) > 500:
+                _CACHE.clear()
+            _CACHE[key] = body
+        return self._send(200, body)
+
     def do_GET(self):
         u = urlparse(self.path)
         p = parse_qs(u.query)
@@ -197,15 +222,31 @@ class Handler(BaseHTTPRequestHandler):
             if u.path.startswith("/api/"):
                 con = self._ro()
                 try:
+                    if u.path in CACHEABLE:
+                        key = (u.path, u.query, _version(con))
+                        with _CACHE_LOCK:
+                            hit = _CACHE.get(key)
+                        if hit is not None:
+                            return self._send(200, hit)
                     m = re.match(r"^/api/sessions/([\w\-:.#]+)$", u.path)
-                    if u.path == "/api/overview": return self._send(200, overview(con, p))
+                    if u.path == "/api/overview": return self._send_cached(key, overview(con, p))
                     if u.path == "/api/sessions": return self._send(200, sessions(con, p))
                     if m:
                         d = session_detail(con, m.group(1))
                         return self._send(200, d) if d else self._send(404, {"error": "session not found"})
-                    if u.path == "/api/taxonomy": return self._send(200, taxonomy(con, p))
-                    if u.path == "/api/signals": return self._send(200, catalogue(con, p))
+                    if u.path == "/api/taxonomy": return self._send_cached(key, taxonomy(con, p))
+                    if u.path == "/api/signals": return self._send_cached(key, catalogue(con, p))
                     if u.path == "/api/runs": return self._send(200, runs(con, p))
+                    m2 = re.match(r"^/api/(cards|clusters)/(\d+)$", u.path)
+                    if m2:
+                        d = (X.card_detail if m2.group(1) == "cards" else X.cluster_detail)(con, int(m2.group(2)))
+                        return self._send(200, d) if d else self._send(404, {"error": "not found"})
+                    routes = {"/api/cards": X.cards_list, "/api/clusters": X.clusters_list, "/api/patterns": X.patterns_list, "/api/geo": X.geo,
+                              "/api/journeys": X.journeys, "/api/search": X.search, "/api/ask": X.ask, "/api/validation": X.validation,
+                              "/api/llm": X.llm_status, "/api/kpis": X.kpis, "/api/taxonomy/candidates": X.candidates}
+                    if u.path in routes:
+                        res = routes[u.path](con, p)
+                        return self._send_cached(key, res) if u.path in CACHEABLE else self._send(200, res)
                     return self._send(404, {"error": "unknown endpoint"})
                 finally:
                     con.close()
@@ -223,7 +264,15 @@ class Handler(BaseHTTPRequestHandler):
         try:
             n = int(self.headers.get("Content-Length") or 0)
             body = json.loads(self.rfile.read(min(n, 100_000)) or b"{}")
-            if u.path == "/api/review":
+            m2 = re.match(r"^/api/(cards|clusters)/(\d+)/review$", u.path)
+            if m2:
+                con = sqlite3.connect(self.db_path)
+                try:
+                    fn = X.card_review if m2.group(1) == "cards" else X.cluster_review
+                    return self._send(200, fn(con, int(m2.group(2)), body))
+                finally:
+                    con.close()
+            if u.path in ("/api/review", "/api/taxonomy/review"):
                 con = sqlite3.connect(self.db_path)
                 try:
                     return self._send(200, review(con, body))
@@ -241,6 +290,16 @@ def serve(port=8080, host="127.0.0.1", db_path=None):
     Handler.db_path = db_path or DB_PATH
     srv = ThreadingHTTPServer((host, port), Handler)
     print(f"Context Intelligence Engine UI on http://{host}:{port}")
+
+    def warm():
+        import urllib.request
+        for src in ("all", "verizon_sample", "synthetic"):
+            for path in ("overview", "signals", "geo", "taxonomy", "journeys", "cards", "clusters?family=need", "search?q=warmup"):
+                try:
+                    urllib.request.urlopen(f"http://{host}:{port}/api/{path}{'&' if '?' in path else '?'}source={src}", timeout=120).read()
+                except Exception:
+                    pass
+    threading.Thread(target=warm, daemon=True).start()
     srv.serve_forever()
 
 

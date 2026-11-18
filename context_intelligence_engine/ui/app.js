@@ -50,15 +50,24 @@ const outcomeLabel = (o) => { const x = OUTCOME.find((z) => z[0] === o); return 
 async function pOverview() {
   const d = await api("overview");
   const k = d.kpi, sessions = k.sessions || 1;
-  const synth = d.sources.some((s) => s.k === "fixtures");
-  return `<h1>Overview</h1><p class="sub">Week-1 vertical slice: traces → turns → intents → signals → episodes → need journeys.</p>
-  ${synth ? `<div class="banner">Includes <b>synthetic scenario fixtures</b> (77 scripted sessions that exercise every intent and signal). They prove the pipeline, not population rates; switch <b>Data</b> to "Real sample" for the 36 Verizon sessions.</div>` : ""}
+  const synth = d.sources.some((s) => s.k !== "verizon_sample");
+  const P = d.proxies || {};
+  return `<h1>Overview</h1><p class="sub">Traces → signals → episodes → clusters → patterns → scores → evidence cards. ${fmt(d.patterns)} significant patterns · ${fmt(d.clusters)} clusters · <a href="#/insights">${fmt(d.cards)} evidence cards</a>.</p>
+  ${synth ? `<div class="banner">This view includes <b>synthetic conversations</b> (100,000 generated sessions calibrated to the real sample, with planted patterns for validation). Numbers describe the generated population, not Verizon customers. Switch <b>Data</b> to "Real sample (36)" for real traces only.</div>` : ""}
   <div class="grid g4">
     <div class="card tile"><div class="l">Sessions</div><div class="v">${fmt(k.sessions)}</div><div class="d">${d.sources.map((s) => `${esc(s.k)} ${fmt(s.n)}`).join(" · ")}</div></div>
     <div class="card tile"><div class="l">Escalated to a human</div><div class="v">${pct((d.outcomes.find((o) => o.k === "escalated") || {}).n / sessions)}</div><div class="d">transfer tool executed</div></div>
     <div class="card tile"><div class="l">Buying / value signal present</div><div class="v">${pct(k.opportunity_sessions / sessions)}</div><div class="d">${fmt(k.opportunity_sessions)} sessions · opportunity proxy</div></div>
     <div class="card tile"><div class="l">Mean friction score</div><div class="v">${k.avg_friction.toFixed(2)}</div><div class="d">0 = smooth · 1 = heavy (weighted friction signals)</div></div>
   </div>
+  <div class="card" style="margin-top:16px"><h2>KPI proxies <span class="pill">proxy</span></h2><p class="muted small">${esc(P.note || "")}</p>
+    <div class="grid g4">
+      <div class="tile" data-tip="Sessions with a buying-intent or value signal and no churn intent"><div class="l">Qualified opportunity volume</div><div class="v">${fmt(P.qualified_opportunity_volume)}</div><div class="d">${P.opportunity_density_per_100} per 100 sessions</div></div>
+      <div class="tile" data-tip="Share of qualified opportunities with explicit willingness language"><div class="l">Conversion proxy</div><div class="v">${pct(P.conversion_proxy)}</div><div class="d">willingness among opportunities</div></div>
+      <div class="tile" data-tip="Need/buying episodes that ended escalated or abandoned"><div class="l">Unmet-need share</div><div class="v">${pct(P.unmet_need_share)}</div><div class="d">need/buying episodes not contained</div></div>
+      <div class="tile" data-tip="Sessions followed by a thread-linked contact within 7 days"><div class="l">Repeat contact (7 days)</div><div class="v">${pct(P.repeat_contact_rate_7d)}</div><div class="d">thread-linked only</div></div>
+      <div class="tile" data-tip="Churn-intent sessions with no handoff and no follow-up contact"><div class="l">Save-rate proxy</div><div class="v">${P.save_rate_proxy == null ? "-" : pct(P.save_rate_proxy)}</div><div class="d">${fmt(P.churn_intent_sessions)} churn-intent sessions</div></div>
+    </div></div>
   <div class="grid g2" style="margin-top:16px">
     <div class="card"><h2>Pipeline funnel</h2>${bars(d.funnel, { label: (r) => r.stage, value: (r) => r.n, color: (r) => `var(--f${d.funnel.indexOf(r) + 1})` })}
       <p class="muted small">Ordinal steps of one hue. Signals and episodes are child records of sessions.</p></div>
@@ -132,6 +141,9 @@ async function pSession(sid) {
     </div></div>
     <div class="card"><h2>Thread &amp; need journeys</h2>${d.thread.length > 1 ? d.thread.map((x) => `<div class="small">${x.session_id === s.session_id ? "▶" : "·"} <a href="#/session/${encodeURIComponent(x.session_id)}">#${x.thread_pos}</a> ${esc((x.created_at || "").slice(0, 16))} · ${esc(x.intent_id)} · ${esc(x.outcome)}</div>`).join("") : `<div class="muted small">Single-session thread (no previous_session_id link).</div>`}
       ${d.journeys.filter((j) => j.n_sessions > 1).map((j) => `<div class="small" style="margin-top:6px"><b>${esc(j.intent_l2)}</b>: ${j.n_sessions} sessions, last outcome ${esc(j.last_outcome)}</div>`).join("")}</div>
+    <div class="card"><h2>Persistent context (as of this call)</h2>${(d.facts_as_of_session || []).map((f) => `<div class="small"><b>${esc(f.attribute)}</b> = ${esc(f.value)} <span class="muted">since ${esc((f.valid_from || "").slice(0, 10))}</span></div>`).join("") || "<div class='muted small'>No facts.</div>"}
+      ${(d.fact_history || []).some((f) => f.valid_to) ? `<details><summary class="small">Superseded facts (kept on record)</summary>${d.fact_history.filter((f) => f.valid_to).map((f) => `<div class="small muted">${esc(f.attribute)} = ${esc(f.value)} · ${esc((f.valid_from || "").slice(0, 10))} → ${esc((f.valid_to || "").slice(0, 10))}</div>`).join("")}</details>` : ""}
+      ${(d.clusters || []).length ? `<h3>Cluster memberships</h3>${d.clusters.map((c) => `<div class="small">${esc(c.family)}: <a href="#/clusters?family=${esc(c.family)}">${esc(c.label)}</a></div>`).join("")}` : ""}</div>
     <div class="card"><h2>Evaluations</h2><table>${ev.map((e) => `<tr><td>${esc(e.canonical_metric)}</td><td class="num">${e.value == null ? `<span class="muted">${esc(e.status)}</span>` : e.value.toFixed(2)}</td></tr>`).join("")}</table>
       ${d.policy.length ? `<h3>Policy verdicts</h3>${d.policy.map((p) => `<div class="small" data-tip="${esc(p.reason || "")}"><span class="tag">${esc(p.policy_id)}</span> ${esc(p.verdict)} · ${esc(p.severity)} · ${esc(p.policy_type)}</div>`).join("")}` : ""}
       <p class="muted small">Judge scores are the platform's own evaluators; status "not_applicable"/"error" is never treated as 0.</p></div>
@@ -148,9 +160,11 @@ async function pTaxonomy() {
   <div class="layout" style="grid-template-columns: 1.1fr 1fr"><div class="card tree"><div class="l3" style="cursor:default;font-weight:600;color:var(--ink-2)"><span>Intent</span><span class="num">Primary</span><span class="num">Secondary</span><span class="num">Real (36)</span></div>${tree}</div>
   <div class="grid"><div class="card" id="intentDetail"><div class="muted">Select an intent to see its definition, criteria and review actions.</div></div>
   <div class="card"><h2>Platform intent labels seen in the real sample</h2><table><tr><th>intent_name</th><th class="num">sessions</th></tr>${TAX.platform_labels_real.map((r) => `<tr><td class="tag">${esc(r.intent_name)}</td><td class="num">${r.sessions}</td></tr>`).join("")}</table></div>
+  <div class="card"><h2>Discovered L4 candidates <span class="pill">draft</span></h2><p class="muted small">Sub-themes found by clustering each intent's conversations (discovery split only). Approve to add as L4 variations in the next taxonomy version.</p><div id="cands" class="small">Loading…</div></div>
   <div class="card"><h2>Review log</h2>${TAX.reviews.map((r) => `<div class="small">${esc(r.at)} · <b>${esc(r.reviewer)}</b> ${esc(r.action)} <span class="tag">${esc(r.object_id)}</span> ${esc(r.note)}</div>`).join("") || `<div class="muted small">No reviews yet.</div>`}</div></div></div>`;
 }
 function wireTaxonomy() {
+  api("taxonomy/candidates").then((d) => { const el = $("#cands"); if (!el) return; el.innerHTML = d.candidates.slice(0, 40).map((c) => `<div style="margin-bottom:6px"><span class="tag">${esc(c.candidate_id)}</span> <b>${esc(c.label)}</b> · ${fmt(c.size)} episodes<div class="muted">e.g. “${esc((c.examples[0] || "").slice(0, 110))}”</div></div>`).join("") || "None yet."; });
   document.querySelectorAll(".l3[data-id]").forEach((el) => el.addEventListener("click", () => {
     document.querySelectorAll(".l3.sel").forEach((x) => x.classList.remove("sel")); el.classList.add("sel");
     const x = TAX.nodes.find((n) => n.intent_id === el.dataset.id); SEL = x;
@@ -180,10 +194,12 @@ async function pSignals() {
 }
 
 async function pPipeline() {
-  const d = await api("runs");
+  const d = await api("runs"); const L = await api("llm");
   return `<h1>Pipeline &amp; governance</h1><p class="sub">Every stage records its versions and stats. Raw payloads are landed immutably and referenced by line + sha256.</p>
   <div class="grid g2"><div class="card"><h2>Provenance</h2><table><tr><th>Source</th><th>Synthetic</th><th>Batch</th><th class="num">Sessions</th></tr>${d.provenance.map((p) => `<tr><td>${esc(p.source)}</td><td>${p.is_synthetic ? "yes" : "no"}</td><td>${esc(p.batch || "-")}</td><td class="num">${p.n}</td></tr>`).join("")}</table></div>
   <div class="card"><h2>Ingest rejects</h2>${d.rejects.length ? `<table>${d.rejects.map((r) => `<tr><td>${esc(r.file)}:${r.line_no}</td><td>${esc(r.reason)}</td></tr>`).join("")}</table>` : `<div class="muted">None.</div>`}</div></div>
+  <div class="card" style="margin-top:16px"><h2>Claude tier (low-confidence adjudication)</h2><p>${L.enabled ? "<span class='pass'>enabled</span>" : "<span class='na'>disabled</span> (no API key configured)"} · models ${esc(JSON.stringify(L.models))} · cap ${pct(L.max_share)} of sessions · ${fmt(L.candidates)} candidate sessions · cache ${fmt(L.cache_rows)}</p>
+    <p class="small muted">${esc(L.note)}</p>${L.labels.map((l) => `<span class="pill">${esc(l.status)} ${l.n}</span>`).join(" ")}</div>
   <div class="card" style="margin-top:16px;overflow:auto"><h2>Processing runs</h2><table><tr><th>#</th><th>Stage</th><th>Status</th><th>Started</th><th>Stats</th><th>Versions</th></tr>
   ${d.runs.map((r) => `<tr><td>${r.run_id}</td><td>${esc(r.stage)}</td><td>${esc(r.status)}</td><td class="small">${esc(r.started_at)}</td><td class="small tag">${esc(r.stats)}</td><td class="small muted">${esc(r.versions)}</td></tr>`).join("")}</table></div>`;
 }
@@ -203,6 +219,12 @@ async function route() {
     else if (parts[0] === "taxonomy") { app.innerHTML = await pTaxonomy(); wireTaxonomy(); }
     else if (parts[0] === "signals") app.innerHTML = await pSignals();
     else if (parts[0] === "pipeline") app.innerHTML = await pPipeline();
+    else if (parts[0] === "insights") { app.innerHTML = await pInsights(params); wireInsights(); }
+    else if (parts[0] === "geo") { app.innerHTML = await pGeo(params); wireGeo(); }
+    else if (parts[0] === "journeys") app.innerHTML = await pJourneys();
+    else if (parts[0] === "clusters") { app.innerHTML = await pClusters(params); wireClusters(); }
+    else if (parts[0] === "ask") { app.innerHTML = await pAsk(params); wireAsk(); }
+    else if (parts[0] === "validation") app.innerHTML = await pValidation();
     else app.innerHTML = `<div class="empty">Not found.</div>`;
   } catch (e) { app.innerHTML = `<div class="card empty">Could not load: ${esc(e.message)}</div>`; }
   window.scrollTo(0, 0);

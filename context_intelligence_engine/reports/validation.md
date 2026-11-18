@@ -1,83 +1,625 @@
-# Validation report: Week 1
+# Validation report
+
+> Synthetic gates prove pipeline capability and statistical behaviour on a generated population with known truth. They do not prove accuracy on real Verizon conversations; the real-sample gold set (draft, needs SME review) is the only real-language evidence.
 
 Versions: `{"schema": "1.0.0", "rules": "0.3.0", "taxonomy": "v0-draft", "episode_model": "1.0.0", "fixtures": "1.0.0"}`
 
-## G1 Data integrity: PASS
+| Gate | Result | Summary |
+|---|---|---|
+| G0_calibration | **PASS** | 7/8 marginals inside the real sample's 95% CI; intent-mix TVD 0.30 |
+| G1_integrity | **FAIL** | 100,000 synthetic + 36 real sessions; 0 orphans/duplicates expected; PII hits 0; sha256 verified on 300 landed lines (300 mismatches) |
+| G2_signals | **PASS** | Lexicon signals: bank A precision 0.83, recall 0.964; held-out bank B precision 0.611, recall 0.29; structural recall 0.999 |
+| G3_intent_classification | **PASS** | Held-out test split (20,043): macro-F1 L2 0.879, L3 0.883; accuracy A 0.952, B 0.788; UNKNOWN 2.5% |
+| G4_clusters | **FAIL** | Need clusters vs true intent: ARI 0.49, NMI 0.78; need stable share 0.735; SME label reviews 0 |
+| G5_patterns | **PASS** | 11/11 planted city×intent effects recovered, geo FDR 0%; time-boxed events flagged 2/2; sequences 4/4; 2 unplanted emerging flag(s) |
+| G6_cards_facts | **PASS** | 26 active cards, 0 governance violations, 0 unsanitised quote tokens; point-in-time reconstruction 699/699 |
+| G7_retrieval | **PASS** | 60 queries: MRR bm25 0.897, dense 0.897, hybrid 0.911; filters ok; as-of ok |
+| G8_api_performance | **PASS** | 17 routes OK, API p95 74 ms (warm); full pipeline 4.5 min on this machine |
+| G9_volume | **PASS** | 100,000 sessions, mean 7.02 traces/session (target 7.0 ± 0.1) |
+| G10_llm | **INFO** | Claude tier disabled (no API key). 5,001 candidate sessions (5.0% ≤ 5% cap); grounding enforced in code; accepted-but-ungrounded 0 |
+| real_sample_gold_draft | **INFO** | n=36 (unreviewed draft): primary L3 72%, unambiguous 89%; handoff/auth-failure detection precision 1.0/1.0 |
+| governance | **PASS** | pipeline never reads ground truth or gold files |
 
-- Real sample: 36 sessions, 241 traces (expected 36 / 241)
-- Orphan traces 0, duplicate turn keys 0, synthetic rows without provenance 0, sessions without raw lineage 0, ingest rejects 0
-- PII patterns remaining after scrub: 0
-- Turn order restored for d9b52d90 (arrives shuffled): [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
+## G0_calibration
 
-## Scenario fixtures vs truth: PASS
+```json
+{
+ "pass": true,
+ "metrics": {
+  "transfer": {
+   "real": 0.778,
+   "real_ci": [
+    0.619,
+    0.883
+   ],
+   "synthetic": 0.794,
+   "inside": true
+  },
+  "asks_human": {
+   "real": 0.556,
+   "real_ci": [
+    0.396,
+    0.705
+   ],
+   "synthetic": 0.538,
+   "inside": true
+  },
+  "unauth": {
+   "real": 0.583,
+   "real_ci": [
+    0.422,
+    0.729
+   ],
+   "synthetic": 0.587,
+   "inside": true
+  },
+  "billing_l1": {
+   "real": 0.75,
+   "real_ci": [
+    0.589,
+    0.862
+   ],
+   "synthetic": 0.651,
+   "inside": true
+  },
+  "event_share": {
+   "real": 0.344,
+   "real_ci": [
+    0.287,
+    0.406
+   ],
+   "synthetic": 0.366,
+   "inside": true
+  },
+  "null_output_share": {
+   "real": 0.075,
+   "real_ci": [
+    0.048,
+    0.115
+   ],
+   "synthetic": 0.051,
+   "inside": true
+  },
+  "mean_traces": {
+   "real": 6.69,
+   "real_ci": [
+    5.75,
+    7.56
+   ],
+   "synthetic": 7.02,
+   "inside": true,
+   "note": "User requirement is 7 traces/session; the real sample mean is 6.69 with a CI of about 5.7-7.7."
+  },
+  "intent_L1_mix_tvd": {
+   "value": 0.301,
+   "inside": null,
+   "note": "Synthetic deliberately adds product/service/retention volume so every insight family exists (approved spec); TVD is reported."
+  }
+ },
+ "summary": "7/8 marginals inside the real sample's 95% CI; intent-mix TVD 0.30"
+}
+```
 
-77 scripted synthetic sessions (every L3 intent x 2 + 12 special scenarios).
+## G1_integrity
 
-| Check | Result |
-|---|---|
-| Primary intent accuracy (L3) | 100% |
-| Macro-F1 L3 / L2 | 1.0 / 1.0 |
-| Goal-episode count accuracy | 100% |
-| Session outcome accuracy | 100% |
-| Planted-signal recall | 100% |
+```json
+{
+ "synthetic_sessions": 100000,
+ "real_sessions": 36,
+ "real_traces": 241,
+ "orphan_traces": 0,
+ "duplicate_turn_keys": 0,
+ "synthetic_without_provenance": 0,
+ "sessions_without_raw_lineage": 0,
+ "rejects": 0,
+ "pii_hits_after_scrub": 0,
+ "real_turn_order_d9b52d90": [
+  10,
+  11,
+  12,
+  13,
+  14,
+  15,
+  16,
+  17,
+  18,
+  19,
+  20,
+  21,
+  22
+ ],
+ "landing_sha256_checked": 300,
+ "landing_sha256_mismatch": 300,
+ "pass": false,
+ "summary": "100,000 synthetic + 36 real sessions; 0 orphans/duplicates expected; PII hits 0; sha256 verified on 300 landed lines (300 mismatches)"
+}
+```
 
-These are scripted fixtures whose wording the rules were tuned against: they prove the pipeline end to end, **not** real-world accuracy.
+## G2_signals
 
-## Real sample vs draft gold labels (directional)
+```json
+{
+ "lexicon_types": [
+  "churn_intent",
+  "complaint",
+  "confusion",
+  "device_replacement",
+  "escalation_request",
+  "feature_comparison",
+  "frustration",
+  "local_event",
+  "multi_line_expansion",
+  "positive_response",
+  "price_sensitivity",
+  "repeat_contact_language",
+  "willingness"
+ ],
+ "structural_types": [
+  "abandoned",
+  "agent_handoff",
+  "agent_loop",
+  "auth_failure",
+  "city_mention",
+  "customer_repeat",
+  "dtmf_operator",
+  "no_input",
+  "tool_failure"
+ ],
+ "A_mean_precision": 0.83,
+ "A_mean_recall": 0.964,
+ "B_mean_precision": 0.611,
+ "B_mean_recall": 0.29,
+ "structural_recall": 0.999,
+ "note": "Precision counts any detection in a session where the type was not deliberately planted as FP; generated dialogue contains incidental mentions, so precision is a lower bound.",
+ "pass": true,
+ "summary": "Lexicon signals: bank A precision 0.83, recall 0.964; held-out bank B precision 0.611, recall 0.29; structural recall 0.999"
+}
+```
 
-> Draft labels (pre-labelled by Claude, reviewed=false). n=36 is too small for stable estimates. Rules were adjusted after reviewing disagreements on this same set, so these agreement figures are optimistic; G3 needs a fresh SME-reviewed held-out set.
+## G3_intent_classification
 
-| Measure | Value |
-|---|---|
-| Primary intent agreement L3 / L2 / L1 | 75% / 75% / 78% |
-| L3 agreement on unambiguous sessions | 93% |
-| Macro-F1 L3 / L2 | 0.7 / 0.596 |
+```json
+{
+ "test_sessions": 20043,
+ "macro_f1_L3": 0.883,
+ "macro_f1_L2": 0.879,
+ "accuracy_L3": 0.887,
+ "accuracy_L3_by_bank": {
+  "A": 0.952,
+  "B": 0.788
+ },
+ "unknown_rate": 0.025,
+ "llm_note": "Bank-B (held-out wording) errors are the target of the Claude adjudication tier, which is disabled until an API key is configured.",
+ "pass": true,
+ "summary": "Held-out test split (20,043): macro-F1 L2 0.879, L3 0.883; accuracy A 0.952, B 0.788; UNKNOWN 2.5%"
+}
+```
 
-| Flag / signal | Precision | Recall | TP | FP | FN |
-|---|---|---|---|---|---|
-| handoff (session flag) | 1.0 | 1.0 | 28 | 0 | 0 |
-| auth_failure (session flag) | 1.0 | 1.0 | 22 | 0 | 0 |
-| abandoned (session flag) | 1.0 | 0.75 | 3 | 0 | 1 |
-| asked_human (session flag) | 1.0 | 0.952 | 20 | 0 | 1 |
-| escalation_request | 1.0 | 0.952 | 20 | 0 | 1 |
-| auth_failure | 0.909 | 1.0 | 20 | 2 | 0 |
-| dispute | 0.333 | 1.0 | 2 | 4 | 0 |
-| price_sensitivity | 1.0 | 1.0 | 1 | 0 | 0 |
-| confusion | 1.0 | 1.0 | 4 | 0 | 0 |
-| frustration | 1.0 | 1.0 | 2 | 0 | 0 |
-| customer_repeat | 0.667 | 0.667 | 4 | 2 | 2 |
-| no_input | 1.0 | 1.0 | 10 | 0 | 0 |
-| dtmf_operator | 1.0 | 1.0 | 1 | 0 | 0 |
-| travel_intl | 0.5 | 1.0 | 2 | 2 | 0 |
-| abandoned | 1.0 | 1.0 | 3 | 0 | 0 |
+## G4_clusters
 
-### Primary-intent disagreements
+```json
+{
+ "episodes_scored": 97423,
+ "ARI_need_vs_intent": 0.491,
+ "NMI_need_vs_intent": 0.78,
+ "families": {
+  "geo": {
+   "clusters": 4,
+   "stable_share": 0.0,
+   "mean_stability": 0.573
+  },
+  "need": {
+   "clusters": 34,
+   "stable_share": 0.735,
+   "mean_stability": 0.746
+  },
+  "risk": {
+   "clusters": 8,
+   "stable_share": 0.5,
+   "mean_stability": 0.583
+  },
+  "value": {
+   "clusters": 6,
+   "stable_share": 1.0,
+   "mean_stability": 0.873
+  }
+ },
+ "sme_label_reviews": 0,
+ "pass": false,
+ "summary": "Need clusters vs true intent: ARI 0.49, NMI 0.78; need stable share 0.735; SME label reviews 0"
+}
+```
 
-| Session | Gold | Pipeline | Ambiguous | Note |
-|---|---|---|---|---|
-| CID-3389059416 | ESCALATION.REP.REQUEST | BILL.EXPLAIN.CHARGES | yes | Repeats 'customer service'; Spanish; platform guessed bill_breakdown |
-| CID-1589049708 | PAY.MAKE.ONE_TIME | BILL.EXPLAIN.CHARGES | yes | 'payment save it' garbled; platform bill_plus_operator |
-| CID-2083893756 | PAY.MAKE.ONE_TIME | BILL.CHARGE.DISPUTE | yes | '[name] and payment'; platform bill_explain_incorrect; Spanish; disconnect |
-| CID-1225517580 | PAY.STATUS.NOT_REFLECTED | BILL.CHARGE.FRAUD |  | Paid but service inactive (agent paraphrase); PIN failed twice then verified |
-| CID-3014354420 | BILL.EXPLAIN.CHARGES | ADDSVC.TRAVEL.INTERNATIONAL |  | International charges on bill; 'Transfer now' |
-| CID-0804150856 | PAY.STATUS.NOT_REFLECTED | GENERAL.INFO.HOURS | yes | 'The payment I made' (vague); asks opening hours; transfer tool fired mid-call then disconnect |
-| CID-1820668774 | ACCT.LOOKUP.NUMBER | SERVICE.CONNECTIVITY.COVERAGE | yes | Confused/sad; 'problem with someone's phone number'; then 'billing question' |
-| CID-1864415350 | BILL.EXPLAIN.CHARGES | BILL.CHARGE.DISPUTE | yes | Only said 'billing'; platform bill_explain_incorrect |
-| CID-0246542580 | ACCT.ACCESS.VERIFY | ESCALATION.REP.REQUEST | yes | Wants code sent to new mobile number; 'Get someone on the phone now' |
+## G5_patterns
 
-## Governance
+```json
+{
+ "planted_city_intent_effects": 11,
+ "recovered_as_geo_mix": 11,
+ "geo_false_discoveries": [],
+ "geo_empirical_FDR": 0.0,
+ "time_boxed_events": [
+  {
+   "city": "Houston",
+   "intent": "SERVICE.OUTAGE.DISRUPTION",
+   "planted_weeks": [
+    8,
+    10
+   ],
+   "flagged": true,
+   "flagged_windows": [
+    [
+     8,
+     9
+    ]
+   ]
+  },
+  {
+   "city": "Atlanta",
+   "intent": "ADDSVC.TRAVEL.INTERNATIONAL",
+   "planted_weeks": [
+    9,
+    11
+   ],
+   "flagged": true,
+   "flagged_windows": [
+    [
+     10,
+     11
+    ]
+   ]
+  }
+ ],
+ "sequences_recovered": "4/4",
+ "emerging_unplanted": [
+  [
+   "ADDSVC.TRAVEL.INTERNATIONAL",
+   "Denver"
+  ],
+  [
+   "ADDSVC.TRAVEL.INTERNATIONAL",
+   "Mountain"
+  ]
+ ],
+ "tests_and_kept": {
+  "aggregate_rows": 79468,
+  "tested": {
+   "geo_mix": 1472,
+   "segment_mix": 231,
+   "risk_rate": 312,
+   "opportunity": 46,
+   "sequence": 522,
+   "emerging": 1418
+  },
+  "kept": {
+   "geo_mix": 11,
+   "segment_mix": 6,
+   "risk_rate": 14,
+   "sequence": 13,
+   "emerging": 4
+  },
+  "total_tests": 4001,
+  "window_start": "2026-08-24"
+ },
+ "pass": true,
+ "summary": "11/11 planted city\u00d7intent effects recovered, geo FDR 0%; time-boxed events flagged 2/2; sequences 4/4; 2 unplanted emerging flag(s)"
+}
+```
 
-- Pipeline modules reading truth/gold files: none
-- UNKNOWN primary-intent share: 0%
-- LLM calls this run: 0
+## G6_cards_facts
 
-## Not yet computed
+```json
+{
+ "active_cards": 26,
+ "card_violations": [],
+ "quote_sanitiser_violations": 0,
+ "point_in_time_checks": 699,
+ "point_in_time_failures": 0,
+ "superseded_facts_on_record": 54141,
+ "card_versions": 61,
+ "pass": true,
+ "summary": "26 active cards, 0 governance violations, 0 unsanitised quote tokens; point-in-time reconstruction 699/699"
+}
+```
 
-- G0 calibration (needs 100K synthetic)
-- G4 clusters
-- G5 patterns
-- G6 cards/facts
-- G7 retrieval
-- G8 performance
-- G9 volume shape
-- G10 LLM correctness
+## G7_retrieval
+
+```json
+{
+ "queries": 60,
+ "query_text": "first 'include' phrase of the intent definition (not the generated wording)",
+ "by_method": {
+  "bm25": {
+   "p10": 0.432,
+   "mrr": 0.897,
+   "ndcg": 0.535
+  },
+  "dense": {
+   "p10": 0.798,
+   "mrr": 0.897,
+   "ndcg": 0.811
+  },
+  "hybrid": {
+   "p10": 0.812,
+   "mrr": 0.911,
+   "ndcg": 0.821
+  }
+ },
+ "filters_correct": true,
+ "asof_correct": true,
+ "pass": true,
+ "summary": "60 queries: MRR bm25 0.897, dense 0.897, hybrid 0.911; filters ok; as-of ok"
+}
+```
+
+## G8_api_performance
+
+```json
+{
+ "routes_tested": 17,
+ "route_errors": [],
+ "api_p95_ms_warm": 74.1,
+ "pipeline_seconds_by_stage": {
+  "retrieval_index": 1.0,
+  "cards": 27.0,
+  "scoring": 0.0,
+  "patterns": 4.0,
+  "facts": 2.0,
+  "clusters": 25.0,
+  "episodes+features": 20.0,
+  "signals+intents": 97.0,
+  "ingest": 96.0
+ },
+ "pipeline_seconds_total": 272.0,
+ "note": "Latency measured after cache warm-up (server pre-warms at start); cold first calls of heavy aggregates take 1-5 s.",
+ "pass": true,
+ "summary": "17 routes OK, API p95 74 ms (warm); full pipeline 4.5 min on this machine"
+}
+```
+
+## G9_volume
+
+```json
+{
+ "synthetic_sessions": 100000,
+ "mean_traces": 7.018,
+ "min_traces": 4,
+ "pass": true,
+ "summary": "100,000 sessions, mean 7.02 traces/session (target 7.0 \u00b1 0.1)"
+}
+```
+
+## G10_llm
+
+```json
+{
+ "enabled": false,
+ "candidate_sessions": 5001,
+ "candidate_share": 0.05,
+ "labels": {},
+ "accepted_ungrounded": 0,
+ "pass": null,
+ "summary": "Claude tier disabled (no API key). 5,001 candidate sessions (5.0% \u2264 5% cap); grounding enforced in code; accepted-but-ungrounded 0"
+}
+```
+
+## real_sample_gold_draft
+
+```json
+{
+ "sessions": 36,
+ "reviewed": 0,
+ "primary_accuracy_L3": 0.722,
+ "primary_accuracy_L2": 0.722,
+ "unambiguous_accuracy_L3": 0.889,
+ "flags": {
+  "handoff": {
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "tp": 28,
+   "fp": 0,
+   "fn": 0
+  },
+  "auth_failure": {
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "tp": 22,
+   "fp": 0,
+   "fn": 0
+  },
+  "abandoned": {
+   "precision": 1.0,
+   "recall": 0.75,
+   "f1": 0.857,
+   "tp": 3,
+   "fp": 0,
+   "fn": 1
+  },
+  "asked_human": {
+   "precision": 1.0,
+   "recall": 0.952,
+   "f1": 0.976,
+   "tp": 20,
+   "fp": 0,
+   "fn": 1
+  }
+ },
+ "signals": {
+  "escalation_request": {
+   "precision": 1.0,
+   "recall": 0.952,
+   "f1": 0.976,
+   "tp": 20,
+   "fp": 0,
+   "fn": 1
+  },
+  "auth_failure": {
+   "precision": 0.909,
+   "recall": 1.0,
+   "f1": 0.952,
+   "tp": 20,
+   "fp": 2,
+   "fn": 0
+  },
+  "dispute": {
+   "precision": 0.333,
+   "recall": 1.0,
+   "f1": 0.5,
+   "tp": 2,
+   "fp": 4,
+   "fn": 0
+  },
+  "price_sensitivity": {
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "tp": 1,
+   "fp": 0,
+   "fn": 0
+  },
+  "confusion": {
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "tp": 4,
+   "fp": 0,
+   "fn": 0
+  },
+  "frustration": {
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "tp": 2,
+   "fp": 0,
+   "fn": 0
+  },
+  "customer_repeat": {
+   "precision": 0.667,
+   "recall": 0.667,
+   "f1": 0.667,
+   "tp": 4,
+   "fp": 2,
+   "fn": 2
+  },
+  "no_input": {
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "tp": 10,
+   "fp": 0,
+   "fn": 0
+  },
+  "dtmf_operator": {
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "tp": 1,
+   "fp": 0,
+   "fn": 0
+  },
+  "travel_intl": {
+   "precision": 0.5,
+   "recall": 1.0,
+   "f1": 0.667,
+   "tp": 2,
+   "fp": 2,
+   "fn": 0
+  },
+  "abandoned": {
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "tp": 3,
+   "fp": 0,
+   "fn": 0
+  }
+ },
+ "disagreements": [
+  {
+   "session": "CID-3389059416",
+   "gold": "ESCALATION.REP.REQUEST",
+   "pipeline": "BILL.EXPLAIN.CHARGES",
+   "ambiguous": true,
+   "note": "Repeats 'customer service'; Spanish; platform guessed bill_breakdown"
+  },
+  {
+   "session": "CID-1606408318",
+   "gold": "REFUND.REQUEST.OVERPAYMENT",
+   "pipeline": "BILL.CHARGE.DISPUTE",
+   "ambiguous": false,
+   "note": "Credit balance back to bank account"
+  },
+  {
+   "session": "CID-1589049708",
+   "gold": "PAY.MAKE.ONE_TIME",
+   "pipeline": "BILL.EXPLAIN.CHARGES",
+   "ambiguous": true,
+   "note": "'payment save it' garbled; platform bill_plus_operator"
+  },
+  {
+   "session": "CID-2083893756",
+   "gold": "PAY.MAKE.ONE_TIME",
+   "pipeline": "BILL.CHARGE.DISPUTE",
+   "ambiguous": true,
+   "note": "'[name] and payment'; platform bill_explain_incorrect; Spanish; disconnect"
+  },
+  {
+   "session": "CID-1225517580",
+   "gold": "PAY.STATUS.NOT_REFLECTED",
+   "pipeline": "BILL.CHARGE.FRAUD",
+   "ambiguous": false,
+   "note": "Paid but service inactive (agent paraphrase); PIN failed twice then verified"
+  },
+  {
+   "session": "CID-3014354420",
+   "gold": "BILL.EXPLAIN.CHARGES",
+   "pipeline": "ADDSVC.TRAVEL.INTERNATIONAL",
+   "ambiguous": false,
+   "note": "International charges on bill; 'Transfer now'"
+  },
+  {
+   "session": "CID-0804150856",
+   "gold": "PAY.STATUS.NOT_REFLECTED",
+   "pipeline": "GENERAL.INFO.HOURS",
+   "ambiguous": true,
+   "note": "'The payment I made' (vague); asks opening hours; transfer tool fired mid-call then disconnect"
+  },
+  {
+   "session": "CID-1820668774",
+   "gold": "ACCT.LOOKUP.NUMBER",
+   "pipeline": "SERVICE.CONNECTIVITY.COVERAGE",
+   "ambiguous": true,
+   "note": "Confused/sad; 'problem with someone's phone number'; then 'billing question'"
+  },
+  {
+   "session": "CID-1864415350",
+   "gold": "BILL.EXPLAIN.CHARGES",
+   "pipeline": "BILL.CHARGE.DISPUTE",
+   "ambiguous": true,
+   "note": "Only said 'billing'; platform bill_explain_incorrect"
+  },
+  {
+   "session": "CID-0246542580",
+   "gold": "ACCT.ACCESS.VERIFY",
+   "pipeline": "ESCALATION.REP.REQUEST",
+   "ambiguous": true,
+   "note": "Wants code sent to new mobile number; 'Get someone on the phone now'"
+  }
+ ],
+ "caveat": "Draft labels (Claude pre-label, reviewed=false); n=36; rules were tuned after seeing these disagreements, so figures are optimistic until an SME-reviewed held-out set exists.",
+ "pass": null,
+ "summary": "n=36 (unreviewed draft): primary L3 72%, unambiguous 89%; handoff/auth-failure detection precision 1.0/1.0"
+}
+```
+
+## governance
+
+```json
+{
+ "pipeline_modules_reading_truth": [],
+ "pass": true,
+ "summary": "pipeline never reads ground truth or gold files"
+}
+```

@@ -75,7 +75,7 @@ NEW_NEED_CUE = r"^\s*(also|and also|one more thing|another (question|thing)|whil
 
 # ---- clustering / discovery (W3) -----------------------------------------
 MODELS = DATA / "models"
-NEED_K = (30, 36, 42)
+NEED_K = (28, 32, 36)
 RISK_K = (4, 5, 6)
 VALUE_K = (4, 5, 6)
 GEO_K = (4, 5, 6)

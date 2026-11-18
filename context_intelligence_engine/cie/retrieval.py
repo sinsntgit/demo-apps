@@ -71,8 +71,11 @@ class Retriever:
         if not terms:
             return []
         match = " OR ".join(f'"{t}"' for t in terms)
-        rows = self.con.execute("""SELECT d.ref_id, d.doc_type, bm25(search_fts) AS sc FROM search_fts JOIN search_doc d ON d.doc_id=search_fts.rowid
-                                   WHERE search_fts MATCH ? AND d.doc_type=? ORDER BY sc LIMIT ?""", (match, doc_type, k * (20 if allowed is not None else 1))).fetchall()
+        try:
+            rows = self.con.execute("""SELECT d.ref_id, d.doc_type, bm25(search_fts) AS sc FROM search_fts JOIN search_doc d ON d.doc_id=search_fts.rowid
+                                       WHERE search_fts MATCH ? AND d.doc_type=? ORDER BY sc LIMIT ?""", (match, doc_type, k * (20 if allowed is not None else 1))).fetchall()
+        except Exception:                       # index not built yet (python -m cie.run_pipeline --only index)
+            return []
         out = [(r[0], -r[2]) for r in rows if allowed is None or r[0] in allowed]
         return out[:k]
 

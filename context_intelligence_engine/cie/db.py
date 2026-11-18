@@ -75,6 +75,8 @@ CREATE TABLE IF NOT EXISTS intent_definition(
 CREATE TABLE IF NOT EXISTS session_intent(
   session_id TEXT, intent_id TEXT, role TEXT, confidence REAL, method TEXT, taxonomy_version TEXT, evidence TEXT);
 CREATE INDEX IF NOT EXISTS ix_si ON session_intent(intent_id, role);
+CREATE INDEX IF NOT EXISTS ix_si_s ON session_intent(session_id, role);
+CREATE INDEX IF NOT EXISTS ix_cs_src ON conversation_session(source);
 CREATE TABLE IF NOT EXISTS turn_intent(
   session_id TEXT, seq INTEGER, intent_id TEXT, confidence REAL, method TEXT, evidence TEXT);
 CREATE INDEX IF NOT EXISTS ix_ti ON turn_intent(session_id, seq);
