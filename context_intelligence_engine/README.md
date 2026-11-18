@@ -10,6 +10,8 @@ an "ask" box, review workflows and a validation report.
 
 ## Run it
 
+Step-by-step setup for macOS, Linux and Windows: [`SETUP.md`](SETUP.md). One command does everything: `python run_all.py`.
+
 Python 3.11+, `pip install -r requirements.txt` (numpy, scikit-learn, scipy, pyyaml, pytest; `anthropic` only to enable the Claude tier).
 
 ```bash
