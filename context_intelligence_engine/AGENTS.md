@@ -84,18 +84,66 @@ to verified outcomes.
 | Validation against planted truth | Synthetic effects with known truth (city×intent lifts, time-boxed events, sequences); recovery and false-discovery measured |
 | Storage choice | **SQLite**, as the user asked; it is fine for 100K conversations. All SQL stays portable to the customer's Postgres/warehouse (§4) |
 
-### 2.4 Still open (build with the default; don't block)
+### 2.4 Answers received on 2026-11-18 (user)
 
-| # | Question | Default we build |
+| # | Topic | Answer | What we build |
+|---|---|---|---|
+| A1 | Volume | **100K sessions in total, 7 traces per session** | 100,000 synthetic sessions, **mean 7.0 traces/session** (≈700K traces). Lengths vary realistically (range 3–14, sd ≈ 2), because the real sample varies (1–13). `--fixed-traces 7` exists if exactly 7 is required. Single batch, plus the incremental daily mode for future feeds. G9 checks the volume shape |
+| A2 | Episode | We proposed; the user accepted the three-layer model | §2.5 |
+| A3 | Customer ID | Not available yet (requested). Use `previous_session_id` only | `thread_id` from `previous_session_id` chains is the only linkage. Every repeat/recurrence metric is labelled **"thread-linked"**: it misses repeat contacts the platform didn't link. `customer_key` stays a nullable column so the logic switches over when a key arrives |
+| A4 | Location | Format unknown; probably the **customer service location** | `location_type='service'`. Insights are phrased "by service location", never "where the customer is". Places in text are typed separately (destination / current / unknown). Read through `config.LOCATION_PATHS`; one config change when the schema arrives |
+| A5 | LLMs | Allowed, but **minimise usage and guarantee correctness** | §2.6 LLM policy |
+| — | Languages | Not discussed | English primary; Spanish/Portuguese detected and tagged (`lang`) at the real-sample rate; `UNKNOWN` intent when rules and the LLM have no coverage |
+| — | Synthetic date range | Not discussed | 12 weeks ending 2026-11-15 |
+| — | Approvers | Not discussed | The UI records reviewer and time; the approver role is configurable |
+
+### 2.5 Episode model (three layers)
+
+| Layer | Definition | Serves |
 |---|---|---|
-| O1 | Is "100000" the overnight feed volume **per day**, or the total POC volume? | Total = 100K synthetic conversations (C3). The pipeline is still incremental per day, and the scale gate G9 runs only if per-day is confirmed |
-| O2 | Episode definition: whole session, a need within a session, or a sequence of sessions? | **A distinct need within a session** (`session_episode`). Threads (sequences of sessions) are modelled separately; switching is a config flag |
-| O3 | Is a stable pseudonymous customer key available beyond `previous_session_id`? | Thread = linkage via `previous_session_id`; `customer_key` column nullable |
-| O4 | Structured location schema and location type (home, service or current)? | `user_metadata.location = {city, state, zip3?, market?, type?}`, read through `config.LOCATION_PATHS`; type defaults to `service` |
-| O5 | Approved LLM/embedding services and processing location? | None. The rule-based + TF-IDF/LSA path runs offline; LLM and embedding adapters are pluggable and disabled by default |
-| O6 | Languages? | English primary; Spanish detected and tagged (`lang`), included in synthetic data at the real-sample rate, routed to `UNKNOWN` intent when rules have no coverage |
-| O7 | Synthetic date range | 12 weeks ending 2026-11-15 |
-| O8 | Who approves taxonomy, clusters, scores and cards? | The UI records reviewer and time; the approver role is configurable |
+| **Session** | One complete conversation | Population counts, denominators |
+| **Episode** (primary analytic unit) | One distinct customer need inside a session: consecutive turns about the same intent, plus that need's outcome (resolved-proxy / escalated / abandoned). The leading login/IVR span is a separate `kind='access'` episode | Signals → features → clusters. Keeps a second need (e.g. bill question → upgrade) from being blurred |
+| **Need journey** | Episodes with the same L2 intent across a `previous_session_id` thread within `JOURNEY_WINDOW_DAYS` (30) | Temporal history, repeat contact, unresolved-need risk, and dated facts (`open_issue` → `issue_resolved`) |
+
+Episode boundary rules, in priority order:
+1. A new platform `intent_name`.
+2. A change of domain agent role. Generic and plumbing roles don't count.
+3. A turn-level intent change that holds for ≥ 2 customer turns.
+4. A phrase that opens an explicit new need ("also", "one more thing", "another question").
+
+Boundaries are rule-based and deterministic. An LLM is consulted only for sessions flagged ambiguous (§2.6).
+
+### 2.6 LLM policy: minimal use, verified output
+
+Principle: **deterministic first, LLM by exception, and nothing published on the LLM's word alone.**
+
+**Where an LLM may be used** (and nowhere else):
+
+| Use | When | Volume cap |
+|---|---|---|
+| U1 Taxonomy discovery | Propose names, definitions and inclusion/exclusion criteria for candidate clusters from representative quotes; offline, discovery split only | ≤ 50 clusters × 20 quotes per run |
+| U2 Low-confidence adjudication | Intent or signal in the uncertainty band (`LLM_BAND = [0.35, 0.65]`), ambiguous episode boundary, `UNKNOWN` intent, or a language without rule coverage | ≤ 5% of sessions (`LLM_MAX_SHARE`) |
+| U3 Gold-set pre-labelling | Draft labels for the real sample and a stratified synthetic audit sample; **a human confirms every label** | Gold set only |
+| U4 Card wording (optional) | Rephrase the templated observation; numbers are injected from the database and must match the template exactly | Cards only; off by default |
+
+**Correctness guarantees** (enforced in code, not by prompt):
+1. **Structured output only.** JSON schema with closed label sets (taxonomy IDs, signal types). Unknown labels are rejected.
+2. **Grounding check.** Every LLM label must cite turn IDs and verbatim evidence spans. Any span that isn't an
+   exact substring of the cited redacted turn is rejected, and so is the label.
+3. **No new facts.** LLM output may only *select or confirm* labels and quote evidence. Counts, rates and
+   geography always come from SQL.
+4. **Agreement routing.** If the rule label and the LLM label agree, accept. If they disagree, mark
+   `needs_review` and show it in the UI review queue. Only labels accepted or human-confirmed feed
+   patterns and cards.
+5. **Reproducibility.** Store prompt version, model ID and parameters on each row (`method='llm'`). Temperature 0.
+   Cache responses by hash of (prompt version, input) in `llm_cache`. Reruns don't call again.
+6. **Measured accuracy.** Gate G10 audits LLM-assisted labels against the human gold set. If precision falls
+   below threshold, that use is disabled automatically (`LLM_USES_ENABLED`).
+7. **Privacy and provider.** Send only redacted, re-scrubbed turn text, never raw payloads or metrics. Use the
+   customer-approved provider through `cie/adapters/llm.py`; the traces show Verizon runs its own model
+   gateway, so it is the likely candidate. With no provider configured, everything runs and U2 cases stay
+   `needs_review`.
+8. **Cost and usage report.** Calls, tokens and share of sessions touched, per run, shown on the Pipeline page.
 
 ---
 
@@ -146,7 +194,7 @@ Layout:
 ```
 cie/ config.py lexicon.py db.py synth.py locate_sample.py ingest.py evaluations.py taxonomy.py
      signals.py episodes.py features.py cluster.py patterns.py scoring.py cards.py facts.py
-     retrieval.py server.py validate.py run_pipeline.py adapters/(llm.py, embed.py: disabled stubs)
+     retrieval.py server.py validate.py run_pipeline.py adapters/(llm.py: provider adapter per §2.6, embed.py: optional)  llm_cache table
 ui/  index.html app.js style.css
 tests/ test_*.py   gold/real_gold.jsonl (needs human review)   taxonomy/taxonomy_v0.yaml
 landing/ (git-ignored) <source>/<day>/*.jsonl.gz + index      reports/ validation.{json,md}
@@ -283,9 +331,9 @@ a rule version, and evidence turn and trace IDs.
 **DoD:** G3. Taxonomy v1 is published with definitions for every L3; the review log is complete.
 
 ### WP5 Episodes and features (`episodes.py`, `features.py`)
-- Episode = a distinct need within a session (O2, configurable). A boundary is a change of domain agent,
-  a new `intent_name`, or a turn-level intent change held for 2 turns. The leading auth/bootstrap span is
-  `kind='auth'`.
+- Episode model and boundary rules: §2.5. The leading login/IVR span is `kind='access'`. Need journeys are
+  built in `need_journey(journey_id, thread_id, intent_l2, first_session, last_session, n_sessions, resolved)`.
+  Ambiguous boundaries go to U2 (§2.6).
 - Outcome: escalated (transfer tool), abandoned (disconnect or ≥2 no-inputs without handoff), or
   resolved-proxy. Record `outcome_basis`; never use `status_code`.
 - Session features (§5), behavioural segment (rule-scored in config) and style (`self-serve` / `agent-seeking`).
@@ -460,7 +508,8 @@ No revenue, margin, churn or save **outcomes** are claimed (design baseline §15
 | G6 Cards and facts | every card has evidence refs, denominator, period, caveats, versions; k-anonymity holds; 0 sanitiser violations; point-in-time reconstruction test passes | 0 violations |
 | G7 Retrieval | 60 ground-truth queries (intent × city): P@10, MRR, nDCG@10 for bm25 / dense / hybrid; filter correctness; as-of correctness | hybrid MRR ≥ max(bm25, dense) − .02; filters and as-of 100% |
 | G8 UI/API and performance | every route smoke-tested; API p95 < 500 ms on 100K; full pipeline on 100K ≤ 30 min on 4 cores; the overnight daily run is idempotent | as stated |
-| G9 Scale (only if O1 = per day) | 7 consecutive daily batches of 100K in incremental mode | each day ≤ 30 min; DB growth within retention plan |
+| G9 Volume shape | 100,000 sessions; mean traces/session 7.0 ± 0.1; 100% of sessions have ≥ 1 trace | exact |
+| G10 LLM correctness | grounding pass rate on accepted LLM labels; precision of LLM-assisted labels vs human gold; share of sessions touched; cache hit rate on rerun | grounding 100%; precision ≥ .90 per use, else that use auto-disables; share ≤ 5%; rerun makes 0 new calls |
 
 ---
 
@@ -479,10 +528,10 @@ No revenue, margin, churn or save **outcomes** are claimed (design baseline §15
 
 | Week | Build | Exit gate (customer review) |
 |---|---|---|
-| **W1** (Nov 18–25) Discovery and design + vertical slice | Profiling report on the real sample; db.py schema + ERD + source-to-target mapping; taxonomy v0; signal catalogue; episode definition proposal (O2); scenario catalogue + generator spec. **Vertical slice:** WP1 → WP3 → WP5 on the real 36 sessions; Session Explorer; real gold set drafted | Schema, taxonomy v0, episode definition, scenario catalogue approved; open questions O1–O8 answered or defaults accepted |
+| **W1** (Nov 18–25) Discovery and design + vertical slice | Profiling report on the real sample; db.py schema + ERD + source-to-target mapping; taxonomy v0; signal catalogue; episode model (§2.5); scenario catalogue + generator spec. **Vertical slice:** WP1 → WP3 → WP5 on the real 36 sessions; Session Explorer; real gold set drafted | Schema, taxonomy v0, episode definition, scenario catalogue approved; LLM provider confirmed (or U2 runs as review-queue only) |
 | **W2** (Nov 26–Dec 2) Data + intelligence foundation | WP0 complete (100K, G0); WP1/WP2 at scale (G1); WP3 (G2); WP4 discovery + review pack; WP5 features | 100K count, linkage, provenance, scenario coverage, taxonomy v1 approved |
 | **W3** (Dec 3–9) Clusters, patterns, scoring | WP4 classification (G3); WP6 (G4); WP7 (G5); WP8; Taxonomy/Clusters/Geo/Journeys UI pages | Cluster families, pattern definitions, score dimensions and evidence examples reviewed |
-| **W4** (Dec 10–16, buffer to Dec 18) Cards, retrieval, batch, handover | WP10 (G6); WP9 (G7); WP11 complete (G8); WP12 overnight mode, validation report, runbook; G9 if O1 = per day; demo | End-to-end demo; card review; Phase 1 acceptance |
+| **W4** (Dec 10–16, buffer to Dec 18) Cards, retrieval, batch, handover | WP10 (G6); WP9 (G7); WP11 complete (G8); WP12 overnight mode, validation report, runbook; G9, G10; demo | End-to-end demo; card review; Phase 1 acceptance |
 
 Parallel lanes for agents:
 - **Data:** WP0, WP1, WP2, WP12 orchestration.
@@ -519,4 +568,5 @@ Parallel lanes for agents:
 | 2026-11-18 | Sample is representative; `previous_session_id` is available; structured location will be supplied; city-level aggregates and redacted quotes OK under CPNI; no `head_intent` list | User |
 | 2026-11-18 | SQLite as POC store with portable SQL; raw landing as gzipped files + offset index | User request; payload size measurement |
 | 2026-11-18 | Separate score dimensions; composite is provisional until approved | Design baseline |
-| 2026-11-18 | Default episode = need within session; default volume reading = 100K total (O1, O2 still open) | This plan |
+| 2026-11-18 | Volume = 100K sessions total, ~7 traces each; no customer ID, so linkage via `previous_session_id` only; location = service location; LLM allowed, minimal use, verified | User (A1, A3–A5) |
+| 2026-11-18 | Three-layer episode model (session / episode = need within a session / need journey across a thread); LLM policy U1–U4 with grounding and agreement checks | Proposed and adopted (A2, A5) |
