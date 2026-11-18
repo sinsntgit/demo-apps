@@ -19,7 +19,7 @@ UNKNOWN = "UNKNOWN"
 class Taxonomy:
     def __init__(self, path=None):
         path = path or (TAXONOMY_DIR / "taxonomy_v0.yaml")
-        self.doc = yaml.safe_load(open(path))
+        self.doc = yaml.safe_load(open(path, encoding="utf-8"))
         self.version = self.doc["version"]
         self.nodes, self.intents = [], []
         for d in self.doc["domains"]:

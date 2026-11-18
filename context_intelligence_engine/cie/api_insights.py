@@ -209,7 +209,7 @@ def ask(con, p):
 
 def validation(con, p):
     f = REPORTS / "validation.json"
-    return json.load(open(f)) if f.exists() else {"error": "run python -m cie.validate"}
+    return json.load(open(f, encoding="utf-8")) if f.exists() else {"error": "run python -m cie.validate"}
 
 
 def llm_status(con, p):

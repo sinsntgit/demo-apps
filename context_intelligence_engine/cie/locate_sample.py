@@ -13,7 +13,7 @@ ZIP3 = {"FL": "327", "TX": "770", "GA": "303", "AZ": "850", "NY": "100", "IL": "
 def run(src=SAMPLE, dst=SAMPLE_LOCATED):
     dst.parent.mkdir(parents=True, exist_ok=True)
     n = 0
-    with open(src) as f, open(dst, "w") as out:
+    with open(src, encoding="utf-8") as f, open(dst, "w", encoding="utf-8") as out:
         for line in f:
             if not line.strip():
                 continue

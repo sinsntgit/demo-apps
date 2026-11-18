@@ -8,15 +8,16 @@ Later runs: start the UI straight away on the existing database (reviews are kep
   python run_all.py --rebuild --reset  # rebuild from scratch, dropping review history
   python run_all.py --regenerate       # also regenerate the synthetic file (same seed = same data)
 """
-import argparse, subprocess, sys
+import argparse, os, subprocess, sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+ENV = {**os.environ, "PYTHONUTF8": "1"}          # UTF-8 everywhere (Windows defaults to cp1252)
 
 
 def step(title, args):
     print(f"\n=== {title} ===", flush=True)
-    r = subprocess.run([sys.executable, "-m", *args], cwd=ROOT)
+    r = subprocess.run([sys.executable, "-m", *args], cwd=ROOT, env=ENV)
     if r.returncode:
         sys.exit(f"step failed: {title} (exit {r.returncode})")
 
@@ -46,7 +47,7 @@ def main():
         step("Building the pipeline (about 5 minutes for 100K sessions; longer on Windows)", args)
         step("Validating", ["cie.validate"])
     print(f"\n=== Starting the UI: open http://127.0.0.1:{a.port}  (Ctrl+C to stop) ===", flush=True)
-    subprocess.run([sys.executable, "-m", "cie.server", "--port", str(a.port)], cwd=ROOT)
+    subprocess.run([sys.executable, "-m", "cie.server", "--port", str(a.port)], cwd=ROOT, env=ENV)
 
 
 if __name__ == "__main__":

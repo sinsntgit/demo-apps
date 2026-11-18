@@ -41,7 +41,7 @@ class Retriever:
         self.model = pickle.load(open(MODELS / "need.pkl", "rb")) if (MODELS / "need.pkl").exists() else None
         if self.model and (MODELS / "episode_vectors.npy").exists():
             self.V = np.load(MODELS / "episode_vectors.npy").astype(np.float32)
-            self.ids = json.load(open(MODELS / "episode_ids.json"))
+            self.ids = json.load(open(MODELS / "episode_ids.json", encoding="utf-8"))
             self.pos = {e: i for i, e in enumerate(self.ids)}
         else:
             self.V, self.ids, self.pos = None, [], {}

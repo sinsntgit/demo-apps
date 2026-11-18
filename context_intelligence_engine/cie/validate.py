@@ -42,7 +42,7 @@ def wilson(x, n, z=1.96):
 
 
 def load_gt():
-    return [json.loads(l) for l in gzip.open(GT, "rt")] if GT.exists() else []
+    return [json.loads(l) for l in gzip.open(GT, "rt", encoding="utf-8")] if GT.exists() else []
 
 
 # ------------------------------------------------------------------ gates
@@ -191,7 +191,7 @@ def g4(con, gt):
 def g5(con):
     if not META.exists():
         return None
-    meta = json.load(open(META))
+    meta = json.load(open(META, encoding="utf-8"))
     keys = {r[0]: r for r in con.execute("SELECT pattern_key, kind, subject, dim_value, period, extra FROM pattern_master")}
     geo = [(r[0], r[1]) for r in con.execute("SELECT dim_value, subject FROM pattern_master WHERE kind='geo_mix'")]
     planted = [(c, i, w0, w1) for c, i, m, w0, w1 in meta["planted"]]
@@ -347,7 +347,7 @@ def g10(con):
 
 
 def real_gold(con, tax):
-    gold = [json.loads(l) for l in open(GOLD)] if GOLD.exists() else []
+    gold = [json.loads(l) for l in open(GOLD, encoding="utf-8")] if GOLD.exists() else []
     gold = [g for g in gold if g.get("session_id") and con.execute("SELECT 1 FROM conversation_session WHERE session_id=?", (g["session_id"],)).fetchone()]
     if not gold:
         return None
@@ -397,14 +397,14 @@ def run(db=DB_PATH):
     rg = real_gold(con, tax)
     if rg: G["real_sample_gold_draft"] = rg
     G["governance"] = {"pipeline_modules_reading_truth": [p.name for p in (ROOT / "cie").glob("*.py") if p.name not in ("validate.py", "fixtures.py", "synth.py", "config.py")
-                                                         and re.search(r"FIXTURES_TRUTH|GT_PATH|ground_truth|real_gold", p.read_text())]}
+                                                         and re.search(r"FIXTURES_TRUTH|GT_PATH|ground_truth|real_gold", p.read_text(encoding="utf-8"))]}
     G["governance"]["pass"] = not G["governance"]["pipeline_modules_reading_truth"]
     G["governance"]["summary"] = "pipeline never reads ground truth or gold files" if G["governance"]["pass"] else "VIOLATION"
     R = {"versions": VERSIONS, "generated_seconds": round(time.time() - t0, 1), "gates": G,
          "statement": "Synthetic gates prove pipeline capability and statistical behaviour on a generated population with known truth. They do not prove accuracy on real Verizon conversations; the real-sample gold set (draft, needs SME review) is the only real-language evidence."}
     REPORTS.mkdir(exist_ok=True)
-    json.dump(R, open(REPORTS / "validation.json", "w"), indent=1, default=str)
-    (REPORTS / "validation.md").write_text(render_md(R))
+    json.dump(R, open(REPORTS / "validation.json", "w", encoding="utf-8"), indent=1, default=str)
+    (REPORTS / "validation.md").write_text(render_md(R), encoding="utf-8")
     return R
 
 

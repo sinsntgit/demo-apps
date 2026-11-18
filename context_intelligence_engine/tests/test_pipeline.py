@@ -5,7 +5,7 @@ from cie.config import FIXTURES_TRUTH, ROOT
 
 def test_fixtures_end_to_end(built_db):
     con = sqlite3.connect(built_db)
-    truth = json.load(open(FIXTURES_TRUTH))["sessions"]
+    truth = json.load(open(FIXTURES_TRUTH, encoding="utf-8"))["sessions"]
     omap = {"resolved": "resolved_proxy", "escalated": "escalated", "abandoned": "abandoned"}
     for t in truth:
         sid = t["session_id"]
@@ -35,7 +35,7 @@ def test_every_catalogue_signal_type_is_exercised(built_db):
 
 def test_pipeline_never_reads_ground_truth():
     offenders = [p.name for p in (ROOT / "cie").glob("*.py") if p.name not in ("validate.py", "fixtures.py", "synth.py", "config.py")
-                 and re.search(r"FIXTURES_TRUTH|GT_PATH|ground_truth|real_gold", p.read_text())]
+                 and re.search(r"FIXTURES_TRUTH|GT_PATH|ground_truth|real_gold", p.read_text(encoding="utf-8"))]
     assert not offenders, offenders
 
 

@@ -360,7 +360,7 @@ def generate(n_sessions=100_000, seed=7, out=SYNTH_PATH, gt_out=GT_PATH, procs=4
     per, n_threads = 2000, int(n_sessions / 1.25 * 1.1)
     jobs = [(seed, k, min(per, n_threads - k)) for k in range(0, n_threads, per)]
     written = traces = 0
-    with gzip.open(out, "wt", compresslevel=3) as f, gzip.open(gt_out, "wt", compresslevel=3) as g, mp.Pool(procs) as pool:
+    with gzip.open(out, "wt", compresslevel=3, encoding="utf-8") as f, gzip.open(gt_out, "wt", compresslevel=3, encoding="utf-8") as g, mp.Pool(procs) as pool:
         for lines, gts in pool.imap(_worker, jobs):
             for line, gt in zip(lines, gts):
                 if written >= n_sessions:
@@ -370,7 +370,7 @@ def generate(n_sessions=100_000, seed=7, out=SYNTH_PATH, gt_out=GT_PATH, procs=4
                 break
     meta = {"generator_version": GEN_VERSION, "seed": seed, "sessions": written, "traces": traces, "mean_traces": round(traces / max(written, 1), 3),
             "planted": PLANTED, "sequences": SEQUENCES, "weeks": N_WEEKS, "t0": str(T0), "seconds": round(time.time() - t0, 1)}
-    json.dump(meta, open(DATA / "synthetic_meta.json", "w"), indent=1)
+    json.dump(meta, open(DATA / "synthetic_meta.json", "w", encoding="utf-8"), indent=1)
     print(f"generated {written:,} sessions / {traces:,} traces (mean {traces / written:.2f}) in {time.time() - t0:.0f}s -> {out}")
     return meta
 

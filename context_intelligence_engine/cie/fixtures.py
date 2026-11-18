@@ -315,11 +315,11 @@ def build():
 def write():
     recs, truths = build()
     FIXTURES.parent.mkdir(parents=True, exist_ok=True)
-    with open(FIXTURES, "w") as f:
+    with open(FIXTURES, "w", encoding="utf-8") as f:
         for r in recs:
             f.write(json.dumps(r) + "\n")
     json.dump({"note": "Truth for scenario fixtures. The pipeline never reads this file.", "version": VERSIONS["fixtures"],
-               "sessions": truths}, open(FIXTURES_TRUTH, "w"), indent=1)
+               "sessions": truths}, open(FIXTURES_TRUTH, "w", encoding="utf-8"), indent=1)
     n_tr = sum(t["n_traces"] for t in truths)
     print(f"fixtures: {len(recs)} sessions, {n_tr} traces (mean {n_tr / len(recs):.1f}) -> {FIXTURES}")
 

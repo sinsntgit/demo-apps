@@ -48,7 +48,7 @@ KEYS = ["primary", "secondary", "ambiguous", "handoff", "asked_human", "auth_fai
 if __name__ == "__main__":
     db = sys.argv[1] if len(sys.argv) > 1 else "data/cie.sqlite"
     con = sqlite3.connect(db)
-    with open("tests/gold/real_gold.jsonl", "w") as f:
+    with open("tests/gold/real_gold.jsonl", "w", encoding="utf-8") as f:
         for row in G:
             ext = row[0]
             sid = con.execute("SELECT session_id FROM conversation_session WHERE external_id LIKE ?", (ext + "%",)).fetchone()

@@ -165,7 +165,7 @@ def need_family(con, run_id, tax, stats):
     MODELS.mkdir(parents=True, exist_ok=True)
     pickle.dump({"vec": vec, "svd": svd, "centroids": cent, "ids": ids}, open(MODELS / "need.pkl", "wb"))
     np.save(MODELS / "episode_vectors.npy", X.astype(np.float16))
-    json.dump([r["episode_id"] for r in rows], open(MODELS / "episode_ids.json", "w"))
+    json.dump([r["episode_id"] for r in rows], open(MODELS / "episode_ids.json", "w", encoding="utf-8"))
     stats["need"] = {"episodes": len(rows), "k": k, "silhouette_by_k": sil, "stable_share": float((stab >= MIN_STABILITY).mean()),
                      "mean_stability": float(stab.mean())}
     discover_l4(con, run_id, rows, X, T, vec, tax, stats)

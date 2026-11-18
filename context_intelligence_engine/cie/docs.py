@@ -153,10 +153,10 @@ def data_dictionary():
 def main():
     DOCS.mkdir(exist_ok=True)
     if SAMPLE.exists():
-        (DOCS / "W1_source_profile.md").write_text(profile())
-    (DOCS / "signal_catalogue.md").write_text(signal_catalogue())
-    (DOCS / "taxonomy_v0.md").write_text(taxonomy_doc())
-    (DOCS / "data_dictionary.md").write_text(data_dictionary())
+        (DOCS / "W1_source_profile.md").write_text(profile(), encoding="utf-8")
+    (DOCS / "signal_catalogue.md").write_text(signal_catalogue(), encoding="utf-8")
+    (DOCS / "taxonomy_v0.md").write_text(taxonomy_doc(), encoding="utf-8")
+    (DOCS / "data_dictionary.md").write_text(data_dictionary(), encoding="utf-8")
     print("docs written to", DOCS)
 
 
