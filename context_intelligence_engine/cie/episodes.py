@@ -136,7 +136,9 @@ def run(con, tax=None):
             con.execute(f"DELETE FROM {tb}")
         sids = [r[0] for r in con.execute("SELECT session_id FROM conversation_session ORDER BY created_at")]
         n_ep = 0
-        for sid in sids:
+        for k, sid in enumerate(sids, 1):
+            if k % 20000 == 0:
+                print(f"  episodes: {k:,} of {len(sids):,} sessions", flush=True)
             turns = con.execute("SELECT * FROM conversation_turn WHERE session_id=? ORDER BY seq", (sid,)).fetchall()
             ti = con.execute("SELECT * FROM turn_intent WHERE session_id=?", (sid,)).fetchall()
             tools = con.execute("SELECT * FROM tool_call WHERE session_id=? ORDER BY seq", (sid,)).fetchall()

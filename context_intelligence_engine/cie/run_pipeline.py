@@ -88,6 +88,7 @@ def main(argv=None):
         todo = STAGES[1:]
     for s in todo:
         ts = time.time()
+        print(f"... {s} started", flush=True)
         res = stage_fn(s, con, tax)()
         print(f"{s:9s} {time.time() - ts:6.1f}s {json.dumps(res, default=str)[:300]}")
     print(f"done in {time.time() - t0:.1f}s -> {a.db}")

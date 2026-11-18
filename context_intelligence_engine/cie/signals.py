@@ -162,7 +162,9 @@ def run(con, tax=None):
             con.execute(f"DELETE FROM {tb}")
         n_sig = 0
         sids = [r[0] for r in con.execute("SELECT session_id FROM conversation_session")]
-        for sid in sids:
+        for k, sid in enumerate(sids, 1):
+            if k % 20000 == 0:
+                print(f"  signals: {k:,} of {len(sids):,} sessions", flush=True)
             sigs, ti, si = process_session(con, tax, sid)
             con.executemany("INSERT INTO session_signal(session_id,seq,turn_no,trace_id,family,category,type,value,text,confidence,method,rule_version,ts,is_synthetic) "
                             "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)", sigs)
