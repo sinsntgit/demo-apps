@@ -245,7 +245,8 @@ def normalise(rec, source, counter):
                    customer_key=None, lang=lang, n_traces=len(traces), n_turns=len(turns), n_user_utterances=n_user,
                    first_turn_no=turns[0][1] if turns else None, auth_state=auth, journey_label=journey,
                    city=loc["city"], state=loc["state"], region=loc["region"], market=loc["market"], zip3=loc["zip3"],
-                   geo_source=loc["geo_source"], location_type=LOCATION_TYPE_DEFAULT if loc["geo_source"] != "none" else None)
+                   geo_source=loc["geo_source"], location_type=LOCATION_TYPE_DEFAULT if loc["geo_source"] != "none" else None,
+                   split=meta.get("split"))
     evals, verdicts = explode_metrics(rec.get("metrics"), "session", sid, sid)
     for t in traces:
         tid = t.get("trace_id") or t.get("id")
@@ -286,7 +287,8 @@ def ingest_file(con, path, source):
                     con.execute("INSERT INTO ingest_reject VALUES(?,?,?,?,?)", (run_id, str(path), line_no, repr(e)[:300], raw[:200].decode("utf8", "replace")))
                     n_bad += 1; offset += blen; continue
                 sid = s["session_id"]
-                _delete_session(con, sid)
+                if con.execute("SELECT 1 FROM raw_trace_session WHERE session_id=?", (sid,)).fetchone():
+                    _delete_session(con, sid)                      # re-ingest: replace this session's rows
                 s["run_id"] = run_id
                 con.execute(f"INSERT OR REPLACE INTO conversation_session({','.join(s)}) VALUES({','.join('?' * len(s))})", tuple(s.values()))
                 con.executemany("INSERT INTO conversation_turn VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)", turns)
@@ -299,6 +301,8 @@ def ingest_file(con, path, source):
                 con.execute("INSERT OR REPLACE INTO raw_trace_session VALUES(?,?,?,?,?,?,?,?,?)",
                             (sid, source, str(landed.relative_to(LANDING.parent)), line_no, offset, blen, hashlib.sha256(raw).hexdigest(), _now(), run_id))
                 n_ok += 1; n_turns += len(turns); offset += blen
+                if n_ok % 20000 == 0:
+                    con.commit(); print(f"  ingested {n_ok:,} sessions", flush=True)
         stats.update(file=str(path.name), sessions=n_ok, turns=n_turns, rejected=n_bad, pii_scrubbed=counter[0])
     resolve_threads(con)
     return stats

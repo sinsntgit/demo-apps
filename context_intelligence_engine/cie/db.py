@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS conversation_session(
   customer_key TEXT, lang TEXT, n_traces INTEGER, n_turns INTEGER, n_user_utterances INTEGER,
   first_turn_no INTEGER, auth_state TEXT, journey_label TEXT,
   city TEXT, state TEXT, region TEXT, market TEXT, zip3 TEXT, geo_source TEXT, location_type TEXT,
-  outcome TEXT, outcome_basis TEXT, run_id INTEGER);
+  outcome TEXT, outcome_basis TEXT, split TEXT, run_id INTEGER);
 CREATE INDEX IF NOT EXISTS ix_cs_thread ON conversation_session(thread_id, created_at);
 CREATE INDEX IF NOT EXISTS ix_cs_prev ON conversation_session(previous_session_id);
 CREATE INDEX IF NOT EXISTS ix_cs_city ON conversation_session(city);
@@ -50,6 +50,7 @@ CREATE INDEX IF NOT EXISTS ix_ct_sess ON conversation_trace(session_id);
 CREATE TABLE IF NOT EXISTS trace_span(
   span_id TEXT, trace_id TEXT, session_id TEXT, parent_id TEXT, depth INTEGER, type TEXT, name TEXT, step_number TEXT);
 CREATE INDEX IF NOT EXISTS ix_sp_trace ON trace_span(trace_id);
+CREATE INDEX IF NOT EXISTS ix_sp_sess ON trace_span(session_id);
 CREATE TABLE IF NOT EXISTS tool_call(
   session_id TEXT, seq INTEGER, trace_id TEXT, tool TEXT, agent_role TEXT, intent_name TEXT, query TEXT,
   requested_operator INTEGER, failed INTEGER, args TEXT);
@@ -62,6 +63,7 @@ CREATE TABLE IF NOT EXISTS agent_evaluation(
 CREATE INDEX IF NOT EXISTS ix_ev_sess ON agent_evaluation(session_id, canonical_metric);
 CREATE TABLE IF NOT EXISTS policy_verdict(
   session_id TEXT, journey TEXT, policy_id TEXT, verdict TEXT, severity TEXT, policy_type TEXT, evidence TEXT, reason TEXT);
+CREATE INDEX IF NOT EXISTS ix_pv_sess ON policy_verdict(session_id);
 
 -- taxonomy ---------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS dim_intent(
@@ -109,13 +111,57 @@ CREATE INDEX IF NOT EXISTS ix_fact ON fact(scope_type, scope_id, attribute, vali
 -- geography --------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS dim_geography(city TEXT PRIMARY KEY, state TEXT, region TEXT, market TEXT, lat REAL, lon REAL);
 
+
+-- clusters (W3) ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS cluster_master(
+  cluster_id INTEGER PRIMARY KEY, stable_id INTEGER, family TEXT, version INTEGER, label TEXT, status TEXT DEFAULT 'draft',
+  size INTEGER, sessions INTEGER, top_terms TEXT, top_intents TEXT, top_signals TEXT, profile TEXT, stability REAL, silhouette REAL,
+  esc_rate REAL, abandon_rate REAL, published INTEGER, centroid BLOB, run_id INTEGER);
+CREATE TABLE IF NOT EXISTS session_cluster_membership(
+  object_type TEXT, object_id TEXT, session_id TEXT, cluster_id INTEGER, family TEXT, similarity REAL, run_id INTEGER);
+CREATE INDEX IF NOT EXISTS ix_scm_c ON session_cluster_membership(cluster_id);
+CREATE INDEX IF NOT EXISTS ix_scm_s ON session_cluster_membership(session_id);
+CREATE TABLE IF NOT EXISTS taxonomy_candidate(
+  candidate_id TEXT PRIMARY KEY, parent_intent TEXT, kind TEXT, label TEXT, top_terms TEXT, size INTEGER, examples TEXT,
+  proposed_by TEXT, status TEXT DEFAULT 'draft', run_id INTEGER);
+
+-- patterns / scoring / cards / facts (W3-W4) -------------------------------
+CREATE TABLE IF NOT EXISTS agg_daily_intent(
+  day TEXT, week TEXT, intent_id TEXT, city TEXT, region TEXT, segment TEXT, outcome TEXT, source TEXT,
+  sessions INTEGER, opp INTEGER, willing INTEGER, repeat7 INTEGER);
+CREATE INDEX IF NOT EXISTS ix_adi ON agg_daily_intent(intent_id, city);
+CREATE TABLE IF NOT EXISTS pattern_master(
+  pattern_id INTEGER PRIMARY KEY AUTOINCREMENT, pattern_key TEXT, kind TEXT, family TEXT, subject_type TEXT, subject TEXT,
+  subject_label TEXT, dim_type TEXT, dim_value TEXT, metric TEXT, period TEXT, support INTEGER, denominator INTEGER,
+  rate REAL, baseline REAL, lift REAL, lift_shrunk REAL, ci_lo REAL, ci_hi REAL, pval REAL, qval REAL,
+  trend REAL, recent_rate REAL, prior_rate REAL, coverage REAL, extra TEXT, version TEXT, run_id INTEGER);
+CREATE INDEX IF NOT EXISTS ix_pm_key ON pattern_master(pattern_key);
+CREATE TABLE IF NOT EXISTS pattern_score(pattern_id INTEGER, dimension TEXT, value REAL, method TEXT, scoring_version TEXT);
+CREATE INDEX IF NOT EXISTS ix_ps ON pattern_score(pattern_id);
+CREATE TABLE IF NOT EXISTS evidence_card(
+  card_id INTEGER PRIMARY KEY AUTOINCREMENT, pattern_key TEXT, pattern_id INTEGER, version INTEGER, family TEXT, kind TEXT,
+  title TEXT, observation TEXT, population TEXT, period TEXT, scope TEXT, trend TEXT, confidence TEXT, hypothesis TEXT,
+  action TEXT, kpi TEXT, caveats TEXT, scores TEXT, composite REAL, metrics TEXT, data_origin TEXT, governance TEXT,
+  status TEXT DEFAULT 'draft', reviewer TEXT, review_note TEXT, reviewed_at TEXT,
+  valid_from TEXT, valid_to TEXT, superseded_by INTEGER, run_id INTEGER);
+CREATE INDEX IF NOT EXISTS ix_ec_key ON evidence_card(pattern_key, valid_to);
+CREATE TABLE IF NOT EXISTS evidence_ref(card_id INTEGER, session_id TEXT, seq INTEGER, turn_no INTEGER, trace_id TEXT, quote TEXT, source TEXT);
+CREATE INDEX IF NOT EXISTS ix_er ON evidence_ref(card_id);
+CREATE TABLE IF NOT EXISTS llm_cache(key TEXT PRIMARY KEY, use TEXT, model TEXT, prompt_version TEXT, request TEXT, response TEXT,
+  input_tokens INTEGER, output_tokens INTEGER, cache_read INTEGER, at TEXT);
+CREATE TABLE IF NOT EXISTS llm_label(object_type TEXT, object_id TEXT, use TEXT, label TEXT, evidence TEXT, grounded INTEGER,
+  agrees_with_rules INTEGER, status TEXT, model TEXT, prompt_version TEXT, at TEXT);
+CREATE TABLE IF NOT EXISTS processed_day(source TEXT, day TEXT, file TEXT, sha256 TEXT, sessions INTEGER, finished_at TEXT, PRIMARY KEY(source, file));
+CREATE TABLE IF NOT EXISTS search_doc(doc_id INTEGER PRIMARY KEY, doc_type TEXT, ref_id TEXT, session_id TEXT, text TEXT);
 CREATE TABLE IF NOT EXISTS kv(k TEXT PRIMARY KEY, v TEXT);
 """
 
 # tables a full rebuild clears (dimension/governance tables are kept)
 DERIVED = ["raw_trace_session", "conversation_session", "conversation_turn", "conversation_trace", "trace_span",
            "tool_call", "agent_evaluation", "policy_verdict", "session_intent", "turn_intent", "session_signal",
-           "session_episode", "need_journey", "session_feature", "fact", "data_provenance", "ingest_reject"]
+           "session_episode", "need_journey", "session_feature", "fact", "data_provenance", "ingest_reject",
+           "session_cluster_membership", "taxonomy_candidate", "agg_daily_intent", "pattern_master", "pattern_score",
+           "evidence_ref", "llm_label", "processed_day", "search_doc"]
 
 
 def connect(path=None, readonly=False):

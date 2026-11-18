@@ -111,7 +111,7 @@ class Taxonomy:
             return [(UNKNOWN, "primary", 0.0, "none", "")]
         substantive = {k: v for k, v in score.items() if k != REP_INTENT}
         pool = substantive or score
-        ranked = sorted(pool, key=lambda k: (-best[k][0], first[k], -score[k], k))   # ties -> first stated need
+        ranked = sorted(pool, key=lambda k: (-best[k][0], first[k], FAMILY_RANK.get(self.family(k), 5), -score[k], k))   # ties -> first stated need
         primary = ranked[0]
         # within the same L2, the customer's own words pick the specific L3 over the platform's routing label
         if best[primary][1].startswith("platform"):

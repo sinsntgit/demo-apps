@@ -8,3 +8,5 @@ data/*.npy
 data/*.pkl
 __pycache__/
 .pytest_cache/
+data/*.json
+data/models/

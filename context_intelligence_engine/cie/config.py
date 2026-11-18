@@ -34,7 +34,8 @@ LOCATION_PATHS = [
 LOCATION_TYPE_DEFAULT = "service"
 
 # ---- governance ---------------------------------------------------------
-K_ANON = 30
+K_ANON = 30           # minimum sessions in any published cell (population)
+MIN_SUPPORT = 10      # minimum supporting sessions behind a pattern
 FDR_Q = 0.01
 MIN_LIFT = 1.30
 MIN_STABILITY = 0.60
@@ -71,3 +72,31 @@ FRICTION_WEIGHTS = {"escalation_request": 1.0, "auth_failure": 1.0, "dtmf_operat
                     "tool_failure": .8, "no_input": .5, "confusion": .5, "frustration": .8, "out_of_scope": .3}
 FRICTION_SCALE = 4.0
 NEW_NEED_CUE = r"^\s*(also|and also|one more thing|another (question|thing)|while i have you|oh and)\b"
+
+# ---- clustering / discovery (W3) -----------------------------------------
+MODELS = DATA / "models"
+NEED_K = (30, 36, 42)
+RISK_K = (4, 5, 6)
+VALUE_K = (4, 5, 6)
+GEO_K = (4, 5, 6)
+NOVELTY_COS = 0.35
+L4_MIN_EPISODES = 300
+CLUSTER_SEED = 11
+SVD_DIM = 96
+N_BOOT = 4
+
+# ---- patterns / scoring / cards (W3-W4) -----------------------------------
+RECENT_WEEKS, PRIOR_WEEKS = 2, 6
+EMERGING_MIN_RATIO = 1.8
+REPEAT_WINDOW_DAYS = 7
+FAMILY_RELEVANCE = {"risk": .9, "buying": .85, "value": .8, "friction": .7, "need": .55, "geo": .6, "temporal": .75}
+SCORE_WEIGHTS = {"prevalence": .15, "recurrence": .10, "trend": .15, "evidence_strength": .25, "business_relevance": .20, "geo_concentration": .15}
+SCORING_VERSION = "1.0.0-provisional"
+MAX_CARDS = 60
+MAX_CARDS_PER_SUBJECT = 3
+# segments are built from these intents' own signals -> an intent x its defining segment is definitional, not an insight
+SEGMENT_DEFINES = {"Household expander": ("ADDSVC.LINE.ADD",), "Upgrade intender": ("DEVICE.UPGRADE", "DEVICE.REPLACE"),
+                   "Traveler": ("ADDSVC.TRAVEL",), "Connectivity-dependent": ("ADDSVC.CONNECT", "SERVICE.CONNECTIVITY"),
+                   "Churn-risk": ("RETENTION.",), "Deal-seeker": ("PLAN.CHANGE", "PLAN.DISCOUNT"),
+                   "Billing-focused": ("BILL.", "PAY.", "REFUND."), "Access-blocked": ("ACCT.",)}
+CARD_KIND_CAPS = {"segment_mix": 5, "risk_rate:down": 2, "risk_rate:up": 8, "emerging": 6, "sequence": 6, "opportunity": 4}

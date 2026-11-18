@@ -15,6 +15,7 @@ def main(argv=None):
     ap.add_argument("--rebuild", action="store_true", help="drop derived tables and load sample + fixtures")
     ap.add_argument("--ingest", action="append", default=[], help="path:source (repeatable)")
     ap.add_argument("--db", default=str(DB_PATH))
+    ap.add_argument("--with-fixtures", action="store_true", help="also load the 77 scripted fixtures (tests/demo only)")
     a = ap.parse_args(argv)
     con = db.connect(a.db)
     db.init(con)
@@ -31,7 +32,11 @@ def main(argv=None):
             inputs.insert(0, f"{SAMPLE_LOCATED}:verizon_sample")
         else:
             print(f"! real sample not found at {SAMPLE} (git-ignored); continuing with fixtures only")
-        inputs.append(f"{FIXTURES}:fixtures")
+        from .synth import SYNTH_PATH
+        if SYNTH_PATH.exists():
+            inputs.append(f"{SYNTH_PATH}:synthetic")
+        if a.with_fixtures or not SYNTH_PATH.exists():
+            inputs.append(f"{FIXTURES}:fixtures")
     for spec in inputs:
         path, source = spec.rsplit(":", 1)
         print("ingest", source, json.dumps(ingest.ingest_file(con, path, source)))
