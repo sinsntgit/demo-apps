@@ -1,7 +1,10 @@
+# real or derived customer data: never commit
+sample/*.jsonl
+landing/
 data/*.sqlite*
 data/*.jsonl*
+data/*.json.gz
 data/*.npy
 data/*.pkl
 __pycache__/
 .pytest_cache/
-sample/*.jsonl

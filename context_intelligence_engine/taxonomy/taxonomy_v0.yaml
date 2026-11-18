@@ -1,0 +1,441 @@
+# Intent taxonomy v0 — DRAFT for SME review (AGENTS.md WP4).
+# L1 domain > L2 category > L3 specific intent. L4 variations are left for discovery (W2).
+# Stable IDs = the `code`. Never reuse a code for a different meaning; deprecate instead.
+#
+# Per L3 intent:
+#   family    : need | buying | value | risk | friction   (insight family the intent mainly feeds)
+#   platform  : regexes matched against the platform label  mandatory_set_intent_for_next_step.intent_name
+#               (and handle_out_of_scope.topic). Seen in the real sample unless marked (assumed).
+#               "pattern|0.60" marks a GENERIC routing label: lower confidence than the customer's own words.
+#   keywords  : regexes on redacted customer text + agent issue paraphrase (confidence 0.70)
+#   weak      : short IVR-style tokens ("billing", "payments") (confidence 0.50)
+# A turn can match several intents; classification picks the highest confidence, ties -> most specific.
+version: v0-draft
+status: draft
+owner: SME approver (TBD)
+domains:
+- code: BILL
+  name: Billing
+  categories:
+  - code: BILL.EXPLAIN
+    name: Bill explanation
+    intents:
+    - code: BILL.EXPLAIN.CHARGES
+      name: Explain charges / bill higher than expected
+      family: need
+      definition: Customer wants the charges on a bill explained, or asks why the bill changed.
+      include: ["why is my bill higher", "explain the charges", "what am I billed for"]
+      exclude: ["charge the customer says they did not authorise (BILL.CHARGE.FRAUD)", "explicit dispute (BILL.CHARGE.DISPUTE)"]
+      platform: ["bill_explain(?!_incorrect)", "bill_breakdown", "bill_problem_general|0.60", "billingIssues|0.60", "bill_plus_operator|0.60"]
+      keywords: ["(explain|understand|go over).{0,20}(bill|charges|statement)", "international (billing|charges)", "(charges|fees) on (my|the) bill", "(bill|statement|invoice).{0,25}(higher|went up|jumped|more than|different|increase)", "what am i (being )?(billed|charged) for", "question (about|on) my bill"]
+      weak: ["^\\W*(billing|bill|billing question|billing problems?|my bill)\\W*$"]
+      examples: ["I need help understanding my bill this month", "why is my bill higher than last month"]
+    - code: BILL.EXPLAIN.BALANCE
+      name: Balance / amount owed
+      family: need
+      definition: Customer asks for the current balance, amount due or previous bill amount.
+      include: ["what do I owe", "what is my balance", "what was my previous bill"]
+      exclude: ["asking to pay it (PAY.MAKE.ONE_TIME)"]
+      platform: ["BillingBalance", "RecentAccountActivity|0.60"]
+      keywords: ["(what('s| is| do i)|how much).{0,15}(owe|balance|due)", "(my|the) balance", "previous bill", "what('s| is) my bill", "is a payment due", "collection balance"]
+      weak: []
+      examples: ["What do I owe on this account?", "What's my bill?"]
+    - code: BILL.EXPLAIN.STATEMENT
+      name: Statement not received / copies
+      family: need
+      definition: Customer did not receive a bill or wants copies of statements.
+      include: ["did not receive my bill", "hard copies of statements"]
+      exclude: []
+      platform: ["bill_not_received"]
+      keywords: ["(didn'?t|did not|never|haven'?t) (get|receive|received).{0,20}(bill|statement)", "(hard|paper) cop(y|ies)", "copies of .{0,20}statements?"]
+      weak: []
+      examples: ["I did not receive my last four statements"]
+  - code: BILL.CHARGE
+    name: Unexpected or disputed charge
+    intents:
+    - code: BILL.CHARGE.INQUIRY
+      name: Unrecognised charge enquiry
+      family: need
+      definition: Customer sees a charge they do not recognise and asks what it is, without disputing it yet.
+      include: ["what is this charge", "unexpected charge", "review unexpected charge"]
+      exclude: ["customer says they did not authorise it (BILL.CHARGE.FRAUD)"]
+      platform: ["charge_inquiry"]
+      keywords: ["(unexpected|unrecogni[sz]ed|strange|weird|unknown) charge", "what is (this|that) charge", "charge (on|from) .{0,30}(account|card|bank)", "money (being )?taken"]
+      weak: []
+      examples: ["Review unexpected charge", "Why is money being taken off my card?"]
+    - code: BILL.CHARGE.DISPUTE
+      name: Disputed / incorrect charge
+      family: risk
+      definition: Customer states a charge or bill is wrong and wants it corrected or reversed.
+      include: ["disputing TravelPass charges", "overcharged", "incorrect bill"]
+      exclude: ["fraud / not my account activity (BILL.CHARGE.FRAUD)"]
+      platform: ["charge_dispute", "bill_explain_incorrect|0.60"]
+      keywords: ["disput(e|ing)", "overcharg", "(wrong|incorrect|double|duplicate) (charge|bill|amount)", "charged (me )?twice", "shouldn'?t (be|have been) charged", "billing error"]
+      weak: []
+      examples: ["customer disputing overcharged bill pending TravelPass adjustment"]
+    - code: BILL.CHARGE.FRAUD
+      name: Unauthorised activity / fraud
+      family: risk
+      definition: Customer reports a charge, line or device they did not authorise, or account activity that is not theirs.
+      include: ["I didn't authorize this", "not my phone", "fraud"]
+      exclude: []
+      platform: ["fraud", "unauthori"]
+      keywords: ["fraud", "unauthori[sz]ed", "(didn'?t|did not|never) (authori[sz]e|make|order|agree)", "not my (phone|line|device|account)", "someone (else )?(opened|used|charged)", "stolen identity|identity theft"]
+      weak: ["^\\W*fraud\\W*$"]
+      examples: ["There is an unrecognized charge on my bank account from Verizon and I did not authorize it"]
+  - code: BILL.DUEDATE
+    name: Due date
+    intents:
+    - code: BILL.DUEDATE.CHANGE
+      name: Confirm or change due date
+      family: need
+      definition: Customer asks when the bill is due or wants a different due date.
+      include: ["when is my bill due", "change my due date"]
+      exclude: ["cannot pay -> PAY.ARRANGE.EXTENSION"]
+      platform: ["due_date"]
+      keywords: ["due date", "when is (my|the) (bill|payment) due", "(change|move) (my|the) (due|billing) (date|cycle)", "not due until"]
+      weak: []
+      examples: ["I need to change my due date"]
+- code: PAY
+  name: Payments
+  categories:
+  - code: PAY.MAKE
+    name: Make a payment
+    intents:
+    - code: PAY.MAKE.ONE_TIME
+      name: Make a payment
+      family: need
+      definition: Customer wants to pay a bill now.
+      include: ["I want to make a payment"]
+      exclude: []
+      platform: ["make_payment", "payment_make"]
+      keywords: ["(make|making) a payment", "pay (my|the) bill", "want to pay", "(pay|payment) (with|by) (card|bank|check)"]
+      weak: ["^\\W*(payments?|make a payment|pay bill)\\W*$"]
+      examples: ["Yes, I want to make a payment for my personal account"]
+  - code: PAY.STATUS
+    name: Payment status
+    intents:
+    - code: PAY.STATUS.NOT_REFLECTED
+      name: Payment made but not reflected / service still off
+      family: need
+      definition: Customer paid but the payment is not showing or service has not been restored.
+      include: ["I paid my bill but my phone is still not on"]
+      exclude: []
+      platform: ["payment_status", "restore"]
+      keywords: ["(paid|made a payment|payment i made).{0,40}(still|not (showing|on|working|posted|reflected)|inactive|suspended)", "service is inactive", "payment (didn'?t|did not|hasn'?t) (go through|post|show)"]
+      weak: ["^\\W*(the )?payment i made\\W*$", "^\\W*a payment i made\\W*$"]
+      examples: ["I paid my bill but my phone is still not on and service is inactive"]
+    - code: PAY.STATUS.FAILED
+      name: Failed or declined payment
+      family: friction
+      definition: A payment attempt failed, was declined, or autopay did not run.
+      include: ["my card was declined"]
+      exclude: []
+      platform: ["payment_failed"]
+      keywords: ["(card|payment) (was |got )?(declined|rejected|failed)", "(payment|card) keeps (fail|declin)", "autopay (didn'?t|did not|failed)", "(can'?t|unable to) (make|process) (a |the )?payment (online|in the app)"]
+      weak: []
+      examples: ["my payment keeps failing in the app"]
+  - code: PAY.ARRANGE
+    name: Payment arrangement
+    intents:
+    - code: PAY.ARRANGE.EXTENSION
+      name: Extension / payment arrangement
+      family: risk
+      definition: Customer cannot pay in full or on time and asks for more time or a plan.
+      include: ["can I get an extension", "I'm past due"]
+      exclude: []
+      platform: ["payment_arrangement", "extension"]
+      keywords: ["extension", "payment (arrangement|plan)", "past due", "(can'?t|cannot|unable to) (pay|afford)", "pay (half|part|some) (now|of it)", "short (until|this month)", "behind on"]
+      weak: []
+      examples: ["I can't make my payment this month, can I get an extension"]
+- code: REFUND
+  name: Refunds and adjustments
+  categories:
+  - code: REFUND.REQUEST
+    name: Refund or credit
+    intents:
+    - code: REFUND.REQUEST.OVERPAYMENT
+      name: Refund of overpayment / credit balance
+      family: need
+      definition: Customer wants money back for an overpayment, credit balance or partial payment.
+      include: ["refund my credit balance", "overpayment of bills"]
+      exclude: ["dispute of a charge (BILL.CHARGE.DISPUTE)"]
+      platform: ["bill_refund", "refund"]
+      keywords: ["refund", "overpa(id|yment)", "credit balance", "money back", "paid (twice|too much)"]
+      weak: []
+      examples: ["I would like to have the credit balance refunded back to my bank account"]
+    - code: REFUND.REQUEST.CREDIT_INQUIRY
+      name: Credit / adjustment enquiry
+      family: need
+      definition: Customer asks about a credit, adjustment or promised credit on the account.
+      include: ["question about a credit", "where is my credit"]
+      exclude: []
+      platform: ["credit_inquiry", "adjustment"]
+      keywords: ["(question|asking) about (a|my|the) credit", "where is (my|the) credit", "(promised|supposed to get) (a )?credit", "(credit|bill|account) adjustment"]
+      weak: []
+      examples: ["question about a credit"]
+- code: ACCT
+  name: Account
+  categories:
+  - code: ACCT.ACCESS
+    name: Account access and authentication
+    intents:
+    - code: ACCT.ACCESS.PIN
+      name: Forgotten PIN / cannot log in
+      family: friction
+      definition: Customer cannot authenticate because they do not know the PIN or password.
+      include: ["I don't have the pin", "forgot my password"]
+      exclude: []
+      platform: ["account_access", "pin_reset", "password"]
+      keywords: ["(forgot|don'?t (know|have|remember)) (my |the )?(pin|password|passcode)", "(can'?t|cannot|unable to) (log ?in|sign in|access my account)", "reset (my )?(pin|password)", "locked out"]
+      weak: []
+      examples: ["I forgot my PIN and can't log in", "I don't have my PIN"]
+    - code: ACCT.ACCESS.VERIFY
+      name: Verification code problems
+      family: friction
+      definition: The one-time code / text verification did not arrive or failed.
+      include: ["the code never arrived"]
+      exclude: []
+      platform: []
+      keywords: ["code.{0,20}(never|didn'?t|did not) (arrive|come|came|work)", "send (it|the code|a code) to (my )?(new|another|different) (mobile |phone )?number", "(didn'?t|did not|never) (get|receive) (the|a|any) (code|text)", "verification (code|text)"]
+      weak: []
+      examples: ["the code you texted never arrived"]
+  - code: ACCT.LOOKUP
+    name: Account or number lookup
+    intents:
+    - code: ACCT.LOOKUP.NUMBER
+      name: Problem with phone number / account lookup
+      family: friction
+      definition: Customer's number cannot be found, belongs to someone else, or they call about another person's number.
+      include: ["problem with someone's phone number", "new mobile number"]
+      exclude: []
+      platform: ["number_lookup"]
+      keywords: ["(problem|issue) with (someone'?s|a|my|the) (phone )?number", "(new|different) (mobile |phone )?number", "number (is )?not found", "(wrong|someone else'?s) number"]
+      weak: []
+      examples: ["I'm calling about a problem with someone's phone number"]
+- code: PLAN
+  name: Products and plans
+  categories:
+  - code: PLAN.ENQUIRY
+    name: Plan enquiry
+    intents:
+    - code: PLAN.ENQUIRY.OPTIONS
+      name: Plan options / change plan
+      family: buying
+      definition: Customer asks what plans exist or wants to change plan (not mainly to save money).
+      include: ["which plan is best for me", "change my plan"]
+      exclude: ["mainly to reduce cost (PLAN.CHANGE.LOWER_COST)"]
+      platform: ["plan_change", "plan_add_change", "plan_inquiry"]
+      keywords: ["which plan", "plan options", "(change|switch|upgrade) (my )?plan", "(more|unlimited) data", "what plans", "premium unlimited"]
+      weak: ["^\\W*(my )?(mobile )?(phone )?plan\\W*$"]
+      examples: ["which plan is best for me"]
+    - code: PLAN.ENQUIRY.COMPARE
+      name: Plan / feature comparison
+      family: value
+      definition: Customer compares plans, features or offers, including competitors.
+      include: ["what's the difference between those two plans"]
+      exclude: []
+      platform: ["plan_compare"]
+      keywords: ["difference between", "compare", "versus|\\bvs\\b", "which (one )?is better", "worth (it|the extra)"]
+      weak: []
+      examples: ["what's the difference between those two"]
+  - code: PLAN.CHANGE
+    name: Plan cost
+    intents:
+    - code: PLAN.CHANGE.LOWER_COST
+      name: Lower my bill / cheaper plan
+      family: value
+      definition: Customer wants to reduce what they pay.
+      include: ["I want to lower my bill", "cheaper plan"]
+      exclude: ["asks only about promotions (PLAN.DISCOUNT.PROMO)"]
+      platform: ["bill_reduce"]
+      keywords: ["lower (my|the) bill", "(reduce|cut|lower) (my )?(bill|cost|payment)", "cheaper (plan|option)", "paying (too much|for more than)", "too expensive", "lower tier"]
+      weak: ["^\\W*lower my bill\\W*$"]
+      examples: ["I would like to know how I can lower my bill"]
+  - code: PLAN.DISCOUNT
+    name: Discounts and promotions
+    intents:
+    - code: PLAN.DISCOUNT.PROMO
+      name: Discount / promotion enquiry
+      family: value
+      definition: Customer asks which discounts, promotions or loyalty offers apply.
+      include: ["do you have any discounts", "veteran discount"]
+      exclude: []
+      platform: ["discount", "promo"]
+      keywords: ["discount", "promo(tion)?s?", "(any|got) (deals|offers)", "loyal(ty)? (customer|offer)", "(military|veteran|senior|student) (discount|pricing)"]
+      weak: []
+      examples: ["do you have any discounts or promos"]
+- code: ADDSVC
+  name: Additional services
+  categories:
+  - code: ADDSVC.LINE
+    name: Lines
+    intents:
+    - code: ADDSVC.LINE.ADD
+      name: Add a line
+      family: buying
+      definition: Customer wants to add a line or device for another person.
+      include: ["add a line for my daughter"]
+      exclude: []
+      platform: ["add_line", "new_line"]
+      keywords: ["add (a|an|another|one more|an extra|a new) (phone )?line", "(new|another|extra|additional) line", "add my (wife|husband|son|daughter|kids?|mom|dad|parents?)", "own phone", "joining our account"]
+      weak: []
+      examples: ["I want to add a line for my daughter"]
+  - code: ADDSVC.CONNECT
+    name: Hotspot and home internet
+    intents:
+    - code: ADDSVC.CONNECT.HOTSPOT_HOME
+      name: Hotspot / home internet
+      family: buying
+      definition: Customer needs a hotspot, tethering, or home internet / 5G Home / Fios service.
+      include: ["I need a hotspot for my laptop", "5G home internet"]
+      exclude: []
+      platform: ["hotspot", "home_internet", "fios"]
+      keywords: ["hot ?spot", "tether", "home internet", "5g home", "fios", "internet (at|for) (my )?(house|home)", "jetpack", "connection for my (computer|laptop|tablet)"]
+      weak: []
+      examples: ["I need a hotspot for my laptop"]
+  - code: ADDSVC.TRAVEL
+    name: Travel and international
+    intents:
+    - code: ADDSVC.TRAVEL.INTERNATIONAL
+      name: International travel / calling / TravelPass
+      family: buying
+      definition: Customer asks about using service abroad, TravelPass, roaming, or international rates.
+      include: ["I'm traveling to Mexico", "international rates"]
+      exclude: ["dispute of TravelPass charges is BILL.CHARGE.DISPUTE (travel becomes secondary)"]
+      platform: ["international", "travel", "roaming"]
+      keywords: ["travel ?pass", "roaming", "international (calling|plan|rates|data|travel)", "(abroad|overseas|out of the country)", "(travel(l?ing)?|trip|flying|heading|going) to (mexico|canada|europe|london|paris|cancun|japan|italy|spain|brazil|india|ireland)"]
+      weak: []
+      examples: ["I have a question regarding international billing and international rates"]
+- code: DEVICE
+  name: Devices
+  categories:
+  - code: DEVICE.UPGRADE
+    name: Device upgrade
+    intents:
+    - code: DEVICE.UPGRADE.ELIGIBILITY
+      name: Upgrade / new phone
+      family: buying
+      definition: Customer wants a new device, asks about upgrade eligibility or trade-in.
+      include: ["am I eligible for a new iPhone", "trade in my phone"]
+      exclude: ["replacement because broken/lost (DEVICE.REPLACE.DAMAGE_LOSS)"]
+      platform: ["upgrade", "trade_in"]
+      keywords: ["upgrade (my )?(phone|device)", "eligible for (an? )?(upgrade|new)", "trade[- ]?in", "new (iphone|galaxy|pixel|phone)", "latest (iphone|galaxy|pixel|samsung)", "newest (phone|handset|iphone)"]
+      weak: []
+      examples: ["I want to upgrade my phone"]
+  - code: DEVICE.REPLACE
+    name: Device replacement
+    intents:
+    - code: DEVICE.REPLACE.DAMAGE_LOSS
+      name: Broken, lost or stolen device
+      family: value
+      definition: Device is damaged, lost or stolen and the customer needs a replacement or insurance claim.
+      include: ["I cracked my screen", "my phone was stolen"]
+      exclude: []
+      platform: ["device_damage", "insurance", "lost_stolen"]
+      keywords: ["(cracked|broken|shattered|smashed|dead) (my |the )?(phone|screen|display)", "(phone|screen|display|device) (is |got |was )?(cracked|broken|shattered|smashed|stolen|lost|damaged)", "(lost|stole[n]?) (my )?phone", "insurance claim", "dropped my phone", "water damage", "replacement (phone|device)"]
+      weak: []
+      examples: ["I cracked my screen"]
+  - code: DEVICE.ORDER
+    name: Orders and returns
+    intents:
+    - code: DEVICE.ORDER.RETURN_STATUS
+      name: Order / return status
+      family: need
+      definition: Customer asks where an order is, or whether returned equipment was received.
+      include: ["where is my order", "I returned my equipment"]
+      exclude: []
+      platform: ["order_status", "return"]
+      keywords: ["where is my (order|package|phone)", "(returned|sent back) (my |the )?(equipment|phone|device|box|router)", "tracking (number|says)", "(never|didn'?t|did not) (receive|get) (my |the )?(package|order|phone)", "shipment"]
+      weak: []
+      examples: ["I returned my equipment and I'm still being charged"]
+- code: SERVICE
+  name: Service
+  categories:
+  - code: SERVICE.CONNECTIVITY
+    name: Connectivity and coverage
+    intents:
+    - code: SERVICE.CONNECTIVITY.COVERAGE
+      name: Coverage / cannot make or receive calls
+      family: need
+      definition: Poor signal, dropped calls, or inability to make or receive calls at a location.
+      include: ["I have no signal at my house", "calls keep dropping"]
+      exclude: ["area-wide outage (SERVICE.OUTAGE.DISRUPTION)"]
+      platform: ["cannot_make_receive_call", "coverage", "signal"]
+      keywords: ["no (signal|service|bars|reception)", "dead ?zone", "(calls?|call) (keep )?(drop|dropping|dropped)", "(bad|poor|weak|awful|terrible) (signal|reception|coverage)", "(can'?t|cannot) (make|receive|get) (calls|a signal)", "barely works"]
+      weak: []
+      examples: ["I have no signal at my house"]
+  - code: SERVICE.OUTAGE
+    name: Outage
+    intents:
+    - code: SERVICE.OUTAGE.DISRUPTION
+      name: Service outage / disruption
+      family: risk
+      definition: Service is down for the customer or their area.
+      include: ["is there an outage in my area", "my internet is down"]
+      exclude: []
+      platform: ["outage"]
+      keywords: ["outage", "service (is )?(out|down)", "(internet|wifi|service|everything|nothing) (is )?(down|works|working)", "lost (connection|service)", "offline"]
+      weak: []
+      examples: ["is there an outage in my area"]
+  - code: SERVICE.ACTIVATION
+    name: Activation
+    intents:
+    - code: SERVICE.ACTIVATION.NEW
+      name: Activate device / SIM
+      family: need
+      definition: Customer needs to activate a new device, SIM or line.
+      include: ["activate my new phone"]
+      exclude: []
+      platform: ["activation", "activate"]
+      keywords: ["activat(e|ing|ion) (my |a |the )?(new )?(phone|device|line|sim|iphone|service)", "activat(e|ion)", "(new )?sim (card)?", "esim", "set up my new phone"]
+      weak: []
+      examples: ["I need to activate my new phone"]
+- code: RETENTION
+  name: Retention
+  categories:
+  - code: RETENTION.CANCEL
+    name: Cancellation
+    intents:
+    - code: RETENTION.CANCEL.INTENT
+      name: Cancel service / switch carrier
+      family: risk
+      definition: Customer states they want to cancel, port out, or move to a competitor.
+      include: ["I want to cancel my service", "I'm switching to T-Mobile"]
+      exclude: ["cancelling an add-on feature only (PLAN.ENQUIRY.OPTIONS)"]
+      platform: ["cancel", "disconnect", "port_out"]
+      keywords: ["cancel (my )?(service|account|line|contract|verizon)", "switch(ing)? (to|over to) (t-?mobile|at&?t|another|a different|xfinity|spectrum)", "port (my )?number", "leav(e|ing) verizon", "(close|disconnect) (my )?(account|service|line)", "taking my business elsewhere", "done with (this|verizon)"]
+      weak: []
+      examples: ["I want to cancel my service"]
+- code: GENERAL
+  name: General enquiries
+  categories:
+  - code: GENERAL.INFO
+    name: General information
+    intents:
+    - code: GENERAL.INFO.HOURS
+      name: Hours / when agents are available
+      family: need
+      definition: Customer asks when customer service or a department is open.
+      include: ["when is customer service open"]
+      exclude: []
+      platform: []
+      keywords: ["(when|what time) (is|are|does) .{0,25}(open|available)", "(hours|departments?) open", "business hours"]
+      weak: []
+      examples: ["No. When is customer service open?"]
+- code: ESCALATION
+  name: Escalation
+  categories:
+  - code: ESCALATION.REP
+    name: Representative request
+    intents:
+    - code: ESCALATION.REP.REQUEST
+      name: Representative request with no stated need
+      family: friction
+      definition: Customer asks for a person and states no other need. Used as the primary intent only when nothing else is expressed; otherwise it is a friction signal.
+      include: ["representative please", "live agent"]
+      exclude: ["any session with another stated need (use that need; escalation becomes a signal)"]
+      platform: ["^Operator$"]
+      keywords: ["representative", "(live|real) (agent|person|human)", "(speak|talk) (to|with) (a |an |some)", "customer service agent", "operator", "supervisor"]
+      weak: ["^\\W*(no\\W+)?(an? )?(agent|customer service|someone|somebody|a person)( please)?\\W*$"]
+      examples: ["Representative, please."]

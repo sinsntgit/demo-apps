@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Context Intelligence Engine</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="title">Context Intelligence Engine<small>Phase 1 · traces-only · Week 1 build</small></div>
+  <nav id="nav">
+    <a href="#/overview" data-r="overview">Overview</a>
+    <a href="#/sessions" data-r="sessions">Session Explorer</a>
+    <a href="#/taxonomy" data-r="taxonomy">Taxonomy</a>
+    <a href="#/signals" data-r="signals">Signal Catalogue</a>
+    <a href="#/pipeline" data-r="pipeline">Pipeline</a>
+  </nav>
+  <div class="hdr-right">
+    <label class="small" for="src" style="opacity:.8">Data</label>
+    <select id="src" aria-label="Data source">
+      <option value="all">All sources</option>
+      <option value="verizon_sample">Real sample (36)</option>
+      <option value="fixtures">Scenario fixtures (synthetic)</option>
+    </select>
+    <button id="theme" title="Toggle light/dark theme" aria-label="Toggle theme">Theme</button>
+  </div>
+</header>
+<main id="app"><div class="empty">Loading…</div></main>
+<div id="tip" role="tooltip"></div>
+<script src="app.js"></script>
+</body>
+</html>

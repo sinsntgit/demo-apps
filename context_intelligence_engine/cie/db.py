@@ -1,96 +1,124 @@
-"""SQLite schema + connection helpers.
+"""Canonical session-centric schema (AGENTS.md §5). This file is the physical source of truth.
 
-SQLite is a sound fit for Phase-1 scale: 100K sessions x ~7 traces = ~700K turn rows (we store one
-normalised row per trace, not the raw 19 MB-per-36-session JSON), ~200K episodes, a few million
-signal rows. All hot paths are indexed; FTS5 provides BM25. Single-writer batch pipeline + many
-concurrent readers (WAL) is exactly SQLite's sweet spot.
+Grain: one row per complete conversation in conversation_session; every child row carries session_id.
+Raw payloads stay in immutable gzipped landing files; raw_trace_session holds the pointer + checksum.
 """
 import sqlite3
 from contextlib import contextmanager
 from .config import DB_PATH, DATA
 
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS ingest_runs(
-  run_id INTEGER PRIMARY KEY AUTOINCREMENT, source TEXT, file TEXT, started_at TEXT, finished_at TEXT,
-  sessions INTEGER, turns INTEGER, rejected INTEGER, pii_scrubbed INTEGER, notes TEXT);
-CREATE TABLE IF NOT EXISTS rejects(run_id INTEGER, line_no INTEGER, reason TEXT, snippet TEXT);
+-- governance -------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS processing_run(
+  run_id INTEGER PRIMARY KEY AUTOINCREMENT, stage TEXT, started_at TEXT, finished_at TEXT, status TEXT,
+  versions TEXT, stats TEXT, error TEXT);
+CREATE TABLE IF NOT EXISTS data_provenance(
+  provenance_id TEXT PRIMARY KEY, source TEXT, is_synthetic INTEGER, batch TEXT, scenario_id TEXT,
+  template_id TEXT, generator_version TEXT, seed INTEGER);
+CREATE TABLE IF NOT EXISTS review_log(
+  review_id INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT, object_id TEXT, action TEXT, reviewer TEXT,
+  note TEXT, at TEXT);
+CREATE TABLE IF NOT EXISTS ingest_reject(run_id INTEGER, file TEXT, line_no INTEGER, reason TEXT, snippet TEXT);
 
-CREATE TABLE IF NOT EXISTS sessions(
-  session_id TEXT PRIMARY KEY, external_id TEXT, source TEXT, created_at TEXT, day TEXT, week TEXT,
-  previous_session_id TEXT, thread_id TEXT, thread_pos INTEGER DEFAULT 0,
-  n_turns INTEGER, n_user_turns INTEGER, journey TEXT, auth_state TEXT,
-  quality REAL, success REAL, efficiency REAL, flow REAL, avg_latency REAL, compliance REAL,
-  -- derived downstream
-  segment TEXT, style TEXT, city TEXT, state TEXT, region TEXT, geo_conf REAL,
-  outcome TEXT, friction REAL, primary_intent TEXT, opp_flag INTEGER DEFAULT 0, need_flag INTEGER DEFAULT 0,
-  value_flag INTEGER DEFAULT 0, risk_flag INTEGER DEFAULT 0, escalated INTEGER DEFAULT 0,
-  repeat_flag INTEGER DEFAULT 0, followup_7d INTEGER DEFAULT 0);
-CREATE INDEX IF NOT EXISTS ix_s_thread ON sessions(thread_id, created_at);
-CREATE INDEX IF NOT EXISTS ix_s_prev ON sessions(previous_session_id);
-CREATE INDEX IF NOT EXISTS ix_s_week ON sessions(week);
-CREATE INDEX IF NOT EXISTS ix_s_city ON sessions(city);
-CREATE INDEX IF NOT EXISTS ix_s_seg ON sessions(segment);
+-- raw --------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS raw_trace_session(
+  session_id TEXT PRIMARY KEY, source TEXT, landing_file TEXT, line_no INTEGER, byte_offset INTEGER,
+  byte_len INTEGER, sha256 TEXT, landed_at TEXT, run_id INTEGER);
 
-CREATE TABLE IF NOT EXISTS turns(
-  session_id TEXT, turn_no INTEGER, ts TEXT, kind TEXT, event_type TEXT, event_value TEXT,
-  user_text TEXT, agent_text TEXT, agent_role TEXT, roles TEXT, n_tools INTEGER,
-  PRIMARY KEY(session_id, turn_no)) WITHOUT ROWID;
+-- conversation -----------------------------------------------------------
+CREATE TABLE IF NOT EXISTS conversation_session(
+  session_id TEXT PRIMARY KEY, external_id TEXT, source TEXT, is_synthetic INTEGER, provenance_id TEXT,
+  created_at TEXT, day TEXT, week TEXT, previous_session_id TEXT, thread_id TEXT, thread_pos INTEGER,
+  customer_key TEXT, lang TEXT, n_traces INTEGER, n_turns INTEGER, n_user_utterances INTEGER,
+  first_turn_no INTEGER, auth_state TEXT, journey_label TEXT,
+  city TEXT, state TEXT, region TEXT, market TEXT, zip3 TEXT, geo_source TEXT, location_type TEXT,
+  outcome TEXT, outcome_basis TEXT, run_id INTEGER);
+CREATE INDEX IF NOT EXISTS ix_cs_thread ON conversation_session(thread_id, created_at);
+CREATE INDEX IF NOT EXISTS ix_cs_prev ON conversation_session(previous_session_id);
+CREATE INDEX IF NOT EXISTS ix_cs_city ON conversation_session(city);
 
-CREATE TABLE IF NOT EXISTS tool_calls(
-  session_id TEXT, turn_no INTEGER, tool TEXT, intent_name TEXT, query TEXT, requested_operator INTEGER);
-CREATE INDEX IF NOT EXISTS ix_t_sess ON tool_calls(session_id, turn_no);
+CREATE TABLE IF NOT EXISTS conversation_turn(
+  session_id TEXT, turn_no INTEGER, seq INTEGER, trace_id TEXT, ts TEXT, kind TEXT, event_type TEXT,
+  event_value TEXT, user_text TEXT, agent_text TEXT, agent_role TEXT, roles TEXT, lang TEXT,
+  PRIMARY KEY(session_id, seq)) WITHOUT ROWID;
 
-CREATE TABLE IF NOT EXISTS signals(
-  session_id TEXT, turn_no INTEGER, family TEXT, type TEXT, value TEXT, evidence TEXT, conf REAL, source TEXT);
-CREATE INDEX IF NOT EXISTS ix_sig_sess ON signals(session_id, turn_no);
-CREATE INDEX IF NOT EXISTS ix_sig_type ON signals(type);
+-- execution --------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS conversation_trace(
+  trace_id TEXT PRIMARY KEY, session_id TEXT, turn_no INTEGER, seq INTEGER, created_at TEXT, status_code TEXT,
+  is_complete TEXT, n_spans INTEGER);
+CREATE INDEX IF NOT EXISTS ix_ct_sess ON conversation_trace(session_id);
+CREATE TABLE IF NOT EXISTS trace_span(
+  span_id TEXT, trace_id TEXT, session_id TEXT, parent_id TEXT, depth INTEGER, type TEXT, name TEXT, step_number TEXT);
+CREATE INDEX IF NOT EXISTS ix_sp_trace ON trace_span(trace_id);
+CREATE TABLE IF NOT EXISTS tool_call(
+  session_id TEXT, seq INTEGER, trace_id TEXT, tool TEXT, agent_role TEXT, intent_name TEXT, query TEXT,
+  requested_operator INTEGER, failed INTEGER, args TEXT);
+CREATE INDEX IF NOT EXISTS ix_tc_sess ON tool_call(session_id, seq);
 
-CREATE TABLE IF NOT EXISTS episodes(
-  episode_id INTEGER PRIMARY KEY, session_id TEXT, ep_no INTEGER, kind TEXT, start_turn INTEGER, end_turn INTEGER,
-  domain_agent TEXT, platform_intent TEXT, text TEXT, n_user_turns INTEGER, outcome TEXT, friction REAL,
-  signal_types TEXT, family_mask TEXT, tools TEXT, week TEXT, day TEXT, city TEXT, region TEXT, segment TEXT,
-  auth_state TEXT, cluster_id INTEGER, source TEXT);
-CREATE INDEX IF NOT EXISTS ix_e_sess ON episodes(session_id);
-CREATE INDEX IF NOT EXISTS ix_e_cluster ON episodes(cluster_id);
-CREATE INDEX IF NOT EXISTS ix_e_city ON episodes(city, cluster_id);
+-- evaluation -------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS agent_evaluation(
+  entity_type TEXT, entity_id TEXT, session_id TEXT, metric TEXT, canonical_metric TEXT, value REAL,
+  value_text TEXT, scale TEXT, status TEXT, evaluator TEXT, rationale TEXT, scorer_version TEXT);
+CREATE INDEX IF NOT EXISTS ix_ev_sess ON agent_evaluation(session_id, canonical_metric);
+CREATE TABLE IF NOT EXISTS policy_verdict(
+  session_id TEXT, journey TEXT, policy_id TEXT, verdict TEXT, severity TEXT, policy_type TEXT, evidence TEXT, reason TEXT);
 
-CREATE TABLE IF NOT EXISTS clusters(
-  cluster_id INTEGER PRIMARY KEY, run_id INTEGER, label TEXT, family TEXT, size INTEGER, top_terms TEXT,
-  top_signals TEXT, stability REAL, published INTEGER, silhouette REAL, esc_rate REAL, resolve_rate REAL,
-  centroid BLOB);
+-- taxonomy ---------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS dim_intent(
+  intent_id TEXT PRIMARY KEY, level INTEGER, parent_id TEXT, code TEXT, name TEXT, family TEXT,
+  taxonomy_version TEXT, status TEXT);
+CREATE TABLE IF NOT EXISTS intent_definition(
+  intent_id TEXT PRIMARY KEY, definition TEXT, include_criteria TEXT, exclude_criteria TEXT, examples TEXT,
+  platform_intent_patterns TEXT, keyword_rules TEXT);
+CREATE TABLE IF NOT EXISTS session_intent(
+  session_id TEXT, intent_id TEXT, role TEXT, confidence REAL, method TEXT, taxonomy_version TEXT, evidence TEXT);
+CREATE INDEX IF NOT EXISTS ix_si ON session_intent(intent_id, role);
+CREATE TABLE IF NOT EXISTS turn_intent(
+  session_id TEXT, seq INTEGER, intent_id TEXT, confidence REAL, method TEXT, evidence TEXT);
+CREATE INDEX IF NOT EXISTS ix_ti ON turn_intent(session_id, seq);
 
-CREATE TABLE IF NOT EXISTS patterns(
-  pattern_id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER, kind TEXT, family TEXT, cluster_id INTEGER,
-  cluster_label TEXT, dim_type TEXT, dim_value TEXT, metric TEXT, support INTEGER, n_cell INTEGER,
-  rate REAL, baseline REAL, lift REAL, lift_shrunk REAL, ci_lo REAL, ci_hi REAL, pval REAL, qval REAL,
-  trend REAL, recent_rate REAL, prior_rate REAL, score REAL, tier TEXT, kpi TEXT, extra TEXT);
-CREATE INDEX IF NOT EXISTS ix_p_score ON patterns(score DESC);
+-- signals / episodes / features ------------------------------------------
+CREATE TABLE IF NOT EXISTS session_signal(
+  signal_id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, seq INTEGER, turn_no INTEGER, trace_id TEXT,
+  family TEXT, category TEXT, type TEXT, value TEXT, text TEXT, confidence REAL, method TEXT,
+  rule_version TEXT, ts TEXT, is_synthetic INTEGER);
+CREATE INDEX IF NOT EXISTS ix_sig_sess ON session_signal(session_id, seq);
+CREATE INDEX IF NOT EXISTS ix_sig_type ON session_signal(type);
 
-CREATE TABLE IF NOT EXISTS evidence_cards(
-  card_id INTEGER PRIMARY KEY AUTOINCREMENT, pattern_id INTEGER, run_id INTEGER, version INTEGER DEFAULT 1,
-  family TEXT, kind TEXT, title TEXT, headline TEXT, kpi TEXT, hypothesis TEXT, action TEXT, caveats TEXT,
-  scope_city TEXT, scope_segment TEXT, scope_region TEXT, cluster_id INTEGER,
-  score REAL, tier TEXT, metrics_json TEXT, evidence_json TEXT, data_origin TEXT,
-  status TEXT DEFAULT 'draft', reviewer TEXT, review_note TEXT, reviewed_at TEXT,
-  valid_from TEXT, valid_to TEXT, superseded_by INTEGER, created_at TEXT);
-CREATE INDEX IF NOT EXISTS ix_c_status ON evidence_cards(status, score DESC);
+CREATE TABLE IF NOT EXISTS session_episode(
+  episode_id TEXT PRIMARY KEY, session_id TEXT, ep_no INTEGER, kind TEXT, start_seq INTEGER, end_seq INTEGER,
+  intent_id TEXT, intent_conf REAL, domain_agent TEXT, platform_intent TEXT, text TEXT, n_user_turns INTEGER,
+  outcome TEXT, outcome_basis TEXT, friction REAL, signal_types TEXT, boundary_reason TEXT);
+CREATE INDEX IF NOT EXISTS ix_ep_sess ON session_episode(session_id);
 
--- persistent context: facts keep the date they were true; superseded facts stay on record
-CREATE TABLE IF NOT EXISTS facts(
+CREATE TABLE IF NOT EXISTS need_journey(
+  journey_id TEXT PRIMARY KEY, thread_id TEXT, intent_l2 TEXT, first_session TEXT, last_session TEXT,
+  first_at TEXT, last_at TEXT, n_sessions INTEGER, n_episodes INTEGER, resolved INTEGER, last_outcome TEXT);
+
+CREATE TABLE IF NOT EXISTS session_feature(
+  session_id TEXT PRIMARY KEY, friction REAL, n_escalation_requests INTEGER, n_auth_failures INTEGER,
+  n_no_input INTEGER, n_handoffs INTEGER, repeat_contact INTEGER, days_since_prev REAL, need_flag INTEGER,
+  buying_flag INTEGER, value_flag INTEGER, risk_flag INTEGER, opp_flag INTEGER, segment TEXT, style TEXT);
+
+-- persistent context ------------------------------------------------------
+CREATE TABLE IF NOT EXISTS fact(
   fact_id INTEGER PRIMARY KEY AUTOINCREMENT, scope_type TEXT, scope_id TEXT, attribute TEXT, value TEXT,
-  valid_from TEXT, valid_to TEXT, recorded_at TEXT, superseded_by INTEGER, source_session TEXT, source_turn INTEGER);
-CREATE INDEX IF NOT EXISTS ix_f_scope ON facts(scope_type, scope_id, attribute, valid_from);
+  valid_from TEXT, valid_to TEXT, recorded_at TEXT, superseded_by INTEGER, source_session TEXT, source_seq INTEGER);
+CREATE INDEX IF NOT EXISTS ix_fact ON fact(scope_type, scope_id, attribute, valid_from);
 
-CREATE TABLE IF NOT EXISTS pipeline_runs(
-  run_id INTEGER PRIMARY KEY AUTOINCREMENT, started_at TEXT, finished_at TEXT, stage TEXT, seconds REAL, detail TEXT);
+-- geography --------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS dim_geography(city TEXT PRIMARY KEY, state TEXT, region TEXT, market TEXT, lat REAL, lon REAL);
+
 CREATE TABLE IF NOT EXISTS kv(k TEXT PRIMARY KEY, v TEXT);
-
-CREATE VIRTUAL TABLE IF NOT EXISTS episodes_fts USING fts5(text, content='', tokenize='porter unicode61');
-CREATE VIRTUAL TABLE IF NOT EXISTS cards_fts USING fts5(title, headline, content='', tokenize='porter unicode61');
 """
 
+# tables a full rebuild clears (dimension/governance tables are kept)
+DERIVED = ["raw_trace_session", "conversation_session", "conversation_turn", "conversation_trace", "trace_span",
+           "tool_call", "agent_evaluation", "policy_verdict", "session_intent", "turn_intent", "session_signal",
+           "session_episode", "need_journey", "session_feature", "fact", "data_provenance", "ingest_reject"]
 
-def connect(path=None, readonly=False, bulk=False):
+
+def connect(path=None, readonly=False):
     path = path or DB_PATH
     DATA.mkdir(parents=True, exist_ok=True)
     if readonly:
@@ -99,10 +127,7 @@ def connect(path=None, readonly=False, bulk=False):
         con = sqlite3.connect(path, check_same_thread=False)
         con.execute("PRAGMA journal_mode=WAL")
     con.row_factory = sqlite3.Row
-    con.execute("PRAGMA cache_size=-262144")
-    con.execute("PRAGMA temp_store=MEMORY")
-    if bulk:
-        con.execute("PRAGMA synchronous=OFF")
+    con.execute("PRAGMA cache_size=-131072")
     return con
 
 
@@ -112,19 +137,20 @@ def init(con):
 
 
 @contextmanager
-def tx(con):
+def stage(con, name, versions):
+    """Record a pipeline stage in processing_run; yields a dict the stage fills with stats."""
+    import json, datetime as dt
+    now = lambda: dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+    cur = con.execute("INSERT INTO processing_run(stage,started_at,status,versions) VALUES(?,?,?,?)",
+                      (name, now(), "running", json.dumps(versions)))
+    run_id, stats = cur.lastrowid, {}
+    con.commit()
     try:
-        yield con
-        con.commit()
-    except Exception:
+        yield run_id, stats
+        con.execute("UPDATE processing_run SET finished_at=?,status='ok',stats=? WHERE run_id=?", (now(), json.dumps(stats), run_id))
+    except Exception as e:
         con.rollback()
+        con.execute("UPDATE processing_run SET finished_at=?,status='failed',error=? WHERE run_id=?", (now(), repr(e)[:2000], run_id))
         raise
-
-
-def kv_set(con, k, v):
-    con.execute("INSERT OR REPLACE INTO kv(k,v) VALUES(?,?)", (k, v))
-
-
-def kv_get(con, k, default=None):
-    r = con.execute("SELECT v FROM kv WHERE k=?", (k,)).fetchone()
-    return r[0] if r else default
+    finally:
+        con.commit()

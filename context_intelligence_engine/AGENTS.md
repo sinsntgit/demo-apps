@@ -77,7 +77,7 @@ to verified outcomes.
 |---|---|
 | **Retrieval and UI** (explicitly requested by the user) | WP9 and WP11 |
 | Platform intent labels exist in tool spans (`mandatory_set_intent_for_next_step.intent_name`, `requested_operator`, agent paraphrases in `retrieve_intent_matches.user_intent` / `explain_bill_init_mcp.query` / `handle_out_of_scope.topic`) | Strongest evidence for taxonomy discovery and classification; extracted first-class |
-| Real sample profile: 6.7 turns/session, 86% transferred, 31% explicitly ask for an agent, 32% of turns are system events, 5% null outputs, some Spanish/Portuguese turns | G0 calibration targets; multilingual tolerance in extractors |
+| Real sample profile (corrected in W1 from a crude first count): 6.7 turns/session, 78% transferred (28/36), 58% explicitly ask for a human (21/36), 32% of turns are system events, 6% null outputs, some Spanish/Portuguese turns | G0 calibration targets; multilingual tolerance in extractors |
 | Raw payload is **~549 KB/session (~103 KB gzipped)**, mostly nested LLM span prompts, so 100K sessions is ~56 GB raw / ~10.5 GB gzipped | Raw landing is **gzipped files plus a byte-offset index**, not database blobs. Synthetic spans are schema-faithful but slim (§6.1) |
 | Redaction is imperfect: "Lake Mary Florida" and exact dollar amounts appear in redacted text | A second PII scrub at ingest and a quote sanitiser before cards |
 | Statistical rigour for patterns | Rate shrinkage, Wilson CIs, Benjamini–Hochberg FDR, k-anonymity floor |
@@ -105,11 +105,23 @@ to verified outcomes.
 | **Episode** (primary analytic unit) | One distinct customer need inside a session: consecutive turns about the same intent, plus that need's outcome (resolved-proxy / escalated / abandoned). The leading login/IVR span is a separate `kind='access'` episode | Signals → features → clusters. Keeps a second need (e.g. bill question → upgrade) from being blurred |
 | **Need journey** | Episodes with the same L2 intent across a `previous_session_id` thread within `JOURNEY_WINDOW_DAYS` (30) | Temporal history, repeat contact, unresolved-need risk, and dated facts (`open_issue` → `issue_resolved`) |
 
-Episode boundary rules, in priority order:
-1. A new platform `intent_name`.
-2. A change of domain agent role. Generic and plumbing roles don't count.
-3. A turn-level intent change that holds for ≥ 2 customer turns.
-4. A phrase that opens an explicit new need ("also", "one more thing", "another question").
+Episode boundary rules (implemented in `cie/episodes.py`, versioned `episode_model`; full text in `docs/episode_definition.md`):
+1. The first intent of the session opens the first goal episode (the login/IVR span before it is `kind='access'`).
+2. A platform `intent_name` whose L2 differs from the open episode's L2.
+3. An explicit new-need cue ("also", "one more thing", "another question") with a different L2.
+4. A keyword intent change (confidence ≥ 0.70) to a different L2 that holds for ≥ 2 customer turns.
+
+These do **not** open an episode:
+- a turn that carries a value signal (it is evidence about the current need, kept as a secondary intent);
+- an account-access problem said during authentication (friction in the access episode);
+- a representative request;
+- a domain-agent change on its own (recorded as `+role_change` evidence).
+
+Intent classification rules (`cie/taxonomy.py`):
+- **Confidence by evidence:** platform label 0.90, a *generic* routing label 0.60 (`pattern|0.60` in the YAML), customer keyword 0.70 (+0.05 on the platform's need-capture turn), short IVR token 0.50.
+- **Ties:** risk/need intents beat product mentions.
+- **Customer refinement:** within one L2, the customer's latest explicit words choose the L3 over the platform's label.
+- **Representative request:** primary only when no other need is stated.
 
 Boundaries are rule-based and deterministic. An LLM is consulted only for sessions flagged ambiguous (§2.6).
 
@@ -236,12 +248,14 @@ git-ignored and must never be committed.
 
 Layout:
 ```
-cie/ config.py lexicon.py db.py synth.py locate_sample.py ingest.py evaluations.py taxonomy.py
-     signals.py episodes.py features.py cluster.py patterns.py scoring.py cards.py facts.py
-     retrieval.py server.py validate.py run_pipeline.py adapters/(llm.py: provider adapter per §2.6, embed.py: optional)  llm_cache table
-ui/  index.html app.js style.css
-tests/ test_*.py   gold/real_gold.jsonl (needs human review)   taxonomy/taxonomy_v0.yaml
-landing/ (git-ignored) <source>/<day>/*.jsonl.gz + index      reports/ validation.{json,md}
+cie/ config.py lexicon.py db.py taxonomy.py fixtures.py locate_sample.py ingest.py signals.py episodes.py
+     server.py validate.py docs.py run_pipeline.py                      (built in W1)
+     synth.py (W2 rewrite) cluster.py patterns.py scoring.py cards.py facts.py retrieval.py
+     adapters/(llm.py: provider adapter per §2.6, embed.py: optional)  llm_cache table   (W2-W4)
+taxonomy/ taxonomy_v0.yaml                 samples/ scenario_fixtures.jsonl + _truth.json (committed, small)
+ui/  index.html app.js style.css           docs/ W1 deliverables (profile, data model, mapping, taxonomy, signals, episodes, scenarios)
+tests/ test_*.py   gold/real_gold.jsonl + make_real_gold.py (draft, needs SME review)
+landing/ (git-ignored) <source>/<day>/*.jsonl.gz      data/ (git-ignored) cie.sqlite      reports/ validation.{json,md}
 ```
 
 ---
@@ -359,7 +373,7 @@ a rule version, and evidence turn and trace IDs.
 
 ### WP4 Intent taxonomy and classification (`taxonomy.py`)
 1. **Seed (v0):** the L1 domains and L2 candidates from design baseline §6.2, stored in
-   `tests/taxonomy/taxonomy_v0.yaml` with draft definitions.
+   `taxonomy/taxonomy_v0.yaml` with draft definitions.
 2. **Discover:**
    - Profile the platform `intent_name` values and agent paraphrases.
    - Run HDBSCAN on episode vectors from the discovery split, using LSA by default or the embedding adapter if one is approved.
@@ -614,4 +628,6 @@ Parallel lanes for agents:
 | 2026-11-18 | Separate score dimensions; composite is provisional until approved | Design baseline |
 | 2026-11-18 | Volume = 100K sessions total, ~7 traces each; no customer ID, so linkage via `previous_session_id` only; location = service location; LLM allowed, minimal use, verified | User (A1, A3–A5) |
 | 2026-11-18 | LLM provider = Claude API: Haiku 5.5 for adjudication, Sonnet 5.5 for taxonomy and gold; assumed location contract §2.7 (Galileo `user_metadata` flat keys, service location) | User |
+| 2026-11-18 | Week 1 delivered: canonical schema, taxonomy v0 (11 L1 / 24 L2 / 32 L3), signal catalogue (8 families, 41 types), scenario fixtures (77 sessions, every intent/signal), vertical slice + UI, draft real gold set, validation report | Build |
+| 2026-11-18 | Generic platform routing labels get 0.60 (below the customer's own words); customer refinement wins within an L2; value statements do not open episodes; auth-phase PIN talk is friction | Real-sample review (docs/episode_definition.md) |
 | 2026-11-18 | Three-layer episode model (session / episode = need within a session / need journey across a thread); LLM policy U1–U4 with grounding and agreement checks | Proposed and adopted (A2, A5) |

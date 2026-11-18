@@ -1,0 +1,466 @@
+{
+ "versions": {
+  "schema": "1.0.0",
+  "rules": "0.3.0",
+  "taxonomy": "v0-draft",
+  "episode_model": "1.0.0",
+  "fixtures": "1.0.0"
+ },
+ "gates": {
+  "G1_integrity": {
+   "real_sessions": 36,
+   "real_traces": 241,
+   "orphan_traces": 0,
+   "duplicate_turn_keys": 0,
+   "synthetic_without_provenance": 0,
+   "sessions_without_raw_lineage": 0,
+   "pii_hits_after_scrub": 0,
+   "real_turn_order_d9b52d90": [
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22
+   ],
+   "rejects": 0,
+   "pass": true
+  },
+  "fixtures_truth": {
+   "sessions": 77,
+   "primary_intent_accuracy_L3": 1.0,
+   "macro_f1_L3": 1.0,
+   "macro_f1_L2": 1.0,
+   "goal_episode_count_accuracy": 1.0,
+   "outcome_accuracy": 1.0,
+   "signal_recall_planted": 1.0,
+   "per_signal": {
+    "abandoned": {
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0,
+     "tp": 12,
+     "fp": 0,
+     "fn": 0
+    },
+    "agent_handoff": {
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0,
+     "tp": 25,
+     "fp": 0,
+     "fn": 0
+    },
+    "agent_loop": {
+     "precision": 0.171,
+     "recall": 1.0,
+     "f1": 0.292,
+     "tp": 7,
+     "fp": 34,
+     "fn": 0
+    },
+    "auth_failure": {
+     "precision": 0.485,
+     "recall": 1.0,
+     "f1": 0.653,
+     "tp": 16,
+     "fp": 17,
+     "fn": 0
+    },
+    "city_mention": {
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0,
+     "tp": 2,
+     "fp": 0,
+     "fn": 0
+    },
+    "complaint": {
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0,
+     "tp": 5,
+     "fp": 0,
+     "fn": 0
+    },
+    "confusion": {
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0,
+     "tp": 2,
+     "fp": 0,
+     "fn": 0
+    },
+    "coverage_local": {
+     "precision": 0.375,
+     "recall": 1.0,
+     "f1": 0.545,
+     "tp": 3,
+     "fp": 5,
+     "fn": 0
+    },
+    "customer_repeat": {
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0,
+     "tp": 7,
+     "fp": 0,
+     "fn": 0
+    },
+    "device_replacement": {
+     "precision": 0.5,
+     "recall": 1.0,
+     "f1": 0.667,
+     "tp": 1,
+     "fp": 1,
+     "fn": 0
+    },
+    "dtmf_operator": {
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0,
+     "tp": 6,
+     "fp": 0,
+     "fn": 0
+    },
+    "escalation_request": {
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0,
+     "tp": 28,
+     "fp": 0,
+     "fn": 0
+    },
+    "feature_comparison": {
+     "precision": 0.75,
+     "recall": 1.0,
+     "f1": 0.857,
+     "tp": 3,
+     "fp": 1,
+     "fn": 0
+    },
+    "frustration": {
+     "precision": 0.889,
+     "recall": 1.0,
+     "f1": 0.941,
+     "tp": 8,
+     "fp": 1,
+     "fn": 0
+    },
+    "local_event": {
+     "precision": 0.75,
+     "recall": 1.0,
+     "f1": 0.857,
+     "tp": 3,
+     "fp": 1,
+     "fn": 0
+    },
+    "location_unresolved": {
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0,
+     "tp": 1,
+     "fp": 0,
+     "fn": 0
+    },
+    "multi_line_expansion": {
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0,
+     "tp": 2,
+     "fp": 0,
+     "fn": 0
+    },
+    "no_input": {
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0,
+     "tp": 16,
+     "fp": 0,
+     "fn": 0
+    },
+    "out_of_scope": {
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0,
+     "tp": 1,
+     "fp": 0,
+     "fn": 0
+    },
+    "payment_difficulty": {
+     "precision": 0.25,
+     "recall": 1.0,
+     "f1": 0.4,
+     "tp": 1,
+     "fp": 3,
+     "fn": 0
+    },
+    "positive_response": {
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0,
+     "tp": 4,
+     "fp": 0,
+     "fn": 0
+    },
+    "price_sensitivity": {
+     "precision": 0.455,
+     "recall": 1.0,
+     "f1": 0.625,
+     "tp": 5,
+     "fp": 6,
+     "fn": 0
+    },
+    "repeat_contact_language": {
+     "precision": 0.75,
+     "recall": 1.0,
+     "f1": 0.857,
+     "tp": 3,
+     "fp": 1,
+     "fn": 0
+    },
+    "tool_failure": {
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0,
+     "tp": 6,
+     "fp": 0,
+     "fn": 0
+    },
+    "willingness": {
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0,
+     "tp": 7,
+     "fp": 0,
+     "fn": 0
+    }
+   },
+   "note": "Planted-signal precision counts a detection in a session where the type was not deliberately planted as FP; fixtures contain incidental mentions, so precision here is a lower bound.",
+   "pass": true
+  },
+  "real_gold_draft": {
+   "sessions": 36,
+   "reviewed": 0,
+   "primary_accuracy_L3": 0.75,
+   "primary_accuracy_L2": 0.75,
+   "primary_accuracy_L1": 0.778,
+   "macro_f1_L3": 0.7,
+   "macro_f1_L2": 0.596,
+   "unambiguous_primary_accuracy_L3": 0.926,
+   "flags": {
+    "handoff": {
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0,
+     "tp": 28,
+     "fp": 0,
+     "fn": 0
+    },
+    "auth_failure": {
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0,
+     "tp": 22,
+     "fp": 0,
+     "fn": 0
+    },
+    "abandoned": {
+     "precision": 1.0,
+     "recall": 0.75,
+     "f1": 0.857,
+     "tp": 3,
+     "fp": 0,
+     "fn": 1
+    },
+    "asked_human": {
+     "precision": 1.0,
+     "recall": 0.952,
+     "f1": 0.976,
+     "tp": 20,
+     "fp": 0,
+     "fn": 1
+    }
+   },
+   "signals": {
+    "escalation_request": {
+     "precision": 1.0,
+     "recall": 0.952,
+     "f1": 0.976,
+     "tp": 20,
+     "fp": 0,
+     "fn": 1
+    },
+    "auth_failure": {
+     "precision": 0.909,
+     "recall": 1.0,
+     "f1": 0.952,
+     "tp": 20,
+     "fp": 2,
+     "fn": 0
+    },
+    "dispute": {
+     "precision": 0.333,
+     "recall": 1.0,
+     "f1": 0.5,
+     "tp": 2,
+     "fp": 4,
+     "fn": 0
+    },
+    "price_sensitivity": {
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0,
+     "tp": 1,
+     "fp": 0,
+     "fn": 0
+    },
+    "confusion": {
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0,
+     "tp": 4,
+     "fp": 0,
+     "fn": 0
+    },
+    "frustration": {
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0,
+     "tp": 2,
+     "fp": 0,
+     "fn": 0
+    },
+    "customer_repeat": {
+     "precision": 0.667,
+     "recall": 0.667,
+     "f1": 0.667,
+     "tp": 4,
+     "fp": 2,
+     "fn": 2
+    },
+    "no_input": {
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0,
+     "tp": 10,
+     "fp": 0,
+     "fn": 0
+    },
+    "dtmf_operator": {
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0,
+     "tp": 1,
+     "fp": 0,
+     "fn": 0
+    },
+    "travel_intl": {
+     "precision": 0.5,
+     "recall": 1.0,
+     "f1": 0.667,
+     "tp": 2,
+     "fp": 2,
+     "fn": 0
+    },
+    "abandoned": {
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0,
+     "tp": 3,
+     "fp": 0,
+     "fn": 0
+    }
+   },
+   "disagreements": [
+    {
+     "session": "CID-3389059416",
+     "gold": "ESCALATION.REP.REQUEST",
+     "pipeline": "BILL.EXPLAIN.CHARGES",
+     "ambiguous": true,
+     "note": "Repeats 'customer service'; Spanish; platform guessed bill_breakdown"
+    },
+    {
+     "session": "CID-1589049708",
+     "gold": "PAY.MAKE.ONE_TIME",
+     "pipeline": "BILL.EXPLAIN.CHARGES",
+     "ambiguous": true,
+     "note": "'payment save it' garbled; platform bill_plus_operator"
+    },
+    {
+     "session": "CID-2083893756",
+     "gold": "PAY.MAKE.ONE_TIME",
+     "pipeline": "BILL.CHARGE.DISPUTE",
+     "ambiguous": true,
+     "note": "'[name] and payment'; platform bill_explain_incorrect; Spanish; disconnect"
+    },
+    {
+     "session": "CID-1225517580",
+     "gold": "PAY.STATUS.NOT_REFLECTED",
+     "pipeline": "BILL.CHARGE.FRAUD",
+     "ambiguous": false,
+     "note": "Paid but service inactive (agent paraphrase); PIN failed twice then verified"
+    },
+    {
+     "session": "CID-3014354420",
+     "gold": "BILL.EXPLAIN.CHARGES",
+     "pipeline": "ADDSVC.TRAVEL.INTERNATIONAL",
+     "ambiguous": false,
+     "note": "International charges on bill; 'Transfer now'"
+    },
+    {
+     "session": "CID-0804150856",
+     "gold": "PAY.STATUS.NOT_REFLECTED",
+     "pipeline": "GENERAL.INFO.HOURS",
+     "ambiguous": true,
+     "note": "'The payment I made' (vague); asks opening hours; transfer tool fired mid-call then disconnect"
+    },
+    {
+     "session": "CID-1820668774",
+     "gold": "ACCT.LOOKUP.NUMBER",
+     "pipeline": "SERVICE.CONNECTIVITY.COVERAGE",
+     "ambiguous": true,
+     "note": "Confused/sad; 'problem with someone's phone number'; then 'billing question'"
+    },
+    {
+     "session": "CID-1864415350",
+     "gold": "BILL.EXPLAIN.CHARGES",
+     "pipeline": "BILL.CHARGE.DISPUTE",
+     "ambiguous": true,
+     "note": "Only said 'billing'; platform bill_explain_incorrect"
+    },
+    {
+     "session": "CID-0246542580",
+     "gold": "ACCT.ACCESS.VERIFY",
+     "pipeline": "ESCALATION.REP.REQUEST",
+     "ambiguous": true,
+     "note": "Wants code sent to new mobile number; 'Get someone on the phone now'"
+    }
+   ],
+   "caveat": "Draft labels (pre-labelled by Claude, reviewed=false). n=36 is too small for stable estimates. Rules were adjusted after reviewing disagreements on this same set, so these agreement figures are optimistic; G3 needs a fresh SME-reviewed held-out set."
+  },
+  "governance": {
+   "ground_truth_read_by_pipeline": [],
+   "unknown_primary_share": 0,
+   "llm_calls": 0,
+   "pass": true
+  }
+ },
+ "not_yet_computed": [
+  "G0 calibration (needs 100K synthetic)",
+  "G4 clusters",
+  "G5 patterns",
+  "G6 cards/facts",
+  "G7 retrieval",
+  "G8 performance",
+  "G9 volume shape",
+  "G10 LLM correctness"
+ ]
+}

@@ -1,0 +1,1406 @@
+{
+ "note": "Truth for scenario fixtures. The pipeline never reads this file.",
+ "version": "1.0.0",
+ "sessions": [
+  {
+   "session_id": "bc56e986-d622-58bc-a40a-eb2da2517abf",
+   "scenario": "BILL.EXPLAIN.CHARGES:A",
+   "primary_intent": "BILL.EXPLAIN.CHARGES",
+   "intents": [
+    "BILL.EXPLAIN.CHARGES"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "price_sensitivity"
+   ],
+   "service_city": "Philadelphia",
+   "previous_session_id": null,
+   "n_traces": 7,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "bcec5043-19e3-53cc-8129-9bc1b71f1473",
+   "scenario": "BILL.EXPLAIN.CHARGES:B",
+   "primary_intent": "BILL.EXPLAIN.CHARGES",
+   "intents": [
+    "BILL.EXPLAIN.CHARGES"
+   ],
+   "outcome": "abandoned",
+   "auth": "unauth",
+   "planted_signals": [
+    "abandoned",
+    "auth_failure",
+    "no_input"
+   ],
+   "service_city": "Baltimore",
+   "previous_session_id": null,
+   "n_traces": 8,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "45c1651a-754a-5c38-8d24-9608747c4b66",
+   "scenario": "BILL.EXPLAIN.BALANCE:A",
+   "primary_intent": "BILL.EXPLAIN.BALANCE",
+   "intents": [
+    "BILL.EXPLAIN.BALANCE"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "positive_response"
+   ],
+   "service_city": "Charlotte",
+   "previous_session_id": null,
+   "n_traces": 6,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "1204c534-f84b-50e7-b143-969355cf2ed5",
+   "scenario": "BILL.EXPLAIN.BALANCE:B",
+   "primary_intent": "BILL.EXPLAIN.BALANCE",
+   "intents": [
+    "BILL.EXPLAIN.BALANCE"
+   ],
+   "outcome": "escalated",
+   "auth": "unauth",
+   "planted_signals": [
+    "agent_handoff",
+    "agent_loop",
+    "customer_repeat",
+    "escalation_request"
+   ],
+   "service_city": "Orlando",
+   "previous_session_id": null,
+   "n_traces": 8,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "bed0d26e-e244-5038-a794-7d5b0e6a3be6",
+   "scenario": "BILL.EXPLAIN.STATEMENT:A",
+   "primary_intent": "BILL.EXPLAIN.STATEMENT",
+   "intents": [
+    "BILL.EXPLAIN.STATEMENT"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [],
+   "service_city": "Tampa",
+   "previous_session_id": null,
+   "n_traces": 5,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "5df34ec6-1cbe-595a-bf9e-760522cc14ca",
+   "scenario": "BILL.EXPLAIN.STATEMENT:B",
+   "primary_intent": "BILL.EXPLAIN.STATEMENT",
+   "intents": [
+    "BILL.EXPLAIN.STATEMENT"
+   ],
+   "outcome": "escalated",
+   "auth": "unauth",
+   "planted_signals": [
+    "agent_handoff",
+    "auth_failure",
+    "dtmf_operator",
+    "escalation_request"
+   ],
+   "service_city": "Memphis",
+   "previous_session_id": null,
+   "n_traces": 8,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "ce91c4ab-2bde-54fe-8fff-fe0566fc789d",
+   "scenario": "BILL.CHARGE.INQUIRY:A",
+   "primary_intent": "BILL.CHARGE.INQUIRY",
+   "intents": [
+    "BILL.CHARGE.INQUIRY"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "confusion"
+   ],
+   "service_city": "Dallas",
+   "previous_session_id": null,
+   "n_traces": 6,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "f437e107-28fd-5d9f-9d3a-fadbd61ca469",
+   "scenario": "BILL.CHARGE.INQUIRY:B",
+   "primary_intent": "BILL.CHARGE.INQUIRY",
+   "intents": [
+    "BILL.CHARGE.INQUIRY"
+   ],
+   "outcome": "abandoned",
+   "auth": "unauth",
+   "planted_signals": [
+    "abandoned",
+    "escalation_request",
+    "frustration",
+    "no_input"
+   ],
+   "service_city": "Oklahoma City",
+   "previous_session_id": null,
+   "n_traces": 8,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "1903f609-f819-5718-bdcc-1c0e2bff7282",
+   "scenario": "BILL.CHARGE.DISPUTE:A",
+   "primary_intent": "BILL.CHARGE.DISPUTE",
+   "intents": [
+    "BILL.CHARGE.DISPUTE"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "complaint"
+   ],
+   "service_city": "Cleveland",
+   "previous_session_id": null,
+   "n_traces": 6,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "982048bc-f39a-55a3-84b2-e89fb70bbd83",
+   "scenario": "BILL.CHARGE.DISPUTE:B",
+   "primary_intent": "BILL.CHARGE.DISPUTE",
+   "intents": [
+    "BILL.CHARGE.DISPUTE"
+   ],
+   "outcome": "escalated",
+   "auth": "unauth",
+   "planted_signals": [
+    "agent_handoff",
+    "auth_failure",
+    "escalation_request",
+    "tool_failure"
+   ],
+   "service_city": "Milwaukee",
+   "previous_session_id": null,
+   "n_traces": 8,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "ebb84199-1319-5c21-9590-4aa12f029681",
+   "scenario": "BILL.CHARGE.FRAUD:A",
+   "primary_intent": "BILL.CHARGE.FRAUD",
+   "intents": [
+    "BILL.CHARGE.FRAUD"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "frustration"
+   ],
+   "service_city": "Kansas City",
+   "previous_session_id": null,
+   "n_traces": 6,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "4ac250e9-1cc8-50b3-b0aa-b17f70e9279c",
+   "scenario": "BILL.CHARGE.FRAUD:B",
+   "primary_intent": "BILL.CHARGE.FRAUD",
+   "intents": [
+    "BILL.CHARGE.FRAUD"
+   ],
+   "outcome": "escalated",
+   "auth": "unauth",
+   "planted_signals": [
+    "agent_handoff",
+    "escalation_request",
+    "no_input"
+   ],
+   "service_city": "Phoenix",
+   "previous_session_id": null,
+   "n_traces": 7,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "fe88b316-cbb8-5f23-881c-6df9e4e95534",
+   "scenario": "BILL.DUEDATE.CHANGE:A",
+   "primary_intent": "BILL.DUEDATE.CHANGE",
+   "intents": [
+    "BILL.DUEDATE.CHANGE"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [],
+   "service_city": "Los Angeles",
+   "previous_session_id": null,
+   "n_traces": 5,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "7df612da-f2d5-5418-b1c3-bca03f089b02",
+   "scenario": "BILL.DUEDATE.CHANGE:B",
+   "primary_intent": "BILL.DUEDATE.CHANGE",
+   "intents": [
+    "BILL.DUEDATE.CHANGE"
+   ],
+   "outcome": "abandoned",
+   "auth": "unauth",
+   "planted_signals": [
+    "abandoned",
+    "agent_loop",
+    "auth_failure",
+    "customer_repeat",
+    "no_input"
+   ],
+   "service_city": "San Jose",
+   "previous_session_id": null,
+   "n_traces": 10,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "f31be90f-5e12-55da-bfa4-a7057f457b5b",
+   "scenario": "PAY.MAKE.ONE_TIME:A",
+   "primary_intent": "PAY.MAKE.ONE_TIME",
+   "intents": [
+    "PAY.MAKE.ONE_TIME"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "positive_response"
+   ],
+   "service_city": "Portland",
+   "previous_session_id": null,
+   "n_traces": 6,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "2f14fbf0-36ff-5321-9450-60d7e5202158",
+   "scenario": "PAY.MAKE.ONE_TIME:B",
+   "primary_intent": "PAY.MAKE.ONE_TIME",
+   "intents": [
+    "PAY.MAKE.ONE_TIME"
+   ],
+   "outcome": "escalated",
+   "auth": "unauth",
+   "planted_signals": [
+    "agent_handoff",
+    "dtmf_operator",
+    "escalation_request"
+   ],
+   "service_city": "Boston",
+   "previous_session_id": null,
+   "n_traces": 7,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "cf6d379d-7fdb-5220-9579-5370752ed481",
+   "scenario": "PAY.STATUS.NOT_REFLECTED:A",
+   "primary_intent": "PAY.STATUS.NOT_REFLECTED",
+   "intents": [
+    "PAY.STATUS.NOT_REFLECTED"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "repeat_contact_language"
+   ],
+   "service_city": "Newark",
+   "previous_session_id": null,
+   "n_traces": 6,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "6c22dc5b-42b4-51c1-a985-6f912e6ba6be",
+   "scenario": "PAY.STATUS.NOT_REFLECTED:B",
+   "primary_intent": "PAY.STATUS.NOT_REFLECTED",
+   "intents": [
+    "PAY.STATUS.NOT_REFLECTED"
+   ],
+   "outcome": "escalated",
+   "auth": "unauth",
+   "planted_signals": [
+    "agent_handoff",
+    "auth_failure",
+    "escalation_request",
+    "frustration"
+   ],
+   "service_city": "Richmond",
+   "previous_session_id": null,
+   "n_traces": 7,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "705562ac-1667-5c88-8079-6b3652d28fdd",
+   "scenario": "PAY.STATUS.FAILED:A",
+   "primary_intent": "PAY.STATUS.FAILED",
+   "intents": [
+    "PAY.STATUS.FAILED"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [],
+   "service_city": "Atlanta",
+   "previous_session_id": null,
+   "n_traces": 5,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "1e39d577-453a-5a54-9729-2bce8610c4bd",
+   "scenario": "PAY.STATUS.FAILED:B",
+   "primary_intent": "PAY.STATUS.FAILED",
+   "intents": [
+    "PAY.STATUS.FAILED"
+   ],
+   "outcome": "abandoned",
+   "auth": "unauth",
+   "planted_signals": [
+    "abandoned",
+    "no_input",
+    "tool_failure"
+   ],
+   "service_city": "Miami",
+   "previous_session_id": null,
+   "n_traces": 8,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "57fbc923-b0d3-5af8-9825-0e70546bae5d",
+   "scenario": "PAY.ARRANGE.EXTENSION:A",
+   "primary_intent": "PAY.ARRANGE.EXTENSION",
+   "intents": [
+    "PAY.ARRANGE.EXTENSION"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "payment_difficulty"
+   ],
+   "service_city": "Nashville",
+   "previous_session_id": null,
+   "n_traces": 6,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "b0c31c8f-2c16-585d-8337-303e24446186",
+   "scenario": "PAY.ARRANGE.EXTENSION:B",
+   "primary_intent": "PAY.ARRANGE.EXTENSION",
+   "intents": [
+    "PAY.ARRANGE.EXTENSION"
+   ],
+   "outcome": "escalated",
+   "auth": "unauth",
+   "planted_signals": [
+    "agent_handoff",
+    "auth_failure",
+    "escalation_request",
+    "no_input"
+   ],
+   "service_city": "Houston",
+   "previous_session_id": null,
+   "n_traces": 8,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "396f003d-83b7-583e-b07f-ed41c9a85376",
+   "scenario": "REFUND.REQUEST.OVERPAYMENT:A",
+   "primary_intent": "REFUND.REQUEST.OVERPAYMENT",
+   "intents": [
+    "REFUND.REQUEST.OVERPAYMENT"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [],
+   "service_city": "San Antonio",
+   "previous_session_id": null,
+   "n_traces": 5,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "f25e6a81-4f03-5b4a-ab49-a130de55e79b",
+   "scenario": "REFUND.REQUEST.OVERPAYMENT:B",
+   "primary_intent": "REFUND.REQUEST.OVERPAYMENT",
+   "intents": [
+    "REFUND.REQUEST.OVERPAYMENT"
+   ],
+   "outcome": "escalated",
+   "auth": "unauth",
+   "planted_signals": [
+    "agent_handoff",
+    "agent_loop",
+    "customer_repeat",
+    "escalation_request"
+   ],
+   "service_city": "Detroit",
+   "previous_session_id": null,
+   "n_traces": 8,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "ee2b093c-a8fe-5ce0-ad79-52207f8d29cf",
+   "scenario": "REFUND.REQUEST.CREDIT_INQUIRY:A",
+   "primary_intent": "REFUND.REQUEST.CREDIT_INQUIRY",
+   "intents": [
+    "REFUND.REQUEST.CREDIT_INQUIRY"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "repeat_contact_language"
+   ],
+   "service_city": "Indianapolis",
+   "previous_session_id": null,
+   "n_traces": 6,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "b3e4e0b5-6330-5353-b420-bf61653078fa",
+   "scenario": "REFUND.REQUEST.CREDIT_INQUIRY:B",
+   "primary_intent": "REFUND.REQUEST.CREDIT_INQUIRY",
+   "intents": [
+    "REFUND.REQUEST.CREDIT_INQUIRY"
+   ],
+   "outcome": "abandoned",
+   "auth": "unauth",
+   "planted_signals": [
+    "abandoned",
+    "auth_failure",
+    "dtmf_operator",
+    "no_input"
+   ],
+   "service_city": "St. Louis",
+   "previous_session_id": null,
+   "n_traces": 9,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "384689c0-7abb-52c2-8880-cf693a9ce381",
+   "scenario": "ACCT.ACCESS.PIN:A",
+   "primary_intent": "ACCT.ACCESS.PIN",
+   "intents": [
+    "ACCT.ACCESS.PIN"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [],
+   "service_city": "Salt Lake City",
+   "previous_session_id": null,
+   "n_traces": 5,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "428964ad-c898-57c6-a6be-0490d4d4443f",
+   "scenario": "ACCT.ACCESS.PIN:B",
+   "primary_intent": "ACCT.ACCESS.PIN",
+   "intents": [
+    "ACCT.ACCESS.PIN"
+   ],
+   "outcome": "escalated",
+   "auth": "unauth",
+   "planted_signals": [
+    "agent_handoff",
+    "escalation_request",
+    "frustration"
+   ],
+   "service_city": "Albuquerque",
+   "previous_session_id": null,
+   "n_traces": 6,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "b6b55abc-3fae-592d-95c4-ca09dc204770",
+   "scenario": "ACCT.ACCESS.VERIFY:A",
+   "primary_intent": "ACCT.ACCESS.VERIFY",
+   "intents": [
+    "ACCT.ACCESS.VERIFY"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [],
+   "service_city": "San Francisco",
+   "previous_session_id": null,
+   "n_traces": 5,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "65b98a7e-adf3-59c2-bec6-244803ba0f1f",
+   "scenario": "ACCT.ACCESS.VERIFY:B",
+   "primary_intent": "ACCT.ACCESS.VERIFY",
+   "intents": [
+    "ACCT.ACCESS.VERIFY"
+   ],
+   "outcome": "escalated",
+   "auth": "unauth",
+   "planted_signals": [
+    "agent_handoff",
+    "auth_failure",
+    "escalation_request",
+    "tool_failure"
+   ],
+   "service_city": "Seattle",
+   "previous_session_id": null,
+   "n_traces": 8,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "d6c25cdc-bfff-508d-9aa5-42c83c4d0c35",
+   "scenario": "ACCT.LOOKUP.NUMBER:A",
+   "primary_intent": "ACCT.LOOKUP.NUMBER",
+   "intents": [
+    "ACCT.LOOKUP.NUMBER"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "confusion"
+   ],
+   "service_city": "Brooklyn",
+   "previous_session_id": null,
+   "n_traces": 6,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "5b47272e-e37c-5d2d-973b-41381d792a17",
+   "scenario": "ACCT.LOOKUP.NUMBER:B",
+   "primary_intent": "ACCT.LOOKUP.NUMBER",
+   "intents": [
+    "ACCT.LOOKUP.NUMBER"
+   ],
+   "outcome": "abandoned",
+   "auth": "unauth",
+   "planted_signals": [
+    "abandoned",
+    "no_input"
+   ],
+   "service_city": "Pittsburgh",
+   "previous_session_id": null,
+   "n_traces": 7,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "6bb578a1-0aac-577c-9203-0df436975d1b",
+   "scenario": "PLAN.ENQUIRY.OPTIONS:A",
+   "primary_intent": "PLAN.ENQUIRY.OPTIONS",
+   "intents": [
+    "PLAN.ENQUIRY.OPTIONS"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "willingness"
+   ],
+   "service_city": "Washington",
+   "previous_session_id": null,
+   "n_traces": 6,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "52300cd2-9146-5d29-8d7f-101b0d66196c",
+   "scenario": "PLAN.ENQUIRY.OPTIONS:B",
+   "primary_intent": "PLAN.ENQUIRY.OPTIONS",
+   "intents": [
+    "PLAN.ENQUIRY.OPTIONS"
+   ],
+   "outcome": "escalated",
+   "auth": "unauth",
+   "planted_signals": [
+    "agent_handoff",
+    "agent_loop",
+    "auth_failure",
+    "customer_repeat",
+    "escalation_request"
+   ],
+   "service_city": "Raleigh",
+   "previous_session_id": null,
+   "n_traces": 9,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "96f22a0b-941a-559e-a5d2-cc4171e55e55",
+   "scenario": "PLAN.ENQUIRY.COMPARE:A",
+   "primary_intent": "PLAN.ENQUIRY.COMPARE",
+   "intents": [
+    "PLAN.ENQUIRY.COMPARE"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "feature_comparison"
+   ],
+   "service_city": "Lake Mary",
+   "previous_session_id": null,
+   "n_traces": 6,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "dcc468ab-3652-5b18-9172-02ebcb0f518e",
+   "scenario": "PLAN.ENQUIRY.COMPARE:B",
+   "primary_intent": "PLAN.ENQUIRY.COMPARE",
+   "intents": [
+    "PLAN.ENQUIRY.COMPARE"
+   ],
+   "outcome": "escalated",
+   "auth": "unauth",
+   "planted_signals": [
+    "agent_handoff",
+    "dtmf_operator",
+    "escalation_request"
+   ],
+   "service_city": "Jacksonville",
+   "previous_session_id": null,
+   "n_traces": 7,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "ff5b4974-8fda-5732-b738-126652da83ac",
+   "scenario": "PLAN.CHANGE.LOWER_COST:A",
+   "primary_intent": "PLAN.CHANGE.LOWER_COST",
+   "intents": [
+    "PLAN.CHANGE.LOWER_COST"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "price_sensitivity"
+   ],
+   "service_city": "New Orleans",
+   "previous_session_id": null,
+   "n_traces": 6,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "f1d17ec8-34f2-5c2d-8f2d-6ab55ab4bf87",
+   "scenario": "PLAN.CHANGE.LOWER_COST:B",
+   "primary_intent": "PLAN.CHANGE.LOWER_COST",
+   "intents": [
+    "PLAN.CHANGE.LOWER_COST"
+   ],
+   "outcome": "abandoned",
+   "auth": "unauth",
+   "planted_signals": [
+    "abandoned",
+    "auth_failure",
+    "escalation_request",
+    "frustration",
+    "no_input"
+   ],
+   "service_city": "Austin",
+   "previous_session_id": null,
+   "n_traces": 9,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "26893c4a-dcbb-57db-afeb-c6eb30cbf6ac",
+   "scenario": "PLAN.DISCOUNT.PROMO:A",
+   "primary_intent": "PLAN.DISCOUNT.PROMO",
+   "intents": [
+    "PLAN.DISCOUNT.PROMO"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "willingness"
+   ],
+   "service_city": "Chicago",
+   "previous_session_id": null,
+   "n_traces": 6,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "a88fa43e-c7aa-59b1-a800-003a74b7818c",
+   "scenario": "PLAN.DISCOUNT.PROMO:B",
+   "primary_intent": "PLAN.DISCOUNT.PROMO",
+   "intents": [
+    "PLAN.DISCOUNT.PROMO"
+   ],
+   "outcome": "escalated",
+   "auth": "unauth",
+   "planted_signals": [
+    "agent_handoff",
+    "escalation_request",
+    "tool_failure"
+   ],
+   "service_city": "Columbus",
+   "previous_session_id": null,
+   "n_traces": 7,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "ca435036-a4a1-5f33-ba9a-0cf1ead9f87a",
+   "scenario": "ADDSVC.LINE.ADD:A",
+   "primary_intent": "ADDSVC.LINE.ADD",
+   "intents": [
+    "ADDSVC.LINE.ADD"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "multi_line_expansion"
+   ],
+   "service_city": "Minneapolis",
+   "previous_session_id": null,
+   "n_traces": 6,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "dd9b8050-0433-50d8-bcd7-de653f26f0f9",
+   "scenario": "ADDSVC.LINE.ADD:B",
+   "primary_intent": "ADDSVC.LINE.ADD",
+   "intents": [
+    "ADDSVC.LINE.ADD"
+   ],
+   "outcome": "escalated",
+   "auth": "unauth",
+   "planted_signals": [
+    "agent_handoff",
+    "auth_failure",
+    "escalation_request",
+    "no_input"
+   ],
+   "service_city": "Denver",
+   "previous_session_id": null,
+   "n_traces": 8,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "a082f447-648e-577a-a98d-ecf360e74afa",
+   "scenario": "ADDSVC.CONNECT.HOTSPOT_HOME:A",
+   "primary_intent": "ADDSVC.CONNECT.HOTSPOT_HOME",
+   "intents": [
+    "ADDSVC.CONNECT.HOTSPOT_HOME"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "willingness"
+   ],
+   "service_city": "Las Vegas",
+   "previous_session_id": null,
+   "n_traces": 6,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "021fc631-1d95-5eec-88bf-2736c5daad80",
+   "scenario": "ADDSVC.CONNECT.HOTSPOT_HOME:B",
+   "primary_intent": "ADDSVC.CONNECT.HOTSPOT_HOME",
+   "intents": [
+    "ADDSVC.CONNECT.HOTSPOT_HOME"
+   ],
+   "outcome": "abandoned",
+   "auth": "unauth",
+   "planted_signals": [
+    "abandoned",
+    "agent_loop",
+    "customer_repeat",
+    "no_input"
+   ],
+   "service_city": "San Diego",
+   "previous_session_id": null,
+   "n_traces": 9,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "7f746a4f-daf3-5da6-a647-f8253702f59f",
+   "scenario": "ADDSVC.TRAVEL.INTERNATIONAL:A",
+   "primary_intent": "ADDSVC.TRAVEL.INTERNATIONAL",
+   "intents": [
+    "ADDSVC.TRAVEL.INTERNATIONAL"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "feature_comparison"
+   ],
+   "service_city": "Sacramento",
+   "previous_session_id": null,
+   "n_traces": 6,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "45d12488-b6e9-5109-ac81-dad698d60b33",
+   "scenario": "ADDSVC.TRAVEL.INTERNATIONAL:B",
+   "primary_intent": "ADDSVC.TRAVEL.INTERNATIONAL",
+   "intents": [
+    "ADDSVC.TRAVEL.INTERNATIONAL"
+   ],
+   "outcome": "escalated",
+   "auth": "unauth",
+   "planted_signals": [
+    "agent_handoff",
+    "auth_failure",
+    "dtmf_operator",
+    "escalation_request"
+   ],
+   "service_city": "New York",
+   "previous_session_id": null,
+   "n_traces": 8,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "42fb9914-3b58-5f59-86bd-0c22045b0eda",
+   "scenario": "DEVICE.UPGRADE.ELIGIBILITY:A",
+   "primary_intent": "DEVICE.UPGRADE.ELIGIBILITY",
+   "intents": [
+    "DEVICE.UPGRADE.ELIGIBILITY"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "willingness"
+   ],
+   "service_city": "Philadelphia",
+   "previous_session_id": null,
+   "n_traces": 6,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "a582a217-b915-558c-809a-5947a6ee38e3",
+   "scenario": "DEVICE.UPGRADE.ELIGIBILITY:B",
+   "primary_intent": "DEVICE.UPGRADE.ELIGIBILITY",
+   "intents": [
+    "DEVICE.UPGRADE.ELIGIBILITY"
+   ],
+   "outcome": "escalated",
+   "auth": "unauth",
+   "planted_signals": [
+    "agent_handoff",
+    "escalation_request",
+    "frustration"
+   ],
+   "service_city": "Baltimore",
+   "previous_session_id": null,
+   "n_traces": 6,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "010df199-af8a-5122-b344-9ce0676e76bb",
+   "scenario": "DEVICE.REPLACE.DAMAGE_LOSS:A",
+   "primary_intent": "DEVICE.REPLACE.DAMAGE_LOSS",
+   "intents": [
+    "DEVICE.REPLACE.DAMAGE_LOSS"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "device_replacement"
+   ],
+   "service_city": "Charlotte",
+   "previous_session_id": null,
+   "n_traces": 6,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "32d0115a-c081-52ed-b795-c67425649032",
+   "scenario": "DEVICE.REPLACE.DAMAGE_LOSS:B",
+   "primary_intent": "DEVICE.REPLACE.DAMAGE_LOSS",
+   "intents": [
+    "DEVICE.REPLACE.DAMAGE_LOSS"
+   ],
+   "outcome": "abandoned",
+   "auth": "unauth",
+   "planted_signals": [
+    "abandoned",
+    "auth_failure",
+    "no_input",
+    "tool_failure"
+   ],
+   "service_city": "Orlando",
+   "previous_session_id": null,
+   "n_traces": 9,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "a91fa17f-eacb-5af9-b7e3-81e294555af4",
+   "scenario": "DEVICE.ORDER.RETURN_STATUS:A",
+   "primary_intent": "DEVICE.ORDER.RETURN_STATUS",
+   "intents": [
+    "DEVICE.ORDER.RETURN_STATUS"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [],
+   "service_city": "Tampa",
+   "previous_session_id": null,
+   "n_traces": 5,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "6ff90d6a-1503-5fb5-92c3-fa351402d16e",
+   "scenario": "DEVICE.ORDER.RETURN_STATUS:B",
+   "primary_intent": "DEVICE.ORDER.RETURN_STATUS",
+   "intents": [
+    "DEVICE.ORDER.RETURN_STATUS"
+   ],
+   "outcome": "escalated",
+   "auth": "unauth",
+   "planted_signals": [
+    "agent_handoff",
+    "escalation_request",
+    "no_input"
+   ],
+   "service_city": "Memphis",
+   "previous_session_id": null,
+   "n_traces": 7,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "bbdca201-4608-5cae-9599-16c7f0de4606",
+   "scenario": "SERVICE.CONNECTIVITY.COVERAGE:A",
+   "primary_intent": "SERVICE.CONNECTIVITY.COVERAGE",
+   "intents": [
+    "SERVICE.CONNECTIVITY.COVERAGE"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "coverage_local"
+   ],
+   "service_city": "Dallas",
+   "previous_session_id": null,
+   "n_traces": 6,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "6c96a923-a92b-5443-8b2f-2929f9ec4edf",
+   "scenario": "SERVICE.CONNECTIVITY.COVERAGE:B",
+   "primary_intent": "SERVICE.CONNECTIVITY.COVERAGE",
+   "intents": [
+    "SERVICE.CONNECTIVITY.COVERAGE"
+   ],
+   "outcome": "escalated",
+   "auth": "unauth",
+   "planted_signals": [
+    "agent_handoff",
+    "agent_loop",
+    "auth_failure",
+    "customer_repeat",
+    "escalation_request"
+   ],
+   "service_city": "Oklahoma City",
+   "previous_session_id": null,
+   "n_traces": 9,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "7753b874-c14b-5b74-811f-14a631b6b40e",
+   "scenario": "SERVICE.OUTAGE.DISRUPTION:A",
+   "primary_intent": "SERVICE.OUTAGE.DISRUPTION",
+   "intents": [
+    "SERVICE.OUTAGE.DISRUPTION"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "local_event"
+   ],
+   "service_city": "Cleveland",
+   "previous_session_id": null,
+   "n_traces": 6,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "4b7c691e-07fa-50a6-8664-c53951d2d1be",
+   "scenario": "SERVICE.OUTAGE.DISRUPTION:B",
+   "primary_intent": "SERVICE.OUTAGE.DISRUPTION",
+   "intents": [
+    "SERVICE.OUTAGE.DISRUPTION"
+   ],
+   "outcome": "abandoned",
+   "auth": "unauth",
+   "planted_signals": [
+    "abandoned",
+    "dtmf_operator",
+    "no_input"
+   ],
+   "service_city": "Milwaukee",
+   "previous_session_id": null,
+   "n_traces": 8,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "c42f97bc-6e7f-5c29-ac74-4043a7c9a705",
+   "scenario": "SERVICE.ACTIVATION.NEW:A",
+   "primary_intent": "SERVICE.ACTIVATION.NEW",
+   "intents": [
+    "SERVICE.ACTIVATION.NEW"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [],
+   "service_city": "Kansas City",
+   "previous_session_id": null,
+   "n_traces": 5,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "4395fcae-147a-5a43-a3ea-6f9229f140d0",
+   "scenario": "SERVICE.ACTIVATION.NEW:B",
+   "primary_intent": "SERVICE.ACTIVATION.NEW",
+   "intents": [
+    "SERVICE.ACTIVATION.NEW"
+   ],
+   "outcome": "escalated",
+   "auth": "unauth",
+   "planted_signals": [
+    "agent_handoff",
+    "auth_failure",
+    "escalation_request",
+    "frustration"
+   ],
+   "service_city": "Phoenix",
+   "previous_session_id": null,
+   "n_traces": 7,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "139d3d27-b429-5443-8a76-82e8645e7648",
+   "scenario": "RETENTION.CANCEL.INTENT:A",
+   "primary_intent": "RETENTION.CANCEL.INTENT",
+   "intents": [
+    "RETENTION.CANCEL.INTENT"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "complaint"
+   ],
+   "service_city": "Los Angeles",
+   "previous_session_id": null,
+   "n_traces": 6,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "54da51ee-e042-5d76-a531-2f11c62f9562",
+   "scenario": "RETENTION.CANCEL.INTENT:B",
+   "primary_intent": "RETENTION.CANCEL.INTENT",
+   "intents": [
+    "RETENTION.CANCEL.INTENT"
+   ],
+   "outcome": "escalated",
+   "auth": "unauth",
+   "planted_signals": [
+    "agent_handoff",
+    "escalation_request",
+    "tool_failure"
+   ],
+   "service_city": "San Jose",
+   "previous_session_id": null,
+   "n_traces": 7,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "18e8ccd0-6354-57f0-9967-bff2fda166db",
+   "scenario": "GENERAL.INFO.HOURS:A",
+   "primary_intent": "GENERAL.INFO.HOURS",
+   "intents": [
+    "GENERAL.INFO.HOURS"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [],
+   "service_city": "Portland",
+   "previous_session_id": null,
+   "n_traces": 5,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "b40be00e-6079-566b-a114-24aa9e6fa775",
+   "scenario": "GENERAL.INFO.HOURS:B",
+   "primary_intent": "GENERAL.INFO.HOURS",
+   "intents": [
+    "GENERAL.INFO.HOURS"
+   ],
+   "outcome": "abandoned",
+   "auth": "unauth",
+   "planted_signals": [
+    "abandoned",
+    "auth_failure",
+    "no_input"
+   ],
+   "service_city": "Boston",
+   "previous_session_id": null,
+   "n_traces": 8,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "9cd97806-b06f-5f62-a51b-55b052b5b8eb",
+   "scenario": "ESCALATION.REP.REQUEST:A",
+   "primary_intent": "ESCALATION.REP.REQUEST",
+   "intents": [
+    "ESCALATION.REP.REQUEST"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "escalation_request"
+   ],
+   "service_city": "Newark",
+   "previous_session_id": null,
+   "n_traces": 5,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "574517b4-72f8-5c6d-9aa8-b9d09b0489a1",
+   "scenario": "ESCALATION.REP.REQUEST:B",
+   "primary_intent": "ESCALATION.REP.REQUEST",
+   "intents": [
+    "ESCALATION.REP.REQUEST"
+   ],
+   "outcome": "escalated",
+   "auth": "unauth",
+   "planted_signals": [
+    "agent_handoff",
+    "agent_loop",
+    "customer_repeat",
+    "escalation_request"
+   ],
+   "service_city": "Richmond",
+   "previous_session_id": null,
+   "n_traces": 7,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "25e67cf4-7726-51ea-8fea-2ad14de96fbe",
+   "scenario": "SPECIAL:multi_bill_then_upgrade",
+   "primary_intent": "BILL.EXPLAIN.CHARGES",
+   "intents": [
+    "BILL.EXPLAIN.CHARGES",
+    "DEVICE.UPGRADE.ELIGIBILITY"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "price_sensitivity",
+    "willingness"
+   ],
+   "service_city": "Charlotte",
+   "previous_session_id": null,
+   "n_traces": 10,
+   "n_goal_episodes": 2
+  },
+  {
+   "session_id": "4fd8994c-06f3-5d78-b04b-1a97c65554bc",
+   "scenario": "SPECIAL:multi_travel_then_hotspot",
+   "primary_intent": "ADDSVC.TRAVEL.INTERNATIONAL",
+   "intents": [
+    "ADDSVC.TRAVEL.INTERNATIONAL",
+    "ADDSVC.CONNECT.HOTSPOT_HOME"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "city_mention",
+    "feature_comparison",
+    "willingness"
+   ],
+   "service_city": "Orlando",
+   "previous_session_id": null,
+   "n_traces": 10,
+   "n_goal_episodes": 2
+  },
+  {
+   "session_id": "aedd37ca-4a0c-542b-8da7-4d00fc841edf",
+   "scenario": "THREAD:outage_1",
+   "primary_intent": "SERVICE.OUTAGE.DISRUPTION",
+   "intents": [
+    "SERVICE.OUTAGE.DISRUPTION"
+   ],
+   "outcome": "escalated",
+   "auth": "auth",
+   "planted_signals": [
+    "agent_handoff",
+    "escalation_request",
+    "local_event"
+   ],
+   "service_city": "Houston",
+   "previous_session_id": null,
+   "n_traces": 7,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "506a816a-fef8-53db-9d1b-d01c45179f08",
+   "scenario": "THREAD:outage_2",
+   "primary_intent": "SERVICE.OUTAGE.DISRUPTION",
+   "intents": [
+    "SERVICE.OUTAGE.DISRUPTION"
+   ],
+   "outcome": "abandoned",
+   "auth": "auth",
+   "planted_signals": [
+    "abandoned",
+    "local_event",
+    "no_input",
+    "repeat_contact_language"
+   ],
+   "service_city": "Houston",
+   "previous_session_id": "aedd37ca-4a0c-542b-8da7-4d00fc841edf",
+   "n_traces": 9,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "82355e68-25e0-592f-8060-26a1ca8ab338",
+   "scenario": "THREAD:outage_3_cancel",
+   "primary_intent": "RETENTION.CANCEL.INTENT",
+   "intents": [
+    "RETENTION.CANCEL.INTENT"
+   ],
+   "outcome": "escalated",
+   "auth": "auth",
+   "planted_signals": [
+    "agent_handoff",
+    "complaint",
+    "escalation_request",
+    "frustration"
+   ],
+   "service_city": "Houston",
+   "previous_session_id": "506a816a-fef8-53db-9d1b-d01c45179f08",
+   "n_traces": 8,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "953066ad-9399-538d-bc23-17a2c9358039",
+   "scenario": "THREAD:dispute_1",
+   "primary_intent": "BILL.CHARGE.DISPUTE",
+   "intents": [
+    "BILL.CHARGE.DISPUTE"
+   ],
+   "outcome": "escalated",
+   "auth": "auth",
+   "planted_signals": [
+    "agent_handoff",
+    "complaint",
+    "escalation_request"
+   ],
+   "service_city": "Phoenix",
+   "previous_session_id": null,
+   "n_traces": 7,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "ee03c466-e3ff-5391-81cb-b8841de12b80",
+   "scenario": "THREAD:dispute_2_resolved",
+   "primary_intent": "BILL.CHARGE.DISPUTE",
+   "intents": [
+    "BILL.CHARGE.DISPUTE"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "complaint",
+    "positive_response"
+   ],
+   "service_city": "Phoenix",
+   "previous_session_id": "953066ad-9399-538d-bc23-17a2c9358039",
+   "n_traces": 7,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "9647517d-91aa-5751-a2d0-679598fd48af",
+   "scenario": "SPECIAL:location_mismatch_current",
+   "primary_intent": "SERVICE.CONNECTIVITY.COVERAGE",
+   "intents": [
+    "SERVICE.CONNECTIVITY.COVERAGE"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "city_mention",
+    "coverage_local"
+   ],
+   "service_city": "Denver",
+   "previous_session_id": null,
+   "n_traces": 7,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "46468bb8-622f-5cdc-874e-c1cafb968c02",
+   "scenario": "SPECIAL:location_placeholder",
+   "primary_intent": "SERVICE.CONNECTIVITY.COVERAGE",
+   "intents": [
+    "SERVICE.CONNECTIVITY.COVERAGE"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "coverage_local",
+    "location_unresolved"
+   ],
+   "service_city": "Atlanta",
+   "previous_session_id": null,
+   "n_traces": 7,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "f6fefa29-3d1f-59d1-affa-39b626b0dbe3",
+   "scenario": "SPECIAL:no_service_location",
+   "primary_intent": "BILL.EXPLAIN.BALANCE",
+   "intents": [
+    "BILL.EXPLAIN.BALANCE"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "positive_response"
+   ],
+   "service_city": null,
+   "previous_session_id": null,
+   "n_traces": 6,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "53bf4439-a881-57c6-b46c-be7ed9c77f14",
+   "scenario": "SPECIAL:spanish",
+   "primary_intent": "BILL.EXPLAIN.CHARGES",
+   "intents": [
+    "BILL.EXPLAIN.CHARGES"
+   ],
+   "outcome": "escalated",
+   "auth": "auth",
+   "planted_signals": [
+    "agent_handoff",
+    "escalation_request",
+    "price_sensitivity"
+   ],
+   "service_city": "Miami",
+   "previous_session_id": null,
+   "n_traces": 9,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "2bacd5ee-8918-587a-bac3-18411261510f",
+   "scenario": "SPECIAL:out_of_scope",
+   "primary_intent": "GENERAL.INFO.HOURS",
+   "intents": [
+    "GENERAL.INFO.HOURS"
+   ],
+   "outcome": "resolved",
+   "auth": "unauth",
+   "planted_signals": [
+    "out_of_scope"
+   ],
+   "service_city": "Detroit",
+   "previous_session_id": null,
+   "n_traces": 6,
+   "n_goal_episodes": 1
+  },
+  {
+   "session_id": "e1c01a07-c71c-5fcb-b226-11c127357283",
+   "scenario": "SPECIAL:household_value",
+   "primary_intent": "ADDSVC.LINE.ADD",
+   "intents": [
+    "ADDSVC.LINE.ADD",
+    "PLAN.CHANGE.LOWER_COST"
+   ],
+   "outcome": "resolved",
+   "auth": "auth",
+   "planted_signals": [
+    "multi_line_expansion",
+    "price_sensitivity",
+    "willingness"
+   ],
+   "service_city": "Austin",
+   "previous_session_id": null,
+   "n_traces": 11,
+   "n_goal_episodes": 2
+  }
+ ]
+}
