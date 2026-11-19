@@ -185,7 +185,7 @@ export async function contactDetail(root, id) {
       convert: () => convertLead(id, draw),
       edit: async () => contactForm(c, await lookups(), draw),
       del: async () => { if (await confirmBox(`Delete ${fullName(c)}? This also removes their activity history.`, 'Delete')) { await api('DELETE', `/contacts/${id}`); toast('Contact deleted'); location.hash = '#/contacts'; } },
-      task: () => taskForm({ contact_id: id }, draw), deal: async () => dealForm({ contact_id: id, account_id: c.account_id }, await lookups(), draw),
+      task: () => taskForm({ contact_id: id, account_id: c.account_id }, draw), deal: async () => dealForm({ contact_id: id, account_id: c.account_id }, await lookups(), draw),
       toggletask: async (el) => { await api('POST', `/tasks/${el.dataset.id}/toggle`); draw(); }, opentask: (el) => openTask(el.dataset.id, draw),
     });
   };
@@ -212,8 +212,9 @@ export async function accounts(root) {
 }
 export async function accountDetail(root, id) {
   const draw = async () => {
-    const d = await api('GET', `/accounts/${id}/360`); const a = d.account;
-    setHtml(root, html`<div class="topbar"><a href="#/accounts">← Accounts</a><span class="grow"></span><button class="btn" data-act="edit">Edit</button>${allow('accounts.delete') ? html`<button class="btn danger" data-act="del">Delete</button>` : ''}</div>
+    const [d, tk] = await Promise.all([api('GET', `/accounts/${id}/360`), allow('tasks.view') ? api('GET', `/tasks?account_id=${id}&limit=50`).catch(() => ({ rows: [] })) : { rows: [] }]); const a = d.account;
+    const openTasks = tk.rows.filter((t) => t.status !== 'done' && !t.done);
+    setHtml(root, html`<div class="topbar"><a href="#/accounts">← Accounts</a><span class="grow"></span>${allow('tasks.create') ? html`<button class="btn" data-act="task">+ Task</button>` : ''}<button class="btn" data-act="edit">Edit</button>${allow('accounts.delete') ? html`<button class="btn danger" data-act="del">Delete</button>` : ''}</div>
       <div class="grid g21"><div style="display:grid;gap:16px;align-content:start">
         <div class="card"><div class="bd"><h1>${a.name}</h1><div class="muted">${[a.industry, a.size && a.size + ' employees', [a.city, a.country].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}</div>
           ${a.website ? html`<div><a href="${/^https?:\/\//.test(a.website) ? a.website : '#'}" target="_blank" rel="noopener noreferrer">${a.website}</a></div>` : ''}${a.notes ? html`<p>${a.notes}</p>` : ''}</div></div>
@@ -221,11 +222,12 @@ export async function accountDetail(root, id) {
         <div style="display:grid;gap:16px;align-content:start">
           ${customDetailCard('accounts', a)}
           <div class="card"><div class="hd"><h2>Contacts (${d.contacts.length})</h2></div><div class="bd">${d.contacts.length ? d.contacts.map((c) => html`<div style="padding:5px 0"><a href="#/contacts/${c.id}">${fullName(c)}</a> ${badge(c.status)}<div class="small muted">${c.title || ''}</div></div>`) : html`<span class="muted">No contacts.</span>`}</div></div>
+          ${allow('tasks.view') ? html`<div class="card"><div class="hd"><h2>Open tasks (${openTasks.length})</h2></div><div class="bd">${openTasks.length ? openTasks.map((t) => html`<div style="padding:5px 0"><a href="#" data-act="opentask" data-id="${t.id}">${t.title}</a><div class="small muted">${[t.owner_name, t.due_date && `due ${fmtDate(t.due_date)}`, t.contact_name, t.deal_name].filter(Boolean).join(' · ')}</div></div>`) : html`<span class="muted">No open tasks.</span>`}</div></div>` : ''}
           <div class="card"><div class="hd"><h2>Deals (${d.deals.length})</h2></div><div class="bd">${d.deals.length ? d.deals.map((x) => html`<div style="display:flex;justify-content:space-between;padding:5px 0"><a href="#/deals/${x.id}">${x.name}</a><span>${money(x.amount, true)} ${badge(x.stage)}</span></div>`) : html`<span class="muted">No deals.</span>`}</div></div>
         </div></div>`);
     wireTimeline(root, 'account_id', id, draw); mountAttachments(root, 'accounts', id); livePage(root, 'accounts', id, draw);
     on(root, {
-      edit: () => accountForm(a, draw),
+      edit: () => accountForm(a, draw), task: () => taskForm({ account_id: Number(id) }, draw), opentask: (el) => openTask(Number(el.dataset.id), draw),
       del: async () => { if (await confirmBox(`Delete ${a.name}? Contacts and deals stay but lose their company link.`, 'Delete')) { await api('DELETE', `/accounts/${id}`); location.hash = '#/accounts'; } },
     });
   };
@@ -277,30 +279,11 @@ export function stageModal(deal, onDone, target) {
 
 /**
  * Deal form helpers:
- *  - the Contact list shows only the people at the chosen account (all contacts when no account is chosen);
- *    picking a contact first fills in their account;
+ *  - (the Contact list follows the chosen account: see limitContactsToAccount in forms.js)
  *  - Probability follows the stage (10 / 25 / 50 / 75 / 100 / 0 %) until you type your own number.
  */
 function wireDealForm(form, lk, rec) {
-  const acc = form.querySelector('[name=f__account_id]'), con = form.querySelector('[name=f__contact_id]');
   const stage = form.querySelector('[name=f__stage]'), prob = form.querySelector('[name=f__probability]');
-  if (acc && con && lk?.contactAccount) {
-    const all = lk.contacts, owner = lk.contactAccount;
-    const fill = () => {
-      const a = acc.value, keep = con.value;
-      const list = a ? all.filter(([id]) => String(owner[id] ?? '') === a) : all;
-      // keep a contact that is already linked even if they are at another account, so nothing is lost silently
-      const extra = keep && !list.some(([id]) => String(id) === keep) ? all.filter(([id]) => String(id) === keep) : [];
-      con.innerHTML = '';
-      con.add(new Option(a ? (list.length ? '— choose a contact at this account —' : '— no contacts at this account yet —') : '—', ''));
-      for (const [id, name] of list) con.add(new Option(name, id));
-      for (const [id, name] of extra) con.add(new Option(`${name} (other account)`, id));
-      con.value = keep;
-    };
-    acc.addEventListener('change', fill);
-    con.addEventListener('change', () => { const a = owner[con.value]; if (con.value && a && !acc.value) { acc.value = String(a); fill(); } });
-    fill();
-  }
   if (stage && prob) {
     const defOf = (k) => store.meta.stages.find((s) => s.key === k)?.prob;
     const startStage = stage.value; let typed = false;

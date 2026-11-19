@@ -398,6 +398,46 @@ await page.keyboard.press('Escape');
   await page.emulateMedia({ media: 'print' }); await shot('business-review-print'); await page.emulateMedia({ media: 'screen' });
 }
 
+// ===== Contact pickers follow the account everywhere =====
+{
+  const info = await page.evaluate(async () => {
+    const c = (await (await fetch('/api/contacts?limit=1000')).json()).rows; const d = (await (await fetch('/api/deals?limit=1000')).json()).rows;
+    const acc = d.find((x) => x.account_id && c.some((y) => y.account_id === x.account_id)).account_id;
+    const r = await fetch('/api/customization/fields', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ entity: 'deals', label: 'Decision maker', type: 'lookup', config: { target: 'contacts' } }) });
+    const fld = await r.json();
+    const otherDeal = d.find((x) => x.account_id && x.account_id !== acc);
+    return { acc: String(acc), contacts: c.filter((x) => String(x.account_id) === String(acc)).map((x) => String(x.id)), deals: d.filter((x) => String(x.account_id) === String(acc)).map((x) => String(x.id)), fieldKey: fld.key, fieldOk: r.ok, otherDeal: String(otherDeal.id), otherAcc: String(otherDeal.account_id) };
+  });
+  const vals = async (sel) => page.$$eval(sel, (o) => o.map((x) => x.value).filter(Boolean));
+  // task form
+  await page.goto(`${base}/#/tasks`); await page.waitForSelector('button[data-act=new]'); await page.click('button[data-act=new]'); await page.waitForSelector('.modal select[name=account_id]');
+  await page.selectOption('.modal select[name=account_id]', info.acc);
+  const tc = await vals('.modal select[name=contact_id] option'), td = await vals('.modal select[name=deal_id] option');
+  if (!tc.length || tc.some((v) => !info.contacts.includes(v))) errors.push(`task form: contacts not limited to the account (${tc.length} shown, ${info.contacts.length} expected)`);
+  if (!td.length || td.some((v) => !info.deals.includes(v))) errors.push('task form: deals not limited to the account');
+  await shot('task-form-account'); await page.keyboard.press('Escape');
+  await page.click('button[data-act=new]'); await page.waitForSelector('.modal select[name=deal_id]'); await page.selectOption('.modal select[name=deal_id]', info.otherDeal);
+  if ((await page.inputValue('.modal select[name=account_id]')) !== info.otherAcc) errors.push('task form: choosing a deal did not fill in its account');
+  await page.keyboard.press('Escape');
+  // account page: + Task starts with that account
+  await page.goto(`${base}/#/accounts/${info.acc}`); await page.waitForSelector('button[data-act=task]', { timeout: 8000 }).catch(() => errors.push('no + Task on the account page'));
+  await page.click('button[data-act=task]'); await page.waitForSelector('.modal select[name=account_id]');
+  if ((await page.inputValue('.modal select[name=account_id]')) !== info.acc) errors.push('task from account page lacks the account');
+  if ((await vals('.modal select[name=contact_id] option')).some((v) => !info.contacts.includes(v))) errors.push('task from account page lists other accounts\' contacts');
+  await page.keyboard.press('Escape');
+  // custom "link to a contact" field on the deal form
+  if (!info.fieldOk) errors.push('could not create a contact lookup field');
+  else {
+    await page.goto(`${base}/#/deals`); await page.reload(); await page.waitForSelector('button[data-act=new]'); await page.click('button[data-act=new]'); await page.waitForSelector('.modal select[name=f__account_id]');
+    if (await page.locator(`.modal select[name="c__${info.fieldKey}"]`).count()) {
+      await page.selectOption('.modal select[name=f__account_id]', info.acc);
+      const cf = await vals(`.modal select[name="c__${info.fieldKey}"] option`);
+      if (!cf.length || cf.some((v) => !info.contacts.includes(v))) errors.push('custom contact field on deals not limited to the account');
+    } else errors.push('new contact lookup field not on the deal form');
+    await page.keyboard.press('Escape');
+  }
+}
+
 // ===== Inviting a user by email =====
 await page.goto(`${base}/#/team`); await page.waitForSelector('button[data-act=new]'); await page.click('button[data-act=new]');
 await page.fill('.modal input[name=name]', 'Janvi Rao'); await page.fill('.modal input[name=email]', 'janvi@syncsense.in');

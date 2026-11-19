@@ -198,6 +198,15 @@ BEGIN SELECT RAISE(ABORT, 'Issued invoices cannot be changed. Issue a credit or 
         shared INTEGER NOT NULL DEFAULT 0, owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')))`);
     },
   },
+  {
+    version: 15, name: 'task_account',
+    up(db) {
+      if (!hasColumn(db, 'tasks', 'account_id')) db.exec('ALTER TABLE tasks ADD COLUMN account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL');
+      // existing tasks: the account of their deal, else of their contact
+      db.exec(`UPDATE tasks SET account_id = COALESCE((SELECT account_id FROM deals WHERE id=tasks.deal_id), (SELECT account_id FROM contacts WHERE id=tasks.contact_id)) WHERE account_id IS NULL`);
+      db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_account ON tasks(account_id)');
+    },
+  },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 

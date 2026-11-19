@@ -100,7 +100,8 @@ Custom values appear on the record's detail page (grouped by your sections), in 
 
 * *Customisation → Deals → Deal stages & probabilities*: rename, add, reorder and delete stages and set each stage's probability. Deleting a stage with deals asks where to move them (history note added; stage folder files move too). Open deals still on a stage's old default probability follow the new one. Closed Won / Closed Lost can be renamed but always stay (100 % / 0 %).
 * Upgrading to 1.25 rebuilds the deals table once to allow your own stage names (a backup is taken first; all rows, ids, links and history are kept).
-* In the deal form, **Probability** follows the stage until you type your own, and **Contact / lead** lists only the people at the chosen account.
+* In the deal form, **Probability** follows the stage until you type your own.
+* **Contact pickers follow the account everywhere**: deal form, task form (which now has a **Related account**; its deals follow it too), custom “link to a contact” fields on deals, accounts and contacts, and lead conversion. Picking a contact or deal first fills in the account. A contact already linked from another account stays, marked “(other account)”. Account pages have **+ Task** and an **Open tasks** card.
 * *Contacts* is now called **Contacts / Leads**. A lead becomes a deal with **Convert lead** on the contact's page (create or link the account and open a deal in one step).
 
 ## Opens, clicks & landing in the inbox

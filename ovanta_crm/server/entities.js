@@ -57,17 +57,17 @@ export const ENTITIES = {
   },
   tasks: {
     table: 'tasks', alias: 't', noun: 'Task',
-    fields: { title: T.text, due_date: T.date, priority: T.text, done: T.bool, notes: T.text, owner_id: T.fk, contact_id: T.fk, deal_id: T.fk },
+    fields: { title: T.text, due_date: T.date, priority: T.text, done: T.bool, notes: T.text, owner_id: T.fk, account_id: T.fk, contact_id: T.fk, deal_id: T.fk },
     required: ['title'],
     enums: { priority: ['low', 'medium', 'high'] },
     search: ['t.title', 'c.first_name', 'c.last_name', 'd.name'],
-    filters: { done: 't.done', owner_id: 't.owner_id', priority: 't.priority', contact_id: 't.contact_id', deal_id: 't.deal_id', status: 't.status', assigned_by: 't.assigned_by' },
+    filters: { done: 't.done', owner_id: 't.owner_id', priority: 't.priority', account_id: 't.account_id', contact_id: 't.contact_id', deal_id: 't.deal_id', status: 't.status', assigned_by: 't.assigned_by' },
     sorts: { title: 't.title', due_date: 't.due_date', priority: 't.priority', created_at: 't.created_at', status: 't.status' },
     defaultSort: 't.done ASC, t.due_date IS NULL, t.due_date ASC',
-    select: `SELECT t.*, TRIM(COALESCE(c.first_name,'') || ' ' || COALESCE(c.last_name,'')) AS contact_name, d.name AS deal_name, u.name AS owner_name,
+    select: `SELECT t.*, TRIM(COALESCE(c.first_name,'') || ' ' || COALESCE(c.last_name,'')) AS contact_name, d.name AS deal_name, u.name AS owner_name, ta.name AS account_name,
       ab.name AS assigned_by_name,
       (SELECT COUNT(*) FROM files fx WHERE fx.entity='tasks' AND fx.record_id=t.id) AS file_count
-      FROM tasks t LEFT JOIN contacts c ON c.id=t.contact_id LEFT JOIN deals d ON d.id=t.deal_id LEFT JOIN users u ON u.id=t.owner_id
+      FROM tasks t LEFT JOIN contacts c ON c.id=t.contact_id LEFT JOIN deals d ON d.id=t.deal_id LEFT JOIN users u ON u.id=t.owner_id LEFT JOIN accounts ta ON ta.id=t.account_id
       LEFT JOIN users ab ON ab.id=t.assigned_by`,
   },
 };
@@ -171,6 +171,7 @@ export function create(ent, body, user) {
   const data = clean(ent, body);
   if (ent.custom) data.custom = JSON.stringify(mergeCustom(ent.table, body.custom, { existing: {}, record: { ...builtinDefaults(ent.table), ...data }, isCreate: true }));
   if (ent.table === 'deals') applyDealStage(data, null);
+  if (ent.table === 'tasks') taskAccount(data, null);
   if (ent.table === 'contacts' && data.email === undefined) data.email = null;
   hooks.before[ent.table]?.(data, body, null, user);
   if (!('owner_id' in data) && ent.fields.owner_id) data.owner_id = user.id;
@@ -233,6 +234,7 @@ export function update(ent, id, body, user) {
   hooks.before[ent.table]?.(data, body, existing, user);
   if (ent.custom && body.custom !== undefined) data.custom = JSON.stringify(mergeCustom(ent.table, body.custom, { existing: existing.custom || {}, record: { ...existing, ...data }, isCreate: false }));
   if (ent.table === 'deals') applyDealStage(data, existing);
+  if (ent.table === 'tasks') taskAccount(data, existing);
   const cols = Object.keys(data);
   if (cols.length) run(`UPDATE ${ent.table} SET ${cols.map((c) => `${c}=?`).join(',')}, version = version + 1, updated_at = ?, updated_by = ? WHERE id=?`, ...Object.values(data), nowIso(), user?.id ?? null, id);
   audit(user, 'update', ent.table, id, existing.name || existing.title || existing.first_name);
@@ -266,6 +268,16 @@ export function remove(ent, id, user) {
   if (ent.table === 'deals') notify(['deal.deleted'], existing, {}, user);
   if (ent.table === 'contacts') notify(['contact.deleted'], existing, {}, user);
   return { ok: true };
+}
+
+/** A task's account follows its deal (or contact) when none was chosen, so it shows up under the right account. */
+function taskAccount(data, existing) {
+  const touched = 'deal_id' in data || 'contact_id' in data;
+  if (!touched || ('account_id' in data && data.account_id)) return;
+  if (existing?.account_id && !('account_id' in data)) return;
+  const dealId = 'deal_id' in data ? data.deal_id : existing?.deal_id, contactId = 'contact_id' in data ? data.contact_id : existing?.contact_id;
+  const acc = (dealId && get('SELECT account_id FROM deals WHERE id=?', dealId)?.account_id) || (contactId && get('SELECT account_id FROM contacts WHERE id=?', contactId)?.account_id) || null;
+  if (acc) data.account_id = acc;
 }
 
 function applyDealStage(data, existing) {

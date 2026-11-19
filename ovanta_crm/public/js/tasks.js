@@ -2,6 +2,7 @@ import { api, html, raw, setHtml, store, toast, fail, on, $, modal, confirmBox, 
 import { mountList } from './list.js';
 import { attachments, uploadFiles } from './records.js';
 import { onPageChange, watchFormRecord, conflictPanel, changedOnly } from './live.js';
+import { limitContactsToAccount } from './forms.js';
 
 const userOpts = () => store.meta.users.map((u) => [u.id, u.name]);
 const page = (title, actions = '') => html`<div class="topbar"><h1>${title}</h1><span class="grow"></span>${actions}</div>`;
@@ -19,9 +20,12 @@ const overdue = (t) => t.status !== 'done' && t.due_date && t.due_date < todaySt
 
 /** Create / edit a task. Assigning it to someone else emails them the task and its due date. */
 export async function taskForm(t = {}, onDone) {
-  const [c, d] = await Promise.all([api('GET', '/contacts?limit=1000&sort=name'), api('GET', '/deals?limit=1000&sort=name')]);
+  const [c, d, ac] = await Promise.all([api('GET', '/contacts?limit=1000&sort=name'), api('GET', '/deals?limit=1000&sort=name'), api('GET', '/accounts?limit=1000&sort=name')]);
+  const lk = { contacts: c.rows.map((x) => [x.id, fullName(x)]), contactAccount: Object.fromEntries(c.rows.map((x) => [x.id, x.account_id || null])) };
+  const dealInfo = Object.fromEntries(d.rows.map((x) => [x.id, x]));
+  if (!t.id && t.deal_id && dealInfo[t.deal_id]) { const x = dealInfo[t.deal_id]; t = { ...t, account_id: t.account_id || x.account_id || null, contact_id: t.contact_id || (x.contact_id && String(lk.contactAccount[x.contact_id] ?? '') === String(x.account_id ?? '') ? x.contact_id : null) }; }
   const fields = [{ name: 'title', label: 'Task', required: true }, { name: 'due_date', label: 'Due date', type: 'date', default: todayStr() }, { name: 'priority', label: 'Priority', type: 'select', options: ['low', 'medium', 'high'], blank: false, default: 'medium' },
-    { name: 'owner_id', label: 'Assign to', type: 'select', options: userOpts(), blank: false, default: store.user.id }, { name: 'contact_id', label: 'Related contact / lead', type: 'select', options: c.rows.map((x) => [x.id, fullName(x)]) },
+    { name: 'owner_id', label: 'Assign to', type: 'select', options: userOpts(), blank: false, default: store.user.id }, { name: 'account_id', label: 'Related account', type: 'select', options: ac.rows.map((x) => [x.id, x.name]) }, { name: 'contact_id', label: 'Related contact / lead', type: 'select', options: c.rows.map((x) => [x.id, fullName(x)]) },
     { name: 'deal_id', label: 'Related deal', type: 'select', options: d.rows.map((x) => [x.id, x.name]) }, { name: 'notes', label: 'Details', type: 'textarea' }];
   const f = (n) => field(fields.find((x) => x.name === n), t);
   let pending = null, stopWatch = null;
@@ -29,8 +33,17 @@ export async function taskForm(t = {}, onDone) {
     body: html`${f('title')}<div class="row">${f('due_date')}${f('priority')}</div>${f('owner_id')}
       <label data-assignnote>Message to the assignee (optional)<textarea name="assign_note" rows="2" placeholder="Anything they should know"></textarea></label>
       <p class="small muted" data-assignnote style="margin-top:-6px">They will get an email with the task and its due date.</p>
-      <div class="row">${f('contact_id')}${f('deal_id')}</div>${f('notes')}`,
-    onOpen: (form) => { if (t.id) stopWatch = watchFormRecord(form, 'tasks', t.id); const sync = () => form.querySelectorAll('[data-assignnote]').forEach((e) => { e.hidden = String(form.owner_id.value) === String(t.id ? t.owner_id : store.user.id); }); form.owner_id.addEventListener('change', sync); sync(); },
+      ${f('account_id')}<div class="row">${f('contact_id')}${f('deal_id')}</div><p class="small muted" style="margin-top:-6px">Contacts and deals are those of the chosen account. Picking a deal or contact first fills in the account.</p>${f('notes')}`,
+    onOpen: (form) => {
+      // deals follow the account too; choosing a deal fills in its account (and its contact when none is chosen)
+      const allDeals = d.rows.map((x) => [x.id, x.name]);
+      const fillDeals = () => { const a = form.account_id.value, keep = form.deal_id.value; const mine = a ? allDeals.filter(([id]) => String(dealInfo[id]?.account_id ?? '') === a) : allDeals; const extra = keep && !mine.some(([id]) => String(id) === keep) ? allDeals.filter(([id]) => String(id) === keep) : [];
+        form.deal_id.innerHTML = ''; form.deal_id.add(new Option(a ? (mine.length ? '— choose a deal at this account —' : '— no deals at this account —') : '—', '')); for (const [id, n] of mine) form.deal_id.add(new Option(n, id)); for (const [id, n] of extra) form.deal_id.add(new Option(`${n} (other account)`, id)); form.deal_id.value = keep; };
+      const refill = limitContactsToAccount(form, { lk, selects: [form.contact_id], getAccount: () => form.account_id.value, watch: [form.account_id], setAccount: (v) => { form.account_id.value = v; fillDeals(); } });
+      form.account_id.addEventListener('change', fillDeals);
+      form.deal_id.addEventListener('change', () => { const x = dealInfo[form.deal_id.value]; if (!x) return; if (x.account_id && !form.account_id.value) { form.account_id.value = String(x.account_id); fillDeals(); refill(); } if (x.contact_id && !form.contact_id.value && String(lk.contactAccount[x.contact_id] ?? '') === String(x.account_id ?? '')) form.contact_id.value = String(x.contact_id); });
+      fillDeals();
+      if (t.id) stopWatch = watchFormRecord(form, 'tasks', t.id); const sync = () => form.querySelectorAll('[data-assignnote]').forEach((e) => { e.hidden = String(form.owner_id.value) === String(t.id ? t.owner_id : store.user.id); }); form.owner_id.addEventListener('change', sync); sync(); },
     onSubmit: async (form) => {
       const all = formValues(form, fields); let v = t.id ? changedOnly(all, t) : all;
       if (form.assign_note.value) v.assign_note = form.assign_note.value;
@@ -52,7 +65,7 @@ export async function openTask(id, onChange) {
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">${statusBadge(t.status)} ${badge(t.priority)}
       <span class="small">Due <b style="${overdue(t) ? 'color:var(--bad)' : ''}">${t.due_date ? fmtDate(t.due_date) : 'no date'}${overdue(t) ? ' · overdue' : ''}</b></span>
       <span class="small muted">· assigned to <b>${t.owner_name || '—'}</b>${t.assigned_by_name ? html` by <b>${t.assigned_by_name}</b>` : ''}</span><span class="grow"></span>
-      ${t.deal_id ? html`<a class="small" href="#/deals/${t.deal_id}" data-close>Deal: ${t.deal_name}</a>` : ''}${t.contact_id ? html`<a class="small" href="#/contacts/${t.contact_id}" data-close>Contact: ${t.contact_name}</a>` : ''}</div>
+      ${t.account_id ? html`<a class="small" href="#/accounts/${t.account_id}" data-close>Account: ${t.account_name}</a>` : ''}${t.deal_id ? html`<a class="small" href="#/deals/${t.deal_id}" data-close>Deal: ${t.deal_name}</a>` : ''}${t.contact_id ? html`<a class="small" href="#/contacts/${t.contact_id}" data-close>Contact: ${t.contact_name}</a>` : ''}</div>
     ${t.notes ? html`<div style="white-space:pre-wrap;padding:10px 12px;background:var(--brand-l);border-radius:8px;margin-bottom:12px">${t.notes}</div>` : ''}
     ${a.can_work ? html`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
       ${t.status !== 'done' ? html`<button type="button" class="btn primary" data-act="done">✅ Mark complete</button>` : html`<button type="button" class="btn" data-act="reopen">↩️ Reopen</button>`}

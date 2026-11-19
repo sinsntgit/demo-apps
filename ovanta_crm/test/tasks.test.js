@@ -92,3 +92,14 @@ test('only administrators can delete files (deal stage folders and tasks) — no
   for (const f of [dealFile, taskFile]) assert.equal((await call(admin, 'DELETE', `/api/files/${f.id}`)).status, 200);
   assert.ok(all("SELECT * FROM audit_log WHERE action='delete_file'").length >= 2);
 });
+
+test('a task belongs to the account of its deal or contact, and can be listed per account', async () => {
+  const { get: g } = await import('../server/db.js');
+  const deal = g('SELECT id, account_id FROM deals WHERE account_id IS NOT NULL LIMIT 1');
+  const contact = g('SELECT id, account_id FROM contacts WHERE account_id IS NOT NULL AND account_id<>? LIMIT 1', deal.account_id);
+  const s = (m, p, b) => call(admin, m, p, b);
+  const a = await s('POST', '/api/tasks', { title: 'From deal', deal_id: deal.id }); assert.equal(a.status, 200, JSON.stringify(a.body)); assert.equal(a.body.account_id, deal.account_id); assert.ok(a.body.account_name);
+  const b = await s('POST', '/api/tasks', { title: 'From contact', contact_id: contact.id }); assert.equal(b.body.account_id, contact.account_id);
+  const c = await s('POST', '/api/tasks', { title: 'Chosen account', account_id: contact.account_id, deal_id: deal.id }); assert.equal(c.body.account_id, contact.account_id, 'an account chosen by hand is kept');
+  const list = await s('GET', `/api/tasks?account_id=${deal.account_id}`); assert.ok(list.body.rows.some((t) => t.id === a.body.id)); assert.ok(list.body.rows.every((t) => t.account_id === deal.account_id));
+});

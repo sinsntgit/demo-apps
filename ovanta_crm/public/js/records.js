@@ -1,11 +1,15 @@
 import { viewFile, fileIcon, sizeText, openFileFromUrl } from './viewer.js';
-import { renderFields, applyVisibility, readValues, activeFields } from './forms.js';
+import { renderFields, applyVisibility, readValues, activeFields, limitContactsToAccount } from './forms.js';
 import { api, html, raw, setHtml, store, toast, fail, on, $, $$, modal, confirmBox, fmtDateTime, fmtDate, field, allow, badge, fullName, esc } from './core.js';
 
 // ---------------------------------------------------------------- lead conversion
 export async function convertLead(contactId, done) {
   const pv = await api('GET', `/contacts/${contactId}/convert-preview`);
-  const dealFields = activeFields('deals'); const lk = dealFields.some((f) => f.type === 'lookup') ? { accounts: (await api('GET', '/accounts?limit=1000&sort=name')).rows.map((x) => [x.id, x.name]), contacts: (await api('GET', '/contacts?limit=1000&sort=name')).rows.map((x) => [x.id, fullName(x)]) } : {};
+  const dealFields = activeFields('deals'); const crow = dealFields.some((f) => f.type === 'lookup' && f.config?.target === 'contacts') ? (await api('GET', '/contacts?limit=1000&sort=name')).rows : [];
+  let amodeNow = 'none';
+  // contacts per account; with “Create a new account” only the lead being converted belongs to it
+  const lk = dealFields.some((f) => f.type === 'lookup') ? { accounts: (await api('GET', '/accounts?limit=1000&sort=name')).rows.map((x) => [x.id, x.name]), contacts: crow.map((x) => [x.id, fullName(x)]),
+    get contactAccount() { return Object.fromEntries(crow.map((x) => [x.id, amodeNow === 'new' ? (x.id === pv.contact.id ? 'new' : null) : x.account_id || null])); } } : {};
   const dealLayout = { sections: [{ title: 'More deal details', columns: 2, fields: dealFields.map((f) => f.key) }] };
   const sug = pv.suggested_accounts;
   modal({ title: `Convert ${pv.contact.name}`, submitLabel: 'Convert', body: html`
@@ -24,6 +28,9 @@ export async function convertLead(contactId, done) {
       <div class="row"><label>Stage<select name="dstage">${pv.stages.map((s) => html`<option value="${s.key}" ${s.key === (pv.stages.some((x) => x.key === 'qualification') ? 'qualification' : pv.stages[0]?.key) ? raw('selected') : ''}>${s.label}</option>`)}</select></label><label>Expected close<input type="date" name="dclose"></label></div>${dealFields.length ? renderFields('deals', {}, lk, { layout: dealLayout }) : ''}</div>` : ''}
     <label>Contact status afterwards<select name="status"><option value="qualified">Qualified</option><option value="customer">Customer</option></select></label>`,
     onOpen: (f) => {
+      const accNow = () => { amodeNow = f.amode.value; return amodeNow === 'new' ? 'new' : amodeNow === 'existing' ? f.aid.value : pv.contact.account_id || ''; };
+      const refill = limitContactsToAccount(f, { lk, getAccount: accNow, watch: [f.aid] });
+      f.addEventListener('change', (e) => { if (e.target.name === 'amode') refill(); });
       const sync = () => { const m = f.amode.value; $$('[data-for=new]', f).forEach((e) => (e.hidden = m !== 'new')); $$('[data-for=existing]', f).forEach((e) => (e.hidden = m !== 'existing')); const d = $('[data-for=deal]', f); if (d) d.hidden = !f.dcreate.checked; };
       const vis = () => applyVisibility(f, 'deals', lk); f.addEventListener('input', vis); f.addEventListener('change', () => { sync(); vis(); }); sync(); vis();
       f.asearch?.addEventListener('input', async () => { const r = await api('GET', `/lookup?type=accounts&q=${encodeURIComponent(f.asearch.value)}`); f.aid.innerHTML = r.map((a) => `<option value="${a.id}">${esc(a.label)}</option>`).join(''); });

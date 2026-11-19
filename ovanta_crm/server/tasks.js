@@ -30,7 +30,7 @@ const nice = (d) => { if (!d) return 'no due date'; const x = new Date(`${String
 const taskLink = (t) => `${config.baseUrl}/#/tasks?task=${t.id}`;
 function mailFor(t, { heading, intro, note, actor }) {
   const rows = [['Task', t.title], ['Due', nice(t.due_date)], ['Priority', t.priority], ['Status', STATUS_LABEL[t.status] || t.status], ['Assigned to', t.owner_name || '—'], ['Assigned by', t.assigned_by_name || '—'],
-    t.deal_name && ['Deal', t.deal_name], t.contact_name && ['Contact', t.contact_name]].filter(Boolean);
+    t.account_name && ['Account', t.account_name], t.deal_name && ['Deal', t.deal_name], t.contact_name && ['Contact / lead', t.contact_name]].filter(Boolean);
   const html = `<div style="font-family:Arial,sans-serif;max-width:560px;color:#222"><h2 style="margin:0 0 8px">${esc(heading)}</h2><p>${esc(intro)}</p>
     ${note ? `<div style="border-left:4px solid #4f46e5;background:#f4f4fb;padding:10px 14px;margin:12px 0;white-space:pre-wrap">${esc(note)}</div>` : ''}
     <table style="border-collapse:collapse;margin:12px 0">${rows.map(([k, v]) => `<tr><td style="padding:4px 14px 4px 0;color:#666">${esc(k)}</td><td style="padding:4px 0"><b>${esc(v)}</b></td></tr>`).join('')}</table>
@@ -79,7 +79,7 @@ hooks.before.tasks = (data, body, existing, user) => {
   body.__assigned = { from: existing?.owner_id ?? null };
 };
 const EDITABLE = { title: 'Title', due_date: 'Due date', priority: 'Priority', notes: 'Details', contact_id: 'Related contact', deal_id: 'Related deal' };
-const show = (k, v, row) => (v == null || v === '' ? '—' : k === 'due_date' ? nice(v) : k === 'contact_id' ? (row?.contact_name || `#${v}`) : k === 'deal_id' ? (row?.deal_name || `#${v}`) : String(v).slice(0, 120));
+const show = (k, v, row) => (v == null || v === '' ? '—' : k === 'due_date' ? nice(v) : k === 'contact_id' ? (row?.contact_name || `#${v}`) : k === 'deal_id' ? (row?.deal_name || `#${v}`) : k === 'account_id' ? (row?.account_name || `#${v}`) : String(v).slice(0, 120));
 hooks.after.tasks = (t, existing, body, user) => {
   if (body.__assigned) {
     const from = body.__assigned.from; const note = String(body.assign_note || '').trim();

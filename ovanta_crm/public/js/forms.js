@@ -27,7 +27,7 @@ function control(d, value, lk) {
     case 'select': case 'dropdown': case 'lookup': {
       const options = d.type === 'dropdown' ? d.options.map((o) => [o, o]) : d.type === 'lookup' ? (lk?.[d.config.target] || []) : d.options;
       const known = options.some(([val]) => String(val) === String(v));
-      return html`<select name="${name}" ${req}>${d.noBlank ? '' : html`<option value="">—</option>`}${options.map(([val, label]) => html`<option value="${val}" ${String(val) === String(v) ? raw('selected') : ''}>${label}</option>`)}${v !== '' && !known ? html`<option value="${v}" selected>${v} (no longer in the list)</option>` : ''}</select>`;
+      return html`<select name="${name}" ${req} ${d.source === 'contacts' || (d.type === 'lookup' && d.config?.target === 'contacts') ? raw('data-contacts') : ''}>${d.noBlank ? '' : html`<option value="">—</option>`}${options.map(([val, label]) => html`<option value="${val}" ${String(val) === String(v) ? raw('selected') : ''}>${label}</option>`)}${v !== '' && !known ? html`<option value="${v}" selected>${v} (no longer in the list)</option>` : ''}</select>`;
     }
     case 'multiselect': { const cur = Array.isArray(value) ? value : []; const all = [...d.options, ...cur.filter((x) => !d.options.includes(x))];
       return html`<div class="ms" data-ms="${name}">${all.map((o) => html`<label class="check small" style="margin:0"><input type="checkbox" name="${name}" value="${o}" ${cur.includes(o) ? raw('checked') : ''}> ${o}</label>`)}</div>`; }
@@ -85,6 +85,33 @@ export function readValues(form, entity, lk) {
 }
 
 /** Create/edit dialog for contacts, accounts and deals, driven by the admin's layout. */
+/**
+ * Contact pickers list only the people at the related account (all contacts when no account is chosen).
+ * A contact already linked to someone at another account stays selectable, marked "(other account)", so nothing is lost.
+ * getAccount(): the account id that applies; watch: selects that change it; setAccount(id): fill the account when a contact is picked first.
+ */
+export function limitContactsToAccount(form, { lk, getAccount, watch = [], setAccount, selects }) {
+  if (!lk?.contactAccount || !lk.contacts) return () => {};
+  const list = selects || [...form.querySelectorAll('select[data-contacts]')];
+  if (!list.length) return () => {};
+  const fill = () => {
+    const a = String(getAccount() || '');
+    for (const sel of list) {
+      const keep = sel.value; const mine = a ? lk.contacts.filter(([id]) => String(lk.contactAccount[id] ?? '') === a) : lk.contacts;
+      const extra = keep && !mine.some(([id]) => String(id) === keep) ? lk.contacts.filter(([id]) => String(id) === keep) : [];
+      sel.innerHTML = '';
+      sel.add(new Option(a ? (mine.length ? '— choose a contact at this account —' : '— no contacts at this account yet —') : '—', ''));
+      for (const [id, name] of mine) sel.add(new Option(name, id));
+      for (const [id, name] of extra) sel.add(new Option(`${name} (other account)`, id));
+      sel.value = keep;
+    }
+  };
+  for (const w of watch) w?.addEventListener('change', fill);
+  if (setAccount) for (const sel of list) sel.addEventListener('change', () => { const acc = lk.contactAccount[sel.value]; if (sel.value && acc && !getAccount()) { setAccount(String(acc)); fill(); } });
+  fill();
+  return fill;
+}
+
 export function openEntityForm(entity, rec, { lk, onDone, titles, extra, afterBody } = {}) {
   const t = titles || {}; const isNew = !rec?.id; rec = rec || {};
   let pending = null, stopWatch = null; // pending: choices for fields someone else changed meanwhile
@@ -92,6 +119,10 @@ export function openEntityForm(entity, rec, { lk, onDone, titles, extra, afterBo
     body: html`${renderFields(entity, rec, lk)}${extra ? extra(rec) : ''}`,
     onOpen: (form) => {
       applyVisibility(form, entity, lk); form.addEventListener('input', () => applyVisibility(form, entity, lk)); form.addEventListener('change', () => applyVisibility(form, entity, lk)); afterBody?.(form);
+      // deals and contacts: by the Account / Company field; accounts: the account being edited
+      const accSel = form.querySelector('[name=f__account_id]');
+      if (entity === 'accounts') limitContactsToAccount(form, { lk, getAccount: () => (rec.id ? rec.id : '') });
+      else limitContactsToAccount(form, { lk, getAccount: () => accSel?.value, watch: [accSel], setAccount: entity === 'deals' && accSel ? (v) => { accSel.value = v; } : null });
       if (!isNew) stopWatch = watchFormRecord(form, entity, rec.id);
     },
     onClose: () => stopWatch?.(),
