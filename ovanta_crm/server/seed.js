@@ -12,9 +12,21 @@ const int = (a, b) => a + Math.floor(rnd() * (b - a + 1));
 const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 19).replace('T', ' ');
 const dateOffset = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
 
+// demo deal sizes: rupees on an INR install (₹4 lakh – ₹1.4 crore), otherwise the same numbers as before
+let INR_SCALE = 1;
+function demoCurrency() {
+  const c1 = get("SELECT value FROM settings WHERE key='currency.c1'")?.value || 'INR';
+  INR_SCALE = c1 === 'INR' ? 80 : 1;
+  if (c1 !== 'INR' || get("SELECT value FROM settings WHERE key='currency.c2'")) return;
+  run("INSERT OR IGNORE INTO settings (key,value) VALUES ('currency.c1','INR')"); run("INSERT OR IGNORE INTO settings (key,value) VALUES ('currency.c2','USD')");
+  const y = new Date().getFullYear();
+  for (const [yr, rate] of [[y - 1, 0.0119], [y, 0.0117]]) run("INSERT OR IGNORE INTO fx_rates (c1,c2,year,rate,note,updated_by_name) VALUES ('INR','USD',?,?,'Demo rate',?)", yr, rate, 'Setup');
+}
+
 export function seedIfEmpty() {
   if (get('SELECT COUNT(*) n FROM users').n > 0) return;
   console.log('First run: creating admin user' + (config.seedDemo ? ' and demo data' : ''));
+  if (config.seedDemo) demoCurrency();
   tx(() => {
     const pw = hashPassword(config.adminPassword);
     run("INSERT INTO users (name,email,password_hash,role) VALUES ('Admin User',?,?,'admin')", config.adminEmail, pw);
@@ -59,7 +71,7 @@ export function seedIfEmpty() {
       const [aid, an] = pick(accIds); const [stage, prob] = pick([...stages, stages[0], stages[1], stages[2], stages[4], stages[4]]);
       const closed = stage === 'won' || stage === 'lost';
       const createdDays = int(10, 200); const created = daysAgo(createdDays);
-      const owner = pick(uids); const amount = int(5, 180) * 1000; const closedAt = closed ? daysAgo(int(1, Math.min(150, createdDays - 1))) : null; // always after creation
+      const owner = pick(uids); const amount = int(5, 180) * 1000 * INR_SCALE; const closedAt = closed ? daysAgo(int(1, Math.min(150, createdDays - 1))) : null; // always after creation
       const id = Number(run('INSERT INTO deals (name,amount,stage,probability,close_date,account_id,contact_id,owner_id,closed_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
         `${an} – ${pick(dealWords)}`, amount, stage, prob, closed ? dateOffset(-int(1, 150)) : dateOffset(int(5, 90)), aid, pick(contactIds), owner, closedAt, created).lastInsertRowid);
       dealIds.push(id); dealMeta.push({ id, stage, created, closedAt, owner, amount });

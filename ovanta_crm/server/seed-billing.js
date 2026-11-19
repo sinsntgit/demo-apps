@@ -21,10 +21,10 @@ function seedIndia() {
   accounts.forEach((a, i) => { const [code, state, city, pin] = places[i % places.length];
     run('UPDATE accounts SET vat_number=?, street=?, city=?, state=?, postal_code=?, country_code=?, billing_email=?, billing_phone=? WHERE id=?',
       demoGstin(code, `AABC${String.fromCharCode(65 + i)}${1000 + i * 37}${String.fromCharCode(70 + i)}`), `${10 + i} MG Road`, city, state, pin, 'IN', `accounts@${a.name.toLowerCase().replace(/[^a-z0-9]/g, '')}.example`, `98${int(10000000, 99999999)}`, a.id); });
-  const items = [['Platform subscription', 48000, '997331'], ['Implementation services', 125000, '998314'], ['Annual support plan', 36000, '998316'], ['Consulting (per day)', 22000, '998311'], ['Training workshop', 54000, '999293'], ['Analytics add-on', 19000, '997331']];
+  const items = [['Platform subscription', 48000, '997331', 'Months'], ['Implementation services', 125000, '998314', 'Nos'], ['Annual support plan', 36000, '998316', 'Years'], ['Consulting', 22000, '998311', 'Days'], ['Training workshop', 54000, '999293', 'Days'], ['Analytics add-on', 19000, '997331', 'Licence']];
   const mk = (acc, age, terms, nLines) => {
     const issue = daysAgo(age);
-    const lines = Array.from({ length: nLines }, () => { const [d, p, hsn] = items[int(0, items.length - 1)]; return { description: d, hsn_code: hsn, qty: int(1, 4), unit_price: p, vat_category: 'S', vat_rate: 18 }; });
+    const lines = Array.from({ length: nLines }, () => { const [d, p, hsn, unit] = items[int(0, items.length - 1)]; return { description: d, hsn_code: hsn, unit, qty: int(1, 4), unit_price: p, vat_category: 'S', vat_rate: 18 }; });
     const { f, calc } = buildDraft({ account_id: acc.id, issue_date: issue, supply_date: issue, due_date: daysFrom(issue, terms), lines }, null, admin); f._isNew = true; f.source = 'demo';
     const id = saveDraft(f, calc, admin); run("UPDATE invoices SET source='demo' WHERE id=?", id); issueInvoice(id, admin); return loadInvoice(id);
   };

@@ -15,6 +15,11 @@ const deal = async (b) => (await call(admin, 'POST', '/api/deals', { name: 'FX '
 const reload = async (d) => (await call(admin, 'GET', `/api/deals/${d.id}`)).body;
 
 test('setup: only settings managers can change currencies and rates; codes are validated', async () => {
+  // a new install works in rupees, with US dollars as the second currency (demo rates)
+  const m0 = (await call(rep, 'GET', '/api/meta')).body.currency; assert.equal(m0.c1, 'INR'); assert.equal(m0.c2, 'USD');
+  assert.ok((await deal({ amount: 100000 })).amount2 > 0, 'demo INR→USD rate converts');
+  // this test then works with a USD → SAR business
+  assert.equal((await call(admin, 'PUT', '/api/currency', { c1: 'USD', c2: '' })).status, 200);
   const m = (await call(rep, 'GET', '/api/meta')).body.currency; assert.equal(m.c1, 'USD'); assert.equal(m.c2, null);
   assert.equal((await deal({ amount: 100 })).amount2, null, 'no Currency 2 yet → no conversion');
   assert.equal((await call(rep, 'PUT', '/api/currency', { c1: 'USD', c2: 'SAR' })).status, 403);

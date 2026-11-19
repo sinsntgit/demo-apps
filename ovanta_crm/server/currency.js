@@ -8,7 +8,8 @@ import { getSetting, setSetting } from './settings.js';
  * changing the pair keeps the old pair's years, and every rate change is logged in fx_rate_changes.
  * Which year applies to a deal is decided in the deal_fx view (see migration 8).
  */
-export const currencyPair = () => ({ c1: getSetting('currency.c1', 'USD'), c2: getSetting('currency.c2', null) || null });
+export const DEFAULT_C1 = 'INR';
+export const currencyPair = () => ({ c1: getSetting('currency.c1', DEFAULT_C1), c2: getSetting('currency.c2', null) || null });
 const validCode = (c) => { const s = String(c || '').trim().toUpperCase(); if (!/^[A-Z]{3}$/.test(s)) return null; try { new Intl.NumberFormat('en', { style: 'currency', currency: s }); return s; } catch { return null; } };
 export const ratesFor = (c1, c2) => (c2 ? all('SELECT year, rate, note, updated_at, updated_by_name FROM fx_rates WHERE c1=? AND c2=? ORDER BY year DESC', c1, c2) : []);
 /** What every page needs to show amounts (sent with /api/meta). */

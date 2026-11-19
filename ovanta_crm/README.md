@@ -93,6 +93,12 @@ Custom values appear on the record's detail page (grouped by your sections), in 
 * **Invoicing starts in India GST** (INR, 18 %, GSTIN, CGST+SGST within your state and IGST across states; demo invoices are Indian). Saudi Arabia (ZATCA), UAE (FTA) or any other country can be chosen under *Billing settings*. Upgrading moves only an untouched Saudi **demo** profile to India; a profile you set up yourself is never changed. The account form follows the mode (GSTIN and *State (GST place of supply)* for India; VAT/TRN, Arabic name, building no. and district for the Gulf).
 * **Overdue deals**: open deals whose expected close date has passed show **⚠ Overdue N days** on the board (red edge) and in red in the list. Won and lost deals never do.
 
+## Rupees by default; units on invoice lines (1.27)
+
+* **INR is the main currency** of a new install (Indian grouping, ₹ lakh / crore short forms such as ₹19.3Cr), with **USD as the second currency** (demo yearly rates). Change either in *Settings → Currencies*.
+* An **existing install keeps its current main currency** on upgrade (USD if deals already exist and none was chosen), so amounts are never relabelled without conversion. To work in rupees, set Currency 1 to INR in *Settings → Currencies* — existing deal amounts are **not** converted.
+* **Unit of measure** on every invoice line (Nos, Pcs, Hrs, Days, Months, Years, Licence, Users, Sets, Lot, Kgs, Ltrs, Mtrs, Boxes — or type your own). Printed as a *Unit* column, shown on the invoice page, and copied to credit notes.
+
 ## Invoice layout (1.26.2)
 
 * New invoice: Document (issue / due date, currency, **customer PO / reference**, payment terms), Customer with a tidy **billing address** block (no empty gaps; Gulf-only fields only in Saudi/UAE mode), full-width **Items** with a running total, and a **Notes** card.

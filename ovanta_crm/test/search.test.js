@@ -65,7 +65,7 @@ test('temporary public link: works without login for an hour, tamper-proof, audi
 });
 
 test('AI search: Claude gets field names (not data) and a json_schema; the plan is run with whitelisted, parameterised SQL', async () => {
-  await call(admin, 'POST', '/api/deals', { name: 'Big Acme expansion', amount: 250000, stage: 'negotiation' });
+  await call(admin, 'POST', '/api/deals', { name: 'Big Acme expansion', amount: 250000000, stage: 'negotiation' });
   nextPlan = { explanation: 'Open deals over $100k', queries: [Q('deals', { filters: [F('amount', 'gt', '100000'), F('stage', 'in', '', { values: ['prospecting', 'qualification', 'proposal', 'Negotiation'] })], sort_field: 'amount', sort_dir: 'desc' })] };
   const r = await call(admin, 'POST', '/api/search/ai', { q: 'open deals bigger than 100k' }); assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.mode, 'ai'); const rows = r.body.groups[0].rows; assert.ok(rows.length >= 1 && rows.some((x) => x.title === 'Big Acme expansion'));

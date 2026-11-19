@@ -75,7 +75,7 @@ const BASE = {
 };
 export const SEARCH_ENTITIES = Object.keys(BASE);
 const OPS = ['eq', 'neq', 'contains', 'starts_with', 'gt', 'gte', 'lt', 'lte', 'between', 'in', 'empty', 'not_empty'];
-function money(n, code = cur().c1) { try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: code || 'USD', maximumFractionDigits: 0 }).format(n || 0); } catch { return `${code} ${Math.round(n || 0)}`; } }
+function money(n, code = cur().c1) { try { return new Intl.NumberFormat(code === 'INR' ? 'en-IN' : 'en-US', { style: 'currency', currency: code || 'INR', maximumFractionDigits: 0 }).format(n || 0); } catch { return `${code} ${Math.round(n || 0)}`; } }
 
 /** The catalogue for this moment: built-ins plus the admin's custom fields (deals, contacts, accounts). */
 function catalogue() {

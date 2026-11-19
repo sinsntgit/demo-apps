@@ -77,7 +77,7 @@ export function calcLines(rawLines, jurisdiction = 'IN') {
     const rate = cat === 'S' ? (l.vat_rate === undefined || l.vat_rate === '' || l.vat_rate === null ? defaultVatRate(jurisdiction) : Number(l.vat_rate)) : 0;
     if (!Number.isFinite(rate) || rate < 0 || rate > 100) throw bad(`Line ${i + 1}: VAT rate must be between 0 and 100`);
     const gross = round2(qty * price), net = round2(gross - disc), vat = round2((net * rate) / 100);
-    return { position: i, description: str(l.description, 500), description_ar: str(l.description_ar, 500) || null, hsn_code: str(l.hsn_code, 12).replace(/\s/g, '') || null, qty, unit_price: price, discount: round2(disc), vat_category: cat, vat_rate: rate,
+    return { position: i, description: str(l.description, 500), description_ar: str(l.description_ar, 500) || null, hsn_code: str(l.hsn_code, 12).replace(/\s/g, '') || null, unit: str(l.unit, 12) || null, qty, unit_price: price, discount: round2(disc), vat_category: cat, vat_rate: rate,
       exemption_reason: cat === 'S' ? null : str(l.exemption_reason, 200) || null, gross, net, vat, total: round2(net + vat) };
   });
   const sum = (k) => round2(lines.reduce((a, l) => a + l[k], 0));

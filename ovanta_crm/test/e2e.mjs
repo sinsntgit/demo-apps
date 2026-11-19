@@ -276,7 +276,7 @@ await ctx7.close();
 // ===== Two currencies with yearly rates =====
 const YR = new Date().getFullYear();
 await page.goto(`${base}/#/settings`); await page.waitForSelector('#fxpair');
-await page.selectOption('#fxpair select[name=c2]', 'SAR'); await page.click('#fxpair button'); await page.waitForSelector('#fxcard button[data-act=add]');
+if ((await page.inputValue('#fxpair select[name=c1]')) !== 'INR') errors.push('a new install should work in INR'); await page.selectOption('#fxpair select[name=c1]', 'USD'); await page.selectOption('#fxpair select[name=c2]', 'SAR'); await page.click('#fxpair button'); await page.waitForSelector('#fxcard button[data-act=add]');
 await page.click('#fxcard button[data-act=add]'); await page.fill('.modal input[name=year]', String(YR)); await page.fill('.modal input[name=rate]', '3.75'); await page.fill('.modal input[name=note]', 'Finance budget rate');
 await page.click('.modal button[type=submit]'); await page.waitForSelector(`#fxcard td:has-text("1 USD = 3.75 SAR")`, { timeout: 5000 }).catch(() => errors.push('yearly rate not listed'));
 await page.click('#fxcard button[data-act=edit]'); await page.fill('.modal input[name=rate]', '3.76'); await page.click('.modal button[type=submit]'); await page.waitForSelector('#fxcard td:has-text("1 USD = 3.76 SAR")');

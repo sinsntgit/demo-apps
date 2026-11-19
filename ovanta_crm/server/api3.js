@@ -99,8 +99,8 @@ export function saveDraft(f, calc, user, id = null) {
       const cols = [...COLS, 'created_by', 'source'];
       id = Number(run(`INSERT INTO invoices (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`, ...COLS.map((c) => f[c] ?? null), user?.id ?? null, f.source || null).lastInsertRowid);
     }
-    calc.lines.forEach((l, i) => run('INSERT INTO invoice_lines (invoice_id,position,description,description_ar,hsn_code,qty,unit_price,discount,vat_category,vat_rate,exemption_reason,net,vat,total) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-      id, i, l.description, l.description_ar, l.hsn_code, l.qty, l.unit_price, l.discount, l.vat_category, l.vat_rate, l.exemption_reason, l.net, l.vat, l.total));
+    calc.lines.forEach((l, i) => run('INSERT INTO invoice_lines (invoice_id,position,description,description_ar,hsn_code,unit,qty,unit_price,discount,vat_category,vat_rate,exemption_reason,net,vat,total) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      id, i, l.description, l.description_ar, l.hsn_code, l.unit, l.qty, l.unit_price, l.discount, l.vat_category, l.vat_rate, l.exemption_reason, l.net, l.vat, l.total));
     logEvent(id, id && f._isNew === false ? 'draft_updated' : 'draft_saved', `${calc.lines.length} line(s), total ${calc.total.toFixed(2)} ${f.currency}`, user);
     return id;
   });
@@ -242,7 +242,7 @@ function noteDraft(kind, orig, body, user) {
   if (orig.status === 'draft') throw bad('Issue the invoice before creating a note against it.');
   if (['credit_note'].includes(orig.doc_type)) throw bad('Create notes against the original invoice, not against a credit note.');
   const reason = cleanStr(body.reason, 300); if (!reason) throw bad('A reason is required (it is printed on the note and sent to the tax authority).');
-  let lines = Array.isArray(body.lines) && body.lines.length ? body.lines : (kind === 'credit_note' ? orig.lines.map((l) => ({ description: l.description, description_ar: l.description_ar, hsn_code: l.hsn_code, qty: l.qty, unit_price: l.unit_price, discount: l.discount, vat_category: l.vat_category, vat_rate: l.vat_rate, exemption_reason: l.exemption_reason })) : [{ description: '', qty: 1, unit_price: 0, vat_category: 'S' }]);
+  let lines = Array.isArray(body.lines) && body.lines.length ? body.lines : (kind === 'credit_note' ? orig.lines.map((l) => ({ description: l.description, description_ar: l.description_ar, hsn_code: l.hsn_code, unit: l.unit, qty: l.qty, unit_price: l.unit_price, discount: l.discount, vat_category: l.vat_category, vat_rate: l.vat_rate, exemption_reason: l.exemption_reason })) : [{ description: '', qty: 1, unit_price: 0, vat_category: 'S' }]);
   const payload = { doc_type: kind, ref_invoice_id: orig.id, reason, account_id: orig.account_id, contact_id: orig.contact_id, lines, currency: orig.currency, jurisdiction: orig.jurisdiction, lang: orig.lang, due_date: null, issue_date: today() };
   const { f, calc } = buildDraft(payload, null, user);
   for (const k of [...BUYER_KEYS]) f[k] = orig[k]; // keep the exact buyer details of the original

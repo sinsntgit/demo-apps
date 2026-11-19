@@ -122,3 +122,12 @@ test('switching back to KSA keeps the ZATCA rules', async () => {
   const d = (await call(admin, 'POST', '/api/invoices', { buyer_name: 'Riyadh Co', lines: [{ description: 'x', qty: 1, unit_price: 100 }] })).body;
   assert.ok(d.issues.some((i) => i.code === 'BUYER_VAT'), 'B2B VAT number still required'); assert.equal(d.vat_total, 15);
 });
+
+test('unit of measure is kept on lines and printed', async () => {
+  await call(admin, 'PUT', '/api/billing/settings', { jurisdiction: 'IN' });
+  const acc = (await call(admin, 'POST', '/api/accounts', { name: 'Units Co', state: 'Karnataka', country_code: 'IN', street: 'x', city: 'Bengaluru' })).body;
+  const d = (await call(admin, 'POST', '/api/invoices', { account_id: acc.id, lines: [{ description: 'Consulting', hsn_code: '998311', unit: 'Days', qty: 3, unit_price: 20000, vat_category: 'S', vat_rate: 18 }, { description: 'Licence', hsn_code: '997331', qty: 1, unit_price: 5000, vat_category: 'S', vat_rate: 18 }] })).body;
+  assert.equal(d.lines[0].unit, 'Days'); assert.equal(d.lines[1].unit, null);
+  const html = await (await fetch(`${base}/api/invoices/${d.id}/print`, { headers: { cookie: admin } })).text();
+  assert.ok(html.includes('<th>Unit</th>') && html.includes('<td>Days</td>'), 'unit column printed');
+});

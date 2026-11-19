@@ -281,7 +281,7 @@ function forMode(b, m) {
 /** Everything the browser needs to draw forms, lists and detail pages. */
 export function customizationBundle() {
   const out = { types: FIELD_TYPES, entities: {} };
-  const c1 = get("SELECT value FROM settings WHERE key='currency.c1'")?.value || 'USD';
+  const c1 = get("SELECT value FROM settings WHERE key='currency.c1'")?.value || 'INR';
   const mode = billingMode();
   for (const e of ENTITIES_WITH_CUSTOM) out.entities[e] = { builtin: BUILTIN[e].map((b) => (e === 'deals' && b.key === 'amount' ? { ...b, label: `Amount (${c1})` } : e === 'accounts' ? forMode(b, mode) : b)), fields: listFields(e, { archived: true }), layout: effectiveLayout(e) };
   return out;

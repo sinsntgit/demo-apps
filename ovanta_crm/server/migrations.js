@@ -224,6 +224,20 @@ BEGIN SELECT RAISE(ABORT, 'Issued invoices cannot be changed. Issue a credit or 
     version: 17, name: 'invoice_po_reference',
     up(db) { if (!hasColumn(db, 'invoices', 'po_number')) db.exec('ALTER TABLE invoices ADD COLUMN po_number TEXT'); },
   },
+  {
+    version: 18, name: 'inr_default_and_units',
+    up(db) {
+      // INR is the main currency of new installs. An existing install whose deals were entered in the old default (USD) keeps USD,
+      // so $85,000 never silently becomes ₹85,000; it can be changed in Settings → Currencies.
+      const set = db.prepare("SELECT value FROM settings WHERE key='currency.c1'").get();
+      if (!set && db.prepare('SELECT COUNT(*) n FROM deals').get().n > 0) db.prepare("INSERT INTO settings (key,value) VALUES ('currency.c1','USD')").run();
+      // unit of measure on invoice lines (Nos, Hrs, Days…)
+      if (!hasColumn(db, 'invoice_lines', 'unit')) db.exec('ALTER TABLE invoice_lines ADD COLUMN unit TEXT');
+      // the deal_fx view must not fall back to USD any more
+      const v = db.prepare("SELECT sql FROM sqlite_master WHERE type='view' AND name='deal_fx'").get();
+      if (v && v.sql.includes("'currency.c1'), 'USD')")) { db.exec('DROP VIEW deal_fx'); db.exec(v.sql.replace("'currency.c1'), 'USD')", "'currency.c1'), 'INR')")); }
+    },
+  },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 
