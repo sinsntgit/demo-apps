@@ -4,3 +4,4 @@ data/*.db-*
 data/backups/
 data/.secret
 .env
+data/files/
