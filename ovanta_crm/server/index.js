@@ -8,6 +8,7 @@ import { handleApi, readBody } from './http.js';
 import './api.js';
 import './api2.js';
 import './api3.js';
+import './reports.js';
 import './api4.js';
 import './api5.js';
 import './api6.js';

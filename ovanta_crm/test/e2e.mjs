@@ -378,6 +378,26 @@ await page.keyboard.press('Escape');
   await page.goto(`${base}/#/deals`); await page.waitForSelector('.kanban'); if (!(await page.textContent('.kanban')).includes('Demo booked')) errors.push('new stage not on the deals board');
 }
 
+// ===== Business review report =====
+{
+  await page.goto(`${base}/#/review`); await page.waitForSelector('.rp-tiles', { timeout: 10000 }).catch(() => errors.push('business review did not load'));
+  const tiles = await page.textContent('.rp-tiles'); for (const t of ['Won', 'Worst case', 'Projected', 'Best case']) if (!tiles.includes(t)) errors.push(`review missing tile ${t}`);
+  await page.selectOption('[data-c="period.type"]', 'year'); await page.waitForTimeout(700);
+  await page.fill('[data-c=target]', '2000000'); await page.waitForTimeout(900);
+  if (!(await page.textContent('.rp-tiles')).includes('target')) errors.push('target not reflected in the review tiles');
+  await page.selectOption('[data-c=group_by]', 'stage'); await page.waitForTimeout(700);
+  await page.check('[data-col=created_at]'); if (!(await page.textContent('.rp-deals thead')).includes('Created')) errors.push('column toggle did not add a column');
+  await page.fill('[data-c=notes]', 'Two big renewals at risk.');
+  await shot('business-review');
+  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 5000 }).catch(() => null), page.click('[data-ract=csv]')]);
+  if (!dl) errors.push('CSV export did not download'); else if (!(await dl.suggestedFilename()).startsWith('business-review')) errors.push('CSV file name');
+  await page.click('[data-ract=saveas]'); await page.fill('.modal input[name=name]', 'Year review'); await page.click('.modal button[type=submit]');
+  await page.waitForSelector('.toast:has-text("Report saved")', { timeout: 5000 }).catch(() => errors.push('saving the report view failed'));
+  await page.reload(); await page.waitForSelector('.rp-tiles'); if ((await page.inputValue('#rpview')) === '') errors.push('saved report not reopened');
+  if ((await page.inputValue('[data-c=notes]')) !== 'Two big renewals at risk.') errors.push('review notes not kept');
+  await page.emulateMedia({ media: 'print' }); await shot('business-review-print'); await page.emulateMedia({ media: 'screen' });
+}
+
 // ===== Inviting a user by email =====
 await page.goto(`${base}/#/team`); await page.waitForSelector('button[data-act=new]'); await page.click('button[data-act=new]');
 await page.fill('.modal input[name=name]', 'Janvi Rao'); await page.fill('.modal input[name=email]', 'janvi@syncsense.in');

@@ -88,6 +88,21 @@ Menu **Billing**: *Invoices · Receivables · E-invoicing readiness · Billing s
 
 Custom values appear on the record's detail page (grouped by your sections), in list columns and filters, on deal cards, in **CSV export and import** (contacts; columns are matched by field name), and as **conditions in campaign segments** (contact and account fields). They are validated on the server — required fields, option lists, number ranges, dates, emails, links and record links — whichever way a record is saved. Limits: 100 custom fields per record type, 200 options per list. Tasks and invoices have no custom fields yet.
 
+## Business review (MBR / QBR)
+
+*Business review* in the menu: the pipeline & forecast report for monthly and quarterly reviews.
+* **Won / Worst case / Projected / Best case** for the period. Worst case = won + deals at ≥ 75 % (“commit”); Projected = won + Σ amount × probability; Best case = worst case + deals at ≥ 25 %. Both thresholds and an optional **target** (attainment and gaps) are adjustable.
+* **Closure estimates**: open deals by expected close month; undated deals estimated from the average sales cycle (“est.”); overdue deals flagged **slipped**.
+* **Customise**: month / quarter / year / custom period with fiscal-year start; closing-in-period or all open deals; filters (owners, stages, accounts, category, amount, text, custom list fields); group by owner / stage / category / account / month; choose and sort columns; review notes.
+* **Save** report views (private or shared — people still only see deals their role allows), **Export CSV**, **Print / PDF**.
+
+## Deal stages, probabilities & the deal form
+
+* *Customisation → Deals → Deal stages & probabilities*: rename, add, reorder and delete stages and set each stage's probability. Deleting a stage with deals asks where to move them (history note added; stage folder files move too). Open deals still on a stage's old default probability follow the new one. Closed Won / Closed Lost can be renamed but always stay (100 % / 0 %).
+* Upgrading to 1.25 rebuilds the deals table once to allow your own stage names (a backup is taken first; all rows, ids, links and history are kept).
+* In the deal form, **Probability** follows the stage until you type your own, and **Contact / lead** lists only the people at the chosen account.
+* *Contacts* is now called **Contacts / Leads**. A lead becomes a deal with **Convert lead** on the contact's page (create or link the account and open a deal in one step).
+
 ## Opens, clicks & landing in the inbox
 
 * **Why opens/clicks may show 0** — the open image and tracked links point at the CRM's *Public address*. Recipients' mail apps must reach it **from the internet**. With `localhost`, a LAN IP or a PC name, nothing can be recorded — so campaigns are now sent **without** tracking in that case (links go straight to your site; unsubscribe works by replying, with a `mailto:` List-Unsubscribe header), and the editor, send dialog and report say so. Make the CRM reachable over **https** (Cloudflare Tunnel, or hosting) and set that address in *Settings → Email delivery*. Test by opening `<address>/t/ping` on a phone on mobile data. `ALLOW_PRIVATE_TRACKING=1` keeps tracking for internal-only audiences on your network.

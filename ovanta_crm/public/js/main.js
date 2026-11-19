@@ -6,6 +6,7 @@ import * as mail from './mail.js';
 import * as inv from './invoices.js';
 import * as bill from './billing.js';
 import * as cust from './customize.js';
+import * as rep from './reports.js';
 import { loadCustomization } from './forms.js';
 import { forcedSetup } from './security.js';
 import * as rec from './records.js';
@@ -16,7 +17,7 @@ import { startLive, stopLive, leaveAll } from './live.js';
 const app = $('#app');
 
 const NAV = [
-  ['Workspace', [['search', 'AI search', 'search'], ['dashboard', 'Dashboard', 'home'], ['contacts', 'Contacts / Leads', 'users'], ['accounts', 'Accounts', 'building'], ['deals', 'Deals', 'deal'], ['tasks', 'Tasks', 'task'], ['duplicates', 'Duplicates', 'users', 'contacts.merge']]],
+  ['Workspace', [['search', 'AI search', 'search'], ['dashboard', 'Dashboard', 'home'], ['contacts', 'Contacts / Leads', 'users'], ['accounts', 'Accounts', 'building'], ['deals', 'Deals', 'deal'], ['review', 'Business review', 'chart', 'deals.view'], ['tasks', 'Tasks', 'task'], ['duplicates', 'Duplicates', 'users', 'contacts.merge']]],
   ['Billing', [['invoices', 'Invoices', 'invoice'], ['receivables', 'Receivables', 'wallet', 'receivables.view'], ['readiness', 'E-invoicing readiness', 'shield', 'readiness.view'], ['billing-settings', 'Billing settings', 'cog', 'billing_settings.view']]],
   ['Marketing', [['campaigns', 'Campaigns', 'mail'], ['segments', 'Segments', 'seg'], ['templates', 'Templates', 'tpl'], ['senders', 'Email senders', 'send', 'senders.view']]],
   ['Admin', [['customize', 'Customisation', 'tpl', 'customization.manage'], ['notifications', 'Notifications', 'bell', 'notifications.view'], ['team', 'Team & roles', 'team', 'users.view'], ['settings', 'Settings', 'cog']]],,
@@ -26,7 +27,7 @@ const NAV = [
 const ROUTES = [
   [/^dashboard$/, (r) => crm.dashboard(r)], [/^contacts$/, (r) => crm.contacts(r)], [/^contacts\/(\d+)$/, (r, id) => crm.contactDetail(r, id)],
   [/^accounts$/, (r) => crm.accounts(r)], [/^accounts\/(\d+)$/, (r, id) => crm.accountDetail(r, id)],
-  [/^deals$/, (r) => crm.deals(r)], [/^deals\/(\d+)$/, (r, id) => crm.dealDetail(r, id)], [/^tasks$/, (r) => crm.tasks(r)],
+  [/^deals$/, (r) => crm.deals(r)], [/^review$/, (r) => rep.review(r)], [/^deals\/(\d+)$/, (r, id) => crm.dealDetail(r, id)], [/^tasks$/, (r) => crm.tasks(r)],
   [/^campaigns$/, (r) => camp.campaignList(r)], [/^campaigns\/(\d+)$/, (r, id) => camp.campaignDetail(r, id)],
   [/^segments$/, (r) => camp.segments(r)], [/^templates$/, (r) => camp.templates(r)],
   [/^invoices$/, (r) => inv.invoiceList(r, () => bill.importInvoices(() => { location.hash = '#/readiness'; }))], [/^invoices\/new$/, (r) => inv.invoiceEditor(r, null)], [/^invoices\/(\d+)\/edit$/, (r, id) => inv.invoiceEditor(r, id)], [/^invoices\/(\d+)$/, (r, id) => inv.invoiceDetail(r, id)],

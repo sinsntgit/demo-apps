@@ -191,6 +191,13 @@ BEGIN SELECT RAISE(ABORT, 'Issued invoices cannot be changed. Issue a credit or 
       if (fk.length) throw new Error(`foreign key problems after rebuilding deals: ${JSON.stringify(fk.slice(0, 3))}`);
     },
   },
+  {
+    version: 14, name: 'saved_report_views',
+    up(db) {
+      db.exec(`CREATE TABLE IF NOT EXISTS report_views (id INTEGER PRIMARY KEY, kind TEXT NOT NULL DEFAULT 'pipeline', name TEXT NOT NULL, config TEXT NOT NULL DEFAULT '{}',
+        shared INTEGER NOT NULL DEFAULT 0, owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')))`);
+    },
+  },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 

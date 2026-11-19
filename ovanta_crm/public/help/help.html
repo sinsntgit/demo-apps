@@ -107,9 +107,10 @@
 
 <section id="deals" data-title="Deals &amp; pipeline">
 <h2>Deals and the pipeline</h2>
-<p>A deal is a sales opportunity moving through stages: Prospecting → Qualification → Proposal → Negotiation → Closed Won / Closed Lost.</p>
+<p>A deal is a sales opportunity moving through stages — by default Prospecting → Qualification → Proposal → Negotiation → Closed Won / Closed Lost. Your administrator can rename, add, reorder or remove stages and set their probabilities (see <a href="#/help/customize">Customisation</a>).</p>
 <figure><img src="/help/img/deals-board.jpg" alt="The deals board with one column per stage"><figcaption>The board: drag a card to another column to change its stage.</figcaption></figure>
 <h3>Creating a deal</h3>
+<p><b>Probability</b> fills in from the stage as soon as you pick it (for example Proposal = 50 %), and changes when you change the stage. Type your own number to override it — it is then kept. <b>Contact / lead</b> lists only the people at the chosen <b>Account</b>; pick a contact first and their account is filled in for you.</p>
 <p><b>+ New deal</b>. The form is the layout your administrator saved; custom fields may appear or hide depending on other answers (for example <i>Partner margin</i> only for <i>Partner</i> deals).</p>
 <figure><img src="/help/img/deal-form.jpg" alt="The new deal form with custom fields"><figcaption>The deal form with custom fields.</figcaption></figure>
 <h3>Changing stage</h3>
@@ -157,6 +158,31 @@
 <p><b>Office viewer ↗</b> opens PowerPoint and other Office files in Microsoft's online viewer using a link that works for one hour. It only works when the CRM is reachable from the internet (<code>BASE_URL</code> set to its public https address) and it sends that file to Microsoft, so it is only used when you click it.</p>
 <h3>Deleting files</h3>
 <p>Only <b>administrators</b> can delete files. Everyone else can view, upload, download and move them. Deleting a whole record (for example a deal) also removes its files.</p>
+</section>
+
+<section id="review" data-title="Business review (MBR / QBR)">
+<h2>Business review: pipeline &amp; forecast</h2>
+<p><b>Business review</b> in the menu builds the report for monthly (MBR) and quarterly (QBR) business reviews: what was won, what is forecast, and when each open deal is expected to close.</p>
+<h3>The four numbers</h3>
+<ul>
+<li><b>Won</b> — deals closed won in the period.</li>
+<li><b>Worst case</b> — won + <i>commit</i> deals (probability at or above the worst-case threshold, 75 % by default).</li>
+<li><b>Projected</b> — won + every open deal × its probability (the weighted forecast).</li>
+<li><b>Best case</b> — worst case + <i>best-case</i> deals (at or above the best-case threshold, 25 % by default).</li>
+</ul>
+<p>Add a <b>target</b> to see attainment and how far each scenario is above or below it; the bar shows all four against the target line.</p>
+<h3>Closure estimates</h3>
+<p>Open deals are placed in the month of their <b>expected close date</b>. Deals without one get an estimate from your average sales cycle (marked <i>est.</i>). Deals whose date has passed are marked <b>slipped</b> and, for the current period, still counted so they are discussed.</p>
+<h3>Customising</h3>
+<p>Open <b>Customise report</b> to choose:</p>
+<ul>
+<li>the period (month, quarter, year or custom dates) and the month your fiscal year starts;</li>
+<li>whether to include only deals closing in the period or all open deals, and slipped deals;</li>
+<li>the thresholds and target;</li>
+<li>filters: owners, stages, accounts, forecast category, amount, text, and your own list fields such as <i>Deal type</i>;</li>
+<li>how to group the summary (owner, stage, category, account, month), the columns of the deal list and its sort (or click a column header).</li>
+</ul>
+<p><b>Save as…</b> keeps the whole set-up, including <b>Review notes</b>, as a named report — private, or shared with everyone (each person still sees only the deals they are allowed to see). <b>Export CSV</b> downloads the deal list with the totals; <b>Print / PDF</b> prints a clean version without the controls (choose “Save as PDF” in the print dialog).</p>
 </section>
 
 <section id="tasks" data-title="Tasks &amp; assignments">
@@ -354,6 +380,11 @@
 <h2>Customisation: your own fields and form layouts</h2>
 <p><b>Customisation</b> (permission: <i>Customisation</i>). Choose <b>Deals, Accounts or Contacts</b>.</p>
 <figure><img src="/help/img/customize.jpg" alt="Custom fields for deals"><figcaption>Custom fields.</figcaption></figure>
+<h3>Deal stages and probabilities</h3>
+<p>On the <b>Deals</b> tab, <b>Deal stages &amp; probabilities</b> lists the stages in board order. You can rename a stage, change its probability, move it up or down, <b>+ Add stage</b> and <b>Delete</b> one, then click <b>Save stages</b>.</p>
+<ul><li>The probability is filled in when a deal enters the stage and drives the weighted forecast and the business review. Changing it also updates open deals that still use the old default (deals with a typed-in probability keep theirs).</li>
+<li>Deleting a stage that has deals or files asks where to move them; each moved deal gets a note in its history, and the stage's file folder moves too.</li>
+<li><b>Closed Won</b> and <b>Closed Lost</b> can be renamed but always stay (at 100 % and 0 %): reports and the closed date depend on them.</li></ul>
 <h3>Adding fields</h3>
 <p><b>+ Add field</b>: single-line text, comment (multi-line), number, percentage, amount, date, <b>dropdown</b> (type the list of options), multi-select, checkbox, email, phone, web link, or <b>link to another record</b> (e.g. a <i>Partner</i> that points to an account). Each field can be required, have help text and a default, be shown as a list column, be filterable and searchable.</p>
 <p><b>Show only when…</b> hides a field unless another field has certain values — e.g. show <i>Partner margin</i> only when <i>Deal type = Partner</i>. Hidden fields are not required and keep any saved value.</p>

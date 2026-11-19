@@ -4,7 +4,7 @@ import { html, setHtml, modal, $, $$ } from './core.js';
 let cache = null;
 /** Which help section belongs to which page (used by the "?" button). */
 export const HELP_FOR = {
-  dashboard: 'dashboard', search: 'search', contacts: 'contacts', accounts: 'accounts', deals: 'deals', tasks: 'tasks', duplicates: 'duplicates',
+  dashboard: 'dashboard', search: 'search', contacts: 'contacts', accounts: 'accounts', deals: 'deals', review: 'review', tasks: 'tasks', duplicates: 'duplicates',
   invoices: 'invoices', receivables: 'receivables', readiness: 'receivables', 'billing-settings': 'invoicing',
   campaigns: 'campaigns', segments: 'campaigns', templates: 'campaigns', senders: 'senders', notifications: 'notifications',
   customize: 'customize', team: 'team', settings: 'settings',
