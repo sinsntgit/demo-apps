@@ -185,7 +185,7 @@ export async function contactDetail(root, id) {
       convert: () => convertLead(id, draw),
       edit: async () => contactForm(c, await lookups(), draw),
       del: async () => { if (await confirmBox(`Delete ${fullName(c)}? This also removes their activity history.`, 'Delete')) { await api('DELETE', `/contacts/${id}`); toast('Contact deleted'); location.hash = '#/contacts'; } },
-      task: () => taskForm({ contact_id: id, account_id: c.account_id }, draw), deal: async () => dealForm({ contact_id: id, account_id: c.account_id }, await lookups(), draw),
+      task: () => taskForm({ contact_id: Number(id), account_id: c.account_id }, draw, { from: 'contact' }), deal: async () => dealForm({ contact_id: Number(id), account_id: c.account_id }, await lookups(), draw, ['account_id', 'contact_id']),
       toggletask: async (el) => { await api('POST', `/tasks/${el.dataset.id}/toggle`); draw(); }, opentask: (el) => openTask(el.dataset.id, draw),
     });
   };
@@ -227,7 +227,7 @@ export async function accountDetail(root, id) {
         </div></div>`);
     wireTimeline(root, 'account_id', id, draw); mountAttachments(root, 'accounts', id); livePage(root, 'accounts', id, draw);
     on(root, {
-      edit: () => accountForm(a, draw), task: () => taskForm({ account_id: Number(id) }, draw), opentask: (el) => openTask(Number(el.dataset.id), draw),
+      edit: () => accountForm(a, draw), task: () => taskForm({ account_id: Number(id) }, draw, { from: 'account' }), opentask: (el) => openTask(Number(el.dataset.id), draw),
       del: async () => { if (await confirmBox(`Delete ${a.name}? Contacts and deals stay but lose their company link.`, 'Delete')) { await api('DELETE', `/accounts/${id}`); location.hash = '#/accounts'; } },
     });
   };
@@ -296,7 +296,7 @@ function wireDealForm(form, lk, rec) {
     show();
   }
 }
-const dealForm = (d = {}, lk, onDone) => openEntityForm('deals', d, { lk, onDone, titles: { new: 'New deal', edit: 'Edit deal', noun: 'Deal' },
+const dealForm = (d = {}, lk, onDone, locked = []) => openEntityForm('deals', d, { lk, onDone, locked, titles: { new: 'New deal', edit: 'Edit deal', noun: 'Deal' },
   afterBody: (form) => wireDealForm(form, lk, d),
   extra: (rec) => html`<label>${rec.id ? 'Comment on the stage change (optional — saved only if you change the stage)' : 'Note for the deal history (optional)'}<textarea name="stage_comment" data-extra rows="2"></textarea></label>` });
 
@@ -353,7 +353,7 @@ export async function dealDetail(root, id) {
           <div><span class="muted small">Expected close</span><br>${fmtDate(x.close_date)}</div><div><span class="muted small">Owner</span><br>${x.owner_name || '—'}</div></div></div>${customDetailCard('deals', x)}${miniTasks(d.tasks)}</div></div>`);
     wireTimeline(root, 'deal_id', id, draw); mountAttachments(root, 'deals', id, { stage: x.stage, onChange: draw }); livePage(root, 'deals', id, draw);
     on(root, {
-      edit: async () => dealForm(x, await lookups(), draw), stage: () => stageModal(x, draw), task: () => taskForm({ deal_id: id }, draw),
+      edit: async () => dealForm(x, await lookups(), draw), stage: () => stageModal(x, draw), task: () => taskForm({ deal_id: Number(id) }, draw, { from: 'deal' }),
       viewfile: (el) => viewFile(files.find((f) => String(f.id) === el.dataset.id), files),
       del: async () => { if (await confirmBox(`Delete deal "${x.name}"?`, 'Delete')) { await api('DELETE', `/deals/${id}`); location.hash = '#/deals'; } },
       toggletask: async (el) => { await api('POST', `/tasks/${el.dataset.id}/toggle`); draw(); }, opentask: (el) => openTask(el.dataset.id, draw),

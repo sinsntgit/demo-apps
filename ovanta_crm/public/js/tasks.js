@@ -2,7 +2,7 @@ import { api, html, raw, setHtml, store, toast, fail, on, $, modal, confirmBox, 
 import { mountList } from './list.js';
 import { attachments, uploadFiles } from './records.js';
 import { onPageChange, watchFormRecord, conflictPanel, changedOnly } from './live.js';
-import { limitContactsToAccount } from './forms.js';
+import { limitContactsToAccount, lockSelect } from './forms.js';
 
 const userOpts = () => store.meta.users.map((u) => [u.id, u.name]);
 const page = (title, actions = '') => html`<div class="topbar"><h1>${title}</h1><span class="grow"></span>${actions}</div>`;
@@ -19,7 +19,15 @@ export function mailToast(n, done = 'Saved') {
 const overdue = (t) => t.status !== 'done' && t.due_date && t.due_date < todayStr();
 
 /** Create / edit a task. Assigning it to someone else emails them the task and its due date. */
-export async function taskForm(t = {}, onDone) {
+/**
+ * Create / edit a task.
+ * opts.from: 'deal' | 'account' | 'contact' — the task was started from that record's page, so it belongs to it:
+ *   deal    → account and deal fixed; contact chosen among the deal account's people
+ *   account → account fixed; contact and deal chosen among the account's
+ *   contact → account and contact fixed; deal chosen among the contact's account (or the contact's own deals)
+ * From the Tasks page (no `from`) every account can be chosen, and contacts and deals follow the chosen account.
+ */
+export async function taskForm(t = {}, onDone, opts = {}) {
   const [c, d, ac] = await Promise.all([api('GET', '/contacts?limit=1000&sort=name'), api('GET', '/deals?limit=1000&sort=name'), api('GET', '/accounts?limit=1000&sort=name')]);
   const lk = { contacts: c.rows.map((x) => [x.id, fullName(x)]), contactAccount: Object.fromEntries(c.rows.map((x) => [x.id, x.account_id || null])) };
   const dealInfo = Object.fromEntries(d.rows.map((x) => [x.id, x]));
@@ -33,15 +41,23 @@ export async function taskForm(t = {}, onDone) {
     body: html`${f('title')}<div class="row">${f('due_date')}${f('priority')}</div>${f('owner_id')}
       <label data-assignnote>Message to the assignee (optional)<textarea name="assign_note" rows="2" placeholder="Anything they should know"></textarea></label>
       <p class="small muted" data-assignnote style="margin-top:-6px">They will get an email with the task and its due date.</p>
-      ${f('account_id')}<div class="row">${f('contact_id')}${f('deal_id')}</div><p class="small muted" style="margin-top:-6px">Contacts and deals are those of the chosen account. Picking a deal or contact first fills in the account.</p>${f('notes')}`,
+      ${f('account_id')}<div class="row">${f('contact_id')}${f('deal_id')}</div><p class="small muted" data-ctxhint style="margin-top:-6px">Contacts and deals are those of the chosen account. Picking a deal or contact first fills in the account.</p>${f('notes')}`,
     onOpen: (form) => {
       // deals follow the account too; choosing a deal fills in its account (and its contact when none is chosen)
+      const from = t.id ? null : opts.from;
+      const lockedKeys = from === 'deal' ? ['account_id', 'deal_id'] : from === 'account' ? ['account_id'] : from === 'contact' ? ['account_id', 'contact_id'] : [];
+      for (const k of lockedKeys) lockSelect(form[k]);
+      if (from) form.querySelector('[data-ctxhint]').textContent = `🔒 Linked to this ${from} because you started here. To link a task to anything else, use + New task on the Tasks page.`;
+      const ownDeals = from === 'contact' ? new Set(d.rows.filter((x) => String(x.contact_id) === String(t.contact_id)).map((x) => String(x.id))) : new Set();
       const allDeals = d.rows.map((x) => [x.id, x.name]);
-      const fillDeals = () => { const a = form.account_id.value, keep = form.deal_id.value; const mine = a ? allDeals.filter(([id]) => String(dealInfo[id]?.account_id ?? '') === a) : allDeals; const extra = keep && !mine.some(([id]) => String(id) === keep) ? allDeals.filter(([id]) => String(id) === keep) : [];
+      const fillDeals = () => { if (form.deal_id.dataset.locked !== undefined) return; const a = form.account_id.value, keep = form.deal_id.value; const mine = a ? allDeals.filter(([id]) => String(dealInfo[id]?.account_id ?? '') === a || ownDeals.has(String(id))) : from === 'contact' ? allDeals.filter(([id]) => ownDeals.has(String(id))) : allDeals; const extra = keep && !mine.some(([id]) => String(id) === keep) ? allDeals.filter(([id]) => String(id) === keep) : [];
         form.deal_id.innerHTML = ''; form.deal_id.add(new Option(a ? (mine.length ? '— choose a deal at this account —' : '— no deals at this account —') : '—', '')); for (const [id, n] of mine) form.deal_id.add(new Option(n, id)); for (const [id, n] of extra) form.deal_id.add(new Option(`${n} (other account)`, id)); form.deal_id.value = keep; };
-      const refill = limitContactsToAccount(form, { lk, selects: [form.contact_id], getAccount: () => form.account_id.value, watch: [form.account_id], setAccount: (v) => { form.account_id.value = v; fillDeals(); } });
+      // a deal without an account: only its own contact (if any) instead of everyone
+      const noAccountDeal = from === 'deal' && !form.account_id.value;
+      const lkHere = noAccountDeal ? { contacts: lk.contacts.filter(([id]) => String(id) === String(dealInfo[t.deal_id]?.contact_id)), contactAccount: lk.contactAccount } : lk;
+      const refill = limitContactsToAccount(form, { lk: lkHere, selects: [form.contact_id], getAccount: () => form.account_id.value, watch: [form.account_id], setAccount: form.account_id.dataset.locked === undefined ? (v) => { form.account_id.value = v; fillDeals(); } : null });
       form.account_id.addEventListener('change', fillDeals);
-      form.deal_id.addEventListener('change', () => { const x = dealInfo[form.deal_id.value]; if (!x) return; if (x.account_id && !form.account_id.value) { form.account_id.value = String(x.account_id); fillDeals(); refill(); } if (x.contact_id && !form.contact_id.value && String(lk.contactAccount[x.contact_id] ?? '') === String(x.account_id ?? '')) form.contact_id.value = String(x.contact_id); });
+      form.deal_id.addEventListener('change', () => { const x = dealInfo[form.deal_id.value]; if (!x) return; if (x.account_id && !form.account_id.value && form.account_id.dataset.locked === undefined) { form.account_id.value = String(x.account_id); fillDeals(); refill(); } if (x.contact_id && !form.contact_id.value && String(lk.contactAccount[x.contact_id] ?? '') === String(x.account_id ?? '')) form.contact_id.value = String(x.contact_id); });
       fillDeals();
       if (t.id) stopWatch = watchFormRecord(form, 'tasks', t.id); const sync = () => form.querySelectorAll('[data-assignnote]').forEach((e) => { e.hidden = String(form.owner_id.value) === String(t.id ? t.owner_id : store.user.id); }); form.owner_id.addEventListener('change', sync); sync(); },
     onSubmit: async (form) => {

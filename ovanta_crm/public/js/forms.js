@@ -90,9 +90,18 @@ export function readValues(form, entity, lk) {
  * A contact already linked to someone at another account stays selectable, marked "(other account)", so nothing is lost.
  * getAccount(): the account id that applies; watch: selects that change it; setAccount(id): fill the account when a contact is picked first.
  */
+/** Fix a select to its current value (keeps it in the submitted form, unlike `disabled`). */
+export function lockSelect(sel, why = 'Set by the page you started from') {
+  if (!sel) return;
+  const opt = sel.selectedOptions[0]; const v = sel.value;
+  sel.innerHTML = ''; sel.add(new Option(opt && v ? opt.text : '— none —', v)); sel.value = v;
+  sel.dataset.locked = ''; sel.classList.add('locked'); sel.title = why; sel.tabIndex = -1;
+  const lab = sel.closest('label'); if (lab && !lab.querySelector('.lockmark')) lab.insertAdjacentHTML('afterbegin', '<span class="lockmark" title="' + why + '">🔒 </span>');
+}
+
 export function limitContactsToAccount(form, { lk, getAccount, watch = [], setAccount, selects }) {
   if (!lk?.contactAccount || !lk.contacts) return () => {};
-  const list = selects || [...form.querySelectorAll('select[data-contacts]')];
+  const list = (selects || [...form.querySelectorAll('select[data-contacts]')]).filter((s) => s && s.dataset.locked === undefined);
   if (!list.length) return () => {};
   const fill = () => {
     const a = String(getAccount() || '');
@@ -112,17 +121,18 @@ export function limitContactsToAccount(form, { lk, getAccount, watch = [], setAc
   return fill;
 }
 
-export function openEntityForm(entity, rec, { lk, onDone, titles, extra, afterBody } = {}) {
+export function openEntityForm(entity, rec, { lk, onDone, titles, extra, afterBody, locked = [] } = {}) {
   const t = titles || {}; const isNew = !rec?.id; rec = rec || {};
   let pending = null, stopWatch = null; // pending: choices for fields someone else changed meanwhile
   modal({ title: isNew ? t.new : t.edit, wide: true,
     body: html`${renderFields(entity, rec, lk)}${extra ? extra(rec) : ''}`,
     onOpen: (form) => {
+      for (const k of locked) lockSelect(form.querySelector(`[name=f__${k}]`));
       applyVisibility(form, entity, lk); form.addEventListener('input', () => applyVisibility(form, entity, lk)); form.addEventListener('change', () => applyVisibility(form, entity, lk)); afterBody?.(form);
       // deals and contacts: by the Account / Company field; accounts: the account being edited
       const accSel = form.querySelector('[name=f__account_id]');
       if (entity === 'accounts') limitContactsToAccount(form, { lk, getAccount: () => (rec.id ? rec.id : '') });
-      else limitContactsToAccount(form, { lk, getAccount: () => accSel?.value, watch: [accSel], setAccount: entity === 'deals' && accSel ? (v) => { accSel.value = v; } : null });
+      else limitContactsToAccount(form, { lk, getAccount: () => accSel?.value, watch: [accSel], setAccount: entity === 'deals' && accSel && accSel.dataset.locked === undefined ? (v) => { accSel.value = v; } : null });
       if (!isNew) stopWatch = watchFormRecord(form, entity, rec.id);
     },
     onClose: () => stopWatch?.(),

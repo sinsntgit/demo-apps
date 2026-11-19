@@ -438,6 +438,41 @@ await page.keyboard.press('Escape');
   }
 }
 
+// ===== Adding from a record keeps the record's context; the Tasks page is free =====
+{
+  const ctx = await page.evaluate(async () => {
+    const c = (await (await fetch('/api/contacts?limit=1000')).json()).rows; const d = (await (await fetch('/api/deals?limit=1000')).json()).rows;
+    const deal = d.find((x) => x.account_id && c.some((y) => y.account_id === x.account_id)); const contact = c.find((x) => x.account_id);
+    return { deal: deal.id, dealAcc: String(deal.account_id), accContacts: c.filter((x) => x.account_id === deal.account_id).map((x) => String(x.id)), contact: contact.id, contactAcc: String(contact.account_id), accounts: (await (await fetch('/api/accounts?limit=1000')).json()).rows.length };
+  });
+  const opts = async (sel) => page.$$eval(sel, (o) => o.map((x) => x.value));
+  // deal page → + Task: account and deal fixed
+  await page.goto(`${base}/#/deals/${ctx.deal}`); await page.waitForSelector('button[data-act=task]'); await page.click('button[data-act=task]'); await page.waitForSelector('.modal select[name=account_id]');
+  const da = await opts('.modal select[name=account_id] option'), dd = await opts('.modal select[name=deal_id] option');
+  if (da.length !== 1 || da[0] !== ctx.dealAcc) errors.push(`deal page task: account should be fixed to the deal's account (options: ${da.length})`);
+  if (dd.length !== 1 || dd[0] !== String(ctx.deal)) errors.push('deal page task: deal should be fixed');
+  if ((await opts('.modal select[name=contact_id] option')).filter(Boolean).some((v) => !ctx.accContacts.includes(v))) errors.push('deal page task: contacts from other accounts');
+  await shot('task-from-deal');
+  await page.fill('.modal input[name=title]', 'Context task'); await page.click('.modal button[type=submit]'); await page.waitForSelector('.modal', { state: 'detached', timeout: 8000 }).catch(() => errors.push('saving the task from the deal page failed'));
+  const saved = await page.evaluate(async () => (await (await fetch('/api/tasks?q=Context%20task')).json()).rows[0]);
+  if (!saved || String(saved.deal_id) !== String(ctx.deal) || String(saved.account_id) !== ctx.dealAcc) errors.push('task from the deal page not linked to the deal and its account');
+  // contact page → + Task and + Deal: account and contact fixed
+  await page.goto(`${base}/#/contacts/${ctx.contact}`); await page.waitForSelector('button[data-act=task]'); await page.click('button[data-act=task]'); await page.waitForSelector('.modal select[name=account_id]');
+  if ((await opts('.modal select[name=account_id] option')).join() !== ctx.contactAcc || (await opts('.modal select[name=contact_id] option')).join() !== String(ctx.contact)) errors.push('contact page task: account and contact should be fixed');
+  await page.keyboard.press('Escape');
+  await page.click('button[data-act=deal]'); await page.waitForSelector('.modal select[name=f__account_id]');
+  if ((await opts('.modal select[name=f__account_id] option')).join() !== ctx.contactAcc || (await opts('.modal select[name=f__contact_id] option')).join() !== String(ctx.contact)) errors.push('contact page deal: account and contact should be fixed');
+  await page.keyboard.press('Escape');
+  // account page → + Task: account fixed
+  await page.goto(`${base}/#/accounts/${ctx.dealAcc}`); await page.waitForSelector('button[data-act=task]'); await page.click('button[data-act=task]'); await page.waitForSelector('.modal select[name=account_id]');
+  if ((await opts('.modal select[name=account_id] option')).join() !== ctx.dealAcc) errors.push('account page task: account should be fixed');
+  await page.keyboard.press('Escape');
+  // Tasks page → + New task: every account
+  await page.goto(`${base}/#/tasks`); await page.waitForSelector('button[data-act=new]'); await page.click('button[data-act=new]'); await page.waitForSelector('.modal select[name=account_id]');
+  if ((await opts('.modal select[name=account_id] option')).filter(Boolean).length !== ctx.accounts) errors.push('Tasks page: all accounts should be offered');
+  await page.keyboard.press('Escape');
+}
+
 // ===== Inviting a user by email =====
 await page.goto(`${base}/#/team`); await page.waitForSelector('button[data-act=new]'); await page.click('button[data-act=new]');
 await page.fill('.modal input[name=name]', 'Janvi Rao'); await page.fill('.modal input[name=email]', 'janvi@syncsense.in');

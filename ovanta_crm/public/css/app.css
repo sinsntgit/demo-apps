@@ -158,3 +158,5 @@ input[type=color]{padding:2px;height:38px;width:60px}
 .rp-printnotes{display:none}
 @media print{.rp-controls,.rp-noprint,#rpview,#helpfab,.help-fab{display:none!important}.rp-head{margin-bottom:8px}.card{break-inside:avoid;box-shadow:none}.rp-tiles{grid-template-columns:repeat(4,1fr)!important}
   textarea[data-c=notes]{display:none}.rp-printnotes{display:block}.main{overflow:visible}.rp-deals{font-size:11px}a{color:inherit;text-decoration:none}}
+
+select.locked{background:var(--soft,#f1f5f9);color:var(--muted);pointer-events:none}

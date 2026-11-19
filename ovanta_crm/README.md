@@ -102,6 +102,7 @@ Custom values appear on the record's detail page (grouped by your sections), in 
 * Upgrading to 1.25 rebuilds the deals table once to allow your own stage names (a backup is taken first; all rows, ids, links and history are kept).
 * In the deal form, **Probability** follows the stage until you type your own.
 * **Contact pickers follow the account everywhere**: deal form, task form (which now has a **Related account**; its deals follow it too), custom “link to a contact” fields on deals, accounts and contacts, and lead conversion. Picking a contact or deal first fills in the account. A contact already linked from another account stays, marked “(other account)”. Account pages have **+ Task** and an **Open tasks** card.
+* **Adding from a record keeps its context**: + Task on a deal page fixes the account and deal (contact chosen among that account's people); on an account page the account; on a contact page the account and contact. + Deal on a contact page fixes the account and contact. Only **+ New task** on the Tasks page offers every account (then its contacts and deals).
 * *Contacts* is now called **Contacts / Leads**. A lead becomes a deal with **Convert lead** on the contact's page (create or link the account and open a deal in one step).
 
 ## Opens, clicks & landing in the inbox
