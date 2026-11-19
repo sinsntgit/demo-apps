@@ -27,11 +27,12 @@ def _src_filter(p, alias="s"):
 def overview(con, p):
     f, a = _src_filter(p)
     n = lambda sql: con.execute(sql + f, a).fetchone()[0]
+    allsrc = not a                                   # no source filter: count child tables directly, no 100K-row joins
     funnel = [
         ("Sessions", n("SELECT COUNT(*) FROM conversation_session s WHERE 1=1")),
-        ("Traces", n("SELECT COUNT(*) FROM conversation_trace t JOIN conversation_session s USING(session_id) WHERE 1=1")),
-        ("Signals", n("SELECT COUNT(*) FROM session_signal x JOIN conversation_session s USING(session_id) WHERE 1=1")),
-        ("Episodes", n("SELECT COUNT(*) FROM session_episode e JOIN conversation_session s USING(session_id) WHERE 1=1")),
+        ("Traces", con.execute("SELECT COUNT(*) FROM conversation_trace").fetchone()[0] if allsrc else n("SELECT COUNT(*) FROM conversation_trace t JOIN conversation_session s USING(session_id) WHERE 1=1")),
+        ("Signals", con.execute("SELECT COUNT(*) FROM session_signal").fetchone()[0] if allsrc else n("SELECT COUNT(*) FROM session_signal x JOIN conversation_session s USING(session_id) WHERE 1=1")),
+        ("Episodes", con.execute("SELECT COUNT(*) FROM session_episode").fetchone()[0] if allsrc else n("SELECT COUNT(*) FROM session_episode e JOIN conversation_session s USING(session_id) WHERE 1=1")),
         ("Need journeys", con.execute("SELECT COUNT(*) FROM need_journey j JOIN conversation_session s ON s.session_id=j.first_session WHERE 1=1" + f, a).fetchone()[0]),
     ]
     by = lambda col: q(con, f"SELECT {col} AS k, COUNT(*) AS n FROM conversation_session s WHERE 1=1 {f} GROUP BY 1 ORDER BY 2 DESC", a)
@@ -175,7 +176,7 @@ def review(con_rw, body):
     return {"ok": True}
 
 
-import threading
+import threading, time
 _CACHE, _CACHE_LOCK = {}, threading.Lock()
 CACHEABLE = ("/api/overview", "/api/signals", "/api/geo", "/api/taxonomy", "/api/journeys", "/api/kpis", "/api/patterns", "/api/clusters",
              "/api/cards", "/api/taxonomy/candidates", "/api/validation", "/api/glossary")
@@ -185,6 +186,15 @@ def _version(con):
     """Cache key part: changes whenever a pipeline stage or a review writes."""
     r = con.execute("SELECT (SELECT MAX(run_id) FROM processing_run), (SELECT MAX(review_id) FROM review_log)").fetchone()
     return f"{r[0]}:{r[1]}"
+
+
+_FLIGHT, _FLIGHT_LOCK = {}, threading.Lock()
+
+
+def _flight(key):
+    with _FLIGHT_LOCK:
+        lk = _FLIGHT.setdefault(key, threading.Lock())
+    return lk
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -205,6 +215,7 @@ class Handler(BaseHTTPRequestHandler):
     def _ro(self):
         con = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
         con.row_factory = sqlite3.Row
+        con.execute("PRAGMA cache_size=-200000"); con.execute("PRAGMA mmap_size=1073741824")   # 200 MB page cache, 1 GB mmap
         return con
 
     def _send_cached(self, key, payload):
@@ -229,7 +240,14 @@ class Handler(BaseHTTPRequestHandler):
                         if hit is not None:
                             return self._send(200, hit)
                     m = re.match(r"^/api/sessions/([\w\-:.#]+)$", u.path)
-                    if u.path == "/api/overview": return self._send_cached(key, overview(con, p))
+                    if u.path == "/api/overview":
+                        with _flight(key):                                 # one computation per key; duplicates wait and reuse it
+                            with _CACHE_LOCK:
+                                hit = _CACHE.get(key)
+                            if hit is not None: return self._send(200, hit)
+                            t0 = time.time(); out = overview(con, p)
+                            print(f"overview[{p.get('source', ['all'])[0]}] computed in {time.time() - t0:.1f}s", flush=True)
+                            return self._send_cached(key, out)
                     if u.path == "/api/sessions": return self._send(200, sessions(con, p))
                     if m:
                         d = session_detail(con, m.group(1))
@@ -307,13 +325,22 @@ def serve(port=8080, host="127.0.0.1", db_path=None):
 
     def warm():
         import urllib.request
-        for src in ("all", "verizon_sample", "synthetic"):
+        try:
+            c = sqlite3.connect(Handler.db_path)
+            if not c.execute("SELECT 1 FROM sqlite_master WHERE name='sqlite_stat1'").fetchone():
+                print("first start: analysing database for fast queries (one-off, about a minute)...", flush=True)
+                c.execute("ANALYZE"); c.commit()
+            c.close()
+        except Exception as e:
+            print("analyze skipped:", e, flush=True)
+        for src in ("all", "synthetic", "verizon_sample"):
             for path in ("overview", "signals", "geo", "taxonomy", "journeys", "cards", "clusters?family=need", "search?q=warmup"):
                 try:
                     urllib.request.urlopen(f"http://{host}:{port}/api/{path}{'&' if '?' in path else '?'}source={src}", timeout=120).read()
                 except Exception:
                     pass
     threading.Thread(target=warm, daemon=True).start()
+    print("Warming caches in the background; the Overview can take up to a few minutes on the first start only.", flush=True)
     srv.serve_forever()
 
 

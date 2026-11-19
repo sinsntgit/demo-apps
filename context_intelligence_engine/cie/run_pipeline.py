@@ -91,6 +91,8 @@ def main(argv=None):
         print(f"... {s} started", flush=True)
         res = stage_fn(s, con, tax)()
         print(f"{s:9s} {time.time() - ts:6.1f}s {json.dumps(res, default=str)[:300]}")
+    print("... analyse (query planner statistics)", flush=True)
+    con.execute("ANALYZE"); con.commit()
     print(f"done in {time.time() - t0:.1f}s -> {a.db}")
 
 

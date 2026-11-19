@@ -213,6 +213,9 @@ async function route() {
   const params = Object.fromEntries(new URLSearchParams(qs || ""));
   document.querySelectorAll("#nav a").forEach((a) => a.classList.toggle("active", a.dataset.r === (parts[0] === "session" ? "sessions" : parts[0])));
   const app = $("#app");
+  const t0 = Date.now();
+  app.innerHTML = `<div class="empty">Loading… <span id="el"></span><div class="small muted">The first load after a start can take a few minutes while the server warms its caches; later loads are instant.</div></div>`;
+  const timer = setInterval(() => { const e = $("#el"); if (e) e.textContent = `${Math.round((Date.now() - t0) / 1000)}s`; }, 1000);
   try {
     if (SOURCES && SRC !== "all" && !(SOURCES[SRC] > 0) && DATA_PAGES.has(parts[0])) { app.innerHTML = emptySource(SRC); return; }
     if (parts[0] === "overview") app.innerHTML = await pOverview();
@@ -230,6 +233,7 @@ async function route() {
     else if (parts[0] === "glossary") { app.innerHTML = await pGlossary(params); wireGlossary(params); }
     else app.innerHTML = `<div class="empty">Not found.</div>`;
   } catch (e) { app.innerHTML = `<div class="card empty"><h2>Could not load this page</h2><p>${esc(e.message)}</p><p class="small muted">If the server was just started, wait about 30 seconds for it to warm up, then reload.</p></div>`; }
+  clearInterval(timer);
   window.scrollTo(0, 0);
 }
 function setSource(v) { SRC = v; store.set("cie.src", SRC); }
