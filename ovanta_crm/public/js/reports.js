@@ -42,54 +42,111 @@ export async function review(root) {
   const sortVal = (d, k) => (k.startsWith('cf:') ? String(d.custom?.[k.slice(3)] ?? '') : k === 'account' ? d.account_name || '' : k === 'owner' ? d.owner_name || '' : k === 'stage' ? store.meta.stages.findIndex((s) => s.key === d.stage) : k === 'category' ? ['won', 'commit', 'best_case', 'pipeline', 'lost'].indexOf(d.category) : d[k] ?? '');
   const sorted = () => { const { key, dir } = cfg.sort || {}; const m = dir === 'desc' ? -1 : 1; return [...data.deals].sort((a, b) => { const x = sortVal(a, key), y = sortVal(b, key); return (x > y ? 1 : x < y ? -1 : 0) * m; }); };
 
-  const periodControls = () => {
-    const p = cfg.period; const now = new Date();
-    const fyNow = p.fy_start > 1 && now.getMonth() + 1 >= p.fy_start ? now.getFullYear() + 1 : now.getFullYear();
-    const qs = []; for (let y = fyNow - 1; y <= fyNow + 1; y++) for (let q = 1; q <= 4; q++) qs.push([`${y}-Q${q}`, `Q${q} ${p.fy_start > 1 ? 'FY' : ''}${y}`]);
-    const curQ = data?.period.quarter;
-    return html`<label>Review period<select data-c="period.type">${[['month', 'Month (MBR)'], ['quarter', 'Quarter (QBR)'], ['year', 'Year'], ['custom', 'Custom dates']].map(([v, l]) => html`<option value="${v}" ${p.type === v ? raw('selected') : ''}>${l}</option>`)}</select></label>
-      ${p.type === 'month' ? html`<label>Month<input type="month" data-c="period.month" value="${p.month || (data?.period.from || '').slice(0, 7)}"></label>` : ''}
-      ${p.type === 'quarter' ? html`<label>Quarter<select data-c="period.quarter">${qs.map(([v, l]) => html`<option value="${v}" ${(p.quarter || curQ) === v ? raw('selected') : ''}>${l}</option>`)}</select></label>` : ''}
-      ${p.type === 'year' ? html`<label>${p.fy_start > 1 ? 'Fiscal year' : 'Year'}<input type="number" data-c="period.year" value="${p.year || data?.period.year || fyNow}" min="2000" max="2100"></label>` : ''}
-      ${p.type === 'custom' ? html`<label>From<input type="date" data-c="period.from" value="${p.from || ''}"></label><label>To<input type="date" data-c="period.to" value="${p.to || ''}"></label>` : ''}
-      ${p.type === 'quarter' || p.type === 'year' ? html`<label>Fiscal year starts<select data-c="period.fy_start">${MONTHS.map((m, i) => html`<option value="${i + 1}" ${Number(p.fy_start || 1) === i + 1 ? raw('selected') : ''}>${m}</option>`)}</select></label>` : ''}`;
-  };
-  const multi = (path, label, options, size = 4) => { const cur = (get(path) || []).map(String); return html`<label>${label} <span class="small muted">(Ctrl/⌘-click for several)</span><select multiple size="${size}" data-c="${path}" data-multi>${options.map(([v, l]) => html`<option value="${v}" ${cur.includes(String(v)) ? raw('selected') : ''}>${l}</option>`)}</select></label>`; };
   const get = (path) => path.split('.').reduce((o, k) => o?.[k], cfg);
   const set = (path, v) => { const ks = path.split('.'); let o = cfg; for (const k of ks.slice(0, -1)) o = o[k] ??= {}; o[ks.at(-1)] = v; };
+  const optVal = (o) => (typeof o === 'object' ? o.value ?? o.label : o), optLabel = (o) => (typeof o === 'object' ? o.label ?? o.value : o);
 
-  const controls = () => html`<details class="card rp-controls" ${store_.get('reviewOpen') === false ? '' : raw('open')}><summary class="hd" style="cursor:pointer"><h2>Customise report</h2><span class="grow"></span><span class="small muted">period · deals included · scenarios · filters · columns</span></summary><div class="bd" style="display:grid;gap:14px">
-      <div class="rp-grid">${periodControls()}</div>
-      <div class="rp-grid">
-        <label>Deals included<select data-c="scope"><option value="period" ${cfg.scope !== 'all_open' ? raw('selected') : ''}>Closing in the period (plus won / lost in it)</option><option value="all_open" ${cfg.scope === 'all_open' ? raw('selected') : ''}>All open deals (plus won / lost in the period)</option></select></label>
-        <label class="check" style="align-self:end"><input type="checkbox" data-c="include_slipped" ${cfg.include_slipped !== false ? raw('checked') : ''}> Include slipped deals (expected date already passed)</label>
-        <label>Worst case = deals at ≥ %<input type="number" min="0" max="100" data-c="worst_threshold" value="${cfg.worst_threshold}"></label>
-        <label>Best case adds deals at ≥ %<input type="number" min="0" max="100" data-c="best_threshold" value="${cfg.best_threshold}"></label>
-        <label>Target / quota for the period<input type="number" min="0" step="1000" data-c="target" value="${cfg.target ?? ''}" placeholder="optional"></label>
+  /** The filters offered in the toolbar: each opens a pop-up, and shows as a pill once something is chosen. */
+  const filterDefs = () => [
+    { id: 'owners', label: 'Owner', path: 'filters.owner_ids', options: store.meta.users.map((u) => [String(u.id), u.name]) },
+    { id: 'stages', label: 'Stage', path: 'filters.stages', options: store.meta.stages.map((x) => [x.key, x.label]) },
+    { id: 'accounts', label: 'Account', path: 'filters.account_ids', options: accounts.map(([v, l]) => [String(v), l]) },
+    { id: 'categories', label: 'Forecast category', path: 'filters.categories', options: [['won', 'Won'], ['commit', 'Commit'], ['best_case', 'Best case'], ['pipeline', 'Pipeline'], ['lost', 'Lost']] },
+    ...(data?.custom_fields || []).filter((f) => ['select', 'list', 'radio', 'dropdown', 'multiselect'].includes(f.type) && (f.options || []).length)
+      .map((f) => ({ id: `cf:${f.key}`, label: f.label, path: `filters.custom.${f.key}`, options: f.options.map((o) => [String(optVal(o)), String(optLabel(o))]) })),
+    { id: 'amount', label: 'Amount', range: true },
+  ];
+  const chosen = (fd) => { if (fd.range) return cfg.filters.min_amount || cfg.filters.max_amount ? [1] : []; const v = get(fd.path); return (Array.isArray(v) ? v : v ? [v] : []).map(String); };
+  const pillText = (fd) => {
+    if (fd.range) { const a = cfg.filters.min_amount, b = cfg.filters.max_amount; return a && b ? `${money(a, true)} – ${money(b, true)}` : a ? `≥ ${money(a, true)}` : `≤ ${money(b, true)}`; }
+    const names = chosen(fd).map((v) => fd.options.find(([k]) => k === v)?.[1] || v); return names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', ');
+  };
+  const periodPicker = () => {
+    const p = cfg.period; const now = new Date(); const fy = Number(p.fy_start || 1);
+    const fyNow = fy > 1 && now.getMonth() + 1 >= fy ? now.getFullYear() + 1 : now.getFullYear();
+    const qs = []; for (let y = fyNow - 1; y <= fyNow + 1; y++) for (let q = 1; q <= 4; q++) qs.push([`${y}-Q${q}`, `Q${q} ${fy > 1 ? 'FY' : ''}${y}`]);
+    if (p.type === 'month') return html`<input type="month" class="rp-ctl" data-c="period.month" value="${p.month || (data?.period.from || '').slice(0, 7)}" aria-label="Month">`;
+    if (p.type === 'quarter') return html`<select class="rp-ctl" data-c="period.quarter" aria-label="Quarter">${qs.map(([v, l]) => html`<option value="${v}" ${(p.quarter || data?.period.quarter) === v ? raw('selected') : ''}>${l}</option>`)}</select>`;
+    if (p.type === 'year') return html`<select class="rp-ctl" data-c="period.year" aria-label="Year">${[fyNow - 2, fyNow - 1, fyNow, fyNow + 1].map((y) => html`<option value="${y}" ${Number(p.year || data?.period.year || fyNow) === y ? raw('selected') : ''}>${fy > 1 ? 'FY' : ''}${y}</option>`)}</select>`;
+    return html`<input type="date" class="rp-ctl" data-c="period.from" value="${p.from || ''}" aria-label="From"><span class="muted">to</span><input type="date" class="rp-ctl" data-c="period.to" value="${p.to || ''}" aria-label="To">`;
+  };
+  const settingsSummary = () => [cfg.scope === 'all_open' ? 'All open deals' : 'Deals closing in the period', cfg.include_slipped !== false ? 'incl. slipped' : 'excl. slipped', `Worst case ≥ ${cfg.worst_threshold}%`, `Best case ≥ ${cfg.best_threshold}%`, cfg.target ? `Target ${money(cfg.target, true)}` : null, Number(cfg.period.fy_start || 1) > 1 ? `FY starts ${MONTHS[cfg.period.fy_start - 1]}` : null].filter(Boolean).join(' · ');
+
+  const controls = () => {
+    const defs = filterDefs(); const active = defs.filter((fd) => chosen(fd).length); const idle = defs.filter((fd) => !chosen(fd).length);
+    return html`<div class="card rp-bar"><div class="bd">
+      <div class="rp-row">
+        <div class="rp-seg" role="tablist" aria-label="Review period">${[['month', 'Month'], ['quarter', 'Quarter'], ['year', 'Year'], ['custom', 'Custom']].map(([v, l]) => html`<button type="button" role="tab" class="${cfg.period.type === v ? 'on' : ''}" aria-selected="${cfg.period.type === v}" data-ptype="${v}">${l}</button>`)}</div>
+        ${periodPicker()}
+        <span class="grow"></span>
+        <label class="rp-inline">Group by <select class="rp-ctl" data-c="group_by">${[['owner', 'Owner'], ['stage', 'Stage'], ['category', 'Forecast category'], ['account', 'Account'], ['month', 'Close month']].map(([v, l]) => html`<option value="${v}" ${cfg.group_by === v ? raw('selected') : ''}>${l}</option>`)}</select></label>
+        <button type="button" class="btn sm" data-pop="settings">⚙ Forecast settings</button>
+        <button type="button" class="btn sm" data-pop="columns">☰ Columns <span class="rp-count">${cfg.columns.length}</span></button>
       </div>
-      <div class="rp-grid">
-        ${multi('filters.owner_ids', 'Owners', store.meta.users.map((u) => [u.id, u.name]))}
-        ${multi('filters.stages', 'Stages', store.meta.stages.map((s) => [s.key, s.label]))}
-        ${multi('filters.account_ids', 'Accounts', accounts)}
-        ${multi('filters.categories', 'Forecast categories', [['won', 'Won'], ['commit', 'Commit'], ['best_case', 'Best case'], ['pipeline', 'Pipeline'], ['lost', 'Lost']], 5)}
+      <div class="rp-row rp-filters">
+        <span class="rp-lbl">Filters</span>
+        ${active.map((fd) => html`<span class="rp-pill" data-filter="${fd.id}" role="button" tabindex="0" title="Change ${fd.label.toLowerCase()} filter"><span class="k">${fd.label}</span><b>${pillText(fd)}</b><button type="button" class="x" data-clear="${fd.id}" aria-label="Remove ${fd.label} filter">✕</button></span>`)}
+        ${idle.map((fd) => html`<button type="button" class="rp-add" data-filter="${fd.id}">+ ${fd.label}</button>`)}
+        ${active.length || cfg.filters.q ? html`<button type="button" class="linkbtn small" data-ract="clearall">Clear all</button>` : ''}
+        <span class="rp-search"><input data-c="filters.q" value="${cfg.filters.q ?? ''}" placeholder="Search deal or account" aria-label="Search deal or account"></span>
       </div>
-      <div class="rp-grid">
-        <label>Min amount<input type="number" data-c="filters.min_amount" value="${cfg.filters.min_amount ?? ''}"></label><label>Max amount<input type="number" data-c="filters.max_amount" value="${cfg.filters.max_amount ?? ''}"></label>
-        <label>Deal or account contains<input data-c="filters.q" value="${cfg.filters.q ?? ''}"></label>
-        ${(data?.custom_fields || []).filter((f) => ['select', 'list', 'radio', 'multiselect', 'checkbox'].includes(f.type) && (f.options || []).length).map((f) => html`<label>${f.label}<select data-c="filters.custom.${f.key}"><option value="">Any</option>${f.options.map((o) => { const v = typeof o === 'object' ? o.value ?? o.label : o; const l = typeof o === 'object' ? o.label ?? o.value : o; return html`<option value="${v}" ${String(cfg.filters.custom?.[f.key] ?? '') === String(v) ? raw('selected') : ''}>${l}</option>`; })}</select></label>`)}
-      </div>
-      <div class="rp-grid">
-        <label>Group summary by<select data-c="group_by">${[['owner', 'Owner'], ['stage', 'Stage'], ['category', 'Forecast category'], ['account', 'Account'], ['month', 'Close month']].map(([v, l]) => html`<option value="${v}" ${cfg.group_by === v ? raw('selected') : ''}>${l}</option>`)}</select></label>
-        <label>Sort deals by<select data-c="sort.key">${[...COLUMNS.filter((c) => c[0] !== 'amount2' || hasC2()), ...(data?.custom_fields || []).map((f) => [`cf:${f.key}`, f.label])].map(([v, l]) => html`<option value="${v}" ${cfg.sort?.key === v ? raw('selected') : ''}>${l}</option>`)}</select></label>
-        <label>Order<select data-c="sort.dir"><option value="asc" ${cfg.sort?.dir !== 'desc' ? raw('selected') : ''}>Ascending</option><option value="desc" ${cfg.sort?.dir === 'desc' ? raw('selected') : ''}>Descending</option></select></label>
-      </div>
-      <div><div class="small" style="font-weight:600;margin-bottom:6px">Columns in the deal list</div><div class="pill-row">${[...COLUMNS.filter((c) => c[0] !== 'amount2' || hasC2()), ...(data?.custom_fields || []).map((f) => [`cf:${f.key}`, f.label])].map(([k, l]) => html`<label class="chip" style="cursor:pointer"><input type="checkbox" data-col="${k}" ${cfg.columns.includes(k) ? raw('checked') : ''} style="vertical-align:middle"> ${l}</label>`)}</div></div>
-      <div class="small muted">Worst case = won + deals at or above the worst-case probability (“commit”). Projected = worst case + best-case deals × their probability (the most likely outcome). Best case = worst case + best-case deals in full. So worst ≤ projected ≤ best; pipeline deals below the best-case probability count in none of them (their weighted value is shown under the tiles). Open deals without an expected close date are estimated from your average sales cycle (${data?.summary.cycle_days ?? '…'} days${data && !data.summary.cycle_from_history ? ', a default until you have won deals' : ''}).</div>
-    </div></details>`;
+      <div class="rp-sum">${settingsSummary()} · <button type="button" class="linkbtn" data-pop="how">ⓘ How the forecast is calculated</button></div>
+    </div></div>`;
+  };
+
+  /** Pop-ups: pick values for a filter, the amount range, forecast settings, columns, and the explanation. */
+  const pickList = (fd) => {
+    const cur = new Set(chosen(fd));
+    modal({ title: `Filter by ${fd.label.toLowerCase()}`, submitLabel: 'Apply', body: html`
+      ${fd.options.length > 8 ? html`<input class="rp-find" placeholder="Search ${fd.label.toLowerCase()}…" aria-label="Search">` : ''}
+      <div class="rp-pick-tools small"><button type="button" class="linkbtn" data-all>Select all</button><button type="button" class="linkbtn" data-none>Clear</button><span class="grow"></span><span class="muted" data-n></span></div>
+      <div class="rp-pick-list">${fd.options.map(([v, l]) => html`<label data-l="${String(l).toLowerCase()}"><input type="checkbox" name="v" value="${v}" ${cur.has(v) ? raw('checked') : ''}> <span>${l}</span></label>`)}</div>`,
+      onOpen: (f) => {
+        const count = () => { const n = [...f.querySelectorAll('input[name=v]:checked')].length; f.querySelector('[data-n]').textContent = n ? `${n} selected` : 'None selected = all'; };
+        f.addEventListener('change', count); count();
+        f.querySelector('.rp-find')?.addEventListener('input', (e) => { const q = e.target.value.toLowerCase(); f.querySelectorAll('.rp-pick-list label').forEach((l) => { l.hidden = q && !l.dataset.l.includes(q); }); });
+        f.querySelector('[data-all]').onclick = () => { f.querySelectorAll('.rp-pick-list label:not([hidden]) input').forEach((x) => { x.checked = true; }); count(); };
+        f.querySelector('[data-none]').onclick = () => { f.querySelectorAll('input[name=v]').forEach((x) => { x.checked = false; }); count(); };
+        setTimeout(() => f.querySelector('.rp-find')?.focus(), 30);
+      },
+      onSubmit: async (f) => { const v = [...f.querySelectorAll('input[name=v]:checked')].map((x) => x.value); set(fd.path, v); await refresh(); } });
+  };
+  const amountPop = () => modal({ title: 'Filter by amount', submitLabel: 'Apply', body: html`<div class="row"><label>Minimum<input type="number" name="min" min="0" value="${cfg.filters.min_amount ?? ''}" placeholder="any"></label><label>Maximum<input type="number" name="max" min="0" value="${cfg.filters.max_amount ?? ''}" placeholder="any"></label></div>`,
+    onSubmit: async (f) => { cfg.filters.min_amount = f.min.value; cfg.filters.max_amount = f.max.value; await refresh(); } });
+  const settingsPop = () => modal({ title: 'Forecast settings', submitLabel: 'Apply', body: html`
+    <fieldset class="rp-fs"><legend>Deals included</legend>
+      <label class="check"><input type="radio" name="scope" value="period" ${cfg.scope !== 'all_open' ? raw('checked') : ''}> Deals expected to close in the period <span class="muted">(plus deals won or lost in it)</span></label>
+      <label class="check"><input type="radio" name="scope" value="all_open" ${cfg.scope === 'all_open' ? raw('checked') : ''}> All open deals <span class="muted">(plus deals won or lost in the period)</span></label>
+      <label class="check"><input type="checkbox" name="slipped" ${cfg.include_slipped !== false ? raw('checked') : ''}> Include slipped deals <span class="muted">(expected close date already passed)</span></label></fieldset>
+    <fieldset class="rp-fs"><legend>Scenarios</legend><div class="row">
+      <label>Worst case counts deals at or above<span class="rp-suffix"><input type="number" name="worst" min="0" max="100" value="${cfg.worst_threshold}"><i>%</i></span></label>
+      <label>Best case adds deals at or above<span class="rp-suffix"><input type="number" name="best" min="0" max="100" value="${cfg.best_threshold}"><i>%</i></span></label></div>
+      <label>Target / quota for the period <span class="muted">(optional)</span><input type="number" name="target" min="0" step="1000" value="${cfg.target ?? ''}" placeholder="e.g. 5000000"></label></fieldset>
+    <fieldset class="rp-fs"><legend>Calendar</legend><label>Fiscal year starts in<select name="fy">${MONTHS.map((m, i) => html`<option value="${i + 1}" ${Number(cfg.period.fy_start || 1) === i + 1 ? raw('selected') : ''}>${m}</option>`)}</select></label></fieldset>`,
+    onSubmit: async (f) => {
+      const w = Number(f.worst.value), b = Number(f.best.value); if (!(w >= 0 && w <= 100 && b >= 0 && b <= 100)) throw new Error('Thresholds must be between 0 and 100');
+      if (b > w) throw new Error('The best-case threshold should not be higher than the worst-case one');
+      Object.assign(cfg, { scope: f.scope.value, include_slipped: f.slipped.checked, worst_threshold: w, best_threshold: b, target: f.target.value });
+      const fy = Number(f.fy.value); if (fy !== Number(cfg.period.fy_start || 1)) { cfg.period.fy_start = fy; delete cfg.period.quarter; delete cfg.period.year; }
+      await refresh();
+    } });
+  const columnsPop = () => {
+    const all = [...COLUMNS.filter((c) => c[0] !== 'amount2' || hasC2()), ...(data?.custom_fields || []).map((f) => [`cf:${f.key}`, f.label])];
+    modal({ title: 'Columns in the deal list', submitLabel: 'Apply', body: html`<p class="small muted" style="margin-top:0">Click a column heading in the report to sort by it.</p>
+      <div class="rp-pick-list rp-cols">${all.map(([k, l]) => html`<label><input type="checkbox" name="c" value="${k}" ${cfg.columns.includes(k) ? raw('checked') : ''}> <span>${colLabel(k) || l}</span></label>`)}</div>`,
+      onSubmit: async (f) => { const pick = [...f.querySelectorAll('input[name=c]:checked')].map((x) => x.value); if (!pick.length) throw new Error('Choose at least one column'); cfg.columns = [...cfg.columns.filter((k) => pick.includes(k)), ...pick.filter((k) => !cfg.columns.includes(k))]; setHtml($('#rpb', root), body()); setHtml($('#rpc', root), controls()); store_.set('reviewCfg', cfg); } });
+  };
+  const howPop = () => modal({ title: 'How the forecast is calculated', hideFooter: true, body: html`<div class="rp-how">
+    <p><b style="color:${CAT_STYLE.won}">Won</b> — deals closed won in the period.</p>
+    <p><b style="color:${CAT_STYLE.commit}">Worst case</b> — won + <i>commit</i> deals (probability ≥ ${cfg.worst_threshold}%).</p>
+    <p><b style="color:#1d4ed8">Projected</b> — worst case + <i>best-case</i> deals (≥ ${cfg.best_threshold}%) × their probability: the most likely outcome.</p>
+    <p><b style="color:${CAT_STYLE.best_case}">Best case</b> — worst case + best-case deals in full.</p>
+    <p class="muted">So worst ≤ projected ≤ best. Deals below ${cfg.best_threshold}% count in none of them; their weighted value is shown under the tiles. Open deals without an expected close date are estimated from your average sales cycle (${data?.summary.cycle_days ?? '…'} days${data && !data.summary.cycle_from_history ? ', a default until you have won deals' : ''}).</p>
+    <div style="display:flex;justify-content:flex-end"><button type="button" class="btn primary" data-close>Got it</button></div></div>` });
 
   const tile = (label, v, v2, sub, color) => html`<div class="card kpi" style="border-top:3px solid ${color}"><div class="l">${label}</div><div class="v">${money(v, true)}</div>${v2 != null && hasC2() ? html`<div class="s"><b>${money2(v2, true)}</b></div>` : ''}<div class="s">${sub}</div></div>`;
   const bar = (s) => {
-    const max = Math.max(s.best_case, s.target || 0, 1); const w = (v) => `${Math.max(0, Math.min(100, (v / max) * 100))}%`;
+    const max = Math.max(s.best_case, s.target || 0, 1) * 1.04; const w = (v) => `${Math.max(0, Math.min(100, (v / max) * 100))}%`;
     return html`<div class="card mt"><div class="bd"><div class="small" style="font-weight:600;margin-bottom:8px">Scenarios${s.target ? ' against target' : ''}</div>
       <div style="position:relative;height:30px;background:#f1f5f9;border-radius:8px;overflow:hidden">
         <div title="Best case ${money(s.best_case)}" style="position:absolute;inset:0 auto 0 0;width:${w(s.best_case)};background:${CAT_STYLE.best_case}40"></div>
@@ -106,14 +163,21 @@ export async function review(root) {
   const body = () => {
     const s = data.summary; const p = data.period;
     const filt = [cfg.filters.owner_ids?.length && `Owners: ${cfg.filters.owner_ids.map((id) => store.meta.users.find((u) => String(u.id) === String(id))?.name).join(', ')}`, cfg.filters.stages?.length && `Stages: ${cfg.filters.stages.map((k) => store.meta.stages.find((x) => x.key === k)?.label || k).join(', ')}`, cfg.filters.account_ids?.length && `${cfg.filters.account_ids.length} account(s)`, cfg.filters.categories?.length && `Categories: ${cfg.filters.categories.map((k) => data.categories[k]).join(', ')}`, cfg.filters.q && `“${cfg.filters.q}”`, (cfg.filters.min_amount || cfg.filters.max_amount) && `Amount ${cfg.filters.min_amount || 0}–${cfg.filters.max_amount || '∞'}`].filter(Boolean);
-    return html`<div class="rp-head"><h2 style="margin:0">Pipeline &amp; forecast review — ${p.label}</h2><div class="small muted">${fmtDate(p.from)} – ${fmtDate(p.to)} · ${cfg.scope === 'all_open' ? 'all open deals' : 'deals closing in the period'}${cfg.include_slipped !== false ? ', incl. slipped' : ''} · worst case ≥ ${data.settings.worst_threshold}%, best case ≥ ${data.settings.best_threshold}% · ${filt.length ? filt.join(' · ') : 'all deals you can see'} · generated ${new Date(data.generated_at).toLocaleString()}</div></div>
+    return html`<div class="rp-head"><div><h2>Pipeline &amp; forecast review <span class="rp-period">${p.label}</span></h2><div class="small muted">${fmtDate(p.from)} – ${fmtDate(p.to)} · generated ${new Date(data.generated_at).toLocaleString()}</div></div></div>
+      <div class="rp-printonly small muted">${settingsSummary()}${filt.length ? ` · ${filt.join(' · ')}` : ' · all deals you can see'}</div>
       <div class="grid g4 mt rp-tiles">
         ${tile('Won', s.won, s.won2, `${s.won_count} deal${s.won_count === 1 ? '' : 's'}${s.target ? ` · ${pct(s.attainment, 0)} of target` : ''}`, CAT_STYLE.won)}
         ${tile('Worst case', s.worst_case, s.worst_case2, s.target ? (s.gap_worst > 0 ? `${money(s.gap_worst, true)} short of target` : `${money(-s.gap_worst, true)} above target`) : `won + commit (${money(s.commit, true)})`, CAT_STYLE.commit)}
         ${tile('Projected', s.projected, s.projected2, s.target ? (s.gap_projected > 0 ? `${money(s.gap_projected, true)} short of target` : `${money(-s.gap_projected, true)} above target`) : `worst case + best-case deals × probability`, '#1d4ed8')}
         ${tile('Best case', s.best_case, s.best_case2, s.target ? (s.gap_best > 0 ? `${money(s.gap_best, true)} short of target` : `${money(-s.gap_best, true)} above target`) : `worst case + best-case deals (${money(s.best_case_only, true)})`, CAT_STYLE.best_case)}
       </div>
-      <div class="small muted" style="margin-top:8px">${s.open_count} open deal${s.open_count === 1 ? '' : 's'} worth ${money(s.pipeline)} (weighted ${money(s.weighted_open)})${s.slipped_count ? html` · <b style="color:var(--bad)">${s.slipped_count} slipped (${money(s.slipped, true)})</b>` : ''} · lost ${s.lost_count} (${money(s.lost, true)}) · win rate ${s.win_rate == null ? '—' : pct(s.win_rate, 0)} · average won deal ${s.avg_won == null ? '—' : money(s.avg_won)} · average sales cycle ${s.cycle_days} days · ${s.new_deals} new deal${s.new_deals === 1 ? '' : 's'} created in the period</div>
+      <div class="rp-stats">
+        ${[['Open pipeline', money(s.pipeline, true), `${s.open_count} deal${s.open_count === 1 ? '' : 's'}`], ['Weighted pipeline', money(s.weighted_open, true), 'all open × probability'],
+          ['Slipped', s.slipped_count ? money(s.slipped, true) : '—', s.slipped_count ? `${s.slipped_count} deal${s.slipped_count === 1 ? '' : 's'} past date` : 'none', s.slipped_count ? 'bad' : ''],
+          ['Lost', money(s.lost, true), `${s.lost_count} deal${s.lost_count === 1 ? '' : 's'}`], ['Win rate', s.win_rate == null ? '—' : pct(s.win_rate, 0), 'won ÷ (won + lost)'],
+          ['Average won deal', s.avg_won == null ? '—' : money(s.avg_won, true), ''], ['Sales cycle', `${s.cycle_days} days`, s.cycle_from_history ? 'average, created → won' : 'default'], ['New deals', String(s.new_deals), 'created in the period']]
+          .map(([l, v, sub, cls]) => html`<div class="${cls || ''}"><span>${l}</span><b>${v}</b><small>${sub}</small></div>`)}
+      </div>
       ${bar(s)}
       <div class="rp-two">
         <div class="card mt"><div class="hd"><h2>By close month</h2></div><div class="tablewrap"><table>${totalsHead('Month')}<tbody>${data.by_month.map((m) => totalsRow(m, m.label))}</tbody></table></div></div>
@@ -136,31 +200,30 @@ export async function review(root) {
   };
   const refresh = async () => {
     try { data = await api('POST', '/reports/pipeline', cfg); } catch (e) { fail(e); return; }
-    store_.set('reviewCfg', cfg); setHtml($('#rpb', root), body());
-    const open = $('#rpc details', root)?.open; setHtml($('#rpc', root), controls()); if (open === false) $('#rpc details', root).open = false;
+    store_.set('reviewCfg', cfg); setHtml($('#rpb', root), body()); setHtml($('#rpc', root), controls());
   };
   const later = debounce(refresh, 300);
+  // searching keeps the cursor in the box: only the report below is redrawn
+  const laterSearch = debounce(async () => { try { data = await api('POST', '/reports/pipeline', cfg); store_.set('reviewCfg', cfg); setHtml($('#rpb', root), body()); } catch (e) { fail(e); } }, 350);
 
   root.onchange = (e) => {
     const t = e.target;
     if (t.id === 'rpview') { viewId = t.value ? Number(t.value) : null; store_.set('reviewView', viewId); const v = views.find((x) => x.id === viewId); if (v) cfg = { ...defaults(), ...v.config }; draw(); refresh(); return; }
-    if (t.dataset.col) { const k = t.dataset.col; cfg.columns = t.checked ? [...cfg.columns, k] : cfg.columns.filter((x) => x !== k); setHtml($('#rpb', root), body()); store_.set('reviewCfg', cfg); return; }
-    const path = t.dataset.c; if (!path || path === 'notes') return;
-    let v = t.type === 'checkbox' ? t.checked : t.dataset.multi !== undefined ? [...t.selectedOptions].map((o) => o.value) : t.value;
-    if (['worst_threshold', 'best_threshold', 'period.fy_start'].includes(path)) v = Number(v);
-    set(path, v);
-    if (path === 'period.type' || path === 'period.fy_start') { delete cfg.period.month; delete cfg.period.quarter; delete cfg.period.year; }
-    if (path.startsWith('sort.')) { setHtml($('#rpb', root), body()); store_.set('reviewCfg', cfg); return; }
-    later();
+    const path = t.dataset.c; if (!path || path === 'notes' || path === 'filters.q') return;
+    set(path, t.value); later();
   };
-  root.oninput = (e) => { if (e.target.dataset.c === 'notes') { cfg.notes = e.target.value; const pn = $('.rp-printnotes', root); if (pn) pn.textContent = cfg.notes; store_.set('reviewCfg', cfg); } else if (e.target.matches('input[type=number][data-c], input[data-c="filters.q"]')) { set(e.target.dataset.c, e.target.value); later(); } };
+  root.oninput = (e) => { if (e.target.dataset.c === 'notes') { cfg.notes = e.target.value; const pn = $('.rp-printnotes', root); if (pn) pn.textContent = cfg.notes; store_.set('reviewCfg', cfg); } else if (e.target.matches('input[data-c="filters.q"]')) { set('filters.q', e.target.value); laterSearch(); } };
   root.onclick = async (e) => {
     const s = e.target.closest('[data-sort]'); if (s) { e.preventDefault(); const k = s.dataset.sort; cfg.sort = { key: k, dir: cfg.sort?.key === k && cfg.sort.dir !== 'desc' ? 'desc' : 'asc' }; setHtml($('#rpb', root), body()); return; }
-    if (e.target.closest('summary')) setTimeout(() => store_.set('reviewOpen', $('#rpc details', root)?.open), 0);
+    const clr = e.target.closest('[data-clear]'); if (clr) { e.stopPropagation(); const fd = filterDefs().find((x) => x.id === clr.dataset.clear); if (fd.range) { cfg.filters.min_amount = ''; cfg.filters.max_amount = ''; } else set(fd.path, []); await refresh(); return; }
+    const pt = e.target.closest('[data-ptype]'); if (pt) { if (cfg.period.type !== pt.dataset.ptype) { cfg.period = { type: pt.dataset.ptype, fy_start: cfg.period.fy_start || 1 }; if (pt.dataset.ptype === 'custom') { const d = data?.period; cfg.period.from = d?.from; cfg.period.to = d?.to; } await refresh(); } return; }
+    const fl = e.target.closest('[data-filter]'); if (fl) { const fd = filterDefs().find((x) => x.id === fl.dataset.filter); if (fd) (fd.range ? amountPop() : pickList(fd)); return; }
+    const pop = e.target.closest('[data-pop]'); if (pop) { ({ settings: settingsPop, columns: columnsPop, how: howPop })[pop.dataset.pop](); return; }
     const b = e.target.closest('[data-ract]'); if (!b) return;
     try {
       const act = b.dataset.ract;
       if (act === 'print') window.print();
+      if (act === 'clearall') { cfg.filters = {}; await refresh(); }
       if (act === 'csv') {
         const cols = cfg.columns; const q = (x) => { const s = String(x ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
         const lines = [cols.map((k) => q(colLabel(k))).join(','), ...sorted().map((d) => cols.map((k) => q(cell(d, k, true))).join(','))];
