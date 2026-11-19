@@ -10,7 +10,7 @@ export const BILLING_DEFAULTS = {
   jurisdiction: 'IN', currency: 'INR', default_lang: 'en', seller_name: '', seller_name_ar: '', vat_number: '', cr_number: '',
   country: 'IN', tax_label: 'GST', tax_id_label: 'GSTIN', tax_registered: true, invoice_title: '', pan: '',
   address: { street: '', building_no: '', district: '', city: '', state: '', postal_code: '', country_code: 'IN' },
-  invoice_prefix: 'INV-', credit_prefix: 'CN-', debit_prefix: 'DN-', payment_terms_days: 30, vat_rate: 18,
+  invoice_prefix: 'INV-', credit_prefix: 'CN-', debit_prefix: 'DN-', payment_terms_days: 30, vat_rate: 18, default_hsn: '', default_unit: '',
   bank: { bank_name: '', account_name: '', iban: '', swift: '', account_number: '', bank_code: '', bank_code_label: 'IFSC', upi: '' }, portal_note: '',
   reminders: { enabled: false, sender_id: null, create_whatsapp_tasks: true, create_collection_tasks: true, repeat_days: 14,
     schedule: [{ offset: -3, channels: ['email'] }, { offset: 0, channels: ['email'] }, { offset: 3, channels: ['email'] }, { offset: 7, channels: ['email', 'whatsapp'] }, { offset: 14, channels: ['email', 'whatsapp'] }, { offset: 30, channels: ['email', 'whatsapp'] }] },
@@ -40,6 +40,7 @@ export function saveBilling(input) {
     tax_label: str(pick('tax_label', P?.tax || R.tax), 30) || R.tax, tax_id_label: str(pick('tax_id_label', P?.taxId || R.taxId), 40) || R.taxId,
     tax_registered: i.tax_registered !== undefined ? !!i.tax_registered : switched ? true : cur.tax_registered !== false,
     invoice_title: str(pick('invoice_title', P?.title || ''), 40), pan: str(i.pan ?? cur.pan, 12).toUpperCase(),
+    default_hsn: str(i.default_hsn ?? cur.default_hsn ?? '', 12).replace(/\s/g, ''), default_unit: str(i.default_unit ?? cur.default_unit ?? '', 12),
     seller_name: str(i.seller_name ?? cur.seller_name), seller_name_ar: str(i.seller_name_ar ?? cur.seller_name_ar), vat_number: str(i.vat_number ?? cur.vat_number, 20).replace(/\s/g, ''), cr_number: str(i.cr_number ?? cur.cr_number, 30),
     address: { street: str(a.street ?? cur.address.street), building_no: str(a.building_no ?? cur.address.building_no, 10), district: str(a.district ?? cur.address.district), city: str(a.city ?? cur.address.city), state: str(a.state ?? cur.address.state, 60), postal_code: str(a.postal_code ?? cur.address.postal_code, 10), country_code: str(a.country_code ?? (switched && R.country ? R.country : cur.address.country_code), 2).toUpperCase() || R.country || 'SA' },
     invoice_prefix: str(i.invoice_prefix ?? cur.invoice_prefix, 12) || 'INV-', credit_prefix: str(i.credit_prefix ?? cur.credit_prefix, 12) || 'CN-', debit_prefix: str(i.debit_prefix ?? cur.debit_prefix, 12) || 'DN-',
@@ -148,7 +149,7 @@ export function validateInvoice(inv, calc, ctx = {}) {
     if (l.vat_category === 'S' && jur === 'KSA' && l.vat_rate !== 15) out.push(issue('warning', 'KSA_RATE', `lines.${i}`, `Line ${n}: standard-rated VAT in KSA is 15% (found ${l.vat_rate}%).`));
     if (l.vat_category === 'S' && jur === 'UAE' && l.vat_rate !== 5) out.push(issue('warning', 'UAE_RATE', `lines.${i}`, `Line ${n}: standard-rated VAT in the UAE is 5% (found ${l.vat_rate}%).`));
     if (l.vat_category !== 'S' && !l.exemption_reason && isGulf(jur)) out.push(issue('error', 'VAT_REASON', `lines.${i}`, `Line ${n}: zero-rated, exempt and out-of-scope lines need an exemption reason.`, 'Enter the reason (e.g. VATEX code or text)'));
-    if (jur === 'IN' && !l.hsn_code) out.push(issue('warning', 'LINE_HSN', `lines.${i}`, `Line ${n}: HSN (goods) or SAC (services) code is missing.`));
+    if (jur === 'IN' && !l.hsn_code) out.push(issue('warning', 'LINE_HSN', `lines.${i}`, `Line ${n}: HSN (goods) or SAC (services) code is missing — enter it in the “HSN / SAC” column of the item. Tip: set a default code in Billing settings so new lines fill it in.`));
     if (isGulf(jur) && /\b(advance|deposit|down ?payment|prepayment)\b|دفعة مقدمة|عربون/i.test(l.description)) out.push(issue('warning', 'ADVANCE', `lines.${i}`, `Line ${n} looks like an advance payment: issue a separate advance invoice and deduct it on the final invoice.`));
     if (isGulf(jur) && inv.lang !== 'en' && !l.description_ar) out.push(issue('warning', 'LINE_AR', `lines.${i}`, `Line ${n}: Arabic description is missing for a bilingual invoice.`));
   });

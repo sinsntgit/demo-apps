@@ -500,6 +500,19 @@ await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
 }
 
+// ===== HSN / SAC: default in Billing settings, prefilled lines, Fix link =====
+{
+  await page.evaluate(() => fetch('/api/billing/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jurisdiction: 'IN' }) }));
+  await page.goto(`${base}/#/billing-settings`); await page.waitForSelector('input[name=default_hsn]', { timeout: 8000 }).catch(() => errors.push('no default HSN/SAC field in Billing settings (India)'));
+  await page.fill('input[name=default_hsn]', '998314'); await page.fill('input[name=default_unit]', 'Hrs'); await page.click('button[data-act=save]'); await page.waitForSelector('.toast:has-text("Billing settings saved")', { timeout: 6000 }).catch(() => errors.push('billing settings not saved'));
+  await page.goto(`${base}/#/invoices/new`); await page.waitForSelector('#lines tr');
+  if ((await page.inputValue('#lines tr:first-child [data-k=hsn_code]')) !== '998314' || (await page.inputValue('#lines tr:first-child [data-k=unit]')) !== 'Hrs') errors.push('new invoice line not prefilled with the default HSN/SAC and unit');
+  await page.fill('#lines tr:first-child [data-k=hsn_code]', ''); await page.fill('#lines tr:first-child [data-k=description]', 'x'); await page.waitForSelector('#issues [data-goto]', { timeout: 6000 }).catch(() => errors.push('HSN warning has no Fix link'));
+  await page.click('#issues [data-goto]'); await page.waitForTimeout(400);
+  if (!(await page.evaluate(() => document.activeElement?.dataset?.k === 'hsn_code'))) errors.push('Fix link did not go to the HSN / SAC box');
+  await page.evaluate(() => fetch('/api/billing/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ default_hsn: '', default_unit: '' }) }));
+}
+
 // ===== Inviting a user by email =====
 await page.goto(`${base}/#/team`); await page.waitForSelector('button[data-act=new]'); await page.click('button[data-act=new]');
 await page.fill('.modal input[name=name]', 'Janvi Rao'); await page.fill('.modal input[name=email]', 'janvi@syncsense.in');

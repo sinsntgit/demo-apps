@@ -17,7 +17,7 @@ export const statusChip = (i) => (i.days_overdue > 0 ? chip('b-bad', `Overdue ${
 export const complianceChip = (s) => chip(...(COMPLIANCE[s] || ['b-grey', s]));
 export const invLabel = (i) => i.number || i.external_number || `Draft #${i.id}`;
 const page = (title, actions = '') => html`<div class="topbar"><h1>${title}</h1><span class="grow"></span>${actions}</div>`;
-const issuesBox = (issues, empty = 'No problems found.') => issues.length ? html`${issues.map((i) => html`<div class="issue ${i.severity}"><b>${i.severity === 'error' ? 'Must fix' : i.severity === 'warning' ? 'Check' : 'Note'}:</b> ${i.message}${i.fix ? html` <span class="muted small">— ${i.fix}</span>` : ''}${i.seller ? html` <a href="#/billing-settings">Open billing settings</a>` : ''}</div>`)}` : html`<div class="issue info">✅ ${empty}</div>`;
+const issuesBox = (issues, empty = 'No problems found.') => issues.length ? html`${issues.map((i) => html`<div class="issue ${i.severity}"><b>${i.severity === 'error' ? 'Must fix' : i.severity === 'warning' ? 'Check' : 'Note'}:</b> ${i.message}${/^lines\.\d+$/.test(i.field || '') ? html` <a href="#" data-goto="${i.field}" data-code="${i.code}">Fix →</a>` : ''}${i.fix ? html` <span class="muted small">— ${i.fix}</span>` : ''}${i.seller ? html` <a href="#/billing-settings">Open billing settings</a>` : ''}</div>`)}` : html`<div class="issue info">✅ ${empty}</div>`;
 
 // ================= List =================
 export async function invoiceList(root, importFlow) {
@@ -40,7 +40,8 @@ export async function invoiceList(root, importFlow) {
 // ================= Editor =================
 /** Common units (Indian GST UQC names in brackets where they differ); any other text can be typed. */
 export const UNITS = ['Nos', 'Pcs', 'Hrs', 'Days', 'Months', 'Years', 'Licence', 'Users', 'Sets', 'Lot', 'Kgs', 'Ltrs', 'Mtrs', 'Boxes'];
-const emptyLine = () => ({ description: '', description_ar: '', hsn_code: '', unit: '', qty: 1, unit_price: 0, discount: 0, vat_category: 'S', vat_rate: '', exemption_reason: '' });
+let lineDefaults = { hsn_code: '', unit: '' };
+const emptyLine = () => ({ description: '', description_ar: '', hsn_code: lineDefaults.hsn_code, unit: lineDefaults.unit, qty: 1, unit_price: 0, discount: 0, vat_category: 'S', vat_rate: '', exemption_reason: '' });
 const r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 function liveTotals(lines, defRate) {
   let gross = 0, disc = 0, vat = 0;
@@ -52,6 +53,7 @@ export async function invoiceEditor(root, id) {
   const [accounts, settings] = await Promise.all([api('GET', '/accounts?limit=1000&sort=name'), api('GET', '/billing/settings').catch(() => null)]);
   const co = settings?.settings || { jurisdiction: 'KSA', currency: 'SAR', default_lang: 'both', address: {} }; const regimes = settings?.regimes || {}; const states = settings?.states || {};
   const homeCountry = co.jurisdiction === 'GEN' ? (co.country && co.country !== 'OTHER' ? co.country : co.address?.country_code || '') : regimes[co.jurisdiction]?.country || '';
+  lineDefaults = { hsn_code: co.jurisdiction === 'IN' ? co.default_hsn || '' : '', unit: co.default_unit || '' }; // new lines start with these
   let inv = id ? await api('GET', `/invoices/${id}`) : { doc_type: 'standard', jurisdiction: co.jurisdiction, currency: co.currency, lang: GULF(co.jurisdiction) ? co.default_lang : 'en', issue_date: todayStr(), supply_date: todayStr(), due_date: new Date(Date.now() + (co.payment_terms_days ?? 30) * 86400000).toISOString().slice(0, 10), lines: [emptyLine()], buyer_country: homeCountry };
   if (id && inv.status !== 'draft') { location.hash = `#/invoices/${id}`; return; }
   const J = inv.jurisdiction; const g = GULF(J); const IN = J === 'IN';
@@ -86,6 +88,11 @@ export async function invoiceEditor(root, id) {
     </form>`);
   function jur() { return inv.jurisdiction; }
   const form = $('#inv', root); form.addEventListener('submit', (e) => e.preventDefault());
+  // "Fix →" on a line warning jumps to that line's field (the HSN / SAC box for a missing code)
+  root.addEventListener('click', (e) => { const a = e.target.closest('[data-goto]'); if (!a) return; e.preventDefault();
+    const n = Number(a.dataset.goto.split('.')[1]); const tr = $$('#lines tr', root)[n]; if (!tr) return;
+    const el = $(a.dataset.code === 'LINE_HSN' ? '[data-k=hsn_code]' : '[data-k=description]', tr) || $('[data-k=description]', tr);
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.focus(); el.classList.toggle('flash', true); setTimeout(() => el.classList.toggle('flash', false), 1600); });
   const tbody = $('#lines', root);
   const lineRow = (l, i) => html`<tr data-i="${i}"><td><input data-k="description" value="${l.description}" maxlength="500" aria-label="Description"></td>${g ? html`<td><input data-k="description_ar" dir="rtl" value="${l.description_ar || ''}" aria-label="Arabic description"></td>` : ''}${IN ? html`<td><input data-k="hsn_code" value="${l.hsn_code || ''}" maxlength="12" placeholder="e.g. 998314" aria-label="HSN or SAC code"></td>` : ''}
     <td><input data-k="qty" type="number" step="any" min="0" value="${l.qty}"></td><td><input data-k="unit" list="uomlist" value="${l.unit || ''}" maxlength="12" placeholder="Nos" aria-label="Unit of measure"></td><td><input data-k="unit_price" type="number" step="0.01" min="0" value="${l.unit_price}"></td><td><input data-k="discount" type="number" step="0.01" min="0" value="${l.discount || 0}"></td>
@@ -138,6 +145,7 @@ export async function invoiceEditor(root, id) {
 
 // ================= Detail =================
 export async function invoiceDetail(root, id) {
+  root.addEventListener('click', (e) => { if (e.target.closest('[data-goto]')) { e.preventDefault(); location.hash = `#/invoices/${id}/edit`; } });
   const draw = async () => {
     const i = await api('GET', `/invoices/${id}`); const cur = i.currency; const note = i.doc_type === 'credit_note';
     const open = ['issued', 'partially_paid'].includes(i.status) && i.balance > 0;

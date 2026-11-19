@@ -97,6 +97,7 @@ Custom values appear on the record's detail page (grouped by your sections), in 
 
 * **INR is the main currency** of a new install (Indian grouping, ₹ lakh / crore short forms such as ₹19.3Cr), with **USD as the second currency** (demo yearly rates). Change either in *Settings → Currencies*.
 * An **existing install keeps its current main currency** on upgrade (USD if deals already exist and none was chosen), so amounts are never relabelled without conversion. To work in rupees, set Currency 1 to INR in *Settings → Currencies* — existing deal amounts are **not** converted.
+* **HSN / SAC codes** are entered per invoice line (the *HSN / SAC* column next to the description) — they describe what you sell, not the customer. Set a **default HSN / SAC and unit** in *Billing settings* (India) and every new line starts with them. The compliance check names the column and its **Fix →** link jumps to the box.
 * **Unit of measure** on every invoice line (Nos, Pcs, Hrs, Days, Months, Years, Licence, Users, Sets, Lot, Kgs, Ltrs, Mtrs, Boxes — or type your own). Printed as a *Unit* column, shown on the invoice page, and copied to credit notes.
 
 ## Invoice layout (1.26.2)

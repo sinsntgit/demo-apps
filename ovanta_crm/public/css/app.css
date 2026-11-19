@@ -215,3 +215,5 @@ details.menu{position:relative;display:inline-block}details.menu>summary{list-st
 .menu-list{position:absolute;right:0;top:calc(100% + 6px);z-index:30;min-width:190px;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow),0 10px 30px rgba(20,22,50,.12);padding:6px;display:grid}
 .menu-list>button,.menu-list>a{border:0;background:none;text-align:left;padding:8px 12px;border-radius:7px;font:inherit;color:var(--ink);cursor:pointer;text-decoration:none}.menu-list>button:hover,.menu-list>a:hover{background:var(--brand-l)}
 @media print{details.menu{display:none}}
+
+.flash{outline:3px solid var(--warn,#d97706);outline-offset:1px}

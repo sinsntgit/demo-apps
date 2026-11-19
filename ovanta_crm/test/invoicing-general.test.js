@@ -131,3 +131,10 @@ test('unit of measure is kept on lines and printed', async () => {
   const html = await (await fetch(`${base}/api/invoices/${d.id}/print`, { headers: { cookie: admin } })).text();
   assert.ok(html.includes('<th>Unit</th>') && html.includes('<td>Days</td>'), 'unit column printed');
 });
+
+test('a default HSN / SAC and unit can be saved for new invoice lines; the warning says where the code goes', async () => {
+  await call(admin, 'PUT', '/api/billing/settings', { jurisdiction: 'IN', default_hsn: '998314', default_unit: 'Hrs' });
+  const s = (await call(admin, 'GET', '/api/billing/settings')).body.settings; assert.equal(s.default_hsn, '998314'); assert.equal(s.default_unit, 'Hrs');
+  const v = (await call(admin, 'POST', '/api/invoices/validate', { buyer_name: 'X', lines: [{ description: 'No code', qty: 1, unit_price: 100, vat_category: 'S', vat_rate: 18 }] })).body;
+  const w = v.issues.find((i) => i.code === 'LINE_HSN'); assert.ok(w); assert.equal(w.field, 'lines.0'); assert.match(w.message, /HSN \/ SAC” column/);
+});
