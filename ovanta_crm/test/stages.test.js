@@ -60,3 +60,11 @@ test('deleting a stage with deals asks where to move them, then moves deals, his
   assert.ok(get("SELECT COUNT(*) n FROM deals WHERE stage='lead_in'").n > 0);
   assert.equal((await call(admin, 'GET', '/api/customization')).status, 200);
 });
+
+test('websites typed without https:// are accepted; segments can pick contacts by account name', async () => {
+  const a = await call(admin, 'POST', '/api/accounts', { name: 'Plain Domain Co', website: 'plaindomain.test' }); assert.equal(a.status, 200); assert.equal(a.body.website, 'https://plaindomain.test');
+  assert.equal((await call(admin, 'PUT', `/api/accounts/${a.body.id}`, { website: 'http://keep.test' })).body.website, 'http://keep.test');
+  await call(admin, 'POST', '/api/contacts', { first_name: 'Seg', last_name: 'Member', email: 'seg@plaindomain.test', account_id: a.body.id });
+  const p = await call(admin, 'POST', '/api/segments/preview', { filter: { match: 'all', rules: [{ field: 'account_name', op: 'contains', value: 'Plain Domain' }] } });
+  assert.equal(p.status, 200, JSON.stringify(p.body)); assert.equal(p.body.matching, 1);
+});

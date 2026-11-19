@@ -9,6 +9,7 @@ export const SEGMENT_FIELDS = {
   tags: { sql: "(',' || REPLACE(COALESCE(c.tags,''),' ','') || ',')", type: 'tags', label: 'Tag' },
   title: { sql: 'c.title', type: 'text', label: 'Job title' },
   email_domain: { sql: "SUBSTR(c.email, INSTR(c.email,'@')+1)", type: 'text', label: 'Email domain' },
+  account_name: { sql: 'ac.name', type: 'text', label: 'Account name' },
   industry: { sql: 'ac.industry', type: 'text', label: 'Account industry' },
   country: { sql: 'ac.country', type: 'text', label: 'Account country' },
   city: { sql: 'ac.city', type: 'text', label: 'Account city' },

@@ -43,7 +43,9 @@ test('worst case, projected and best case add up; slipped and undated deals are 
   assert.equal(s.won, 1000); assert.equal(s.lost, 50); assert.equal(s.pipeline, 1500);
   assert.equal(s.worst_case, 1100, 'won + commit (≥75%)');
   assert.equal(s.best_case, 2200, 'worst case + deals ≥25%');
-  assert.equal(Math.round(s.projected), 1000 + 80 + 100 + 30 + 240 + 150, 'won + amount × probability');
+  assert.equal(Math.round(s.projected), 1000 + 100 + 100 + 240 + 150, 'won + commit + best-case deals × probability');
+  assert.ok(s.worst_case <= s.projected && s.projected <= s.best_case, 'worst ≤ projected ≤ best');
+  assert.equal(Math.round(s.weighted_open), 80 + 100 + 30 + 240 + 150);
   assert.equal(s.slipped_count, 1); assert.equal(s.win_rate, 0.5); assert.equal(s.cycle_days, 28);
   assert.equal(s.attainment, 0.5); assert.equal(s.gap_worst, 900); assert.equal(s.gap_best, -200);
   const by = Object.fromEntries(r.body.deals.map((d) => [d.name, d]));
@@ -53,7 +55,9 @@ test('worst case, projected and best case add up; slipped and undated deals are 
   assert.equal(r.body.by_month.reduce((a, m) => a + m.count, 0), 7, 'every deal lands in one month');
   // thresholds, scope, filters, grouping
   const t2 = (await call(admin, 'POST', '/api/reports/pipeline', { ...cfg, worst_threshold: 50, best_threshold: 0 })).body.summary;
-  assert.equal(t2.worst_case, 1000 + 100 + 200 + 400); assert.equal(t2.best_case, 2500);
+  assert.equal(t2.worst_case, 1000 + 100 + 200 + 400); assert.equal(t2.best_case, 2500); assert.ok(t2.worst_case <= t2.projected && t2.projected <= t2.best_case);
+  // a period with only a commit deal: projected can never fall below worst case
+  const only = (await call(admin, 'POST', '/api/reports/pipeline', { ...cfg, filters: { q: 'RPT A' } })).body.summary; assert.equal(only.worst_case, 100); assert.equal(only.projected, 100);
   assert.ok((await call(admin, 'POST', '/api/reports/pipeline', { ...cfg, scope: 'all_open' })).body.deals.some((d) => d.name === 'RPT X'));
   assert.ok(!(await call(admin, 'POST', '/api/reports/pipeline', { ...cfg, include_slipped: false })).body.deals.some((d) => d.name === 'RPT S'));
   assert.deepEqual((await call(admin, 'POST', '/api/reports/pipeline', { ...cfg, filters: { q: 'RPT', categories: ['commit'] } })).body.deals.map((d) => d.name), ['RPT A']);

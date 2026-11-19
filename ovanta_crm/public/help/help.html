@@ -167,7 +167,7 @@
 <ul>
 <li><b>Won</b> — deals closed won in the period.</li>
 <li><b>Worst case</b> — won + <i>commit</i> deals (probability at or above the worst-case threshold, 75 % by default).</li>
-<li><b>Projected</b> — won + every open deal × its probability (the weighted forecast).</li>
+<li><b>Projected</b> — worst case + <i>best-case</i> deals × their probability: the most likely outcome. It always lies between worst case and best case. (Deals below the best-case threshold count in none of the three; their weighted value is shown under the tiles.)</li>
 <li><b>Best case</b> — worst case + <i>best-case</i> deals (at or above the best-case threshold, 25 % by default).</li>
 </ul>
 <p>Add a <b>target</b> to see attainment and how far each scenario is above or below it; the bar shows all four against the target line.</p>

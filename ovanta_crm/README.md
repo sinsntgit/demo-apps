@@ -91,7 +91,7 @@ Custom values appear on the record's detail page (grouped by your sections), in 
 ## Business review (MBR / QBR)
 
 *Business review* in the menu: the pipeline & forecast report for monthly and quarterly reviews.
-* **Won / Worst case / Projected / Best case** for the period. Worst case = won + deals at ≥ 75 % (“commit”); Projected = won + Σ amount × probability; Best case = worst case + deals at ≥ 25 %. Both thresholds and an optional **target** (attainment and gaps) are adjustable.
+* **Won / Worst case / Projected / Best case** for the period. Worst case = won + deals at ≥ 75 % (“commit”); Projected = worst case + deals at ≥ 25 % × their probability; Best case = worst case + those deals in full — so worst ≤ projected ≤ best. Both thresholds and an optional **target** (attainment and gaps) are adjustable.
 * **Closure estimates**: open deals by expected close month; undated deals estimated from the average sales cycle (“est.”); overdue deals flagged **slipped**.
 * **Customise**: month / quarter / year / custom period with fiscal-year start; closing-in-period or all open deals; filters (owners, stages, accounts, category, amount, text, custom list fields); group by owner / stage / category / account / month; choose and sort columns; review notes.
 * **Save** report views (private or shared — people still only see deals their role allows), **Export CSV**, **Print / PDF**.

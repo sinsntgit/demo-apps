@@ -172,6 +172,7 @@ export function create(ent, body, user) {
   if (ent.custom) data.custom = JSON.stringify(mergeCustom(ent.table, body.custom, { existing: {}, record: { ...builtinDefaults(ent.table), ...data }, isCreate: true }));
   if (ent.table === 'deals') applyDealStage(data, null);
   if (ent.table === 'tasks') taskAccount(data, null);
+  if (ent.table === 'accounts' && 'website' in data) data.website = fixUrl(data.website);
   if (ent.table === 'contacts' && data.email === undefined) data.email = null;
   hooks.before[ent.table]?.(data, body, null, user);
   if (!('owner_id' in data) && ent.fields.owner_id) data.owner_id = user.id;
@@ -235,6 +236,7 @@ export function update(ent, id, body, user) {
   if (ent.custom && body.custom !== undefined) data.custom = JSON.stringify(mergeCustom(ent.table, body.custom, { existing: existing.custom || {}, record: { ...existing, ...data }, isCreate: false }));
   if (ent.table === 'deals') applyDealStage(data, existing);
   if (ent.table === 'tasks') taskAccount(data, existing);
+  if (ent.table === 'accounts' && 'website' in data) data.website = fixUrl(data.website);
   const cols = Object.keys(data);
   if (cols.length) run(`UPDATE ${ent.table} SET ${cols.map((c) => `${c}=?`).join(',')}, version = version + 1, updated_at = ?, updated_by = ? WHERE id=?`, ...Object.values(data), nowIso(), user?.id ?? null, id);
   audit(user, 'update', ent.table, id, existing.name || existing.title || existing.first_name);
@@ -279,6 +281,8 @@ function taskAccount(data, existing) {
   const acc = (dealId && get('SELECT account_id FROM deals WHERE id=?', dealId)?.account_id) || (contactId && get('SELECT account_id FROM contacts WHERE id=?', contactId)?.account_id) || null;
   if (acc) data.account_id = acc;
 }
+
+const fixUrl = (v) => { const s = String(v ?? '').trim(); return !s || /^[a-z][a-z0-9+.-]*:\/\//i.test(s) ? (s || null) : /^[^\s/]+\.[^\s]+$/.test(s) ? `https://${s}` : s; };
 
 function applyDealStage(data, existing) {
   if (!existing && !data.stage) data.stage = firstStage();

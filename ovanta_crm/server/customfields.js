@@ -184,7 +184,7 @@ export function validateValue(def, raw, { existing, forDefault } = {}) {
     case 'checkbox': return { value: raw === true || raw === 1 || raw === '1' || raw === 'true' || raw === 'on' || raw === 'yes' };
     case 'email': { const s = String(raw).trim().toLowerCase(); return EMAIL.test(s) && s.length <= 200 ? { value: s } : { error: 'must be a valid email address' }; }
     case 'phone': { const s = String(raw).trim(); return PHONE.test(s) ? { value: s } : { error: 'must be a valid phone number' }; }
-    case 'url': { const s = String(raw).trim(); return /^https?:\/\/[^\s]+$/i.test(s) && s.length <= 500 ? { value: s } : { error: 'must be a web address starting with http:// or https://' }; }
+    case 'url': { let s = String(raw).trim(); if (s && !/^[a-z][a-z0-9+.-]*:\/\//i.test(s) && /^[^\s/]+\.[^\s]+$/.test(s)) s = `https://${s}`; return /^https?:\/\/[^\s]+$/i.test(s) && s.length <= 500 ? { value: s } : { error: 'must be a web address starting with http:// or https://' }; }
     case 'lookup': {
       const id = Number.parseInt(raw, 10); if (!Number.isInteger(id)) return { error: 'must pick a record' }; if (forDefault) return { error: 'cannot have a default' };
       return get(`SELECT 1 FROM ${c.target} WHERE id=?`, id) ? { value: id } : { error: `refers to a ${c.target.slice(0, -1)} that does not exist` };

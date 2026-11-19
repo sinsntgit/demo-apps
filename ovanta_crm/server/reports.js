@@ -14,9 +14,11 @@ import { listFields } from './customfields.js';
  *   Best case probability ≥ best-case threshold  (default 25 %)
  *   Pipeline  below that
  * Scenarios for the period:
- *   Worst case = won + commit              (what you are confident of)
- *   Projected  = won + Σ amount × probability (the weighted forecast)
- *   Best case  = won + commit + best case   (if the likely deals all close)
+ *   Worst case = won + commit                                   (what you are confident of)
+ *   Projected  = won + commit + Σ best-case deals × probability (the most likely outcome)
+ *   Best case  = won + commit + best-case deals in full         (if the likely deals all close)
+ * so worst case ≤ projected ≤ best case always. Pipeline deals (below the best-case threshold) are in none of the three;
+ * the plain weighted forecast of every open deal is reported separately as weighted_open.
  */
 const DAY = 86400000;
 const iso = (d) => d.toISOString().slice(0, 10);
@@ -122,11 +124,11 @@ export function pipelineReport(cfg = {}, user, today = new Date()) {
     const t = {
       count: list.length, open_count: open.length, won_count: won.length, lost_count: lost.length,
       won: sum(won), lost: sum(lost), pipeline: sum(open), commit: sum(commit), best_case_only: sum(best), weighted_open: sum(open, 'weighted'),
-      worst_case: sum(won) + sum(commit), projected: sum(won) + sum(open, 'weighted'), best_case: sum(won) + sum(commit) + sum(best),
+      worst_case: sum(won) + sum(commit), projected: sum(won) + sum(commit) + sum(best, 'weighted'), best_case: sum(won) + sum(commit) + sum(best),
       slipped_count: open.filter((d) => d.slipped).length, slipped: sum(open.filter((d) => d.slipped)),
     };
     if (has2) Object.assign(t, { won2: sum(won, 'amount2'), pipeline2: sum(open, 'amount2'), worst_case2: sum(won, 'amount2') + sum(commit, 'amount2'),
-      projected2: sum(won, 'amount2') + open.reduce((a, d) => a + (Number(d.amount2) || 0) * d.probability / 100, 0), best_case2: sum(won, 'amount2') + sum(commit, 'amount2') + sum(best, 'amount2') });
+      projected2: sum(won, 'amount2') + sum(commit, 'amount2') + best.reduce((a, d) => a + (Number(d.amount2) || 0) * d.probability / 100, 0), best_case2: sum(won, 'amount2') + sum(commit, 'amount2') + sum(best, 'amount2') });
     return t;
   };
   const summary = totals(deals);

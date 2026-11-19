@@ -63,7 +63,7 @@ form label.check{display:flex;align-items:center;gap:8px;font-weight:500}form la
 .toast{background:#1f2347;color:#fff;padding:11px 16px;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.3);max-width:360px}.toast.bad{background:#b91c1c}.toast.ok{background:#15803d}
 .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:16px}
 .tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:9px 14px;font:inherit;font-weight:600;color:var(--muted);cursor:pointer}.tabs button.on{color:var(--brand);border-color:var(--brand)}
-.kanban{display:grid;grid-template-columns:repeat(6,minmax(210px,1fr));gap:12px;overflow-x:auto;padding-bottom:8px}
+.kanban{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(210px,1fr);gap:12px;overflow-x:auto;padding-bottom:8px}
 .col{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);display:flex;flex-direction:column;min-height:300px}
 .col.over{outline:2px dashed var(--brand)}.col .ch{padding:12px 14px;border-bottom:1px solid var(--line)}.col .ch b{display:block}.col .cards{padding:10px;display:flex;flex-direction:column;gap:8px;flex:1}
 .dcard{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:grab}.dcard:active{cursor:grabbing}.dcard b{display:block}.dcard.dragging{opacity:.4}

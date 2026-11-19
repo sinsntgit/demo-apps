@@ -23,7 +23,7 @@ function control(d, value, lk) {
     case 'textarea': return html`<textarea name="${name}" rows="3" maxlength="${d.config?.maxLength || 5000}" ${req} ${ph}>${v}</textarea>`;
     case 'number': case 'percent': case 'currency': return html`<input type="number" name="${name}" step="${stepFor(d)}" ${d.min != null ? raw(`min="${d.min}"`) : d.config?.min != null ? raw(`min="${d.config.min}"`) : ''} ${d.max != null ? raw(`max="${d.max}"`) : d.config?.max != null ? raw(`max="${d.config.max}"`) : ''} value="${v}" ${req} ${ph}>`;
     case 'date': return html`<input type="date" name="${name}" value="${v}" ${req}>`;
-    case 'email': case 'url': case 'tel': case 'text': case 'phone': return html`<input type="${d.type === 'phone' ? 'tel' : d.type}" name="${name}" value="${v}" maxlength="${d.config?.maxLength || 255}" ${d.dir ? raw(`dir="${d.dir}"`) : ''} ${req} ${ph}>`;
+    case 'email': case 'url': case 'tel': case 'text': case 'phone': return html`<input ${d.type === 'url' ? raw('inputmode="url" data-url') : ''} type="${d.type === 'phone' ? 'tel' : d.type === 'url' ? 'text' : d.type}" name="${name}" value="${v}" maxlength="${d.config?.maxLength || 255}" ${d.dir ? raw(`dir="${d.dir}"`) : ''} ${req} ${ph}>`;
     case 'select': case 'dropdown': case 'lookup': {
       const options = d.type === 'dropdown' ? d.options.map((o) => [o, o]) : d.type === 'lookup' ? (lk?.[d.config.target] || []) : d.options;
       const known = options.some(([val]) => String(val) === String(v));
@@ -73,11 +73,13 @@ export function applyVisibility(form, entity, lk) {
   }
 }
 /** Collect submitted values: built-ins as { key: value }, custom as { custom: { cf_key: value } }. Hidden (conditional) fields are left out so their stored value is kept. */
+/** "northstar.com" → "https://northstar.com"; empty stays empty; anything with a scheme is left as typed. */
+export const normalizeUrl = (v) => { const s = String(v || '').trim(); return !s || /^[a-z][a-z0-9+.-]*:\/\//i.test(s) ? s : /^[^\s/]+\.[^\s]+$/.test(s) ? `https://${s.replace(/^\/+/, '')}` : s; };
 export function readValues(form, entity, lk) {
   const ds = descriptors(entity, lk); const body = {}; const custom = {};
   for (const w of $$('.fld', form)) {
     if (w.hidden) continue; const d = ds[w.dataset.key]; if (!d) continue; const els = [...w.querySelectorAll('[name]')].filter((e) => !e.disabled); if (!els.length) continue;
-    const v = d.type === 'checkbox' ? els[0].checked : d.type === 'multiselect' ? els.filter((e) => e.checked).map((e) => e.value) : els[0].value;
+    const v = d.type === 'checkbox' ? els[0].checked : d.type === 'multiselect' ? els.filter((e) => e.checked).map((e) => e.value) : d.type === 'url' ? normalizeUrl(els[0].value) : els[0].value;
     if (d.builtin) body[d.key] = v; else custom[d.key] = v;
   }
   if (activeFields(entity).length) body.custom = custom;
