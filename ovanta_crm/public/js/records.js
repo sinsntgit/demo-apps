@@ -21,7 +21,7 @@ export async function convertLead(contactId, done) {
     </div>
     ${pv.can_create_deal ? html`<h3 style="margin-bottom:4px">Deal</h3><label class="check"><input type="checkbox" name="dcreate" checked> Open a deal now</label>
       <div data-for="deal"><div class="row"><label>Deal name<input name="dname" value="${pv.suggested_deal_name}"></label><label>Amount<input type="number" min="0" step="any" name="damount" value="0"></label></div>
-      <div class="row"><label>Stage<select name="dstage">${pv.stages.map((s) => html`<option value="${s.key}" ${s.key === 'qualification' ? raw('selected') : ''}>${s.label}</option>`)}</select></label><label>Expected close<input type="date" name="dclose"></label></div>${dealFields.length ? renderFields('deals', {}, lk, { layout: dealLayout }) : ''}</div>` : ''}
+      <div class="row"><label>Stage<select name="dstage">${pv.stages.map((s) => html`<option value="${s.key}" ${s.key === (pv.stages.some((x) => x.key === 'qualification') ? 'qualification' : pv.stages[0]?.key) ? raw('selected') : ''}>${s.label}</option>`)}</select></label><label>Expected close<input type="date" name="dclose"></label></div>${dealFields.length ? renderFields('deals', {}, lk, { layout: dealLayout }) : ''}</div>` : ''}
     <label>Contact status afterwards<select name="status"><option value="qualified">Qualified</option><option value="customer">Customer</option></select></label>`,
     onOpen: (f) => {
       const sync = () => { const m = f.amode.value; $$('[data-for=new]', f).forEach((e) => (e.hidden = m !== 'new')); $$('[data-for=existing]', f).forEach((e) => (e.hidden = m !== 'existing')); const d = $('[data-for=deal]', f); if (d) d.hidden = !f.dcreate.checked; };
@@ -72,7 +72,7 @@ export async function uploadFiles(entity, id, files, stage) {
   toast(`${j.files.length} file${j.files.length > 1 ? 's' : ''} attached${stage ? ` to ${stageName(stage)}` : ''}`, 'ok');
   return j.files;
 }
-const stageName = (k) => (store.meta.stages.find((s) => s.key === k) || {}).label || 'General';
+const stageName = (k) => (store.meta.stages.find((s) => s.key === k) || {}).label || store.meta.stageLabels?.[k] || 'General';
 const fileRow = (f, { canDel, canMove, stages }) => html`<div class="frow" style="display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)">
   <span style="font-size:20px" aria-hidden="true">${fileIcon(f)}</span>
   <div class="grow" style="min-width:0"><a href="#" data-act="view" data-id="${f.id}" style="word-break:break-all"><b>${f.name}</b></a><div class="small muted">${sizeText(f.size)} · ${f.uploaded_by_name || ''} · ${fmtDateTime(f.created_at)}${f.note ? ' · ' + f.note : ''}</div></div>

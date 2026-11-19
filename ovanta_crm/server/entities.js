@@ -9,14 +9,8 @@ import { mergeCustom, shapeRows, customQuery, BUILTIN, listFields } from './cust
 import { publishChange } from './live.js';
 import { HttpError } from './http.js';
 
-export const STAGES = [
-  { key: 'prospecting', label: 'Prospecting', prob: 10 },
-  { key: 'qualification', label: 'Qualification', prob: 25 },
-  { key: 'proposal', label: 'Proposal', prob: 50 },
-  { key: 'negotiation', label: 'Negotiation', prob: 75 },
-  { key: 'won', label: 'Closed Won', prob: 100 },
-  { key: 'lost', label: 'Closed Lost', prob: 0 },
-];
+export { STAGES } from './stages.js';
+import { STAGES, STAGE_KEYS, firstStage, stageLabelOf } from './stages.js';
 
 const T = { text: 'text', int: 'int', real: 'real', bool: 'bool', date: 'date', fk: 'fk' };
 
@@ -52,7 +46,7 @@ export const ENTITIES = {
     custom: true, table: 'deals', alias: 'd', noun: 'Deal',
     fields: { name: T.text, amount: T.real, stage: T.text, probability: T.int, close_date: T.date, account_id: T.fk, contact_id: T.fk, owner_id: T.fk },
     required: ['name'],
-    enums: { stage: STAGES.map((s) => s.key) },
+    enums: { stage: STAGE_KEYS },
     search: ['d.name', 'ac.name'],
     filters: { stage: 'd.stage', owner_id: 'd.owner_id', account_id: 'd.account_id', contact_id: 'd.contact_id' },
     sorts: { name: 'd.name', amount: 'd.amount', amount2: 'fx.amount2', stage: 'd.stage', close_date: 'd.close_date', created_at: 'd.created_at' },
@@ -208,7 +202,7 @@ function display(table, f, v) {
   if (f === 'account_id') return one('SELECT name n FROM accounts WHERE id=?');
   if (f === 'contact_id') return one("SELECT TRIM(first_name||' '||COALESCE(last_name,'')) n FROM contacts WHERE id=?");
   if (f === 'deal_id') return one('SELECT name n FROM deals WHERE id=?');
-  if (f === 'stage') return STAGES.find((s) => s.key === v)?.label || v;
+  if (f === 'stage') return stageLabelOf(v);
   if (Array.isArray(v)) return v.join(', ');
   if (typeof v === 'boolean') return v ? 'yes' : 'no';
   return String(v);
@@ -275,6 +269,7 @@ export function remove(ent, id, user) {
 }
 
 function applyDealStage(data, existing) {
+  if (!existing && !data.stage) data.stage = firstStage();
   if (data.stage && (!existing || data.stage !== existing.stage)) {
     const st = STAGES.find((s) => s.key === data.stage);
     if (!('probability' in data) || data.probability === null) data.probability = st.prob;

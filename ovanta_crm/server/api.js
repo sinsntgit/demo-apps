@@ -5,6 +5,7 @@ import {
   hashPassword, verifyPassword, makeSession, makeChallenge, readSession, revokeSession, revokeUserSessions, parseCookies, sessionCookie, throttled, recordFail, clearFails, loadUser,
 } from './auth.js';
 import { ENTITIES, STAGES, list, getOne, create, update, remove, clean } from './entities.js';
+import { stagesForClient, saveStages, stageUsage } from './stages.js';
 import { scopeOf, canOnRecord, hasPerm } from './permissions.js';
 import { listFields, mergeCustom } from './customfields.js';
 const displayCustom = (d, r) => { const v = r.custom?.[d.key]; if (v == null) return ''; if (d.type === 'lookup') return r.custom_labels?.[d.key] ?? ''; if (d.type === 'checkbox') return v ? 'yes' : 'no'; return Array.isArray(v) ? v.join('; ') : v; };
@@ -64,7 +65,7 @@ export function checkPassword(p) {
 // ---------- Meta ----------
 GET('/api/meta', () => ({
   version: config.version, currency: currencyMeta(), billing: (() => { const b = getBilling(); return { jurisdiction: b.jurisdiction, country: b.country, reminders_enabled: !!b.reminders.enabled, tax_label: b.tax_label }; })(),
-  stages: STAGES, mergeTags: MERGE_TAGS, segmentFields: Object.fromEntries(Object.entries(segmentFields()).map(([k, v]) => [k, { label: v.label, type: v.type, options: v.options }])),
+  stages: stagesForClient().stages, stageLabels: stagesForClient().labels, mergeTags: MERGE_TAGS, segmentFields: Object.fromEntries(Object.entries(segmentFields()).map(([k, v]) => [k, { label: v.label, type: v.type, options: v.options }])),
   segmentOps: SEGMENT_OPS, users: all('SELECT id,name,role FROM users WHERE active=1 ORDER BY name'),
   industries: all("SELECT DISTINCT industry v FROM accounts WHERE industry IS NOT NULL ORDER BY 1").map((r) => r.v),
   sources: all("SELECT DISTINCT source v FROM contacts WHERE source IS NOT NULL ORDER BY 1").map((r) => r.v),
@@ -124,6 +125,8 @@ POST('/api/tasks/:id/toggle', ({ params, user }) => {
   setStatus(t, t.status === 'done' ? 'open' : 'done', '', user);
   return getOne(ENTITIES.tasks, params.id);
 });
+GET('/api/customization/stages', () => ({ ...stagesForClient(), usage: stageUsage() }));
+PUT('/api/customization/stages', ({ body, user }) => saveStages(body, user));
 POST('/api/deals/:id/stage', ({ params, body, user }) => {
   if (!STAGES.some((s) => s.key === body.stage)) throw bad('Unknown stage');
   return update(ENTITIES.deals, params.id, { stage: body.stage, stage_comment: body.comment }, user);

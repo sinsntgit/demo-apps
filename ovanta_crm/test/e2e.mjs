@@ -364,6 +364,20 @@ await page.keyboard.press('Escape');
   await shot('deal-form-account-contacts'); await page.keyboard.press('Escape');
 }
 
+// ===== Customisation: deal stages =====
+{
+  await page.goto(`${base}/#/customize`); await page.click('button[data-e=deals]').catch(() => {}); await page.waitForSelector('#stagecard [data-sact=add]', { timeout: 8000 }).catch(() => errors.push('deal stages card missing'));
+  await page.click('#stagecard [data-sact=add]'); await page.fill('#stagecard input[data-label="new:1"]', 'Demo booked'); await page.fill('#stagecard input[data-prob="new:1"]', '20');
+  await page.fill('#stagecard input[data-prob="proposal"]', '55');
+  await page.click('#stagecard tr:has(input[data-label="negotiation"]) [data-sact=del]'); await page.waitForSelector('.modal select[name=to]');
+  await page.selectOption('.modal select[name=to]', 'proposal'); await page.click('.modal button[type=submit]');
+  await shot('customize-deal-stages');
+  await page.click('#stagecard [data-sact=save]'); await page.waitForSelector('.toast:has-text("Deal stages saved")', { timeout: 8000 }).catch(() => errors.push('saving stages failed'));
+  const st = await page.evaluate(async () => (await (await fetch('/api/meta')).json()).stages.map((x) => `${x.label}:${x.prob}`));
+  if (!st.includes('Demo booked:20') || st.some((x) => x.startsWith('Negotiation')) || !st.includes('Proposal:55')) errors.push('stages not saved as edited: ' + st.join(', '));
+  await page.goto(`${base}/#/deals`); await page.waitForSelector('.kanban'); if (!(await page.textContent('.kanban')).includes('Demo booked')) errors.push('new stage not on the deals board');
+}
+
 // ===== Inviting a user by email =====
 await page.goto(`${base}/#/team`); await page.waitForSelector('button[data-act=new]'); await page.click('button[data-act=new]');
 await page.fill('.modal input[name=name]', 'Janvi Rao'); await page.fill('.modal input[name=email]', 'janvi@syncsense.in');

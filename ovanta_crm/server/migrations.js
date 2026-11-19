@@ -167,6 +167,30 @@ BEGIN SELECT RAISE(ABORT, 'Issued invoices cannot be changed. Issue a credit or 
       for (const [c, ddl] of [['track', 'INTEGER NOT NULL DEFAULT 1'], ['tracked', 'INTEGER'], ['tracking_note', 'TEXT']]) if (!hasColumn(db, 'campaigns', c)) db.exec(`ALTER TABLE campaigns ADD COLUMN ${c} ${ddl}`);
     },
   },
+  {
+    version: 13, name: 'custom_deal_stages', foreignKeysOff: true,
+    up(db) {
+      // Older databases only allow the six built-in stage names (a CHECK on deals.stage). Rebuild the table without it,
+      // keeping every row, id, index and trigger (SQLite's documented 12-step table change, with foreign keys off).
+      const t = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='deals'").get();
+      if (!t || !/CHECK\s*\(\s*stage\s+IN/i.test(t.sql)) return;
+      const extras = db.prepare("SELECT type, name, sql FROM sqlite_master WHERE tbl_name='deals' AND type IN ('index','trigger') AND sql IS NOT NULL").all();
+      const views = db.prepare("SELECT name, sql FROM sqlite_master WHERE type='view'").all();
+      const newSql = t.sql.replace(/\s*CHECK\s*\(\s*stage\s+IN\s*\([^)]*\)\s*\)/i, '').replace(/^CREATE TABLE\s+(IF NOT EXISTS\s+)?"?deals"?/i, 'CREATE TABLE deals_new');
+      const before = db.prepare('SELECT COUNT(*) n FROM deals').get().n;
+      for (const v of views) db.exec(`DROP VIEW "${v.name}"`);
+      db.exec(newSql);
+      const cols = db.prepare('PRAGMA table_info(deals)').all().map((c) => `"${c.name}"`).join(',');
+      db.exec(`INSERT INTO deals_new (${cols}) SELECT ${cols} FROM deals`);
+      db.exec('DROP TABLE deals');
+      db.exec('ALTER TABLE deals_new RENAME TO deals');
+      for (const x of extras) db.exec(x.sql);
+      for (const v of views) db.exec(v.sql);
+      if (db.prepare('SELECT COUNT(*) n FROM deals').get().n !== before) throw new Error('row count changed while rebuilding deals');
+      const fk = db.prepare('PRAGMA foreign_key_check').all();
+      if (fk.length) throw new Error(`foreign key problems after rebuilding deals: ${JSON.stringify(fk.slice(0, 3))}`);
+    },
+  },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 
@@ -181,9 +205,12 @@ export function runMigrations(db, list = MIGRATIONS) {
   const applied = [];
   for (const m of list) {
     if (done.has(m.version)) continue;
+    // a table rebuild must run with foreign keys off (they cannot be switched inside a transaction)
+    const fkWasOn = m.foreignKeysOff && db.prepare('PRAGMA foreign_keys').get().foreign_keys === 1;
+    if (fkWasOn) db.exec('PRAGMA foreign_keys=OFF');
     db.exec('BEGIN');
-    try { m.up(db); db.prepare('INSERT INTO schema_migrations (version,name) VALUES (?,?)').run(m.version, m.name); db.exec('COMMIT'); applied.push(m.version); }
-    catch (e) { db.exec('ROLLBACK'); throw new Error(`Migration ${m.version} (${m.name}) failed and was rolled back: ${e.message}. Your data is unchanged; restore point is in data/backups.`); }
+    try { m.up(db); db.prepare('INSERT INTO schema_migrations (version,name) VALUES (?,?)').run(m.version, m.name); db.exec('COMMIT'); applied.push(m.version); if (fkWasOn) db.exec('PRAGMA foreign_keys=ON'); }
+    catch (e) { db.exec('ROLLBACK'); if (fkWasOn) db.exec('PRAGMA foreign_keys=ON'); throw new Error(`Migration ${m.version} (${m.name}) failed and was rolled back: ${e.message}. Your data is unchanged; restore point is in data/backups.`); }
   }
   return applied;
 }

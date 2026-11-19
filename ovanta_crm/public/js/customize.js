@@ -1,4 +1,5 @@
 import { api, html, raw, setHtml, esc, on, store, toast, fail, modal, confirmBox, badge, $, $$ } from './core.js';
+import { stagesCard } from './stages-admin.js';
 import { loadCustomization, renderFields, activeFields } from './forms.js';
 
 const ENTITIES = [['deals', 'Deals'], ['accounts', 'Accounts'], ['contacts', 'Contacts / Leads']];
@@ -108,6 +109,7 @@ export async function customize(root) {
     setHtml(root, html`<div class="topbar"><h1>Customisation</h1><span class="grow"></span></div>
       <p class="muted" style="margin-top:-8px">Add your own fields to deals, accounts and contacts (for example <i>Partner</i>, <i>Partner margin</i>, <i>Deal type</i>, <i>Deal details</i>), then arrange them into sections and save the form layout everyone sees.</p>
       <div class="tabs">${ENTITIES.map(([k, l]) => html`<button class="${entity === k ? 'on' : ''}" data-act="tab" data-e="${k}">${l}</button>`)}</div>
+      ${entity === 'deals' ? html`<div id="stagecard" style="margin-bottom:16px"></div>` : ''}
       <div class="card"><div class="hd"><h2>Custom fields</h2><span class="muted small">${active.length} active</span><span class="grow"></span><button class="btn primary sm" data-act="fnew">+ Add field</button></div>
         ${active.length ? html`<div class="tablewrap"><table><thead><tr><th>Field</th><th>Type</th><th>Settings</th><th></th></tr></thead><tbody>${active.map((f) => html`<tr><td><b>${f.label}</b><div class="small muted mono">${f.key}</div></td><td class="small">${typeLabel(f.type)}${f.type === 'lookup' ? ` → ${f.config.target}` : ''}${['dropdown', 'multiselect'].includes(f.type) ? html`<div class="muted">${f.options.slice(0, 4).join(', ')}${f.options.length > 4 ? ` +${f.options.length - 4}` : ''}</div>` : ''}</td>
           <td class="small">${[f.required ? 'Required' : '', f.show_in_list ? 'In lists' : '', f.filterable ? 'Filter' : '', f.searchable ? 'Search' : '', f.visible_when ? `Only when ${f.visible_when.field === 'stage' ? 'Stage' : (active.find((x) => x.key === f.visible_when.field)?.label || f.visible_when.field)} = ${f.visible_when.values.join(' / ')}` : ''].filter(Boolean).map((t) => html`<span class="badge b-grey">${t}</span> `)}</td>
@@ -117,6 +119,7 @@ export async function customize(root) {
         <button class="btn sm" data-act="sadd">+ Add section</button><button class="btn sm" data-act="preview">Preview form</button><button class="btn sm danger" data-act="lreset">Reset to default</button><button class="btn sm primary" data-act="lsave">Save layout</button></div>
         <div class="bd"><p class="small muted" style="margin-top:0">This is the form used when creating or editing ${ENTITIES.find((e) => e[0] === entity)[1].toLowerCase()}. <b>Drag</b> fields between sections (or use ↑ ↓), choose one or two columns per section, and drag optional standard fields to “Not on the form” to hide them. Required fields and custom fields cannot be hidden — archive a custom field to remove it.</p><div id="layoutarea"></div></div></div>`);
     drawLayout();
+    if (entity === 'deals') stagesCard($('#stagecard', root)).catch(fail);
   };
 
   const drawLayout = () => {

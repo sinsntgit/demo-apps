@@ -42,7 +42,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_email ON contacts(email) WHERE em
 CREATE INDEX IF NOT EXISTS idx_contacts_account ON contacts(account_id);
 CREATE TABLE IF NOT EXISTS deals (
   id INTEGER PRIMARY KEY, name TEXT NOT NULL, amount REAL NOT NULL DEFAULT 0,
-  stage TEXT NOT NULL DEFAULT 'prospecting' CHECK (stage IN ('prospecting','qualification','proposal','negotiation','won','lost')),
+  stage TEXT NOT NULL DEFAULT 'prospecting',
   probability INTEGER NOT NULL DEFAULT 10, close_date TEXT,
   account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
   contact_id INTEGER REFERENCES contacts(id) ON DELETE SET NULL,

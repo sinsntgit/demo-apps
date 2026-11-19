@@ -233,7 +233,7 @@ export async function accountDetail(root, id) {
 }
 
 // =============== Deals ===============
-const stageLabel = (k) => store.meta.stages.find((s) => s.key === k)?.label || k;
+const stageLabel = (k) => store.meta.stages.find((s) => s.key === k)?.label || store.meta.stageLabels?.[k] || k;
 const stageBadge = (k) => html`<span class="badge ${k}">${stageLabel(k)}</span>`;
 const dayWord = (n) => (n < 1 ? 'under a day' : `${n} day${n === 1 ? '' : 's'}`);
 

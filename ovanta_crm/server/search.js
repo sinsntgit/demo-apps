@@ -1,6 +1,6 @@
 import { GET, POST, bad } from './http.js';
 import { all } from './db.js';
-import { STAGES } from './entities.js';
+import { STAGES, STAGE_KEYS } from './stages.js';
 import { hasPerm, scopeOf } from './permissions.js';
 import { listFields } from './customfields.js';
 import { aiConfigured, callClaude, responseText } from './ai.js';
@@ -12,7 +12,6 @@ import { currencyPair as cur } from './currency.js';
  * query plan; the plan is checked against the whitelist below and run as parameterised SQL, so it cannot reach
  * anything the catalogue does not list, and every result still goes through the user's permissions and own/all scope.
  */
-const STAGE_KEYS = STAGES.map((s) => s.key);
 const FULLNAME = (a) => `TRIM(${a}.first_name || ' ' || COALESCE(${a}.last_name,''))`;
 const FILE_RECORD = `CASE f.entity WHEN 'deals' THEN (SELECT name FROM deals WHERE id=f.record_id) WHEN 'accounts' THEN (SELECT name FROM accounts WHERE id=f.record_id)
   WHEN 'contacts' THEN (SELECT TRIM(first_name||' '||COALESCE(last_name,'')) FROM contacts WHERE id=f.record_id) WHEN 'invoices' THEN (SELECT COALESCE(number,'Draft invoice #'||id) FROM invoices WHERE id=f.record_id) END`;
