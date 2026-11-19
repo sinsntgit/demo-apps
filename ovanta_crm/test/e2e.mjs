@@ -69,6 +69,9 @@ await page.waitForSelector('text=No templates yet'); await shot('purged-template
 await page.click('a[data-nav=settings]'); await page.waitForSelector('text=Data management'); await shot('data-management');
 // ===== Billing: settings -> invoice (live compliance check) -> issue -> pay -> credit note -> portal -> receivables -> readiness -> import =====
 await page.click('a[data-nav=billing-settings]'); await page.waitForSelector('text=Business profile');
+// a new install starts in India GST; this customer chooses Saudi Arabia (ZATCA) instead
+if ((await page.inputValue('select[name=jurisdiction][data-switch]')) !== 'IN') errors.push('a new install should start in India GST mode');
+await page.selectOption('select[name=jurisdiction][data-switch]', 'KSA'); await page.click('.modal button[type=submit]'); await page.waitForSelector('input[name=seller_name_ar]', { timeout: 8000 }).catch(() => errors.push('switching to Saudi did not show the Saudi fields'));
 await page.fill('input[name=seller_name]', 'E2E Trading Co'); await page.fill('input[name=seller_name_ar]', 'شركة الاختبار'); await page.fill('input[name=vat_number]', '399999999900003');
 await page.fill('input[name=a_street]', 'King Fahd Rd'); await page.fill('input[name=a_building_no]', '1234'); await page.fill('input[name=a_district]', 'Olaya'); await page.fill('input[name=a_city]', 'Riyadh'); await page.fill('input[name=a_postal_code]', '12211');
 await page.fill('input[name=b_iban]', 'SA0380000000608010167519'); await page.fill('input[name=b_bank_name]', 'Al Rajhi'); await page.click('text=Save settings'); await page.waitForSelector('.toast:has-text("Billing settings saved")'); await shot('billing-settings');
@@ -472,6 +475,22 @@ await page.keyboard.press('Escape');
   // Tasks page → + New task: every account
   await page.goto(`${base}/#/tasks`); await page.waitForSelector('button[data-act=new]'); await page.click('button[data-act=new]'); await page.waitForSelector('.modal select[name=account_id]');
   if ((await opts('.modal select[name=account_id] option')).filter(Boolean).length !== ctx.accounts) errors.push('Tasks page: all accounts should be offered');
+  await page.keyboard.press('Escape');
+}
+
+// ===== Overdue marker on the deals board and list; India GST account form =====
+{
+  const past = new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10);
+  const ids = await page.evaluate(async (d) => { const mk = async (b) => (await (await fetch('/api/deals', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) })).json()).id;
+    return { late: await mk({ name: 'Late renewal', amount: 5000, stage: 'proposal', close_date: d, custom: { cf_deal_type: 'Direct' } }), won: await mk({ name: 'Won but old date', amount: 5000, stage: 'won', close_date: d, custom: { cf_deal_type: 'Direct' } }) }; }, past);
+  await page.goto(`${base}/#/deals`); await page.evaluate(() => sessionStorage.setItem('dealView', 'board')); await page.reload(); await page.waitForSelector('.kanban');
+  const late = page.locator(`.dcard[data-id="${ids.late}"]`); await late.scrollIntoViewIfNeeded();
+  if (!(await late.getAttribute('class')).includes('is-overdue') || !/Overdue 6 days/.test(await late.textContent())) errors.push('overdue deal card not marked "Overdue 6 days"');
+  if ((await page.locator(`.dcard[data-id="${ids.won}"]`).getAttribute('class')).includes('is-overdue')) errors.push('a won deal should never show overdue');
+  await shot('board-overdue');
+  await page.evaluate(() => fetch('/api/billing/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jurisdiction: 'IN' }) })); await page.reload();
+  await page.goto(`${base}/#/accounts`); await page.waitForSelector('button[data-act=new]'); await page.click('button[data-act=new]'); await page.waitForSelector('.modal');
+  const form = await page.textContent('.modal'); if (!form.includes('GSTIN') || form.includes('Name (Arabic)') || form.includes('Building no.')) errors.push('account form not in India GST mode (GSTIN / no Arabic fields)');
   await page.keyboard.press('Escape');
 }
 

@@ -207,6 +207,19 @@ BEGIN SELECT RAISE(ABORT, 'Issued invoices cannot be changed. Issue a credit or 
       db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_account ON tasks(account_id)');
     },
   },
+  {
+    version: 16, name: 'india_gst_default',
+    up(db) {
+      const row = db.prepare("SELECT value FROM settings WHERE key='billing'").get(); if (!row) return; // never saved: the new India default applies
+      let b; try { b = JSON.parse(row.value); } catch { return; }
+      const untouchedDemo = b.jurisdiction === 'KSA' && b.seller_name === 'Ovantaa Demo Trading Co' && b.vat_number === '300000000000003';
+      if (!untouchedDemo) return;
+      Object.assign(b, { jurisdiction: 'IN', currency: 'INR', default_lang: 'en', country: 'IN', tax_label: 'GST', tax_id_label: 'GSTIN', vat_rate: 18, seller_name: 'Ovantaa Demo Solutions Pvt Ltd', seller_name_ar: '', vat_number: '29AAGCO1234K1ZB', pan: 'AAGCO1234K', cr_number: '',
+        address: { street: '80 Feet Road, Koramangala', building_no: '', district: '', city: 'Bengaluru', state: 'Karnataka', postal_code: '560034', country_code: 'IN' } });
+      b.bank = { ...(b.bank || {}), iban: '', swift: '', bank_code_label: 'IFSC' };
+      db.prepare("UPDATE settings SET value=?, updated_at=datetime('now') WHERE key='billing'").run(JSON.stringify(b));
+    },
+  },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 

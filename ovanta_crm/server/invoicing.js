@@ -6,11 +6,12 @@ import { REGIMES, COUNTRY_PRESETS, isRegime, isGulf, taxIdValid, stateCode, gsti
 
 // ======================= Billing profile (seller, numbering, bank, reminders, providers) =======================
 export const BILLING_DEFAULTS = {
-  jurisdiction: 'KSA', currency: 'SAR', default_lang: 'both', seller_name: '', seller_name_ar: '', vat_number: '', cr_number: '',
-  country: 'SA', tax_label: 'VAT', tax_id_label: 'VAT number', tax_registered: true, invoice_title: '', pan: '',
-  address: { street: '', building_no: '', district: '', city: '', state: '', postal_code: '', country_code: 'SA' },
-  invoice_prefix: 'INV-', credit_prefix: 'CN-', debit_prefix: 'DN-', payment_terms_days: 30, vat_rate: 15,
-  bank: { bank_name: '', account_name: '', iban: '', swift: '', account_number: '', bank_code: '', bank_code_label: '', upi: '' }, portal_note: '',
+  // India GST by default; Saudi (ZATCA), UAE and any other country are chosen under Billing settings
+  jurisdiction: 'IN', currency: 'INR', default_lang: 'en', seller_name: '', seller_name_ar: '', vat_number: '', cr_number: '',
+  country: 'IN', tax_label: 'GST', tax_id_label: 'GSTIN', tax_registered: true, invoice_title: '', pan: '',
+  address: { street: '', building_no: '', district: '', city: '', state: '', postal_code: '', country_code: 'IN' },
+  invoice_prefix: 'INV-', credit_prefix: 'CN-', debit_prefix: 'DN-', payment_terms_days: 30, vat_rate: 18,
+  bank: { bank_name: '', account_name: '', iban: '', swift: '', account_number: '', bank_code: '', bank_code_label: 'IFSC', upi: '' }, portal_note: '',
   reminders: { enabled: false, sender_id: null, create_whatsapp_tasks: true, create_collection_tasks: true, repeat_days: 14,
     schedule: [{ offset: -3, channels: ['email'] }, { offset: 0, channels: ['email'] }, { offset: 3, channels: ['email'] }, { offset: 7, channels: ['email', 'whatsapp'] }, { offset: 14, channels: ['email', 'whatsapp'] }, { offset: 30, channels: ['email', 'whatsapp'] }] },
   messaging: { mode: 'none', url: '' }, asp: { mode: 'none', url: '' },
@@ -68,7 +69,7 @@ export const today = () => new Date().toISOString().slice(0, 10);
 export const defaultVatRate = (jur) => { const co = getBilling(); return jur === co.jurisdiction ? Number(co.vat_rate) : (REGIMES[jur] || REGIMES.KSA).rate; };
 export const VAT_CATEGORIES = { S: 'Standard rate', Z: 'Zero rated', E: 'Exempt', O: 'Out of scope' };
 
-export function calcLines(rawLines, jurisdiction = 'KSA') {
+export function calcLines(rawLines, jurisdiction = 'IN') {
   const lines = (rawLines || []).map((l, i) => {
     const qty = Number(l.qty), price = Number(l.unit_price), disc = Number(l.discount || 0);
     if (![qty, price, disc].every(Number.isFinite)) throw bad(`Line ${i + 1}: quantity, price and discount must be numbers`);
@@ -135,7 +136,7 @@ export function validateSeller(co) {
 
 /** Validate one invoice (with computed lines). `ctx` = { company, original, creditedSoFar, existsNumber } */
 export function validateInvoice(inv, calc, ctx = {}) {
-  const out = []; const jur = inv.jurisdiction || 'KSA'; const lines = calc.lines; const standard = inv.doc_type === 'standard';
+  const out = []; const jur = inv.jurisdiction || 'IN'; const lines = calc.lines; const standard = inv.doc_type === 'standard';
   const note = ['credit_note', 'debit_note'].includes(inv.doc_type);
   if (!lines.length) out.push(issue('error', 'NO_LINES', 'lines', 'The invoice has no line items.', 'Add at least one line'));
   lines.forEach((l, i) => {
@@ -195,7 +196,7 @@ export function validateInvoice(inv, calc, ctx = {}) {
   return out;
 }
 
-export function validateCustomerRecord(a, jur = 'KSA') {
+export function validateCustomerRecord(a, jur = 'IN') {
   const out = []; const label = REGIMES[jur]?.taxId || 'tax ID';
   if (!a.name) out.push(issue('error', 'CUST_NAME', 'name', 'Customer name is missing.'));
   if (isGulf(jur)) {

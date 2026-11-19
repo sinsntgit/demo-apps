@@ -262,11 +262,28 @@ export function saveLayout(user, entity, body) {
 }
 export function resetLayout(user, entity) { run('DELETE FROM layouts WHERE entity=?', entity); audit(user, 'reset', 'layout', null, entity); return effectiveLayout(entity); }
 
+/** The invoicing mode decides the tax fields on accounts: GSTIN for India, VAT/TRN (with Arabic name, building no., district) for the Gulf. */
+function billingMode() {
+  let b = {}; try { b = JSON.parse(get("SELECT value FROM settings WHERE key='billing'")?.value || '{}'); } catch { /* default */ }
+  return { jur: b.jurisdiction || 'IN', taxId: b.tax_id_label || null, country: b.country || null };
+}
+const GULF_ONLY = ['name_ar', 'building_no', 'district'];
+function forMode(b, m) {
+  const gulf = m.jur === 'KSA' || m.jur === 'UAE';
+  if (GULF_ONLY.includes(b.key) && !gulf) return { ...b, modeHidden: true };
+  if (b.key === 'vat_number') return m.jur === 'IN' ? { ...b, label: 'GSTIN', placeholder: '15 characters, e.g. 29ABCDE1234F1Z5' } : m.jur === 'KSA' ? { ...b, label: 'VAT number', placeholder: '15 digits' } : m.jur === 'UAE' ? { ...b, label: 'TRN', placeholder: '15 digits' } : { ...b, label: m.taxId || 'Tax ID', placeholder: '' };
+  if (b.key === 'state' && m.jur === 'IN') return { ...b, label: 'State (GST place of supply)', placeholder: 'e.g. Karnataka' };
+  if (b.key === 'postal_code' && m.jur === 'IN') return { ...b, label: 'PIN code' };
+  if (b.key === 'country_code') return { ...b, placeholder: m.jur === 'IN' ? 'IN' : m.jur === 'KSA' ? 'SA' : m.jur === 'UAE' ? 'AE' : m.country && m.country !== 'OTHER' ? m.country : 'e.g. GB' };
+  return b;
+}
+
 /** Everything the browser needs to draw forms, lists and detail pages. */
 export function customizationBundle() {
   const out = { types: FIELD_TYPES, entities: {} };
   const c1 = get("SELECT value FROM settings WHERE key='currency.c1'")?.value || 'USD';
-  for (const e of ENTITIES_WITH_CUSTOM) out.entities[e] = { builtin: BUILTIN[e].map((b) => (e === 'deals' && b.key === 'amount' ? { ...b, label: `Amount (${c1})` } : b)), fields: listFields(e, { archived: true }), layout: effectiveLayout(e) };
+  const mode = billingMode();
+  for (const e of ENTITIES_WITH_CUSTOM) out.entities[e] = { builtin: BUILTIN[e].map((b) => (e === 'deals' && b.key === 'amount' ? { ...b, label: `Amount (${c1})` } : e === 'accounts' ? forMode(b, mode) : b)), fields: listFields(e, { archived: true }), layout: effectiveLayout(e) };
   return out;
 }
 

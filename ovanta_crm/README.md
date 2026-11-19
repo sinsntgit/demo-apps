@@ -88,6 +88,11 @@ Menu **Billing**: *Invoices · Receivables · E-invoicing readiness · Billing s
 
 Custom values appear on the record's detail page (grouped by your sections), in list columns and filters, on deal cards, in **CSV export and import** (contacts; columns are matched by field name), and as **conditions in campaign segments** (contact and account fields). They are validated on the server — required fields, option lists, number ranges, dates, emails, links and record links — whichever way a record is saved. Limits: 100 custom fields per record type, 200 options per list. Tasks and invoices have no custom fields yet.
 
+## India GST by default; overdue deals
+
+* **Invoicing starts in India GST** (INR, 18 %, GSTIN, CGST+SGST within your state and IGST across states; demo invoices are Indian). Saudi Arabia (ZATCA), UAE (FTA) or any other country can be chosen under *Billing settings*. Upgrading moves only an untouched Saudi **demo** profile to India; a profile you set up yourself is never changed. The account form follows the mode (GSTIN and *State (GST place of supply)* for India; VAT/TRN, Arabic name, building no. and district for the Gulf).
+* **Overdue deals**: open deals whose expected close date has passed show **⚠ Overdue N days** on the board (red edge) and in red in the list. Won and lost deals never do.
+
 ## Business review (MBR / QBR)
 
 *Business review* in the menu: the pipeline & forecast report for monthly and quarterly reviews.

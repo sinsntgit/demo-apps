@@ -1,6 +1,6 @@
 {
   "name": "ovantaa-crm",
-  "version": "1.25.3",
+  "version": "1.26.0",
   "description": "Ovantaa CRM - enterprise CRM with campaign management. Node 22.5+; one runtime dependency (nodemailer).",
   "type": "module",
   "private": true,

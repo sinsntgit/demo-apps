@@ -2,6 +2,7 @@ import {
   api, html, raw, setHtml, esc, on, store, toast, fail, modal, confirmBox, field, formValues, fmtDate, fmtDateTime, ago, $, $$, allow,
 } from './core.js';
 import { fmt, invLabel } from './invoices.js';
+import { loadCustomization } from './forms.js';
 import { readTable, INVOICE_FIELDS, guessInvoiceMapping, applyInvoiceMapping } from './csv.js';
 
 const chip = (cls, text) => html`<span class="badge ${cls}">${text}</span>`;
@@ -153,7 +154,7 @@ export async function billingSettings(root) {
     const toJur = form.elements.jurisdiction.value, toCountry = form.elements.country?.value;
     const label = toJur === 'GEN' && e.target.name === 'country' ? presets[toCountry]?.name : regimes[toJur].label;
     if (!(await confirmBox(`Switch invoicing to “${label}”? Currency, tax rate and labels are set to that country's usual defaults (you can change them). Existing invoices keep their own rules.`, 'Switch', false))) { billingSettings(root); return; }
-    try { await api('PUT', '/billing/settings', { jurisdiction: toJur, ...(toJur === 'GEN' ? { country: e.target.name === 'country' ? toCountry : (s.jurisdiction === 'GEN' ? s.country : 'OTHER') } : {}) }); store.billingJur = toJur; toast('Invoicing mode switched', 'ok'); } catch (x) { fail(x); }
+    try { await api('PUT', '/billing/settings', { jurisdiction: toJur, ...(toJur === 'GEN' ? { country: e.target.name === 'country' ? toCountry : (s.jurisdiction === 'GEN' ? s.country : 'OTHER') } : {}) }); store.billingJur = toJur; loadCustomization().catch(() => {}); toast('Invoicing mode switched', 'ok'); } catch (x) { fail(x); }
     billingSettings(root);
   });
   on(root, { save: async () => {
@@ -167,6 +168,6 @@ export async function billingSettings(root) {
       bank: { bank_name: v('b_bank_name'), account_name: v('b_account_name'), iban: v('b_iban'), swift: v('b_swift'), account_number: v('b_account_number'), bank_code: v('b_bank_code'), bank_code_label: v('b_bank_code_label'), upi: v('b_upi') }, portal_note: v('portal_note'),
       reminders: { enabled: g('r_enabled').checked, sender_id: g('r_sender').value || null, schedule: sched, repeat_days: g('r_repeat').value, create_collection_tasks: g('r_tasks').checked, create_whatsapp_tasks: g('r_watasks').checked },
       messaging: { mode: g('m_mode').value, url: g('m_url').value, ...(g('m_token').value ? { token: g('m_token').value } : {}) }, asp: { mode: g('p_mode').value, url: g('p_url').value, ...(g('p_token').value ? { token: g('p_token').value } : {}) } };
-    const r = await api('PUT', '/billing/settings', body); store.billingJur = r.settings.jurisdiction; toast('Billing settings saved', 'ok'); billingSettings(root);
+    const r = await api('PUT', '/billing/settings', body); store.billingJur = r.settings.jurisdiction; loadCustomization().catch(() => {}); toast('Billing settings saved', 'ok'); billingSettings(root);
   } });
 }

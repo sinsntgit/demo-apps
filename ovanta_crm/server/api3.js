@@ -89,7 +89,7 @@ const issuesFor = (f, calc) => {
   return [...validateInvoice({ ...f, total_stored: undefined }, calc, { company: getBilling(), original, duplicateNumber: dup })];
 };
 const COLS = ['doc_type', 'jurisdiction', 'currency', 'lang', 'account_id', 'contact_id', 'deal_id', ...BUYER_KEYS, 'place_of_supply', 'issue_date', 'supply_date', 'due_date', 'payment_terms', 'notes', 'reason', 'external_number', 'ref_invoice_id', 'ref_number', 'subtotal', 'discount_total', 'vat_total', 'total', 'owner_id'];
-function saveDraft(f, calc, user, id = null) {
+export function saveDraft(f, calc, user, id = null) {
   return tx(() => {
     if (id) {
       run(`UPDATE invoices SET ${COLS.map((c) => `${c}=?`).join(',')}, updated_at=? WHERE id=? AND status='draft'`, ...COLS.map((c) => f[c] ?? null), nowIso(), id);

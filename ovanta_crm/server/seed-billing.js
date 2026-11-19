@@ -1,5 +1,49 @@
 import { all, get, run } from './db.js';
 import { saveBilling, issueInvoice, recordPayment, loadInvoice, calcLines, today, round2, logEvent } from './invoicing.js';
+import { buildDraft, saveDraft } from './api3.js';
+import { gstinValid } from './regimes.js';
+
+/** A checksum-valid demo GSTIN for a state code and a 10-character PAN-like body. */
+export function demoGstin(stateCode, body) {
+  const base = `${stateCode}${body}1Z`; for (const ch of '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ') if (gstinValid(base + ch)) return base + ch;
+  return null;
+}
+function seedIndia() {
+  const admin = get("SELECT id, name, role FROM users WHERE role='admin' ORDER BY id LIMIT 1"); if (!admin) return;
+  saveBilling({ jurisdiction: 'IN', seller_name: 'Ovantaa Demo Solutions Pvt Ltd', vat_number: demoGstin('29', 'AAGCO1234K'), pan: 'AAGCO1234K',
+    address: { street: '80 Feet Road, Koramangala', city: 'Bengaluru', state: 'Karnataka', postal_code: '560034', country_code: 'IN' },
+    bank: { bank_name: 'Demo Bank', account_name: 'Ovantaa Demo Solutions Pvt Ltd', account_number: '50200012345678', bank_code: 'DEMO0001234', bank_code_label: 'IFSC', upi: 'ovantaa@demobank' },
+    portal_note: 'Demo data — payments shown here are illustrative.' });
+  // customers in Karnataka (CGST + SGST) and other states (IGST)
+  const places = [['29', 'Karnataka', 'Bengaluru', '560001'], ['27', 'Maharashtra', 'Mumbai', '400001'], ['07', 'Delhi', 'New Delhi', '110001'], ['33', 'Tamil Nadu', 'Chennai', '600001'],
+    ['29', 'Karnataka', 'Mysuru', '570001'], ['36', 'Telangana', 'Hyderabad', '500001'], ['24', 'Gujarat', 'Ahmedabad', '380001'], ['19', 'West Bengal', 'Kolkata', '700001']];
+  const accounts = all('SELECT id, name FROM accounts ORDER BY id LIMIT 8');
+  accounts.forEach((a, i) => { const [code, state, city, pin] = places[i % places.length];
+    run('UPDATE accounts SET vat_number=?, street=?, city=?, state=?, postal_code=?, country_code=?, billing_email=?, billing_phone=? WHERE id=?',
+      demoGstin(code, `AABC${String.fromCharCode(65 + i)}${1000 + i * 37}${String.fromCharCode(70 + i)}`), `${10 + i} MG Road`, city, state, pin, 'IN', `accounts@${a.name.toLowerCase().replace(/[^a-z0-9]/g, '')}.example`, `98${int(10000000, 99999999)}`, a.id); });
+  const items = [['Platform subscription', 48000, '997331'], ['Implementation services', 125000, '998314'], ['Annual support plan', 36000, '998316'], ['Consulting (per day)', 22000, '998311'], ['Training workshop', 54000, '999293'], ['Analytics add-on', 19000, '997331']];
+  const mk = (acc, age, terms, nLines) => {
+    const issue = daysAgo(age);
+    const lines = Array.from({ length: nLines }, () => { const [d, p, hsn] = items[int(0, items.length - 1)]; return { description: d, hsn_code: hsn, qty: int(1, 4), unit_price: p, vat_category: 'S', vat_rate: 18 }; });
+    const { f, calc } = buildDraft({ account_id: acc.id, issue_date: issue, supply_date: issue, due_date: daysFrom(issue, terms), lines }, null, admin); f._isNew = true; f.source = 'demo';
+    const id = saveDraft(f, calc, admin); run("UPDATE invoices SET source='demo' WHERE id=?", id); issueInvoice(id, admin); return loadInvoice(id);
+  };
+  const plan = [[0, 95, 30, 2, 'paid'], [1, 80, 30, 1, 'paid'], [2, 70, 30, 3, 'partial'], [3, 62, 30, 2, 'none'], [4, 50, 30, 1, 'paid'], [5, 44, 15, 2, 'none'], [6, 38, 30, 2, 'partial'], [7, 33, 30, 1, 'none'],
+    [0, 28, 30, 2, 'paid'], [1, 21, 30, 3, 'none'], [2, 14, 30, 1, 'none'], [3, 9, 30, 2, 'none'], [4, 4, 30, 1, 'none'], [5, 2, 30, 2, 'none']];
+  for (const [ai, age, terms, n, outcome] of plan) {
+    const inv = mk(accounts[ai], age, terms, n); const due = inv.due_date;
+    if (outcome === 'paid') recordPayment(inv, { amount: inv.total, paid_on: [daysFrom(due, int(-3, 12)), today()].sort()[0], method: 'bank_transfer', reference: `NEFT-${int(100000, 999999)}`, reconciled: true }, admin);
+    if (outcome === 'partial') recordPayment(inv, { amount: round2(inv.total * 0.4), paid_on: [daysFrom(due, int(0, 6)), today()].sort()[0], method: 'bank_transfer', reference: `UTR-${int(100000, 999999)}`, reconciled: true }, admin);
+  }
+  const target = get("SELECT id FROM invoices WHERE status='issued' AND amount_paid=0 ORDER BY id LIMIT 1");
+  if (target) {
+    const o = loadInvoice(target.id);
+    const { f, calc } = buildDraft({ doc_type: 'credit_note', account_id: o.account_id, ref_invoice_id: o.id, reason: 'Service level adjustment agreed with customer', lines: [{ description: 'Credit: service level adjustment', hsn_code: '998314', qty: 1, unit_price: round2(o.subtotal * 0.1), vat_category: 'S', vat_rate: 18 }] }, null, admin);
+    f._isNew = true; const id = saveDraft(f, calc, admin); run("UPDATE invoices SET source='demo' WHERE id=?", id); issueInvoice(id, admin);
+  }
+  const open = get("SELECT id FROM invoices WHERE status='issued' AND doc_type='standard' AND due_date < date('now') ORDER BY id DESC LIMIT 1");
+  if (open) { const o = loadInvoice(open.id); run('INSERT INTO payment_claims (invoice_id,amount,paid_on,reference,payer_name) VALUES (?,?,?,?,?)', o.id, round2(o.balance / 2), daysAgo(1), 'UTR-DEMO-1', 'Accounts team'); logEvent(o.id, 'payment_claim', 'Customer notified a payment (demo) — awaiting confirmation', null); }
+}
 
 // deterministic PRNG so the demo is stable
 let seed = 7; const rnd = () => ((seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296);
@@ -7,9 +51,13 @@ const int = (a, b) => a + Math.floor(rnd() * (b - a + 1));
 const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
 const daysFrom = (d, n) => new Date(new Date(d).getTime() + n * 86400000).toISOString().slice(0, 10);
 
-/** Demo receivables: a fictional Saudi seller, 8 customers with valid tax data, ~14 invoices issued through the real numbering/hash-chain path. */
-export function seedBillingDemo() {
+/**
+ * Demo receivables: a fictional seller, 8 customers with valid tax data, ~14 invoices issued through the real numbering path.
+ * India GST by default (CGST+SGST for customers in the seller's state, IGST for the others); SEED_BILLING_MODE=KSA gives the Saudi demo.
+ */
+export function seedBillingDemo(mode = process.env.SEED_BILLING_MODE || 'IN') {
   if (get('SELECT COUNT(*) n FROM invoices').n) return;
+  if (mode !== 'KSA') return seedIndia();
   const admin = get("SELECT id, name FROM users WHERE role='admin' ORDER BY id LIMIT 1"); if (!admin) return;
   saveBilling({ jurisdiction: 'KSA', currency: 'SAR', default_lang: 'en', seller_name: 'Ovantaa Demo Trading Co', seller_name_ar: 'شركة أوفانتا التجريبية', vat_number: '300000000000003', cr_number: '1010000000',
     address: { street: 'Olaya Street', building_no: '2345', district: 'Al Olaya', city: 'Riyadh', postal_code: '12211', country_code: 'SA' },

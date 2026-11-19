@@ -51,7 +51,7 @@ function fieldBlock(d, rec, isNew, lk) {
 /** The whole form body for a record type, drawn from the saved (or a supplied) layout. */
 export function renderFields(entity, rec = {}, lk = null, { layout } = {}) {
   const ds = descriptors(entity, lk); const isNew = !rec.id; const L = layout || bundle(entity).layout;
-  return html`${L.sections.map((s) => html`<div class="fsec"><h3>${s.title}</h3><div class="fgrid ${s.columns === 1 ? 'one' : ''}">${s.fields.map((k) => (ds[k] ? fieldBlock(ds[k], rec, isNew, lk) : '')).filter(Boolean)}</div></div>`)}`;
+  return html`${L.sections.map((s) => html`<div class="fsec"><h3>${s.title}</h3><div class="fgrid ${s.columns === 1 ? 'one' : ''}">${s.fields.map((k) => (ds[k] && !ds[k].modeHidden ? fieldBlock(ds[k], rec, isNew, lk) : '')).filter(Boolean)}</div></div>`)}`;
 }
 
 // ------------------------------------------------------------------ reading values & conditional visibility
