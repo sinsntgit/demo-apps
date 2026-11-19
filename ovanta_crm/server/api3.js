@@ -70,6 +70,7 @@ export function buildDraft(body, existing, user) {
   f.payment_terms = body.payment_terms !== undefined ? cleanStr(body.payment_terms, 200) || null : existing?.payment_terms ?? null;
   f.notes = body.notes !== undefined ? String(body.notes || '').slice(0, 1000) || null : existing?.notes ?? null;
   f.reason = body.reason !== undefined ? cleanStr(body.reason, 300) || null : existing?.reason ?? null;
+  f.po_number = body.po_number !== undefined ? cleanStr(body.po_number, 60) || null : existing?.po_number ?? null;
   f.external_number = body.external_number !== undefined ? cleanStr(body.external_number, 60) || null : existing?.external_number ?? null;
   if (['credit_note', 'debit_note'].includes(doc_type)) {
     const refId = body.ref_invoice_id !== undefined ? Number(body.ref_invoice_id) || null : existing?.ref_invoice_id ?? null;
@@ -88,7 +89,7 @@ const issuesFor = (f, calc) => {
   const dup = f.external_number && f.source === 'import' ? !!get("SELECT 1 FROM invoices WHERE id IS NOT ? AND external_number=? AND status<>'draft'", f.id ?? null, f.external_number) : false;
   return [...validateInvoice({ ...f, total_stored: undefined }, calc, { company: getBilling(), original, duplicateNumber: dup })];
 };
-const COLS = ['doc_type', 'jurisdiction', 'currency', 'lang', 'account_id', 'contact_id', 'deal_id', ...BUYER_KEYS, 'place_of_supply', 'issue_date', 'supply_date', 'due_date', 'payment_terms', 'notes', 'reason', 'external_number', 'ref_invoice_id', 'ref_number', 'subtotal', 'discount_total', 'vat_total', 'total', 'owner_id'];
+const COLS = ['doc_type', 'jurisdiction', 'currency', 'lang', 'account_id', 'contact_id', 'deal_id', ...BUYER_KEYS, 'place_of_supply', 'issue_date', 'supply_date', 'due_date', 'payment_terms', 'notes', 'reason', 'po_number', 'external_number', 'ref_invoice_id', 'ref_number', 'subtotal', 'discount_total', 'vat_total', 'total', 'owner_id'];
 export function saveDraft(f, calc, user, id = null) {
   return tx(() => {
     if (id) {

@@ -220,6 +220,10 @@ BEGIN SELECT RAISE(ABORT, 'Issued invoices cannot be changed. Issue a credit or 
       db.prepare("UPDATE settings SET value=?, updated_at=datetime('now') WHERE key='billing'").run(JSON.stringify(b));
     },
   },
+  {
+    version: 17, name: 'invoice_po_reference',
+    up(db) { if (!hasColumn(db, 'invoices', 'po_number')) db.exec('ALTER TABLE invoices ADD COLUMN po_number TEXT'); },
+  },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 

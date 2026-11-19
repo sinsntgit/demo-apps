@@ -86,7 +86,7 @@ await page.click('text=Save & issue'); await page.waitForSelector('h1:has-text("
 const invId = Number(page.url().split('/invoices/')[1]);
 if (!(await page.textContent('body')).includes('INV-000001')) errors.push('first invoice should be INV-000001');
 await page.click('button:has-text("Record payment")'); await page.fill('.modal input[name=amount]', '400'); await page.click('.modal button[type=submit]'); await page.waitForSelector('text=Partially paid');
-await page.click('button:has-text("Credit note")'); await page.fill('.modal input[name=reason]', 'E2E: service cancelled'); await page.click('.modal button[type=submit]'); await page.waitForSelector('text=against');
+await page.click('details.menu > summary'); await page.click('.menu-list button:has-text("Credit note")'); await page.fill('.modal input[name=reason]', 'E2E: service cancelled'); await page.click('.modal button[type=submit]'); await page.waitForSelector('text=against');
 await page.fill('#lines tr:first-child [data-k=unit_price]', '100'); await page.click('text=Save & issue'); await page.waitForSelector('h1:has-text("CN-000001")', { timeout: 8000 });
 await page.goto(`${base}/#/invoices/${invId}`); await page.waitForSelector('text=Credit / debit notes');
 const portal = (await page.$eval('a[href*="/pay/"]:has-text("Open")', (a) => a.href)).replace('http://localhost:3000', base); await page.goto(portal); await page.waitForSelector('text=How to pay'); await shot('portal');

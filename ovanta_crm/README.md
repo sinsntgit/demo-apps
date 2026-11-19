@@ -93,6 +93,12 @@ Custom values appear on the record's detail page (grouped by your sections), in 
 * **Invoicing starts in India GST** (INR, 18 %, GSTIN, CGST+SGST within your state and IGST across states; demo invoices are Indian). Saudi Arabia (ZATCA), UAE (FTA) or any other country can be chosen under *Billing settings*. Upgrading moves only an untouched Saudi **demo** profile to India; a profile you set up yourself is never changed. The account form follows the mode (GSTIN and *State (GST place of supply)* for India; VAT/TRN, Arabic name, building no. and district for the Gulf).
 * **Overdue deals**: open deals whose expected close date has passed show **⚠ Overdue N days** on the board (red edge) and in red in the list. Won and lost deals never do.
 
+## Invoice layout (1.26.2)
+
+* New invoice: Document (issue / due date, currency, **customer PO / reference**, payment terms), Customer with a tidy **billing address** block (no empty gaps; Gulf-only fields only in Saudi/UAE mode), full-width **Items** with a running total, and a **Notes** card.
+* Printed invoice: readable dates (19 Nov 2026), customer PO, **“Tax payable on reverse charge: No”**, recipient **state code**, and a **For <seller> — Authorised signatory** block (GST Rule 46); no empty boxes.
+* Invoice page: main actions plus **More ▾** (credit / debit note, XML), amounts in Indian grouping for INR (1,52,220.00), customer state and place of supply, PO, and “due in N days”.
+
 ## Business review (MBR / QBR)
 
 *Business review* in the menu: the pipeline & forecast report for monthly and quarterly reviews.

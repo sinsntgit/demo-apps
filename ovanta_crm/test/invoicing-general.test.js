@@ -34,7 +34,8 @@ test('India GST: mode switch, GSTIN checks, place of supply decides IGST vs CGST
   await call(admin, 'PUT', '/api/billing/settings', { vat_number: SELLER_GST, pan: 'AAPFU0939F', bank: { bank_name: 'HDFC Bank', account_number: '50100123456789', bank_code: 'HDFC0001234', upi: 'acme@hdfcbank' } });
   assert.deepEqual((await call(admin, 'GET', '/api/billing/settings')).body.issues.filter((i) => i.severity === 'error'), []);
   const ka = (await call(admin, 'POST', '/api/accounts', { name: 'Bangalore Retail Ltd', vat_number: KA_GST, state: 'Karnataka', country_code: 'IN', street: '1 Brigade Rd', city: 'Bengaluru', billing_email: 'ap@blrretail.in' })).body;
-  const d = (await call(admin, 'POST', '/api/invoices', { account_id: ka.id, lines: [line(), line({ description: 'Licence', hsn_code: '997331', qty: 1, unit_price: 20000 })] })).body;
+  const d = (await call(admin, 'POST', '/api/invoices', { account_id: ka.id, po_number: 'PO-4500012345', lines: [line(), line({ description: 'Licence', hsn_code: '997331', qty: 1, unit_price: 20000 })] })).body;
+  assert.equal(d.po_number, 'PO-4500012345');
   assert.equal(d.jurisdiction, 'IN'); assert.equal(d.currency, 'INR'); assert.equal(d.place_of_supply, '29'); assert.equal(d.lang, 'en');
   assert.deepEqual(d.issues.filter((i) => i.severity === 'error'), [], JSON.stringify(d.issues));
   assert.deepEqual(d.tax_breakdown.map((b) => [b.label, b.amount]), [['IGST 18%', 21600]], 'other state → IGST');
@@ -42,6 +43,9 @@ test('India GST: mode switch, GSTIN checks, place of supply decides IGST vs CGST
   const html = await (await fetch(`${base}/api/invoices/${d.id}/print`, { headers: { cookie: admin } })).text();
   for (const s of ['Tax Invoice', 'GSTIN', 'IGST 18%', 'HSN/SAC', '998314', 'Place of supply', 'Karnataka (29)', 'Rupees One Lakh Forty One Thousand Six Hundred Only', 'HDFC0001234', 'acme@hdfcbank', 'PAN: AAPFU0939F']) assert.ok(html.includes(s), s);
   assert.ok(!/فاتورة|VAT no\./.test(html), 'no Arabic or VAT wording');
+  // Rule 46 items and a tidy layout: PO, reverse charge, signatory, recipient state code, readable dates, no empty box
+  for (const t of ['Customer PO / ref.: <b class="mono">PO-4500012345</b>', 'Tax payable on reverse charge: <b>No</b>', 'Authorised signatory', 'For <b>Acme Software Pvt Ltd</b>', 'State code: 29']) assert.ok(html.includes(t), t);
+  assert.match(html, /Issue date: <b>\d{2} [A-Z][a-z]{2} \d{4}<\/b>/); assert.ok(!html.includes('<div class="box"></div>'), 'no empty box');
   // same state → CGST + SGST
   const mh = (await call(admin, 'POST', '/api/accounts', { name: 'Mumbai Traders', vat_number: MH_GST, state: '27', country_code: 'IN', street: 'x', city: 'Mumbai', billing_email: 'a@mt.in' })).body;
   const d2 = (await call(admin, 'POST', '/api/invoices', { account_id: mh.id, lines: [line({ qty: 1, unit_price: 10000 })] })).body;
