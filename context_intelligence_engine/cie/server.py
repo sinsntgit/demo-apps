@@ -21,7 +21,7 @@ def _src_filter(p, alias="s"):
     src = (p.get("source") or ["all"])[0]
     if src in ("verizon_sample", "fixtures", "synthetic"):
         return f" AND {alias}.source=? ", [src]
-    return " ", []
+    return f" AND {alias}.source IN ('verizon_sample','synthetic','fixtures') ", []     # same index plan as a single source (an unfiltered scan took 6 min on a slow disk)
 
 
 def overview(con, p):
@@ -205,12 +205,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def _send(self, code, payload, ctype="application/json"):
         body = payload if isinstance(payload, bytes) else json.dumps(payload, default=str).encode()
-        self.send_response(code)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            pass                                          # browser navigated away or reloaded
 
     def _ro(self):
         con = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)

@@ -14,7 +14,7 @@ def q(con, sql, args=()):
 
 def src(p, alias="s"):
     v = (p.get("source") or ["all"])[0]
-    return (f" AND {alias}.source=? ", [v]) if v in ("verizon_sample", "synthetic", "fixtures") else (" ", [])
+    return (f" AND {alias}.source=? ", [v]) if v in ("verizon_sample", "synthetic", "fixtures") else (f" AND {alias}.source IN ('verizon_sample','synthetic','fixtures') ", [])   # constant list keeps the same fast index plan as a single source
 
 
 def kpis(con, p):
