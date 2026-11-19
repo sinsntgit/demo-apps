@@ -635,3 +635,5 @@ Parallel lanes for agents:
 | 2026-11-18 | Need-cluster k anchored to the taxonomy size (28-36), chosen by silhouette; full k-means for fit and bootstrap | Validation (G4) |
 | 2026-11-18 | Landing files are content-addressed (checksum in the name); daily mode re-runs clustering with stable ids (assign_new() exists for assignment-only runs) | Validation (G1) |
 | 2026-11-18 | Three-layer episode model (session / episode = need within a session / need journey across a thread); LLM policy U1–U4 with grounding and agreement checks | Proposed and adopted (A2, A5) |
+| 2026-11-19 | G4 made seed-robust: need clusters use taxonomy-seeded k-means (one centre per intent with >=100 episodes + 0/2/4/6 farthest-point extras; ground truth never used). Stable share 0.92-0.97 over 3 seeds | Validation (G4 flip) |
+| 2026-11-19 | Score dimensions renamed for telecom users (Customer Reach, Repeat-Call Pull, Demand Momentum, Proof Strength, Revenue & Retention Impact, Local Hotspot, Priority Score); DB keys unchanged; definitions live in cie/glossary.py and are served to every screen | User request |

@@ -199,6 +199,8 @@ def retriever(con):
 def search(con, p):
     g = lambda k: (p.get(k) or [None])[0]
     filt = {k: g(k) for k in ("city", "intent", "segment", "outcome", "source", "asof", "region") if g(k)}
+    if filt.get("source") == "all":
+        filt.pop("source")                    # the UI's "All sources" is not a source name
     R = retriever(con)
     return {"results": R.search(g("q") or "", g("method") or "hybrid", filt, int(g("k") or 20)), "filters": filt}
 
@@ -209,7 +211,14 @@ def ask(con, p):
 
 def validation(con, p):
     f = REPORTS / "validation.json"
-    return json.load(open(f, encoding="utf-8")) if f.exists() else {"error": "run python -m cie.validate"}
+    if not f.exists():
+        return {"error": "No validation report yet. Run: python -m cie.validate"}
+    rep = json.load(open(f, encoding="utf-8"))
+    last = con.execute("SELECT MAX(finished_at) FROM processing_run WHERE status='ok'").fetchone()[0]
+    gen = rep.get("generated_at")
+    rep["stale"] = bool(last and (not gen or gen < last))          # report older than the latest build of this database
+    rep["last_build_at"] = last
+    return rep
 
 
 def llm_status(con, p):

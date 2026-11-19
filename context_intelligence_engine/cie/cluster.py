@@ -18,7 +18,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import normalize, StandardScaler
 from . import db
-from .config import (VERSIONS, K_ANON, MIN_STABILITY, SVD_DIM, N_BOOT, NEED_K, RISK_K, VALUE_K, GEO_K, MODELS, CLUSTER_SEED,
+from .config import (VERSIONS, K_ANON, MIN_STABILITY, SVD_DIM, N_BOOT, NEED_EXTRA, NEED_MIN_EPISODES, RISK_K, VALUE_K, GEO_K, MODELS, CLUSTER_SEED,
                      L4_MIN_EPISODES, NOVELTY_COS)
 from .taxonomy import Taxonomy, UNKNOWN
 
@@ -31,22 +31,36 @@ VALUE_T = ["willingness", "price_sensitivity", "feature_comparison", "device_rep
            "upgrade_device", "add_line", "plan_question", "hotspot_home_internet", "travel_intl"]
 
 
-def _choose_k(X, ks, seed, sample=8000):
+def _seeded_centers(X, groups, k):
+    """Deterministic start: one centre per taxonomy intent (mean of its episodes), then farthest-point extras.
+    Uses only the RULE-assigned intents (never ground truth), so the clustering is repeatable and anchored to the taxonomy."""
+    labs = [l for l, c in Counter(groups).most_common() if c >= NEED_MIN_EPISODES]
+    C = [normalize(X[groups == l].mean(0, keepdims=True))[0] for l in labs]
+    while len(C) < k:
+        sub = X[np.random.default_rng(len(C)).choice(len(X), min(4000, len(X)), replace=False)]
+        C.append(sub[(1 - (sub @ np.array(C).T).max(1)).argmax()])
+    return np.array(C[:k], dtype=np.float32)
+
+
+def _choose_k(X, ks, seed, sample=8000, groups=None):
     rng = np.random.default_rng(seed)
     idx = rng.choice(X.shape[0], min(sample, X.shape[0]), replace=False)
     best, scores = None, {}
     for k in ks:
         if k >= len(idx):
             continue
-        km = MiniBatchKMeans(k, random_state=seed, n_init=3, batch_size=4096).fit(X[idx])
+        km = _fit(X[idx], k, seed, None if groups is None else groups[idx])
         scores[k] = float(silhouette_score(X[idx], km.labels_, sample_size=min(4000, len(idx)), random_state=seed))
         if best is None or scores[k] > scores[best]:
             best = k
     return best, scores
 
 
-def _fit(X, k, seed):
-    # full k-means (not mini-batch) for the published fit and the bootstrap refits: steadier centroids -> stabler clusters
+def _fit(X, k, seed, groups=None):
+    """Taxonomy-seeded k-means when `groups` (rule intents) are given (need family): deterministic and repeatable.
+    Otherwise standard k-means with several random starts (risk, value, geo families)."""
+    if groups is not None:
+        return KMeans(k, init=_seeded_centers(X, groups, k), n_init=1, max_iter=300).fit(X)
     return KMeans(k, random_state=seed, n_init=4, max_iter=300).fit(X)
 
 
@@ -56,13 +70,13 @@ def _match(c_ref, c_new):
     return dict(zip(r, c)), sim
 
 
-def _stability(X, labels, k, seed, n_boot=N_BOOT, frac=.8):
+def _stability(X, labels, k, seed, n_boot=N_BOOT, frac=.8, groups=None):
     rng = np.random.default_rng(seed)
     ref = np.vstack([X[labels == j].mean(0) for j in range(k)])
     jac = np.zeros((n_boot, k))
     for b in range(n_boot):
         idx = rng.choice(X.shape[0], int(frac * X.shape[0]), replace=False)
-        km = _fit(X[idx], k, seed + 101 + b)
+        km = _fit(X[idx], k, seed + 101 + b, None if groups is None else groups[idx])
         m, _ = _match(ref, km.cluster_centers_)
         lab_b = km.labels_
         for j in range(k):
@@ -132,10 +146,12 @@ def need_family(con, run_id, tax, stats):
     T = vec.fit_transform(docs)
     svd = TruncatedSVD(min(SVD_DIM, T.shape[1] - 1), random_state=CLUSTER_SEED)
     X = normalize(svd.fit_transform(T)).astype(np.float32)
-    k, sil = _choose_k(X, NEED_K, CLUSTER_SEED)
-    km = _fit(X, k, CLUSTER_SEED)
+    groups = np.array([r["intent_id"] for r in rows])
+    n_int = sum(1 for c in Counter(groups).values() if c >= NEED_MIN_EPISODES)
+    k, sil = _choose_k(X, [n_int + e for e in NEED_EXTRA], CLUSTER_SEED, groups=groups)
+    km = _fit(X, k, CLUSTER_SEED, groups)
     labels = km.labels_
-    stab = _stability(X, labels, k, CLUSTER_SEED)
+    stab = _stability(X, labels, k, CLUSTER_SEED, groups=groups)
     sil_by = {}
     idx = np.random.default_rng(1).choice(len(X), min(8000, len(X)), replace=False)
     from sklearn.metrics import silhouette_samples

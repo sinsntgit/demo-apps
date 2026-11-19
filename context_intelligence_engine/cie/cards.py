@@ -184,7 +184,7 @@ def run(con):
                 caveats.append(f"Small support ({p['support']} sessions): treat as directional.")
             caveats.append("Phase 1 proves behavioural signals and hypotheses only; no revenue, conversion or churn outcome is claimed.")
             trend = (f"{p['trend']:.1f}x recent vs prior (two-proportion test, Bonferroni over windows, BH q={p['qval']:.1e})" if p["kind"] == "emerging"
-                     else f"trend score {sc.get('trend', 0):.2f} (last 4 weeks vs earlier weeks of this cell)")
+                     else f"Demand Momentum {sc.get('trend', 0):.2f} (last 4 weeks vs earlier weeks of this cell)")
             metrics = {k: p[k] for k in ("support", "denominator", "rate", "baseline", "lift", "lift_shrunk", "ci_lo", "ci_hi", "pval", "qval")}
             h = hashlib.sha1(json.dumps({k: round(v, 4) if isinstance(v, float) else v for k, v in metrics.items()}, sort_keys=True).encode()).hexdigest()
             gov = {"pattern_run": p["run_id"], "card_run": run_id, "versions": VERSIONS, "scoring": SCORING_VERSION, "metrics_hash": h}

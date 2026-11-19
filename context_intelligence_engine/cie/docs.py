@@ -150,8 +150,23 @@ def data_dictionary():
     return "\n".join(L) + "\n"
 
 
+def methodology():
+    from . import glossary as G
+    o = ["# Methodology: clusters, scores and terms", "", "Generated from `cie/glossary.py`, the same source the UI uses.", "", "## Score dimensions", ""]
+    for d in G.SCORE_DIMENSIONS:
+        o += [f"### {d['label']} (`{d['key']}`)", f"- Question: {d['question']}", f"- Telecom meaning: {d['telecom']}", f"- Formula: {d['formula']}", f"- Weight: {d.get('weight')}", ""]
+    o += ["## Cluster families", ""]
+    for f in G.CLUSTER_FAMILIES:
+        o += [f"### {f['label']} (`{f['key']}`)"] + [f"- {k}: {v}" for k, v in f.items() if k not in ("key", "label")] + [""]
+    o += ["## Cluster criteria", ""] + [f"- **{c[0]}**: {c[1]}" for c in G.CLUSTER_CRITERIA] + ["", "## Terms", ""]
+    for k, (lab, dfn) in sorted(G.TERMS.items(), key=lambda kv: kv[1][0].lower()):
+        o.append(f"- **{lab}**: {dfn}")
+    return "\n".join(o) + "\n"
+
+
 def main():
     DOCS.mkdir(exist_ok=True)
+    (DOCS / "methodology.md").write_text(methodology(), encoding="utf-8")
     if SAMPLE.exists():
         (DOCS / "W1_source_profile.md").write_text(profile(), encoding="utf-8")
     (DOCS / "signal_catalogue.md").write_text(signal_catalogue(), encoding="utf-8")

@@ -406,7 +406,8 @@ def run(db=DB_PATH):
                                                          and re.search(r"FIXTURES_TRUTH|GT_PATH|ground_truth|real_gold", p.read_text(encoding="utf-8"))]}
     G["governance"]["pass"] = not G["governance"]["pipeline_modules_reading_truth"]
     G["governance"]["summary"] = "pipeline never reads ground truth or gold files" if G["governance"]["pass"] else "VIOLATION"
-    R = {"versions": VERSIONS, "generated_seconds": round(time.time() - t0, 1), "gates": G,
+    import datetime as _dt
+    R = {"versions": VERSIONS, "generated_at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"), "generated_seconds": round(time.time() - t0, 1), "gates": G,
          "statement": "Synthetic gates prove pipeline capability and statistical behaviour on a generated population with known truth. They do not prove accuracy on real Verizon conversations; the real-sample gold set (draft, needs SME review) is the only real-language evidence."}
     REPORTS.mkdir(exist_ok=True)
     json.dump(R, open(REPORTS / "validation.json", "w", encoding="utf-8"), indent=1, default=str)

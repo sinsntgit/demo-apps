@@ -7,7 +7,7 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from .config import DB_PATH, UI_DIR, VERSIONS, K_ANON
 from .lexicon import TEXT_SIGNALS, DERIVED_SIGNALS, FAMILY_CATEGORY
-from . import api_insights as X
+from . import api_insights as X, glossary
 
 FAMILY_ORDER = ["need", "buying", "value", "risk", "friction", "experience", "geo", "temporal"]
 STATIC = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml"}
@@ -178,7 +178,7 @@ def review(con_rw, body):
 import threading
 _CACHE, _CACHE_LOCK = {}, threading.Lock()
 CACHEABLE = ("/api/overview", "/api/signals", "/api/geo", "/api/taxonomy", "/api/journeys", "/api/kpis", "/api/patterns", "/api/clusters",
-             "/api/cards", "/api/taxonomy/candidates", "/api/validation")
+             "/api/cards", "/api/taxonomy/candidates", "/api/validation", "/api/glossary")
 
 
 def _version(con):
@@ -237,6 +237,11 @@ class Handler(BaseHTTPRequestHandler):
                     if u.path == "/api/taxonomy": return self._send_cached(key, taxonomy(con, p))
                     if u.path == "/api/signals": return self._send_cached(key, catalogue(con, p))
                     if u.path == "/api/runs": return self._send(200, runs(con, p))
+                    if u.path == "/api/glossary": return self._send_cached(key, glossary.payload())
+                    if u.path == "/api/sources":
+                        rows = con.execute("SELECT source, COUNT(*) FROM conversation_session GROUP BY 1").fetchall()
+                        c = {r[0]: r[1] for r in rows}
+                        return self._send(200, {"all": sum(c.values()), **c})
                     m2 = re.match(r"^/api/(cards|clusters)/(\d+)$", u.path)
                     if m2:
                         d = (X.card_detail if m2.group(1) == "cards" else X.cluster_detail)(con, int(m2.group(2)))

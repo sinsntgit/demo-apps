@@ -6,7 +6,8 @@
   "episode_model": "1.0.0",
   "fixtures": "1.0.0"
  },
- "generated_seconds": 92.4,
+ "generated_at": "2026-11-19T06:04:29+00:00",
+ "generated_seconds": 22.0,
  "gates": {
   "G0_calibration": {
    "pass": true,
@@ -523,23 +524,23 @@
   },
   "G4_clusters": {
    "episodes_scored": 97423,
-   "ARI_need_vs_intent": 0.54,
-   "NMI_need_vs_intent": 0.798,
+   "ARI_need_vs_intent": 0.59,
+   "NMI_need_vs_intent": 0.82,
    "families": {
     "geo": {
-     "clusters": 4,
+     "clusters": 6,
      "stable_share": 0.0,
-     "mean_stability": 0.573
+     "mean_stability": 0.425
     },
     "need": {
-     "clusters": 36,
-     "stable_share": 0.806,
-     "mean_stability": 0.762
+     "clusters": 38,
+     "stable_share": 0.921,
+     "mean_stability": 0.925
     },
     "risk": {
-     "clusters": 6,
-     "stable_share": 0.667,
-     "mean_stability": 0.68
+     "clusters": 5,
+     "stable_share": 0.8,
+     "mean_stability": 0.755
     },
     "value": {
      "clusters": 6,
@@ -549,7 +550,7 @@
    },
    "sme_label_reviews": 0,
    "pass": true,
-   "summary": "Need clusters vs true intent: ARI 0.54, NMI 0.80; need stable share 0.806; SME label reviews 0"
+   "summary": "Need clusters vs true intent: ARI 0.59, NMI 0.82; need stable share 0.921; SME label reviews 0"
   },
   "G5_patterns": {
    "planted_city_intent_effects": 11,
@@ -648,9 +649,9 @@
      "ndcg": 0.811
     },
     "hybrid": {
-     "p10": 0.813,
+     "p10": 0.812,
      "mrr": 0.911,
-     "ndcg": 0.822
+     "ndcg": 0.821
     }
    },
    "filters_correct": true,

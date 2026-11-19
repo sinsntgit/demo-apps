@@ -106,3 +106,18 @@ details summary { cursor: pointer; color: var(--ink-2); }
 .pass { color: var(--good); font-weight: 700; } .fail { color: var(--critical); font-weight: 700; } .na { color: var(--ink-3); font-weight: 700; }
 .answer { font-size: 15px; line-height: 1.6; }
 .wk { display: flex; align-items: flex-end; gap: 3px; height: 120px; } .wk > div { flex: 1; background: var(--s1); border-radius: 3px 3px 0 0; min-width: 4px; }
+
+.term { border-bottom: 1px dotted var(--ink-3); cursor: help; } .term:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.howto { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 14px; margin: 0 0 14px; }
+.howto summary { cursor: pointer; font-weight: 600; color: var(--accent); } .howto ul { margin: 8px 0; padding-left: 20px; } .howto li { margin: 3px 0; } .howto table { margin-top: 8px; }
+.scope { color: var(--ink-3); margin: -6px 0 12px; }
+.banner.warn { background: #fff4e0; border-color: #f0c987; color: #5b3b00; } :root[data-theme="dark"] .banner.warn { background: #2e2617; color: #f1d9a8; }
+@media (prefers-color-scheme: dark) { :root:where(:not([data-theme="light"])) .banner.warn { background: #2e2617; color: #f1d9a8; } }
+.dims { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; } .dim { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: help; }
+.dimrow { border-top: 1px solid var(--border); padding: 10px 0; } .dimrow.prio { border-top: 0; background: var(--surface-2); border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; }
+.dimrow .dh { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; } .dimrow .dv { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 600; }
+.dimrow .track { margin: 6px 0; background: var(--surface-2); border-radius: 5px; } .dimrow .fill { border-radius: 5px; }
+.dimrow details > div { margin-top: 4px; color: var(--ink-2); }
+.famcard { margin: 0 0 12px; } .kv2 { display: grid; grid-template-columns: 110px 1fr; gap: 4px 12px; font-size: 13px; } .kv2 > div:nth-child(odd) { color: var(--ink-2); }
+.terms dt { font-weight: 600; margin-top: 10px; } .terms dd { margin: 2px 0 0 0; color: var(--ink-2); } .terms dt.hit { background: var(--accent-soft); padding: 2px 6px; border-radius: 6px; }
+.tile[tabindex] { cursor: help; } .gate small { display: block; }

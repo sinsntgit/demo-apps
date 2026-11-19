@@ -10,7 +10,7 @@ Versions: `{"schema": "1.0.0", "rules": "0.3.0", "taxonomy": "v0-draft", "episod
 | G1_integrity | **PASS** | 100,000 synthetic + 36 real sessions; 0 orphans/duplicates expected; PII hits 0; sha256 verified on 300 landed lines (0 mismatches) |
 | G2_signals | **PASS** | Lexicon signals: bank A precision 0.83, recall 0.964; held-out bank B precision 0.611, recall 0.29; structural recall 0.999 |
 | G3_intent_classification | **PASS** | Held-out test split (20,043): macro-F1 L2 0.879, L3 0.883; accuracy A 0.952, B 0.788; UNKNOWN 2.5% |
-| G4_clusters | **PASS** | Need clusters vs true intent: ARI 0.54, NMI 0.80; need stable share 0.806; SME label reviews 0 |
+| G4_clusters | **PASS** | Need clusters vs true intent: ARI 0.59, NMI 0.82; need stable share 0.921; SME label reviews 0 |
 | G5_patterns | **PASS** | 11/11 planted city×intent effects recovered, geo FDR 0%; time-boxed events flagged 2/2; sequences 4/4; 2 unplanted emerging flag(s) |
 | G6_cards_facts | **PASS** | 26 active cards, 0 governance violations, 0 unsanitised quote tokens; point-in-time reconstruction 699/699 |
 | G7_retrieval | **PASS** | 60 queries: MRR bm25 0.897, dense 0.897, hybrid 0.911; filters ok; as-of ok |
@@ -200,23 +200,23 @@ Versions: `{"schema": "1.0.0", "rules": "0.3.0", "taxonomy": "v0-draft", "episod
 ```json
 {
  "episodes_scored": 97423,
- "ARI_need_vs_intent": 0.54,
- "NMI_need_vs_intent": 0.798,
+ "ARI_need_vs_intent": 0.59,
+ "NMI_need_vs_intent": 0.82,
  "families": {
   "geo": {
-   "clusters": 4,
+   "clusters": 6,
    "stable_share": 0.0,
-   "mean_stability": 0.573
+   "mean_stability": 0.425
   },
   "need": {
-   "clusters": 36,
-   "stable_share": 0.806,
-   "mean_stability": 0.762
+   "clusters": 38,
+   "stable_share": 0.921,
+   "mean_stability": 0.925
   },
   "risk": {
-   "clusters": 6,
-   "stable_share": 0.667,
-   "mean_stability": 0.68
+   "clusters": 5,
+   "stable_share": 0.8,
+   "mean_stability": 0.755
   },
   "value": {
    "clusters": 6,
@@ -226,7 +226,7 @@ Versions: `{"schema": "1.0.0", "rules": "0.3.0", "taxonomy": "v0-draft", "episod
  },
  "sme_label_reviews": 0,
  "pass": true,
- "summary": "Need clusters vs true intent: ARI 0.54, NMI 0.80; need stable share 0.806; SME label reviews 0"
+ "summary": "Need clusters vs true intent: ARI 0.59, NMI 0.82; need stable share 0.921; SME label reviews 0"
 }
 ```
 
@@ -340,9 +340,9 @@ Versions: `{"schema": "1.0.0", "rules": "0.3.0", "taxonomy": "v0-draft", "episod
    "ndcg": 0.811
   },
   "hybrid": {
-   "p10": 0.813,
+   "p10": 0.812,
    "mrr": 0.911,
-   "ndcg": 0.822
+   "ndcg": 0.821
   }
  },
  "filters_correct": true,

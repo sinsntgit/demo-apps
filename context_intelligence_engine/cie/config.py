@@ -75,7 +75,8 @@ NEW_NEED_CUE = r"^\s*(also|and also|one more thing|another (question|thing)|whil
 
 # ---- clustering / discovery (W3) -----------------------------------------
 MODELS = DATA / "models"
-NEED_K = (28, 32, 36)
+NEED_EXTRA = (0, 2, 4, 6)          # need-cluster k = number of taxonomy intents with >= NEED_MIN_EPISODES episodes + one of these
+NEED_MIN_EPISODES = 100
 RISK_K = (4, 5, 6)
 VALUE_K = (4, 5, 6)
 GEO_K = (4, 5, 6)
