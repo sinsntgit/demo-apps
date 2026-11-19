@@ -24,7 +24,7 @@ import { readTable, FIELDS, guessMapping, applyMapping, TEMPLATE_CSV } from './c
 const userOpts = () => store.meta.users.map((u) => [u.id, u.name]);
 const lookups = async () => {
   const [a, c, d] = await Promise.all([api('GET', '/accounts?limit=1000&sort=name'), api('GET', '/contacts?limit=1000&sort=name'), api('GET', '/deals?limit=1000&sort=name')]);
-  return { accounts: a.rows.map((x) => [x.id, x.name]), contacts: c.rows.map((x) => [x.id, fullName(x)]), deals: d.rows.map((x) => [x.id, x.name]) };
+  return { accounts: a.rows.map((x) => [x.id, x.name]), contacts: c.rows.map((x) => [x.id, fullName(x)]), contactAccount: Object.fromEntries(c.rows.map((x) => [x.id, x.account_id || null])), deals: d.rows.map((x) => [x.id, x.name]) };
 };
 const STATUS = ['lead', 'qualified', 'customer', 'churned'];
 const page = (title, actions = '') => html`<div class="topbar"><h1>${title}</h1><span class="grow"></span>${actions}</div>`;
@@ -43,7 +43,7 @@ export async function dashboard(root) {
       <div class="grid g4">
         <div class="card kpi"><div class="l">Open pipeline</div><div class="v">${money(k.pipelineValue, true)}</div>${hasC2() ? html`<div class="s"><b>${money2(k.pipelineValue2, true)}</b></div>` : ''}<div class="s">${k.openDeals} open deals · forecast ${money(k.forecast, true)}${hasC2() ? ` / ${money2(k.forecast2, true)}` : ''}</div></div>
         <div class="card kpi"><div class="l">Closed won</div><div class="v">${money(k.wonValue, true)}</div>${hasC2() ? html`<div class="s"><b>${money2(k.wonValue2, true)}</b></div>` : ''}<div class="s">Win rate ${pct(k.winRate, 0)}</div></div>
-        <div class="card kpi"><div class="l">Contacts</div><div class="v">${num(k.contacts)}</div><div class="s">${num(k.accounts)} accounts</div></div>
+        <div class="card kpi"><div class="l">Contacts / Leads</div><div class="v">${num(k.contacts)}</div><div class="s">${num(k.accounts)} accounts</div></div>
         <div class="card kpi"><div class="l">Open tasks</div><div class="v">${k.openTasks}</div><div class="s" style="${k.overdueTasks ? 'color:var(--bad)' : ''}">${k.overdueTasks} overdue</div></div>
       </div>
       <div class="grid g21 mt">
@@ -67,7 +67,7 @@ export async function dashboard(root) {
 }
 
 // =============== Contacts ===============
-const contactForm = (c = {}, lk, onDone) => openEntityForm('contacts', c, { lk, onDone, titles: { new: 'New contact', edit: 'Edit contact', noun: 'Contact' } });
+const contactForm = (c = {}, lk, onDone) => openEntityForm('contacts', c, { lk, onDone, titles: { new: 'New contact / lead', edit: 'Edit contact / lead', noun: 'Contact / lead' } });
 
 function importModal(done) {
   let table = null; let map = {};
@@ -115,7 +115,7 @@ function importModal(done) {
 export async function contacts(root) {
   root.innerHTML = '';
   const head = document.createElement('div'); const body = document.createElement('div'); root.append(head, body);
-  setHtml(head, page('Contacts', html`<button class="btn" data-act="import">Import CSV</button><a class="btn" href="/api/contacts/export.csv" download>Export CSV</a><button class="btn primary" data-act="new">+ New contact</button>${allow('data.purge') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`));
+  setHtml(head, page('Contacts / Leads', html`<button class="btn" data-act="import">Import CSV</button><a class="btn" href="/api/contacts/export.csv" download>Export CSV</a><button class="btn primary" data-act="new">+ New contact / lead</button>${allow('data.purge') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`));
   let list;
   list = mountList(body, {
     key: 'contacts', endpoint: '/contacts', selectable: true, searchPlaceholder: 'Search name, email, company…', empty: 'No contacts match. Add one or import a CSV.',
@@ -204,7 +204,7 @@ export async function accounts(root) {
     columns: [
       { label: 'Account', sort: 'name', render: (a) => html`<a href="#/accounts/${a.id}"><b>${a.name}</b></a><div class="small muted">${[a.city, a.country].filter(Boolean).join(', ')}</div>` },
       { label: 'Industry', sort: 'industry', render: (a) => a.industry || '—' }, { label: 'Size', render: (a) => a.size || '—' },
-      { label: 'Contacts', sort: 'contact_count', render: (a) => a.contact_count }, { label: 'Won value', sort: 'won_value', render: (a) => money(a.won_value) }, { label: 'Owner', render: (a) => a.owner_name || '—' }, ...customColumns('accounts'),
+      { label: 'Contacts / leads', sort: 'contact_count', render: (a) => a.contact_count }, { label: 'Won value', sort: 'won_value', render: (a) => money(a.won_value) }, { label: 'Owner', render: (a) => a.owner_name || '—' }, ...customColumns('accounts'),
     ],
   });
   on(head, { new: () => accountForm({}, (a) => { location.hash = `#/accounts/${a.id}`; }), purge: () => purgeModal('accounts', () => list.reload()) });
@@ -275,8 +275,47 @@ export function stageModal(deal, onDone, target) {
     } });
 }
 
+/**
+ * Deal form helpers:
+ *  - the Contact list shows only the people at the chosen account (all contacts when no account is chosen);
+ *    picking a contact first fills in their account;
+ *  - Probability follows the stage (10 / 25 / 50 / 75 / 100 / 0 %) until you type your own number.
+ */
+function wireDealForm(form, lk, rec) {
+  const acc = form.querySelector('[name=f__account_id]'), con = form.querySelector('[name=f__contact_id]');
+  const stage = form.querySelector('[name=f__stage]'), prob = form.querySelector('[name=f__probability]');
+  if (acc && con && lk?.contactAccount) {
+    const all = lk.contacts, owner = lk.contactAccount;
+    const fill = () => {
+      const a = acc.value, keep = con.value;
+      const list = a ? all.filter(([id]) => String(owner[id] ?? '') === a) : all;
+      // keep a contact that is already linked even if they are at another account, so nothing is lost silently
+      const extra = keep && !list.some(([id]) => String(id) === keep) ? all.filter(([id]) => String(id) === keep) : [];
+      con.innerHTML = '';
+      con.add(new Option(a ? (list.length ? '— choose a contact at this account —' : '— no contacts at this account yet —') : '—', ''));
+      for (const [id, name] of list) con.add(new Option(name, id));
+      for (const [id, name] of extra) con.add(new Option(`${name} (other account)`, id));
+      con.value = keep;
+    };
+    acc.addEventListener('change', fill);
+    con.addEventListener('change', () => { const a = owner[con.value]; if (con.value && a && !acc.value) { acc.value = String(a); fill(); } });
+    fill();
+  }
+  if (stage && prob) {
+    const defOf = (k) => store.meta.stages.find((s) => s.key === k)?.prob;
+    const startStage = stage.value; let typed = false;
+    const hint = document.createElement('div'); hint.className = 'small muted'; hint.style.marginTop = '-6px';
+    (prob.closest('label') || prob).after(hint);
+    const show = () => { const d = defOf(stage.value); hint.textContent = typed ? `Your own value — the ${stageLabel(stage.value)} default is ${d}%.` : `Set from the stage (${stageLabel(stage.value)} = ${d}%). Type a number to override.`; };
+    prob.addEventListener('input', () => { typed = prob.value !== ''; show(); });
+    stage.addEventListener('change', () => { if (!typed) prob.value = rec.id && stage.value === startStage ? rec.probability : defOf(stage.value); show(); });
+    if (!rec.id && prob.value === '') prob.value = defOf(stage.value);
+    show();
+  }
+}
 const dealForm = (d = {}, lk, onDone) => openEntityForm('deals', d, { lk, onDone, titles: { new: 'New deal', edit: 'Edit deal', noun: 'Deal' },
-  extra: (rec) => html`<label>${rec.id ? 'Comment on the stage change (optional — saved only if you change the stage)' : 'Note for the deal history (optional)'}<textarea name="stage_comment" data-extra rows="2"></textarea></label><p class="small muted">Leave probability empty to use the stage default.</p>` });
+  afterBody: (form) => wireDealForm(form, lk, d),
+  extra: (rec) => html`<label>${rec.id ? 'Comment on the stage change (optional — saved only if you change the stage)' : 'Note for the deal history (optional)'}<textarea name="stage_comment" data-extra rows="2"></textarea></label>` });
 
 export async function deals(root) {
   const view = sessionStorage.getItem('dealView') || 'board';

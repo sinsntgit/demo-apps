@@ -21,7 +21,7 @@ const overdue = (t) => t.status !== 'done' && t.due_date && t.due_date < todaySt
 export async function taskForm(t = {}, onDone) {
   const [c, d] = await Promise.all([api('GET', '/contacts?limit=1000&sort=name'), api('GET', '/deals?limit=1000&sort=name')]);
   const fields = [{ name: 'title', label: 'Task', required: true }, { name: 'due_date', label: 'Due date', type: 'date', default: todayStr() }, { name: 'priority', label: 'Priority', type: 'select', options: ['low', 'medium', 'high'], blank: false, default: 'medium' },
-    { name: 'owner_id', label: 'Assign to', type: 'select', options: userOpts(), blank: false, default: store.user.id }, { name: 'contact_id', label: 'Related contact', type: 'select', options: c.rows.map((x) => [x.id, fullName(x)]) },
+    { name: 'owner_id', label: 'Assign to', type: 'select', options: userOpts(), blank: false, default: store.user.id }, { name: 'contact_id', label: 'Related contact / lead', type: 'select', options: c.rows.map((x) => [x.id, fullName(x)]) },
     { name: 'deal_id', label: 'Related deal', type: 'select', options: d.rows.map((x) => [x.id, x.name]) }, { name: 'notes', label: 'Details', type: 'textarea' }];
   const f = (n) => field(fields.find((x) => x.name === n), t);
   let pending = null, stopWatch = null;

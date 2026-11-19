@@ -16,7 +16,7 @@ import { startLive, stopLive, leaveAll } from './live.js';
 const app = $('#app');
 
 const NAV = [
-  ['Workspace', [['search', 'AI search', 'search'], ['dashboard', 'Dashboard', 'home'], ['contacts', 'Contacts', 'users'], ['accounts', 'Accounts', 'building'], ['deals', 'Deals', 'deal'], ['tasks', 'Tasks', 'task'], ['duplicates', 'Duplicates', 'users', 'contacts.merge']]],
+  ['Workspace', [['search', 'AI search', 'search'], ['dashboard', 'Dashboard', 'home'], ['contacts', 'Contacts / Leads', 'users'], ['accounts', 'Accounts', 'building'], ['deals', 'Deals', 'deal'], ['tasks', 'Tasks', 'task'], ['duplicates', 'Duplicates', 'users', 'contacts.merge']]],
   ['Billing', [['invoices', 'Invoices', 'invoice'], ['receivables', 'Receivables', 'wallet', 'receivables.view'], ['readiness', 'E-invoicing readiness', 'shield', 'readiness.view'], ['billing-settings', 'Billing settings', 'cog', 'billing_settings.view']]],
   ['Marketing', [['campaigns', 'Campaigns', 'mail'], ['segments', 'Segments', 'seg'], ['templates', 'Templates', 'tpl'], ['senders', 'Email senders', 'send', 'senders.view']]],
   ['Admin', [['customize', 'Customisation', 'tpl', 'customization.manage'], ['notifications', 'Notifications', 'bell', 'notifications.view'], ['team', 'Team & roles', 'team', 'users.view'], ['settings', 'Settings', 'cog']]],,

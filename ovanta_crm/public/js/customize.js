@@ -1,7 +1,7 @@
 import { api, html, raw, setHtml, esc, on, store, toast, fail, modal, confirmBox, badge, $, $$ } from './core.js';
 import { loadCustomization, renderFields, activeFields } from './forms.js';
 
-const ENTITIES = [['deals', 'Deals'], ['accounts', 'Accounts'], ['contacts', 'Contacts']];
+const ENTITIES = [['deals', 'Deals'], ['accounts', 'Accounts'], ['contacts', 'Contacts / Leads']];
 const clone = (x) => JSON.parse(JSON.stringify(x));
 const NUMERIC = ['number', 'percent', 'currency'];
 const typeLabel = (t) => store.custom.types[t] || t;

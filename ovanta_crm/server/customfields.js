@@ -29,7 +29,7 @@ export const BUILTIN = {
     { key: 'name', label: 'Deal name', type: 'text', required: true }, { key: 'amount', label: 'Amount (USD)', type: 'number', step: '0.01', min: 0, default: 0 },
     { key: 'stage', label: 'Stage', type: 'select', source: 'stages', noBlank: true, default: 'prospecting' }, { key: 'probability', label: 'Probability %', type: 'number', min: 0, max: 100 },
     { key: 'close_date', label: 'Expected close', type: 'date' }, { key: 'owner_id', label: 'Owner', type: 'select', source: 'users', noBlank: true, default: '@me' },
-    { key: 'account_id', label: 'Account', type: 'select', source: 'accounts' }, { key: 'contact_id', label: 'Contact', type: 'select', source: 'contacts' },
+    { key: 'account_id', label: 'Account', type: 'select', source: 'accounts' }, { key: 'contact_id', label: 'Contact / lead', type: 'select', source: 'contacts' },
   ],
 };
 const sec = (title, fields, columns = 2) => ({ id: title.toLowerCase().replace(/[^a-z0-9]+/g, '_'), title, columns, fields });

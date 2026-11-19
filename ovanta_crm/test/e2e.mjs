@@ -107,7 +107,7 @@ const ctx2 = await browser.newContext({ viewport: { width: 1360, height: 900 } }
 await p2.goto(base); await p2.fill('input[name=email]', 'e2eseller@example.com'); await p2.fill('input[name=password]', 'Seller@12345'); await p2.click('button.primary'); await p2.waitForSelector('.kpi');
 const nav = await p2.evaluate(() => Array.from(document.querySelectorAll('.nav a')).map((x) => x.textContent.trim()));
 for (const hidden of ['Team & roles', 'Billing settings', 'Receivables', 'E-invoicing readiness', 'Notifications', 'Email senders']) if (nav.includes(hidden)) errors.push(`restricted user still sees "${hidden}" in the menu`);
-if (!nav.includes('Contacts')) errors.push('restricted user lost the Contacts menu');
+if (!nav.includes('Contacts / Leads')) errors.push('restricted user lost the Contacts menu');
 if ((await p2.textContent('.me')).indexOf('E2E Seller') < 0) errors.push('role name not shown in the sidebar');
 await p2.click('a[data-nav=contacts]'); await p2.waitForSelector('table'); if ((await p2.locator('text=Delete all').count()) > 0) errors.push('non-admin sees Delete all');
 await p2.goto(`${base}/#/team`); await p2.waitForSelector('.empty', { timeout: 5000 }).catch(() => errors.push('direct URL to Team did not show an access error')); await ctx2.close();
@@ -349,6 +349,20 @@ await page.locator('#lint').scrollIntoViewIfNeeded(); await shot('campaign-inbox
 await page.waitForSelector('.modal select[name=sender_id]', { timeout: 8000 }).catch(() => errors.push('send dialog has no sender choice'));
 if ((await page.locator('.modal select[name=sender_id] option').count()) < 1) errors.push('no senders to choose from'); await shot('campaign-send-from');
 await page.keyboard.press('Escape');
+
+// ===== Deal form: contacts follow the account; probability follows the stage =====
+{
+  const info = await page.evaluate(async () => { const c = (await (await fetch('/api/contacts?limit=1000')).json()).rows; const acc = c.find((x) => x.account_id).account_id; return { acc, mine: c.filter((x) => x.account_id === acc).map((x) => String(x.id)), total: c.length }; });
+  await page.goto(`${base}/#/deals`); await page.waitForSelector('button[data-act=new]'); await page.click('button[data-act=new]'); await page.waitForSelector('.modal select[name=f__contact_id]', { timeout: 5000 }).catch(async () => { await shot('deal-form-missing'); throw new Error('deal form problem; page errors: ' + errors.join(' | ')); });
+  if ((await page.inputValue('.modal input[name=f__probability]')) !== '10') errors.push('new deal probability should start at the Prospecting default (10)');
+  await page.selectOption('.modal select[name=f__stage]', 'proposal'); if ((await page.inputValue('.modal input[name=f__probability]')) !== '50') errors.push('probability did not follow the stage (Proposal = 50)');
+  await page.selectOption('.modal select[name=f__account_id]', String(info.acc));
+  const opts = await page.$$eval('.modal select[name=f__contact_id] option', (o) => o.map((x) => x.value).filter(Boolean));
+  if (!opts.length || opts.some((v) => !info.mine.includes(v))) errors.push(`contact list not limited to the account: ${opts.length} shown, ${info.mine.length} expected`);
+  await page.fill('.modal input[name=f__probability]', '35'); await page.selectOption('.modal select[name=f__stage]', 'negotiation');
+  if ((await page.inputValue('.modal input[name=f__probability]')) !== '35') errors.push('a typed probability should not be overwritten by a stage change');
+  await shot('deal-form-account-contacts'); await page.keyboard.press('Escape');
+}
 
 // ===== Inviting a user by email =====
 await page.goto(`${base}/#/team`); await page.waitForSelector('button[data-act=new]'); await page.click('button[data-act=new]');
