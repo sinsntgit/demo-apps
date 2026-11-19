@@ -232,7 +232,7 @@ git-ignored and must never be committed.
 
 ## 4. Engineering rules
 
-- Python 3.11+. Dependencies: numpy, scikit-learn (which includes HDBSCAN), scipy, pytest. The server
+- Python 3.11+. Dependencies: numpy, scikit-learn (KMeans only for clustering), scipy, pytest. The server
   uses `http.server`. The UI is vanilla JS/SVG with no CDN and no build step.
 - **SQLite** in WAL mode for the canonical store, with external-content FTS5 for search. Keep SQL portable:
   FTS5 is isolated in `retrieval.py` and no SQLite-only functions are used elsewhere. Target: 100K
@@ -376,7 +376,7 @@ a rule version, and evidence turn and trace IDs.
    `taxonomy/taxonomy_v0.yaml` with draft definitions.
 2. **Discover:**
    - Profile the platform `intent_name` values and agent paraphrases.
-   - Run HDBSCAN on episode vectors from the discovery split, using LSA by default or the embedding adapter if one is approved.
+   - Run KMeans on episode vectors from the discovery split, using LSA by default or the embedding adapter if one is approved.
    - Propose L3/L4 candidates, including any clusters not covered by v0.
    - Output a review pack with representative quotes per candidate.
 3. **SME review in the UI** (Taxonomy page): approve, rename, merge or split; edit definitions and criteria.
@@ -406,7 +406,7 @@ a rule version, and evidence turn and trace IDs.
   - **Geographic:** cluster × geography demand profiles (city vectors of intent shares).
 - Method:
   1. TF-IDF + token features (`__pi_`, `__sig_`, `__tool_`, `__role_`), then TruncatedSVD and L2 normalisation.
-  2. HDBSCAN for exploration, MiniBatchKMeans for stable assignment.
+  2. KMeans is the only clustering algorithm (no HDBSCAN, MiniBatchKMeans or hierarchical methods).
   3. Choose k by silhouette.
 - Stability: bootstrap, Hungarian matching and Jaccard. Publish only if stability ≥ `MIN_STABILITY`.
 - Governed IDs: a new run matches previous centroids (cos ≥ .8) and inherits their IDs. Labels need SME review
@@ -637,3 +637,4 @@ Parallel lanes for agents:
 | 2026-11-18 | Three-layer episode model (session / episode = need within a session / need journey across a thread); LLM policy U1–U4 with grounding and agreement checks | Proposed and adopted (A2, A5) |
 | 2026-11-19 | G4 made seed-robust: need clusters use taxonomy-seeded k-means (one centre per intent with >=100 episodes + 0/2/4/6 farthest-point extras; ground truth never used). Stable share 0.92-0.97 over 3 seeds | Validation (G4 flip) |
 | 2026-11-19 | Score dimensions renamed for telecom users (Customer Reach, Repeat-Call Pull, Demand Momentum, Proof Strength, Revenue & Retention Impact, Local Hotspot, Priority Score); DB keys unchanged; definitions live in cie/glossary.py and are served to every screen | User request |
+| 2026-11-19 | KMeans is the only clustering algorithm everywhere (need, risk, value, geo, L4 discovery). HDBSCAN/MiniBatchKMeans removed from the spec | User decision |

@@ -1,7 +1,7 @@
 """WP6 cluster families + WP4 taxonomy discovery (L4 candidates).
 
 Four overlapping families (a session can sit in several):
-  need   : goal episodes  - TF-IDF(text) + behavioural tokens -> SVD -> MiniBatchKMeans
+  need   : goal episodes  - TF-IDF(text) + behavioural tokens -> SVD -> KMeans
   risk   : sessions with friction/risk signals - standardised signal/outcome profile -> KMeans
   value  : sessions with value/buying signals  - signal profile + L1 intent -> KMeans
   geo    : service-location cities (>= K_ANON sessions) - L2 intent-share vectors -> KMeans
@@ -12,7 +12,7 @@ import json, pickle, re
 from collections import Counter, defaultdict
 import numpy as np
 from scipy.optimize import linear_sum_assignment
-from sklearn.cluster import MiniBatchKMeans, KMeans
+from sklearn.cluster import KMeans            # the only clustering algorithm used (decision log 2026-11-19)
 from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import silhouette_score
