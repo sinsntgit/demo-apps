@@ -1,10 +1,10 @@
-const { sleep, totp } = require('../lib');
+const { sleep, totp, vo } = require('../lib');
 const state = require('../out/state.json');
 exports.storage = null;          // a brand-new browser: the sign-in happens on camera
 exports.route = '/';
 exports.step = '01 · Secure sign-in';
 exports.run = async r => {
-  await r.intro('Secure by design', 'Two-factor authentication, roles and a full audit trail.', 'Chapter 1', 3000);
+  await r.intro('Secure by design', 'Two-factor authentication, roles and a full audit trail.', 'Chapter 1', 3000, undefined, vo('Let\'s start with security. Every person signs in with their own account, protected by two-factor authentication, and every action is recorded in an audit trail.'));
   await r.say('Every account can be protected with **two-factor authentication**.', async () => {
     await r.type('input[type=email]', state.admin, 55);
     await r.type('input[type=password]', state.admin_password, 55);

@@ -1,10 +1,11 @@
-const { sleep } = require('../lib');
+const { sleep, vo } = require('../lib');
 const state = require('../out/state.json');
-exports.step = '06 · Reports';
+exports.step = '09 · Reports';
 exports.run = async r => {
   const lastRun = () => r.page.locator('.run').last();
-  await r.intro('Turn answers into reports', 'Designed by drag and drop. Always live. Shared and scheduled.', 'Chapter 6', 3200, async () => {
-    await r.page.evaluate(id => { location.hash = '#/ask/' + id; }, state.seed_conv); await r.page.waitForSelector('.run .chart-box canvas'); await sleep(1200); });
+  await r.intro('Turn answers into reports', 'Designed by drag and drop. Always live. Shared and scheduled.', 'Chapter 9', 3200, async () => {
+    await r.page.evaluate(id => { location.hash = '#/ask/' + id; }, state.seed_conv); await r.page.waitForSelector('.run .chart-box canvas'); await sleep(1200); },
+    vo('Answers become reports. Designed by drag and drop, always live, then shared and scheduled by email.'));
   r.mark('hl-start');
   await r.say('Any answer can go into a report: **Export → Add to a report**.', async () => {
     await r.reveal('.run >> nth=-1', 'start', 900);

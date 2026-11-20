@@ -1,10 +1,11 @@
-const { sleep } = require('../lib');
+const { sleep, vo } = require('../lib');
 const state = require('../out/state.json');
-exports.step = '03 · Trust, correct, teach';
+exports.step = '04 · Trust, correct, teach';
 exports.run = async r => {
   const lastQ = () => r.page.locator('.q').last();
-  await r.intro('Trust, but verify', 'See the SQL. Fix it. Teach the system.', 'Chapter 3', 3000, async () => {
-    await r.page.locator('.ask-bar select').first().selectOption(String(state.retail)); });
+  await r.intro('Trust, but verify', 'See the SQL. Fix it. Teach the system.', 'Chapter 4', 3000, async () => {
+    await r.page.locator('.ask-bar select').first().selectOption(String(state.retail)); },
+    vo('Business users need to trust the answers. So you can always see the S Q L, change it, and teach the system what is right.'));
 
   await r.say('Prefer to check first? Tick **Review SQL before running**.', async () => {
     await r.click('label:has-text("Review SQL before running")');

@@ -1,8 +1,8 @@
-const { sleep } = require('../lib');
-exports.step = '07 · Admin & governance';
+const { sleep, vo } = require('../lib');
+exports.step = '13 · Admin & governance';
 exports.route = '/#/admin';
 exports.run = async r => {
-  await r.intro('Built for enterprise control', 'Users, groups, data access, AI models, email and a full audit trail.', 'Chapter 7', 3400);
+  await r.intro('Built for enterprise control', 'Users, groups, data access, AI models, email and a full audit trail.', 'Chapter 13', 3400, undefined, vo('Behind the scenes, administrators stay in control: users, groups, data access, A I models, email, and a full audit trail.'));
   await r.say('**Users**: roles, two-factor status and sign-in history, managed in one place.', async () => {
     await r.ring('.tbl-wrap'); await sleep(2600); await r.ring(null, false);
   }, 5000);

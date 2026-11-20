@@ -1,10 +1,11 @@
-const { sleep } = require('../lib');
+const { sleep, vo } = require('../lib');
 const state = require('../out/state.json');
-exports.step = '05 · Teach it your business';
+exports.step = '07 · Teach it your business';
 exports.route = '/#/training';
 exports.run = async r => {
-  await r.intro('Teach it your business', 'Examples, notes and documents — separately for each data model.', 'Chapter 5', 3200, async () => {
-    await r.page.locator('.page-head select').first().selectOption(String(state.retail)); await sleep(800); });
+  await r.intro('Teach it your business', 'Examples, notes and documents — separately for each data model.', 'Chapter 7', 3200, async () => {
+    await r.page.locator('.page-head select').first().selectOption(String(state.retail)); await sleep(800); },
+    vo('The more AskData learns about your business, the better its answers. Teaching happens separately for each data model.'));
   await r.say('Each data model learns **separately**. Verified question-and-SQL examples are the strongest signal.', async () => {
     await r.tab('Question', 900);
     await r.hover('.item pre.sql >> nth=0', 900); await r.ring('.card.flush'); await sleep(1400); await r.ring(null, false);

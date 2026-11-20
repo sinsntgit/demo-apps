@@ -30,6 +30,7 @@ PEOPLE = [  # name, email, role
     ("Lena Okafor", "lena.okafor@acme.example", "analyst"),
     ("Sam Rivera", "sam.rivera@acme.example", "analyst"),
     ("Dana Cho", "dana.cho@acme.example", "analyst"),
+    ("Maya Brooks", "maya.brooks@acme.example", "analyst", False),    # sees results only - no SQL, no code
 ]
 USER_PW = "Demo-Passw0rd-1"
 random.seed(11)
@@ -70,8 +71,8 @@ def main():
 
     # ---------------------------------------------------------------- users and groups
     ids = {}
-    for name, email, role in PEOPLE:
-        made = admin.post("/api/admin/users", {"email": email, "name": name, "role": role})
+    for name, email, role, *rest in PEOPLE:
+        made = admin.post("/api/admin/users", {"email": email, "name": name, "role": role, "show_sql": rest[0] if rest else True})
         u = Client()
         u.post("/api/auth/login", {"email": email, "password": made["temporary_password"]})
         u.post("/api/auth/change-password", {"current": made["temporary_password"], "new": USER_PW})
@@ -124,12 +125,42 @@ def main():
                                       "scope": "group", "group_id": north, "description": "North sales team only sees North customers"})
     state.update(retail=retail["id"], pg=pg["id"], fin=fin["id"], fast=fast["id"], deep=deep["id"])
 
+    # ---------------------------------------------------------------- companies: logo for ours, a second company, a shared AI model
+    from PIL import Image, ImageDraw, ImageFont
+    logo = Image.new("RGB", (420, 120), "#14213d")
+    d = ImageDraw.Draw(logo)
+    d.rounded_rectangle((18, 18, 102, 102), 18, fill="#2a78d6")
+    d.text((60, 60), "A", fill="white", anchor="mm", font=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 56))
+    d.text((124, 60), "ACME", fill="white", anchor="lm", font=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 54))
+    (OUT / "data_sets").mkdir(parents=True, exist_ok=True)
+    logo_png = OUT / "data_sets" / "acme-logo.png"
+    logo.save(logo_png)
+    g = Image.new("RGB", (420, 120), "#0f6b63")        # a logo for the company the video adds on camera
+    gd = ImageDraw.Draw(g)
+    gd.ellipse((18, 18, 102, 102), fill="#ffb020")
+    gd.text((124, 60), "GLOBEX", fill="white", anchor="lm", font=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 54))
+    g.save(OUT / "data_sets" / "globex-logo.png")
+    mine = next(c for c in admin.get("/api/admin/companies") if c["is_mine"])
+    admin.s.post(f"{BASE}/api/admin/companies/{mine['id']}/logo", files={"upload": ("acme-logo.png", logo_png.read_bytes(), "image/png")}).raise_for_status()
+    fixtures = Path(__file__).parent.parent / "tests" / "e2e" / "fixtures"
+    shared = admin.post("/api/admin/models", {"name": "Group model (shared)", "provider": "openai_compatible", "model_id": "fake-1",
+                                              "base_url": "http://127.0.0.1:8765/v1", "scope": "platform", "price_in": 3, "price_out": 15})
+    nw = admin.post("/api/admin/companies", {"name": "Northwind Traders", "admin_email": "maria.anders@northwind.example",
+                                             "admin_name": "Maria Anders", "samples": True})
+    maria = Client()
+    maria.post("/api/auth/login", {"email": "maria.anders@northwind.example", "password": nw["temporary_password"]})
+    maria.post("/api/auth/change-password", {"current": nw["temporary_password"], "new": USER_PW})
+    admin.s.post(f"{BASE}/api/admin/companies/{nw['id']}/logo", files={"upload": ("northwind-logo.png", (fixtures / "northwind-logo.png").read_bytes(), "image/png")}).raise_for_status()
+    admin.s.post(f"{BASE}/api/admin/companies/{nw['id']}/template", files={"upload": ("corporate-template.potx", (fixtures / "corporate-template.potx").read_bytes())}).raise_for_status()
+    admin.put(f"/api/admin/models/{shared['id']}/sharing", {"share_all": False, "company_ids": [nw["id"]]})
+    state.update(shared_model=shared["id"], northwind=nw["id"], northwind_admin="maria.anders@northwind.example", own_company=mine["id"])
+
     # ---------------------------------------------------------------- email sender (talks to the local mail sink)
     sender = admin.post("/api/admin/senders", {"label": "Reports mailbox", "from_name": "AskData Reports", "from_email": "reports@acme.example",
                                                "reply_to": "analytics@acme.example", "mode": "smtp", "host": "smtp.demo-mail.test", "port": 2525,
                                                "secure": False, "username": "", "password": "", "is_default": True})
     admin.post(f"/api/admin/senders/{sender['id']}/verify")
-    admin.put("/api/admin/settings", {"public_url": "https://askdata.acme.example", "rate_limit_per_min": 600})
+    admin.put("/api/admin/settings", {"public_url": "https://askdata.acme.example", "rate_limit_per_min": 600, "rephrase_model_id": fast["id"]})
 
     # ---------------------------------------------------------------- training for each data model
     admin.post(f"/api/training/{retail['id']}", {"kind": "documentation", "title": "Planning tables",
@@ -157,7 +188,7 @@ def main():
                "content": "Budget 2025 has one row per department, quarter and cost category. Amount is the approved budget in US dollars."})
 
     # ---------------------------------------------------------------- history (as several people, across two weeks)
-    users = {e: login(e, USER_PW) for _, e, _ in PEOPLE}
+    users = {e: login(e, USER_PW) for _, e, *_ in PEOPLE}
     asked = []        # (client, run, conn)
 
     def ask(c, conn, q, model=None, predictive=False, conv=None, review=False):
@@ -182,7 +213,7 @@ def main():
     for c, run, conn, *_ in sample[:14]:
         c.post(f"/api/chat/runs/{run['id']}/feedback", {"verdict": "correct"})
     for c, run, conn, *_ in sample[14:17]:
-        c.post(f"/api/chat/runs/{run['id']}/feedback", {"verdict": "incorrect", "note": "Should exclude cancelled orders"})
+        c.post(f"/api/chat/runs/{run['id']}/feedback", {"verdict": "incorrect", "issue_type": "filter", "note": "Should exclude cancelled orders"})
     edited = sample[17:20]
     for c, run, conn, *_ in edited:
         c.post(f"/api/chat/runs/{run['id']}/execute", {"sql": run["final_sql"] + "\n"})
@@ -194,6 +225,15 @@ def main():
     for q in ("Who are our top customers by revenue?", "What is revenue by category?"):
         r = ask(tom, retail["id"], q)["run"]
         tom.post(f"/api/chat/runs/{r['id']}/feedback", {"verdict": "correct"})
+
+    # people who tidy their question with ✨ Rephrase before asking (feeds the dashboard's Rephrased tile)
+    for who, q, use in ((users["tom.becker@acme.example"], "rev by cat pls", True), (users["lena.okafor@acme.example"], "top cust", True),
+                        (users["sam.rivera@acme.example"], "rev by mth", True), (users["dana.cho@acme.example"], "rev by regn", False),
+                        (users["maya.brooks@acme.example"], "rev by cat", True)):
+        rp = who.post("/api/chat/rephrase", {"connection_id": retail["id"], "question": q})
+        if use and rp.get("question"):
+            out = who.post("/api/chat/ask", {"connection_id": retail["id"], "model_id": fast["id"], "question": rp["question"], "rephrase_id": rp["id"]})
+            asked.append((who, out["run"], retail["id"], random.randint(0, 6)))
 
     # named conversations the video opens (admin): today, yesterday, this week, last month
     keep = []

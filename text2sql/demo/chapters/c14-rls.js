@@ -1,11 +1,11 @@
-const { sleep } = require('../lib');
+const { sleep, vo } = require('../lib');
 const state = require('../out/state.json');
 exports.storage = null;
 exports.route = '/';
-exports.step = '08 · Row-level security';
+exports.step = '14 · Row-level security';
 exports.run = async r => {
   const lastQ = () => r.page.locator('.q').last();
-  await r.intro('Row-level security', 'The same question. Different people. Different rows.', 'Chapter 8', 3400);
+  await r.intro('Row-level security', 'The same question. Different people. Different rows.', 'Chapter 14', 3400, undefined, vo('Row-level security. The same question, asked by different people, returns different rows.'));
   await r.say('Tom is an analyst on the **North sales team**.', async () => {
     await r.type('input[type=email]', 'tom.becker@acme.example', 45);
     await r.type('input[type=password]', state.user_password, 45);

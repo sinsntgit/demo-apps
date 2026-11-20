@@ -1,10 +1,10 @@
-const { sleep } = require('../lib');
+const { sleep, vo } = require('../lib');
 const state = require('../out/state.json');
 exports.step = '02 · Ask in plain English';
 exports.run = async r => {
   const run = () => r.page.locator('.run').last();
   const lastQ = () => r.page.locator('.q').last();
-  await r.intro('Ask in plain English', 'Pick a data model, pick an AI model, type a question.', 'Chapter 2', 3000);
+  await r.intro('Ask in plain English', 'Pick a data model, pick an AI model, type a question.', 'Chapter 2', 3000, undefined, vo('Asking a question is simple. Pick a data model, pick an A I model, and type.'));
 
   await r.say('Choose a data model: **PostgreSQL, SQL Server, Oracle, MySQL, Snowflake, SingleStore** — or Excel and CSV folders.', async () => {
     for (const v of [state.fin, state.retail, state.pg]) { await r.select('.ask-bar select >> nth=0', String(v)); await sleep(900); }

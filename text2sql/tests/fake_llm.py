@@ -72,6 +72,16 @@ RULES = [
 ]
 
 
+def _sap_examples() -> dict:
+    """The SAP sample's verified questions, answered with their verified SQL (used by the demo video)."""
+    path = os.path.join(os.path.dirname(__file__), "..", "sample_data", "sap_training.json")
+    try:
+        return {e["question"].strip().lower(): e["sql"] for e in json.load(open(path))["examples"]}
+    except Exception:
+        return {}
+
+
+SAP = _sap_examples()
 WORDS = {"rev": "revenue", "regn": "region", "rgn": "region", "cust": "customers", "custs": "customers", "qty": "quantity",
          "cat": "category", "cats": "categories", "mth": "month", "yr": "year", "pls": "", "plz": "", "pls.": "", "u": "you"}
 
@@ -103,6 +113,10 @@ def answer(system: str, user: str) -> dict:
         if key in question:
             return {"sql": sql, "explanation": f"Prepares the data for a {analysis['type']} analysis.", "analysis": analysis,
                     "followups": ["What drives order value?", "Segment our customers", "Any unusual days?"]}
+    if question.strip().rstrip("?") in {k.rstrip("?") for k in SAP}:
+        sql = next(v for k, v in SAP.items() if k.rstrip("?") == question.strip().rstrip("?"))
+        return {"sql": sql, "explanation": "Answers the question from the SAP sales and finance tables.",
+                "followups": ["Show the open sales order backlog by sales organisation", "Which customers have the most overdue receivables?"]}
     for key, sql in RULES:
         if key in question:
             if sql is None:

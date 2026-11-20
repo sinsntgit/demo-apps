@@ -1,8 +1,8 @@
-const { sleep } = require('../lib');
-exports.step = '10 · And more';
+const { sleep, vo } = require('../lib');
+exports.step = '16 · And more';
 exports.route = '/#/history';
 exports.run = async r => {
-  await r.intro('And a few things you will use every day', 'History, built-in help and a dark theme.', 'Chapter 10', 3000);
+  await r.intro('And a few things you will use every day', 'History, built-in help and a dark theme.', 'Chapter 16', 3000, undefined, vo('And a few things you will use every day.'));
   await r.say('**History**: search everything you have asked, grouped by month.', async () => {
     await r.page.waitForSelector('tr.group'); await sleep(800);
     await r.type('.page input[type=search]', 'revenue', 70); await sleep(1500);

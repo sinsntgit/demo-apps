@@ -96,7 +96,7 @@ function overlay(band) {
 
 class Rec {
   /** opts: { name, storage: 'admin' | null } */
-  constructor(opts) { this.o = opts; this.cx = 640; this.cy = 360; this.marks = []; this.pending = []; this.n = 0; this.stamps = []; this.t0 = null; }
+  constructor(opts) { this.o = opts; this.cx = 640; this.cy = 360; this.marks = []; this.cues = []; this.pending = []; this.n = 0; this.stamps = []; this.t0 = null; }
 
   async start(route = '/') {
     this.dir = path.join(OUT, 'frames', this.o.name);
@@ -134,9 +134,35 @@ class Rec {
   // ---------- on-screen helpers
   async card(title, sub, small, items) { await this.page.evaluate(a => window.__demo.card(...a), [title, sub, small, items]); }
   async hideCard() { await this.page.evaluate(() => window.__demo.hideCard()); }
-  /** A chapter card; `during` runs behind it (set-up the viewer should not watch), then the card fades away. */
-  async intro(title, sub, small, ms = 3400, during) {
+  /** Narration: asks the local narrator (demo/tts_server.py) for this sentence, logs a voice cue at the current moment of the
+   *  video, and returns how long the speech lasts (ms). Sentences are cached; demo/prefetch_voice.js warms the cache. */
+  async voice(text) {
+    const r = await fetch('http://127.0.0.1:8777/tts', { method: 'POST', body: JSON.stringify({ text }) });
+    if (!r.ok) throw new Error('narrator: ' + r.status);
+    const j = await r.json();
+    this.cues.push({ t: +this.now().toFixed(2), file: j.file, dur: +j.dur.toFixed(2), text });
+    return Math.round(j.dur * 1000);
+  }
+  /** Shows a picture (a file on disk) full-screen over the app, for results that happen outside the browser, e.g. a downloaded slide. */
+  async showImage(file, label) {
+    const url = BASE + '/__demo/' + path.basename(file);
+    await this.page.route(url, route => route.fulfill({ path: file }));
+    await this.page.evaluate(([u, l]) => {
+      let o = document.getElementById('dm-img');
+      if (!o) { o = document.createElement('div'); o.id = 'dm-img';
+        o.style.cssText = 'position:fixed;inset:0;bottom:var(--band);z-index:2147483300;display:grid;place-items:center;background:rgba(8,17,29,.95);opacity:0;transition:opacity .5s;font:600 22px Inter,system-ui,sans-serif;color:#cfe0f7;text-align:center';
+        o.innerHTML = '<div><img style="max-height:560px;max-width:1100px;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.6);border:3px solid #fff"><div class="l" style="margin-top:16px"></div></div>'; document.body.append(o); }
+      o.querySelector('img').src = u; o.querySelector('.l').textContent = l || ''; requestAnimationFrame(() => { o.style.opacity = 1; });
+    }, [url, label || '']);
+    await this.page.waitForFunction(() => { const i = document.querySelector('#dm-img img'); return i && i.complete && i.naturalWidth > 0; });
+  }
+  async hideImage() { await this.page.evaluate(() => { const o = document.getElementById('dm-img'); if (o) o.style.opacity = 0; }); await sleep(600); }
+
+  /** A chapter card; `during` runs behind it (set-up the viewer should not watch), then the card fades away.
+   *  `vo` is the narration spoken over the card; the card stays long enough for it. */
+  async intro(title, sub, small, ms = 3400, during, vo) {
     const t = Date.now(); await this.card(title, sub, small);
+    if (vo) ms = Math.max(ms, await this.voice(vo) + 700);
     if (during) await during();
     const left = ms - (Date.now() - t); if (left > 0) await sleep(left);
     await this.hideCard(); await sleep(900);
@@ -145,7 +171,9 @@ class Rec {
   /** Show a caption, run `act`, and keep the caption up long enough to read. */
   async say(text, act, minMs) {
     const words = text.replace(/\*\*/g, '').split(/\s+/).length;
-    const need = minMs ?? Math.max(2400, 900 + words * 330);
+    let need = minMs ?? Math.max(2400, 900 + words * 330);
+    const spoken = await this.voice(text);                 // the narrator reads the caption; the caption stays up until it has finished
+    need = Math.max(need, spoken + 900);
     const t = Date.now();
     await this.page.evaluate(([x, s]) => window.__demo.caption(x, s), [text, this.o.step || '']);
     await sleep(350);
@@ -245,7 +273,7 @@ class Rec {
     const r = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-vf', 'fps=30,scale=1920:1080:flags=lanczos,format=yuv420p',
       '-c:v', 'libx264', '-preset', 'medium', '-crf', '19', '-r', '30', '-g', '60', '-movflags', '+faststart', mp4], { encoding: 'utf8' });
     if (r.status !== 0) throw new Error('ffmpeg: ' + r.stderr);
-    fs.writeFileSync(path.join(OUT, `${this.o.name}.json`), JSON.stringify({ frames: this.n, marks: this.marks }, null, 1));
+    fs.writeFileSync(path.join(OUT, `${this.o.name}.json`), JSON.stringify({ frames: this.n, marks: this.marks, cues: this.cues }, null, 1));
     fs.rmSync(this.dir, { recursive: true, force: true });
     const dur = this.stamps[this.stamps.length - 1] - this.stamps[0] + 0.6;
     const perSec = {}; for (const t of this.stamps) { const k = Math.floor(t - this.stamps[0]); perSec[k] = (perSec[k] || 0) + 1; }
@@ -268,4 +296,7 @@ function totp(secret, offset = 0) {
   return String(((h[o] & 127) << 24 | h[o + 1] << 16 | h[o + 2] << 8 | h[o + 3]) % 1e6).padStart(6, '0');
 }
 
-module.exports = { Rec, sleep, totp, BASE, OUT };
+/** Marks a narration sentence that is not a say() caption, so demo/prefetch_voice.js can find it and synthesise it ahead of recording. */
+const vo = text => text;
+
+module.exports = { Rec, sleep, totp, vo, BASE, OUT };

@@ -1,14 +1,15 @@
-const { sleep } = require('../lib');
+const { sleep, vo } = require('../lib');
 const state = require('../out/state.json');
-exports.step = '04 · Predict & forecast';
+exports.step = '06 · Predict & forecast';
 exports.run = async r => {
   const run = () => r.page.locator('.run').last();
   const lastQ = () => r.page.locator('.q').last();
   const ready = async () => { await r.page.waitForSelector('.run >> text=rows analysed on the server', { timeout: 90000 }); await r.page.waitForSelector('.run canvas', { timeout: 30000 }); await sleep(1100); };
   const ask = async q => { await r.type('.composer textarea', q, 45); await sleep(300); await r.page.keyboard.press('Enter'); };
 
-  await r.intro('Go beyond “what happened”', 'Forecast, segment and predict — with the maths shown.', 'Chapter 4', 3200, async () => {
-    await r.page.locator('.ask-bar select').first().selectOption(String(state.retail)); });
+  await r.intro('Go beyond “what happened”', 'Forecast, segment and predict — with the maths shown.', 'Chapter 6', 3200, async () => {
+    await r.page.locator('.ask-bar select').first().selectOption(String(state.retail)); },
+    vo('Go beyond what happened. Forecast what comes next, group your customers, and find what drives results, with the maths on show.'));
   await r.say('Tick **Use predictive capability** to forecast, predict, segment and find anomalies.', async () => {
     await r.click('label:has-text("Use predictive capability")');
     await r.ring('label:has-text("Use predictive capability")'); await sleep(1300); await r.ring(null, false);
