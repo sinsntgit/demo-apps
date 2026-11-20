@@ -17,7 +17,8 @@ dur = lambda f: float(subprocess.check_output(["ffprobe", "-v", "error", "-show_
 
 VO_SR = 24000
 LEAD = 0.3          # the caption fades in about 0.25 s after a cue is logged; the voice starts with it
-CAP = {"c02": 30, "c03": 30, "c05": 40, "c06": 30, "c10": 40, "c11": 30, "c12": 40, "c14": 24}   # longest highlight window per chapter (s)
+CAP = {"c00": 10, "c02": 17, "c03": 15, "c05": 20, "c06": 20, "c08": 17, "c10": 20, "c11": 18, "c12": 18, "c14": 15}   # longest highlight window per chapter (s)
+SKIP = {"c04", "c09", "c13"}      # chapters left out of the highlights (they are in the full video)
 
 
 def read_wav(path):
@@ -87,7 +88,7 @@ for t, name in chap:
 parts = []
 for p in chapters:
     m = {x["name"]: x["t"] for x in meta[p]["marks"]}
-    if "hl-start" not in m or "hl-end" not in m:
+    if "hl-start" not in m or "hl-end" not in m or os.path.basename(p)[:3] in SKIP:
         continue
     a, b, cs = m["hl-start"], m["hl-end"], meta[p].get("cues", [])
     for c in cs:                                    # widen to sentence boundaries
