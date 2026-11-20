@@ -106,6 +106,14 @@ Environment variables (see `.env.example`):
 
 Everything else is under **Admin → Settings**.
 
+## Running a trial with outside testers
+
+`tools/create_testers.py` creates accounts for a trial group from a CSV file (email, name, company, role, results_only):
+companies that do not exist yet are created with the sample data models, people are added with the role and view you give
+them, and each person's one-time password is written to `testers-credentials-<date>.csv`. Run it on the server against the
+local address, e.g. `py -3.14 tools\create_testers.py testers.csv --url http://127.0.0.1:8000 --admin you@example.com`;
+add `--dry-run` to preview. Re-running it skips people who already exist. Only the Python standard library is used.
+
 ## Tests
 
 ```bash

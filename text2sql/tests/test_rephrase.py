@@ -76,7 +76,7 @@ def test_rephrase_prompt_is_a_fraction_of_a_full_prompt_on_a_real_schema(admin):
     from app.db import SessionLocal
     from app.models import Connection
     with SessionLocal() as db:
-        c = db.query(Connection).filter(Connection.name == "Sample: SAP Sales & Finance").one()
+        c = db.query(Connection).filter(Connection.name == "Sample: SAP Sales & Finance").order_by(Connection.id).first()   # the first company's copy
         q = "top customers by revenue in germany last year"
         full = sum(map(len, engine.build_prompt(db, c, q, [], 1000, True)[:2]))
         small = sum(map(len, engine.build_rephrase_prompt(db, c, q, [], engine.similar_questions(db, c.id, q))))

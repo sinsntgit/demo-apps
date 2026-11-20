@@ -4,3 +4,7 @@ __pycache__/
 .pytest_cache/
 .env
 demo/out/
+
+# trial account lists and one-time passwords (tools/create_testers.py)
+testers*.csv
+testers-credentials-*.csv
