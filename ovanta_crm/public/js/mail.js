@@ -1,5 +1,5 @@
 import {
-  api, html, raw, setHtml, on, store, toast, fail, modal, confirmBox, purgeModal, field, formValues, badge, fmtDateTime, ago, $, $$, allow,
+  api, html, raw, setHtml, on, store, toast, fail, modal, confirmBox, purgeModal, field, formValues, badge, fmtDateTime, ago, $, $$, allow, curOf,
 } from './core.js';
 
 const page = (title, actions = '') => html`<div class="topbar"><h1>${title}</h1><span class="grow"></span>${actions}</div>`;
@@ -114,7 +114,7 @@ function ruleModal(rule, done) {
         <div class="pill-row mt">${store.meta.users.map((u) => html`<label class="check" style="margin:0"><input type="checkbox" name="u_${u.id}" ${v.user_ids.includes(u.id) ? raw('checked') : ''}> ${u.name} <span class="muted small">(${u.role})</span></label>`)}</div>
         ${field({ name: 'notify_owner', label: 'The owner of the record', type: 'checkbox' }, v)}
         ${field({ name: 'extra_emails', label: 'Other email addresses (comma separated)', placeholder: 'partner@example.com, ops@syncsense.in' }, v)}</div>
-      <div id="dealopts" class="row">${field({ name: 'min_amount', label: 'Only deals worth at least (USD)', type: 'number', min: 0 }, v)}
+      <div id="dealopts" class="row">${field({ name: 'min_amount', label: `Only deals worth at least (${curOf().c1})`, type: 'number', min: 0 }, v)}
         <div><div class="small" style="font-weight:600;margin-bottom:4px">Only when the deal is in stage</div><div class="pill-row">${store.meta.stages.map((s) => html`<label class="check" style="margin:0"><input type="checkbox" name="s_${s.key}" ${(v.only_stage || '').split(',').includes(s.key) ? raw('checked') : ''}> ${s.label}</label>`)}</div></div></div>
       ${field({ name: 'sender_id', label: 'Send from', type: 'select', options: store.meta.senders.filter((s) => s.active).map((s) => [s.id, `${s.label} <${s.from_email}>`]), blank: 'Default sender' }, v)}
       ${field({ name: 'subject_template', label: 'Custom subject (optional)', placeholder: 'Placeholders: {{name}} {{stage}} {{amount}} {{owner}} {{actor}}' }, v)}
