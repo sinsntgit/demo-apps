@@ -63,7 +63,9 @@ NAV = [
         ("Ontology Studio", "/products/ontology-builder/"),
         ("Ovantaa CRM", "/products/crm/"),
     ]),
-    ("use-cases", "Use Cases", "/use-cases/", [("All industries", "/use-cases/")]
+    ("use-cases", "Use Cases", "/use-cases/", [("All use cases", "/use-cases/"),
+     ("AskData use cases", "/use-cases/askdata/"), ("Ontology Studio use cases", "/use-cases/ontology-studio/"),
+     ("Ovantaa CRM use cases", "/use-cases/ovantaa-crm/")]
      + [(i["name"], f"/use-cases/{i['slug']}/") for i in data.INDUSTRIES]),
     ("services", "Services", "/services/data-ai-consulting/", [
         ("Data & AI consulting", "/services/data-ai-consulting/"),
@@ -183,6 +185,7 @@ def shot(name, alt, w=1600, h=900, eager=False, cls="shot"):
 
 
 IMG_SIZES = {"askdata-card": (960, 541), "ontology-card": (960, 541), "crm-card": (960, 541)}
+FULL_IMG = {"askdata-card": "askdata-chat", "ontology-card": "ontology-diagram", "crm-card": "crm-dashboard"}
 
 
 def product_cards():
@@ -211,9 +214,11 @@ def fold():
     for i, p in enumerate(PRODUCTS):
         w, h = IMG_SIZES[p["img"]]
         pts = "".join(f"<li>{esc(x)}</li>" for x in p["points"])
-        cards += (f'<a class="fcard" href="{p["href"]}"><div class="fshot">{shot(p["img"], p["alt"], w, h, eager=(i == 0), cls="")}</div>'
-                  f'<div class="fbody"><p class="tag">{p["tag"]}</p><h2>{p["name"]}</h2><p class="fdesc">{p["text"]}</p>'
-                  f'<ul class="ticks">{pts}</ul></div></a>')
+        full = FULL_IMG[p["img"]]
+        cards += (f'<div class="fcard"><button type="button" class="fshot" data-zoom="/assets/img/{full}.webp" aria-label="Enlarge {esc(p["name"])} screenshot">'
+                  f'<span class="frame">{shot(p["img"], p["alt"], w, h, eager=(i == 0), cls="")}</span><span class="zoom-hint" aria-hidden="true">⤢</span></button>'
+                  f'<a class="fbody" href="{p["href"]}"><p class="tag">{p["tag"]}</p><h2>{p["name"]}</h2><p class="fdesc">{p["text"]}</p>'
+                  f'<ul class="ticks">{pts}</ul><span class="more">See {esc(p["name"])} →</span></a></div>')
     cases = "".join(
         f'<a class="fcase" href="/case-studies/{slug}/"><strong>{esc(stat)}</strong><span>{esc(label)}</span><em>{esc(sector)}</em></a>'
         for slug, stat, label, sector in FOLD_CASES
@@ -229,6 +234,24 @@ def fold():
     <div class="fold-cases"><p class="fold-label">Case studies <a href="/case-studies/">All 9 →</a></p><div class="fcases">{cases}</div></div>
   </div>
 </section>"""
+
+
+def product_usecase_cards():
+    out = ""
+    for key, u in data.PRODUCT_USE_CASES.items():
+        inds = ", ".join(dict.fromkeys(c["industry"] for c in u["cases"]))
+        out += (f'<a class="pcard" href="/use-cases/{u["slug"]}/"><span class="tag">{len(u["cases"])} use cases</span>'
+                f'<h3>{u["product"]} use cases</h3><p>{esc(inds)}.</p><span class="more">See {u["product"]} use cases →</span></a>')
+    return f'<div class="grid-3">{out}</div>'
+
+
+def usecase_teaser(key):
+    u = data.PRODUCT_USE_CASES[key]
+    tiles = "".join(f'<li><a href="/use-cases/{u["slug"]}/#uc-{i + 1}">{esc(c["industry"])}: {esc(c["title"])}</a></li>'
+                    for i, c in enumerate(u["cases"]))
+    return (f'<section class="section alt"><div class="wrap"><h2>{u["product"]} use cases by industry</h2>'
+            f'<p class="lead-in">How {u["product"]} is used in different industries, with examples for each.</p>'
+            f'<ul class="uc-list">{tiles}</ul><p class="actions"><a class="btn ghost" href="/use-cases/{u["slug"]}/">All {u["product"]} use cases →</a></p></div></section>')
 
 
 def industry_tiles():
@@ -328,6 +351,7 @@ def breadcrumb_html(crumbs):
 TOKENS = {
     "{{product_cards}}": product_cards,
     "{{fold}}": fold,
+    "{{product_usecase_cards}}": product_usecase_cards,
     "{{industry_tiles}}": industry_tiles,
     "{{product_industry_grid}}": product_industry_grid,
     "{{case_cards}}": lambda: case_cards(),
@@ -346,6 +370,7 @@ def render_tokens(body, meta):
             body = body.replace(tok, fn())
     body = re.sub(r"\{\{form:(\w+)\}\}", lambda m: form(m.group(1)), body)
     body = re.sub(r"\{\{case_cards:([\w-]+)\}\}", lambda m: case_cards(m.group(1)), body)
+    body = re.sub(r"\{\{usecases:([\w-]+)\}\}", lambda m: usecase_teaser(m.group(1)), body)
     body = body.replace("{{faq}}", faq_html(meta.get("faq")))
     left = re.findall(r"\{\{[^}]+\}\}", body)
     if left:
@@ -594,12 +619,61 @@ def industry_page(ind):
 {extra}
 {proof}
 {faq_html(ind.get('faq'))}
-<section class="section"><div class="wrap"><h2>Other industries</h2><ul class="inline-links">{others}</ul></div></section>
+<section class="section"><div class="wrap two-col"><div><h2>Use cases by product</h2><ul class="inline-links"><li><a href="/use-cases/askdata/">AskData use cases</a></li><li><a href="/use-cases/ontology-studio/">Ontology Studio use cases</a></li><li><a href="/use-cases/ovantaa-crm/">Ovantaa CRM use cases</a></li></ul></div>
+<div><h2>Other industries</h2><ul class="inline-links">{others}</ul></div></div></section>
 {cta_band()}
 """
     meta = {"path": path, "title": ind["title"], "description": ind["description"], "keyword": ind["keyword"],
             "nav": "use-cases", "breadcrumbs": [["Use Cases", "/use-cases/"], [ind["name"], None]],
             "faq": ind.get("faq"), "schema": []}
+    emit(meta, body)
+
+
+def product_usecase_page(u):
+    path = f"/use-cases/{u['slug']}/"
+    img, w, h, alt = u["image"]
+    cards = ""
+    for i, c in enumerate(u["cases"]):
+        if u["slug"] == "askdata":
+            qs = "".join(f"<li>“{esc(q)}”</li>" for q in c["questions"])
+            more = f' <a href="{c["link"]}">More for {esc(c["industry"].lower())} →</a>' if c.get("link") else ""
+            inner = (f'<p class="who"><strong>Who asks:</strong> {esc(c["who"])}</p><p class="mini">Questions on day one</p><ul class="qlist">{qs}</ul>'
+                     f'<p><strong>Looking ahead:</strong> {esc(c["ahead"])}</p><p class="small"><strong>Kept under control:</strong> {esc(c["control"])}{more}</p>')
+        elif u["slug"] == "ontology-studio":
+            std = "".join(f"<li>{esc(x)}</li>" for x in c["standards"])
+            uses = "".join(f"<li>{esc(x)}</li>" for x in c["uses"])
+            link = f'<p class="small"><a href="{c["link"]}">Read the case study →</a></p>' if c.get("link") else ""
+            inner = (f'<p class="size">{esc(c["size"])}</p><p><strong>What it models:</strong> {esc(c["models"])}</p>'
+                     + (f'<p class="mini">Built on</p><ul class="chips">{std}</ul>' if std else "")
+                     + f'<p class="mini">Typical uses</p><ul class="ticks">{uses}</ul>{link}')
+        else:
+            steps = "".join(f"<li>{esc(x)}</li>" for x in c["steps"])
+            inner = (f'<p class="who"><strong>Who uses it:</strong> {esc(c["who"])}</p><p class="mini">How it works</p><ul class="ticks">{steps}</ul>'
+                     f'<p class="small">{esc(c["fit"])}</p>')
+        cards += f'<article class="uc" id="uc-{i + 1}"><p class="tag">{esc(c["industry"])}</p><h2>{esc(c["title"])}</h2>{inner}</article>'
+    others = "".join(f'<li><a href="/use-cases/{o["slug"]}/">{o["product"]} use cases</a></li>'
+                     for o in data.PRODUCT_USE_CASES.values() if o["slug"] != u["slug"])
+    body = f"""
+<section class="page-head"><div class="wrap hero-grid">
+  <div>
+    <p class="eyebrow">Use cases · <a href="{u['product_href']}">{u['product']}</a></p>
+    <h1>{u['h1']}</h1>
+    <p class="answer">{u['answer']}</p>
+    <div class="actions">{booking_link()}<a class="btn ghost" href="{u['product_href']}">About {u['product']}</a></div>
+  </div>
+  <figure class="screen"><img src="/assets/img/{img}.webp" alt="{esc(alt)}" width="{w}" height="{h}" fetchpriority="high"></figure>
+</div></section>
+<section class="section"><div class="wrap">
+  <p class="lead-in">These are examples of how {u['product']} applies in each industry, not client results. Real projects are in our <a href="/case-studies/">case studies</a>.</p>
+  <div class="uc-grid">{cards}</div>
+  <p class="small" style="margin-top:20px">{esc(u['more'])}</p>
+</div></section>
+<section class="section alt"><div class="wrap"><h2>Use cases for our other products</h2><ul class="inline-links">{others}</ul>
+<p>Or browse <a href="/use-cases/">use cases by industry</a>.</p></div></section>
+{cta_band()}
+"""
+    meta = {"path": path, "title": u["title"], "description": u["description"], "keyword": u["keyword"],
+            "nav": "use-cases", "breadcrumbs": [["Use Cases", "/use-cases/"], [f"{u['product']} use cases", None]], "schema": []}
     emit(meta, body)
 
 
@@ -754,6 +828,8 @@ def main():
     for f in sorted((CONTENT / "pages").rglob("*.html")):
         meta, body = read_page(f)
         emit(meta, body)
+    for u in data.PRODUCT_USE_CASES.values():
+        product_usecase_page(u)
     for ind in data.INDUSTRIES:
         industry_page(ind)
     for c in data.CASE_STUDIES:

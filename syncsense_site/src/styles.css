@@ -330,3 +330,55 @@ figure.dash figcaption { font-size: .92rem; color: var(--muted); }
 .screen figcaption { font-size: .9rem; color: var(--muted); margin-top: 8px; }
 .gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 @media (max-width: 800px) { .gallery { grid-template-columns: 1fr; } }
+
+/* Home product cards: screenshot in a framed browser window that enlarges on click */
+.fcard { position: relative; }
+.fshot { display: block; width: 100%; border: 0; border-bottom: 1px solid var(--line); padding: 12px 14px 0; cursor: zoom-in; position: relative; font: inherit;
+  background: linear-gradient(135deg, #e6eafb 0%, #dcf1f4 100%); }
+.fcard:nth-child(2) .fshot { background: linear-gradient(135deg, #fbe9ea 0%, #f2ecfb 100%); }
+.fcard:nth-child(3) .fshot { background: linear-gradient(135deg, #ece9fd 0%, #e3ecfb 100%); }
+.frame { display: block; height: 100%; overflow: hidden; border-radius: 9px 9px 0 0; border: 1px solid rgba(11,17,102,.16); border-bottom: 0;
+  background: #fff; box-shadow: 0 10px 26px rgba(11,17,102,.18); }
+.frame::before { content: ""; display: block; height: 16px; border-bottom: 1px solid #e4e7f0;
+  background: #f5f6fa radial-gradient(circle, #f26b6b 3px, transparent 3.5px) 10px 50% / 12px 12px no-repeat,
+              radial-gradient(circle, #f5bd4f 3px, transparent 3.5px) 22px 50% / 12px 12px no-repeat,
+              radial-gradient(circle, #5cc98b 3px, transparent 3.5px) 34px 50% / 12px 12px no-repeat; }
+.frame img { width: 100%; height: calc(100% - 16px); object-fit: cover; object-position: left top; display: block; }
+.fshot:hover .frame { box-shadow: 0 14px 32px rgba(11,17,102,.26); }
+.zoom-hint { position: absolute; top: 18px; right: 20px; background: rgba(11,17,102,.82); color: #fff; border-radius: 6px; padding: 1px 7px; font-size: .9rem; line-height: 1.6; opacity: .85; }
+.fshot:hover .zoom-hint, .fshot:focus-visible .zoom-hint { opacity: 1; }
+.fbody { display: block; text-decoration: none; color: var(--ink); flex: 1; }
+.fbody:hover h2 { color: var(--navy-2); }
+.fbody .more { display: inline-block; margin-top: 6px; font-size: .86rem; }
+@media (max-height: 800px) and (min-width: 901px) { .fbody .more { display: none; } }
+
+/* Zoomable images elsewhere */
+.screen img[data-zoomable], figure.dash img[data-zoomable] { cursor: zoom-in; }
+
+/* Full-screen image viewer */
+.lb { position: fixed; inset: 0; z-index: 200; background: #0a0c28; display: flex; flex-direction: column; }
+.lb[hidden] { display: none; }
+.lb-bar { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 10px 16px; color: #e6e8ff; font-size: .92rem; }
+.lb-cap { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-restore { flex-shrink: 0; background: #fff; color: var(--navy); border: 0; border-radius: 999px; padding: 7px 16px; font: 600 .92rem var(--font); cursor: pointer; }
+.lb-restore:hover { background: #e9ecfb; }
+.lb-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 0 16px 16px; cursor: zoom-out; }
+.lb-stage img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; box-shadow: 0 20px 60px rgba(0,0,0,.5); background: #fff; cursor: default; }
+body.lb-open { overflow: hidden; }
+
+/* Use cases by product */
+.uc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 18px; }
+.uc { background: var(--white); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; scroll-margin-top: 80px; }
+.uc h2 { font-size: 1.15rem; margin-bottom: .45em; }
+.uc .tag { margin-bottom: .3em; }
+.uc p { margin-bottom: .6em; }
+.uc .qlist li { padding: 5px 0; font-size: .95rem; }
+.uc .ticks li { font-size: .95rem; }
+.uc .chips li { font-size: .82rem; padding: 2px 10px; }
+.mini { font-size: .74rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: .8em 0 .3em !important; }
+.size { font-weight: 700; color: var(--navy); font-size: .92rem; }
+.who { font-size: .95rem; }
+.uc-list { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 6px 24px; }
+.uc-list li { margin: 0; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.uc-list a { text-decoration: none; }
+.uc-list a:hover { text-decoration: underline; }

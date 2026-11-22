@@ -27,6 +27,49 @@
     document.querySelectorAll('[data-status="error"]').forEach(function (n) { n.hidden = false; });
   }
 
+  // Image viewer: click a screenshot to see it full screen; "Restore" (or Esc) returns.
+  var lb = null, lbImg, lbCap, lastTrigger = null;
+  function buildViewer() {
+    lb = document.createElement("div");
+    lb.className = "lb"; lb.hidden = true;
+    lb.setAttribute("role", "dialog"); lb.setAttribute("aria-modal", "true"); lb.setAttribute("aria-label", "Enlarged image");
+    lb.innerHTML = '<div class="lb-bar"><span class="lb-cap"></span><button type="button" class="lb-restore">⤡ Restore</button></div><div class="lb-stage"><img alt=""></div>';
+    document.body.appendChild(lb);
+    lbImg = lb.querySelector("img"); lbCap = lb.querySelector(".lb-cap");
+    lb.querySelector(".lb-restore").addEventListener("click", closeViewer);
+    lb.querySelector(".lb-stage").addEventListener("click", function (e) { if (e.target !== lbImg) closeViewer(); });
+  }
+  function openViewer(src, alt, trigger) {
+    if (!lb) buildViewer();
+    lastTrigger = trigger || null;
+    lbImg.src = src; lbImg.alt = alt || ""; lbCap.textContent = alt || "";
+    lb.hidden = false; document.body.classList.add("lb-open");
+    lb.querySelector(".lb-restore").focus();
+  }
+  function closeViewer() {
+    if (!lb || lb.hidden) return;
+    lb.hidden = true; document.body.classList.remove("lb-open"); lbImg.removeAttribute("src");
+    if (lastTrigger) lastTrigger.focus();
+  }
+  document.addEventListener("keydown", function (e) {
+    if (lb && !lb.hidden) {
+      if (e.key === "Escape") { e.preventDefault(); closeViewer(); }
+      if (e.key === "Tab") { e.preventDefault(); lb.querySelector(".lb-restore").focus(); }
+    }
+  });
+  // Home cards: buttons carry the full-size image in data-zoom.
+  document.querySelectorAll("button[data-zoom]").forEach(function (b) {
+    b.addEventListener("click", function () { var i = b.querySelector("img"); openViewer(b.getAttribute("data-zoom"), i ? i.alt : "", b); });
+  });
+  // Screenshots on other pages: make them keyboard-focusable and enlargeable.
+  document.querySelectorAll(".screen img, figure.dash img").forEach(function (img) {
+    img.setAttribute("data-zoomable", ""); img.tabIndex = 0; img.setAttribute("role", "button");
+    img.setAttribute("aria-label", "Enlarge image: " + (img.alt || "screenshot"));
+    var open = function () { openViewer(img.currentSrc || img.src, img.alt, img); };
+    img.addEventListener("click", open);
+    img.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+  });
+
   // AskData sample demo (made-up data, runs in the browser only).
   var root = document.querySelector("[data-t2s]");
   if (!root) return;
