@@ -26,7 +26,7 @@ Not done from here: Google's Rich Results Test (needs a browser session). Run it
 
 These come from your decks and the earlier website. They are published as given, and each is also marked in `placeholders.md` where relevant.
 
-1. **The four case studies your deck credits as "EzInsights AI case study"**: actuarial Text-to-SQL, consumer-goods Text-to-SQL, GST dispute legal AI, GenAI support email assistant. Confirm SyncSense's role and that they may be published under SyncSense. The home page "5,000 reports a month" fact and the 8-week, 95% and 90% figures in the articles come from these.
+1. **Case studies from the AI Service Offerings deck** are published as SyncSense work, with client names withheld (confirmed).
 2. **Client names removed**: Godrej Industries → "a large Indian consumer goods group"; K.A. Pandit → "an actuarial consulting firm in India".
 3. **Security statements on the home page**, including "We do not use client data to train models".
 4. **Team background**: "SAS, Oracle, Deloitte, BDO and leading analytics firms" (from the old About page) and "25+ years / 15+ years on SAS-based programmes" (from your brief).
