@@ -864,8 +864,19 @@ def write_llms():
 
 ## Services
 - [Data & AI consulting]({SITE}/services/data-ai-consulting/): data readiness, architecture, BI and reporting, data warehousing, taking AI from pilot to production, private small language models.
-- [Contract staffing]({SITE}/services/data-analytics-staffing/): data engineers, BI developers, data scientists, architects, forward deployed engineers.
+- [Contract staffing]({SITE}/services/data-analytics-staffing/): technical (data engineers, BI developers, data scientists, architects), functional (finance, risk, actuarial, supply chain, business analysts) and AI specialists (AI/ML, LLM, MLOps and forward deployed engineers).
 - [Free data assessment]({SITE}/free-data-assessment/): fixed scope, ends with a working prototype on the client's data.
+
+## Use cases by product and service
+- [AskData use cases]({SITE}/use-cases/askdata/): Text-to-SQL questions, forecasts and controls in banking, insurance, manufacturing, pharma, consumer goods, retail, logistics, telecom, and tax and professional services.
+- [Ontology Studio use cases]({SITE}/use-cases/ontology-studio/): ready-made ontologies built on FIBO, ISO 20022, HL7 FHIR, SNOMED CT, IEC CIM, XBRL, ITIL and other standards, plus tax and telecom knowledge graphs.
+- [Ovantaa CRM use cases]({SITE}/use-cases/ovantaa-crm/): lead to cash for distributors, manufacturers, IT and professional services, contractors and GCC businesses.
+- [Consulting and staffing use cases]({SITE}/use-cases/consulting/): data readiness, MIS automation, CFO and procurement analytics, InfoSec analytics, AI pilot to production, private small language models, managed BI teams, and technical, functional and AI specialists.
+
+## Demo videos
+- AskData short demo: https://youtu.be/weUL5eJHbhA
+- AskData detailed walkthrough: https://youtu.be/RuLl7zFLINA
+- Ovantaa CRM dashboard demo: https://youtu.be/KysgqT9mzUA
 
 ## Use cases by industry
 {inds}
