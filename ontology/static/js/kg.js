@@ -302,7 +302,7 @@ function explorerCard(ctx, g) {
     fill(results, h('span', { class: 'spinner' }));
     try {
       const r = await api('GET', `/api/ontologies/${ctx.id}/graph/records?q=${encodeURIComponent(input.value)}&cls=${encodeURIComponent(cls.value)}`);
-      fill(results, r.items.length ? h('div', { class: 'row wrap', style: 'gap:6px' }, r.items.map(it => h('button', { class: 'btn sm', onclick: () => open(it.iri) }, it.name)),
+      fill(results, r.items.length ? h('div', { class: 'row wrap kg-found', style: 'gap:6px' }, r.items.map(it => h('button', { class: 'btn sm', onclick: () => open(it.iri) }, it.name)),
         r.items.length === 100 ? h('span', { class: 'small dim' }, 'the first 100 — narrow the search') : null) : h('span', { class: 'small dim' }, 'No record found.'));
     } catch (e) { fill(results, h('div', { class: 'banner bad' }, e.message)); }
   };

@@ -146,6 +146,9 @@ range, cardinality, inverse, derived_from), `individuals[]`, `rules[]` (kind `di
     (`kg.cleanup`), ignoring errors.
 19. Help screenshots are produced by `tests/e2e/features.js` and copied by name into `static/help/img/`.
     Check for drift: every `img/*.png` named in `help.html` must exist.
+20. `demo-video/` records the demo video against the real app (see its README); it relies on tests/fake_llm.py's retail answers (prompts containing
+    "BrightMart" / "TABLE order_lines" get plausible retail ones), on the explorer's `.kg-found` class and on many selectors in `static/js` - if you
+    change those screens, re-run `python3 demo-video/run.py --only chNN` for the chapters that show them.
 
 ## Verification — non-negotiable
 

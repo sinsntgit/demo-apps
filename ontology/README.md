@@ -90,6 +90,11 @@ the results of its queries, passwords, API keys, other ontologies.
 Use a self-hosted model if the source material must not leave your network. The application makes no other outside
 connections; it does not look anything up on the internet.
 
+## Demo video
+
+`demo-video/` holds the scripts that record the product demo (the real application driven by a browser, with a narration, chapters and
+captions). See `demo-video/README.md`. The AI steps in it are answered by the demo model in `tests/fake_llm.py`.
+
 ## Tests
 
 ```bash

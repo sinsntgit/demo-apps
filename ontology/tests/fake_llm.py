@@ -3,7 +3,9 @@ pipeline with the bundled retail sample, and records every request so tests can 
 
     python -m tests.fake_llm            # serves http://127.0.0.1:8765/v1
 """
+import asyncio
 import json
+import os
 import re
 
 from fastapi import FastAPI, Request
@@ -50,6 +52,35 @@ def answer(prompt: str) -> dict | str:
                 return {"entities": [], "relations": [{"subject": dec.group(1), "property": "involvesParty", "object": tp.group(1),
                                                        "quote": "the assessee succeeds on every ground"}]}
             return {"entities": [{"id": "e1", "class": "Taxpayer", "label": "The assessee", "quote": "the assessee succeeds on every ground"}], "relations": []}
+        if "customer-email" in doc:
+            return {"entities": [
+                {"id": "e1", "class": "Customer", "label": "Priya Nair", "quote": "Priya Nair",
+                 "attributes": {"loyaltyTier": {"value": "Gold", "quote": "I am a Gold member"}}},
+                {"id": "e2", "class": "Order", "label": "O-0042", "quote": "I placed order O-0042 on 3 March 2025",
+                 "attributes": {"orderNumber": {"value": "O-0042", "quote": "order O-0042"}, "orderDate": {"value": "2025-03-03", "quote": "3 March 2025"}}},
+                {"id": "e3", "class": "OrderLine", "label": "Line 1 of order O-0042", "quote": "Line 1 of that order was one Brew Master kettle",
+                 "attributes": {"quantity": {"value": "1", "quote": "one Brew Master kettle"}, "unitPrice": {"value": "Rs. 1,899.00", "quote": "Rs. 1,899.00"}}},
+                {"id": "e4", "class": "Product", "label": "Brew Master kettle", "quote": "one Brew Master kettle",
+                 "attributes": {"productName": {"value": "Brew Master kettle", "quote": "Brew Master kettle"}}},
+                {"id": "e5", "class": "ReturnRequest", "label": "Return of the kettle from order O-0042", "quote": "Please open a return for the kettle",
+                 "attributes": {"requestedOn": {"value": "2025-03-05", "quote": "Date: 5 March 2025"},
+                                "refundAmount": {"value": "1899", "quote": "a refund of Rs. 1,899.00 was approved on the same day"}}},
+                {"id": "e6", "class": "Refund", "label": "Full refund requested", "quote": "I would like a full refund"}],
+                "relations": [
+                {"subject": "e2", "property": "placedBy", "object": "e1", "quote": "I placed order O-0042 on 3 March 2025"},
+                {"subject": "e3", "property": "lineOf", "object": "e2", "quote": "Line 1 of that order"},
+                {"subject": "e3", "property": "forProduct", "object": "e4", "quote": "one Brew Master kettle"},
+                {"subject": "e5", "property": "returnOf", "object": "e3", "quote": "Please open a return for the kettle"},
+                {"subject": "e5", "property": "hasReason", "object": "Damaged", "quote": "The kettle arrived damaged"}],
+                "notes": ["The customer asks for a full refund, but the ontology has no refund decision."]}
+        if "support-notes" in doc:
+            known = dict((lab, i) for i, cls, lab in re.findall(r"- (x\d+) \| (\w+) \| ([^|\n]+?)(?: \||\n)", prompt))
+            ents = [{"id": known.get("O-0042", "e1"), "class": "Order", "label": "O-0042", "quote": "called about order O-0042"},
+                    {"id": "e2", "class": "Customer", "label": "Priya R. Nair", "quote": "Priya R. Nair (Gold)"},
+                    {"id": "e3", "class": "Order", "label": "O-0050", "quote": "Order O-0050 for Priya R. Nair"}]
+            return {"entities": ents, "relations": [
+                {"subject": "e3", "property": "placedBy", "object": "e2", "quote": "Order O-0050 for Priya R. Nair"},
+                {"subject": "e3", "property": "hasStatus", "object": "Delivered", "quote": "was delivered on time"}], "notes": []}
         if "coats-note" in doc:
             known = re.findall(r"\n- (x\d+) \| Taxpayer \| ", prompt)
             return {"entities": [
@@ -60,6 +91,9 @@ def answer(prompt: str) -> dict | str:
     if "You are mapping an ontology onto the tables" in prompt:
         if "TABLE customers" not in prompt:
             return {"maps": [], "notes": ["No tables I recognise."]}
+        demo = "BrightMart" in prompt                        # the demo video: mistakes a real model could make
+        extra = [{"class": "LoyaltyProgram", "table": "customers"}, {"class": "Brand", "table": "brands"}] if demo else \
+                [{"class": "Unicorn", "table": "customers"}, {"class": "Brand", "table": "no_such_table"}]
         return {"maps": [
             {"class": "Customer", "source": "Shop data", "table": "customers", "key": "customer_id", "label": "full_name",
              "attributes": {"email": "email", "customerSince": "since", "loyaltyTier": "tier"}},
@@ -70,9 +104,8 @@ def answer(prompt: str) -> dict | str:
              "links": [{"property": "lineOf", "to_class": "Order", "side": "from", "column": "order_id"},
                        {"property": "forProduct", "to_class": "Product", "side": "from", "column": "product_id"}]},
             {"class": "Product", "table": "products", "key": "product_id", "label": "product_name",
-             "attributes": {"sku": "sku", "productName": "product_name", "gtin": "no_such_column"}},
-            {"class": "Unicorn", "table": "customers"},
-            {"class": "Brand", "table": "no_such_table"}], "notes": ["Brands are not in the data."]}
+             "attributes": {"sku": "sku", "productName": "product_name", "gtin": "barcode" if demo else "no_such_column"}},
+            *extra], "notes": ["Brands are not in the data."]}
     if "Its knowledge graph holds records" in prompt:
         text = prompt.split("<use_case>")[1].split("</use_case>")[0]
         good = ("SELECT ?order ?number ?customer ?name ?total ?status WHERE { ?order a :Order ; :orderNumber ?number ; :placedBy ?customer ; "
@@ -100,6 +133,24 @@ def answer(prompt: str) -> dict | str:
     if "Step 3: add the relationships" in prompt:
         return {"properties": sample.PROPERTIES + [{"id": "dangling", "kind": "object", "domain": "Order", "range": "DoesNotExist"}],
                 "individuals": sample.INDIVIDUALS, "rules": sample.RULES}
+    if "You are documenting a data source" in prompt and "TABLE order_lines" in prompt:
+        T = {"customers": "One row per customer account, with the date they joined and their loyalty tier.",
+             "orders": "One row per order placed on the web shop, with its total and where it is in its life.",
+             "order_lines": "One row per product on an order, with the quantity and the unit price.",
+             "products": "One row per product the shop sells, identified by its stock keeping unit."}
+        C = {"customer_id": "Identifies the customer.", "full_name": "The customer's full name.", "email": "The customer's e-mail address.", "since": "The date the customer joined.",
+             "tier": "Loyalty level: Gold, Silver or Bronze.", "order_id": "Identifies the order.", "order_no": "The order number shown to the customer.",
+             "order_date": "When the order was placed.", "total": "Order total in rupees: the sum of its lines.", "status": "Where the order is: Placed, Paid, Shipped, Delivered or Cancelled.",
+             "line_id": "Identifies the order line.", "product_id": "Identifies the product.", "qty": "How many units were ordered.", "price": "Unit price in rupees.",
+             "sku": "The product's stock keeping unit code.", "product_name": "The name customers see."}
+        out = []
+        for t in re.findall(r"\nTABLE (\S+)", prompt):
+            cols = re.findall(r"\nTABLE " + re.escape(t) + r"[^\n]*\n((?:  [^\n]*\n?)+)", prompt)
+            names = re.findall(r"^  (\S+)  ", cols[0], re.M) if cols else []
+            out.append({"name": t, "description": T.get(t, f"One row per {t}."), "columns": {n: C.get(n, f"The {n.replace('_', ' ')}.") for n in names}})
+        return {"summary": "An online retailer's customers, the orders they place, the products on each order and the product catalogue.", "tables": out,
+                "glossary": [{"term": "Tier", "meaning": "A customer's loyalty level: Gold, Silver or Bronze."}, {"term": "Order status", "meaning": "Placed, Paid, Shipped or Delivered; Cancelled if stopped before shipment."}],
+                "questions": ["Is an order's total before or after delivery charges?", "Does a cancelled order keep its lines?"]}
     if "You are documenting a data source" in prompt:
         tables = re.findall(r"\nTABLE (\S+)", prompt)
         out = []
@@ -163,9 +214,13 @@ def answer(prompt: str) -> dict | str:
     return "I am a stand-in model and do not know this step."
 
 
+DELAY = float(os.environ.get("FAKE_LLM_DELAY", "0"))      # seconds per call; the demo video sets it so that build stages are visible
+
+
 @app.post("/v1/chat/completions")
 async def chat(request: Request):
     body = await request.json()
+    await asyncio.sleep(DELAY)
     REQUESTS.append(body)
     prompt = body["messages"][-1]["content"]
     if "BROKEN-JSON" in prompt and "Your previous reply could not be read" not in prompt:
@@ -187,6 +242,7 @@ async def messages(request: Request):
     """Anthropic-shaped endpoint (streaming), so the Claude code path is exercised too."""
     from fastapi.responses import StreamingResponse
     body = await request.json()
+    await asyncio.sleep(DELAY)
     REQUESTS.append(body)
     out = answer(body["messages"][-1]["content"])
     out = out if isinstance(out, str) else json.dumps(out)

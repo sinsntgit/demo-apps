@@ -1,0 +1,5 @@
+BrightMart returns policy
+
+A customer may return any product within 30 days of delivery. A return request names the order line it is for and a reason: damaged, wrong item, or changed mind.
+A refund is paid to the original payment method once the returned item has been received. Gift cards are refunded as gift card balance.
+Orders move through these statuses: placed, paid, shipped, delivered, cancelled.
