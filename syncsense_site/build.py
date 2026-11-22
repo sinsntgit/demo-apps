@@ -41,6 +41,7 @@ PHONE_LINK = "+919136433008"
 CITY = "Mumbai, India"
 LINKEDIN = "https://www.linkedin.com/company/data-syncsense/"
 FOUNDER = "Santosh Tiwari"
+TAGLINE = "Data you can ask. Answers you can trust."
 BOOKING_URL = ""  # Calendly link. Empty: "Book a demo" opens the contact form with Demo selected.
 DEMO_HREF = BOOKING_URL or "/contact/?interest=demo#form"
 SHARE_IMAGE = "/assets/img/share.png"
@@ -64,15 +65,18 @@ NAV = [
         ("Ovantaa CRM", "/products/crm/"),
     ]),
     ("use-cases", "Use Cases", "/use-cases/", [("All use cases", "/use-cases/"),
-     ("AskData use cases", "/use-cases/askdata/"), ("Ontology Studio use cases", "/use-cases/ontology-studio/"),
-     ("Ovantaa CRM use cases", "/use-cases/ovantaa-crm/")]
-     + [(i["name"], f"/use-cases/{i['slug']}/") for i in data.INDUSTRIES]),
+     ("Products", None), ("AskData", "/use-cases/askdata/"), ("Ontology Studio", "/use-cases/ontology-studio/"),
+     ("Ovantaa CRM", "/use-cases/ovantaa-crm/"),
+     ("Services", None), ("Consulting & staffing", "/use-cases/consulting/"),
+     ("By industry", None), ("All industries", "/use-cases/#by-industry")]),
     ("services", "Services", "/services/data-ai-consulting/", [
         ("Data & AI consulting", "/services/data-ai-consulting/"),
         ("Contract staffing", "/services/data-analytics-staffing/"),
         ("Free data assessment", "/free-data-assessment/"),
     ]),
-    ("case-studies", "Case Studies", "/case-studies/", None),
+    ("case-studies", "Case Studies", "/case-studies/", [("All case studies", "/case-studies/"),
+     ("Products", None), ("Text-to-SQL", "/case-studies/#askdata"), ("Ontologies & knowledge graphs", "/case-studies/#ontology-studio"),
+     ("Services", None), ("Data & AI consulting", "/case-studies/#consulting"), ("Contract staffing", "/case-studies/#staffing")]),
     ("insights", "Insights", "/insights/", None),
     ("about", "About", "/about/", None),
 ]
@@ -225,11 +229,7 @@ def fold():
     )
     return f"""<section class="fold" aria-label="Products and case studies">
   <div class="wrap">
-    <div class="fold-intro">
-      <div><h1>Ask your business data anything, in plain English</h1>
-      <p class="sub">AI data products and senior data consulting: trusted answers from data spread across many systems, without waiting on IT.</p></div>
-      <div class="actions">{booking_link()}<a class="btn ghost" href="/free-data-assessment/">Free data assessment</a></div>
-    </div>
+    <h1 class="sr">SyncSense: AI data products, data and AI consulting, and contract staffing</h1>
     <div class="fold-products">{cards}</div>
     <div class="fold-cases"><p class="fold-label">Case studies <a href="/case-studies/">All 9 →</a></p><div class="fcases">{cases}</div></div>
   </div>
@@ -352,6 +352,8 @@ TOKENS = {
     "{{product_cards}}": product_cards,
     "{{fold}}": fold,
     "{{product_usecase_cards}}": product_usecase_cards,
+    "{{usecase_groups}}": lambda: usecase_groups(),
+    "{{case_groups}}": lambda: case_groups(),
     "{{industry_tiles}}": industry_tiles,
     "{{product_industry_grid}}": product_industry_grid,
     "{{case_cards}}": lambda: case_cards(),
@@ -446,7 +448,7 @@ def nav_html(active):
     for key, label, href, children in NAV:
         cur = ' aria-current="page"' if active == key else ""
         if children:
-            sub = "".join(f'<li><a href="{h}">{esc(l)}</a></li>' for l, h in children)
+            sub = "".join(f'<li><a href="{h}">{esc(l)}</a></li>' if h else f'<li class="grp" aria-hidden="true">{esc(l)}</li>' for l, h in children)
             out.append(f'<li class="has-sub"><details{" class=current" if active == key else ""}><summary>{label}</summary><ul>{sub}</ul></details></li>')
         else:
             out.append(f'<li><a href="{href}"{cur}>{label}</a></li>')
@@ -499,7 +501,7 @@ def layout(meta, body):
 <a class="skip" href="#main">Skip to content</a>
 <header class="site-header">
   <div class="wrap bar">
-    <a class="logo" href="/"><img src="{LOGO}" alt="SyncSense home" width="56" height="56"><span>SyncSense</span></a>
+    <a class="logo" href="/" aria-label="SyncSense home"><img src="{LOGO}" alt="" width="56" height="56"><span class="brand"><span class="name">SyncSense</span><span class="tagline">{TAGLINE}</span></span></a>
     <input class="nav-toggle" type="checkbox" id="nav-toggle">
     <label class="nav-toggle-label" for="nav-toggle"><span class="sr">Menu</span><span class="burger" aria-hidden="true"></span></label>
     <nav class="main-nav" aria-label="Main"><ul>{nav_html(meta.get("nav"))}</ul></nav>
@@ -629,11 +631,24 @@ def industry_page(ind):
     emit(meta, body)
 
 
+def group_cases(key):
+    for _, groups in data.CASE_GROUPS:
+        for k, *_rest, slugs in groups:
+            if k == key:
+                return [c for sl in slugs for c in data.CASE_STUDIES if c["slug"] == sl]
+    return []
+
+
+def case_card(c):
+    return (f'<a class="ccard" href="/case-studies/{c["slug"]}/"><span class="tag">Case study · {esc(c["sector"])}</span><h3>{esc(c["title"])}</h3>'
+            f'<p>{esc(c["summary"])}</p>{"<p class=stat>" + esc(c["headline_stat"]) + "</p>" if c.get("headline_stat") else ""}<span class="more">Read the case study →</span></a>')
+
+
 def product_usecase_page(u):
     path = f"/use-cases/{u['slug']}/"
-    img, w, h, alt = u["image"]
-    cards = ""
-    for i, c in enumerate(u["cases"]):
+    cases_by_slug = {c["slug"]: c for c in data.CASE_STUDIES}
+
+    def card(i, c):
         if u["slug"] == "askdata":
             qs = "".join(f"<li>“{esc(q)}”</li>" for q in c["questions"])
             more = f' <a href="{c["link"]}">More for {esc(c["industry"].lower())} →</a>' if c.get("link") else ""
@@ -646,35 +661,105 @@ def product_usecase_page(u):
             inner = (f'<p class="size">{esc(c["size"])}</p><p><strong>What it models:</strong> {esc(c["models"])}</p>'
                      + (f'<p class="mini">Built on</p><ul class="chips">{std}</ul>' if std else "")
                      + f'<p class="mini">Typical uses</p><ul class="ticks">{uses}</ul>{link}')
+        elif u["slug"] == "consulting":
+            steps = "".join(f"<li>{esc(x)}</li>" for x in c["steps"])
+            cs = cases_by_slug.get(c.get("case"))
+            link = f'<p class="small"><a href="/case-studies/{cs["slug"]}/">Case study: {esc(cs["short"])} →</a></p>' if cs else ""
+            inner = (f'<p class="who"><strong>For:</strong> {esc(c["who"])}</p><p class="mini">What we do</p><ul class="ticks">{steps}</ul>'
+                     f'<p class="small"><strong>Industries:</strong> {esc(c["industries"])}</p>{link}')
         else:
             steps = "".join(f"<li>{esc(x)}</li>" for x in c["steps"])
             inner = (f'<p class="who"><strong>Who uses it:</strong> {esc(c["who"])}</p><p class="mini">How it works</p><ul class="ticks">{steps}</ul>'
                      f'<p class="small">{esc(c["fit"])}</p>')
-        cards += f'<article class="uc" id="uc-{i + 1}"><p class="tag">{esc(c["industry"])}</p><h2>{esc(c["title"])}</h2>{inner}</article>'
+        return f'<article class="uc" id="uc-{i + 1}"><p class="tag">{esc(c["industry"])}</p><h2>{esc(c["title"])}</h2>{inner}</article>'
+
+    if u["slug"] == "consulting":
+        blocks = ""
+        idx = 0
+        for grp, key, href in (("Data & AI consulting", "consulting", "/services/data-ai-consulting/"), ("Contract staffing", "staffing", "/services/data-analytics-staffing/")):
+            items = ""
+            for c in u["cases"]:
+                if c["group"] == grp:
+                    items += card(idx, c)
+                idx += 1 if c["group"] == grp else 0
+            blocks += (f'<div class="uc-group" id="{key}"><div class="uc-group-head"><h2>{grp}</h2><a href="{href}">About {grp} →</a></div>'
+                       f'<div class="uc-grid">{items}</div></div>')
+        related_keys = ["consulting", "staffing"]
+    else:
+        blocks = '<div class="uc-grid">' + "".join(card(i, c) for i, c in enumerate(u["cases"])) + "</div>"
+        related_keys = [u["slug"]]
+    related = [c for k in related_keys for c in group_cases(k)]
+    related_html = (f'<section class="section alt"><div class="wrap"><h2>Case studies</h2><p class="lead-in">Real projects behind these use cases, with client names withheld.</p>'
+                    f'<div class="grid-3">{"".join(case_card(c) for c in related)}</div></div></section>') if related else ""
+    if u.get("image"):
+        img, w, h, alt = u["image"]
+        hero_media = f'<figure class="screen"><img src="/assets/img/{img}.webp" alt="{esc(alt)}" width="{w}" height="{h}" fetchpriority="high"></figure>'
+        grid = "hero-grid"
+    else:
+        hero_media, grid = "", "narrow"
     others = "".join(f'<li><a href="/use-cases/{o["slug"]}/">{o["product"]} use cases</a></li>'
                      for o in data.PRODUCT_USE_CASES.values() if o["slug"] != u["slug"])
+    kind = "Services" if u["slug"] == "consulting" else "Products"
     body = f"""
-<section class="page-head"><div class="wrap hero-grid">
+<section class="page-head"><div class="wrap {grid}">
   <div>
-    <p class="eyebrow">Use cases · <a href="{u['product_href']}">{u['product']}</a></p>
+    <p class="eyebrow">Use cases · {kind} · <a href="{u['product_href']}">{u['product']}</a></p>
     <h1>{u['h1']}</h1>
     <p class="answer">{u['answer']}</p>
     <div class="actions">{booking_link()}<a class="btn ghost" href="{u['product_href']}">About {u['product']}</a></div>
   </div>
-  <figure class="screen"><img src="/assets/img/{img}.webp" alt="{esc(alt)}" width="{w}" height="{h}" fetchpriority="high"></figure>
+  {hero_media}
 </div></section>
 <section class="section"><div class="wrap">
-  <p class="lead-in">These are examples of how {u['product']} applies in each industry, not client results. Real projects are in our <a href="/case-studies/">case studies</a>.</p>
-  <div class="uc-grid">{cards}</div>
-  <p class="small" style="margin-top:20px">{esc(u['more'])}</p>
+  <p class="lead-in">These are examples of how {u['product']} applies, not client results. Real projects are listed under case studies below.</p>
+  {blocks}
+  {f'<p class="small" style="margin-top:20px">{esc(u["more"])}</p>' if u.get("more") else ""}
 </div></section>
-<section class="section alt"><div class="wrap"><h2>Use cases for our other products</h2><ul class="inline-links">{others}</ul>
-<p>Or browse <a href="/use-cases/">use cases by industry</a>.</p></div></section>
+{related_html}
+<section class="section"><div class="wrap"><h2>More use cases</h2><ul class="inline-links">{others}</ul>
+<p>Or browse <a href="/use-cases/#by-industry">use cases by industry</a>.</p></div></section>
 {cta_band()}
 """
     meta = {"path": path, "title": u["title"], "description": u["description"], "keyword": u["keyword"],
             "nav": "use-cases", "breadcrumbs": [["Use Cases", "/use-cases/"], [f"{u['product']} use cases", None]], "schema": []}
     emit(meta, body)
+
+
+def usecase_groups():
+    """Use Cases hub: Products and Services, each with its use-case pages and case studies."""
+    pu = data.PRODUCT_USE_CASES
+    def block(key, title, desc, inds):
+        n = len(group_cases(key)) + (len(group_cases("staffing")) if key == "consulting" else 0)
+        cs = f" · {n} case stud{'y' if n == 1 else 'ies'}" if n else ""
+        return (f'<a class="pcard" href="/use-cases/{key}/"><span class="tag">{len(pu[key]["cases"])} use cases{cs}</span>'
+                f'<h3>{title}</h3><p>{esc(desc)}</p><p class="small">{esc(inds)}</p><span class="more">See use cases →</span></a>')
+    ind = lambda k: ", ".join(dict.fromkeys(c["industry"] for c in pu[k]["cases"]))
+    prod = (block("askdata", "AskData", "Text-to-SQL: plain-English questions answered from your own databases.", ind("askdata"))
+            + block("ontology-studio", "Ontology Studio", "Shared business models and knowledge graphs, built on industry standards.", ind("ontology-studio"))
+            + block("ovantaa-crm", "Ovantaa CRM", "Lead to cash for B2B teams: deals, campaigns, GST invoicing and collections.", ind("ovantaa-crm")))
+    serv = block("consulting", "Consulting & staffing", "Data readiness, MIS automation, AI to production, private language models, managed BI teams, and technical, functional and AI specialists.",
+                 "Data & AI consulting · Contract staffing")
+    return (f'<div class="group-block"><h2 class="group-title">Products</h2><div class="grid-3">{prod}</div></div>'
+            f'<div class="group-block"><h2 class="group-title">Services</h2><div class="grid-3">{serv}'
+            f'<a class="pcard" href="/case-studies/"><span class="tag">All case studies</span><h3>Case studies</h3><p>Real projects grouped by product and service, with client names withheld.</p><span class="more">See case studies →</span></a></div></div>')
+
+
+def case_groups():
+    """Case Studies hub: grouped under Products and Services."""
+    by = {c["slug"]: c for c in data.CASE_STUDIES}
+    out = ""
+    for top, groups in data.CASE_GROUPS:
+        out += f'<div class="group-block"><h2 class="group-title">{top}</h2>'
+        for key, label, href, product, slugs in groups:
+            link = f'<a href="{href}">{"About " + (product or label)} →</a>'
+            if slugs:
+                cards = "".join(case_card(by[sl]) for sl in slugs)
+                out += f'<div class="uc-group" id="{key}"><div class="uc-group-head"><h3>{label}{" (" + product + ")" if product else ""}</h3>{link}</div><div class="grid-3">{cards}</div></div>'
+            else:
+                out += (f'<div class="uc-group" id="{key}"><div class="uc-group-head"><h3>{label}{" (" + product + ")" if product else ""}</h3>{link}</div>'
+                        f'<p class="small">No published case study yet. See <a href="/use-cases/{key}/">{product} use cases</a>.</p></div>')
+        out += "</div>"
+    return out
 
 
 def case_page(c):

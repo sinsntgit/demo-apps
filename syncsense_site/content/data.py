@@ -846,3 +846,70 @@ PRODUCT_USE_CASES = {
         "more": "Not the best fit today for organisations that need thousands of seats, native mobile apps, built-in telephony or complex CPQ, or that want a vendor-hosted service.",
     },
 }
+
+
+# ---------------------------------------------------------------- services use cases and grouping
+PRODUCT_USE_CASES["consulting"] = {
+    "slug": "consulting",
+    "product": "Consulting & staffing",
+    "product_href": CONS,
+    "title": "Data & AI Consulting and Staffing Use Cases | SyncSense",
+    "description": "How SyncSense consulting and contract staffing are used: data readiness, MIS automation, CFO analytics, AI to production, private SLMs, managed BI teams.",
+    "keyword": "data and AI consulting use cases",
+    "h1": "Consulting and staffing use cases",
+    "answer": "Our consulting team designs and builds data, BI and AI systems; our contract staff run and extend them. Below are the engagements we are asked for most often, the industries they apply to, and the case studies behind them.",
+    "image": None,
+    "cases": [
+        {"group": "Data & AI consulting", "industry": "All industries", "title": "Data readiness for AI", "who": "CDOs, CIOs and analytics heads",
+         "steps": ["Assess sources and data quality", "Clean, model and govern the data", "Build pipelines AI and BI can consume"],
+         "industries": "Any organisation starting an AI or analytics programme"},
+        {"group": "Data & AI consulting", "industry": "Finance teams", "title": "MIS and management reporting automation", "who": "CFOs and finance controllers",
+         "steps": ["Automated extraction from ERP, Tally and other sources", "A central data warehouse as the single source of truth", "Consolidated and comparative dashboards with drill-down"],
+         "industries": "Multi-entity groups, manufacturing, services", "case": "multi-entity-finance-power-bi"},
+        {"group": "Data & AI consulting", "industry": "Finance & procurement", "title": "CFO and procurement analytics", "who": "CFOs, procurement and supply-chain heads",
+         "steps": ["Profitability, liquidity and risk views from global to local", "Supplier performance scoring that replaces subjective assessment", "KPI design through to dashboards"],
+         "industries": "Manufacturing, retail, consumer goods"},
+        {"group": "Data & AI consulting", "industry": "Security & risk", "title": "InfoSec analytics", "who": "CISOs and risk teams",
+         "steps": ["Standardise control data from many security tools", "One reporting layer for all controls", "Real-time views of how effective each control is"],
+         "industries": "Banking, insurance, IT and cybersecurity firms"},
+        {"group": "Data & AI consulting", "industry": "Data platforms", "title": "Data warehousing and data lakes", "who": "Data engineering and architecture teams",
+         "steps": ["Unified architecture across enterprise systems", "Secure ETL/ELT pipelines", "Warehouses for BI combined with lakes for machine learning"],
+         "industries": "Insurance, banking, telecom, retail"},
+        {"group": "Data & AI consulting", "industry": "AI projects", "title": "AI from pilot to production", "who": "Business sponsors and IT leaders",
+         "steps": ["Shape the use case and the ROI case; design the target architecture", "Build and test a working pilot", "Harden for security and scale; add MLOps, monitoring and guardrails"],
+         "industries": "Any industry with an AI proof of concept that has stalled", "case": "consumer-goods-campaign-text-to-sql"},
+        {"group": "Data & AI consulting", "industry": "AI projects", "title": "Turnkey GenAI assistants", "who": "Support, legal and operations heads",
+         "steps": ["Grounded answers from your knowledge base, with human approval", "Drafting of replies, notices and responses", "Continuous updates as new knowledge is published"],
+         "industries": "Software, tax and legal, logistics", "case": "genai-email-support-assistant"},
+        {"group": "Data & AI consulting", "industry": "Private AI", "title": "Private small language models", "who": "Firms whose data cannot leave the building",
+         "steps": ["Open-source models fine-tuned to one use case", "Deployed on your own hardware", "Release gates before production, such as zero fabricated citations"],
+         "industries": "Tax and legal, telecom, banking", "case": "tax-research-knowledge-graph-slm"},
+        {"group": "Contract staffing", "industry": "BI operations", "title": "Managed BI team", "who": "Heads of BI and IT",
+         "steps": ["A dedicated team covering data freshness, report runs, development and support", "The team that supports the BI estate also extends it", "One partner across data and BI"],
+         "industries": "Insurance, banking, large enterprises", "case": "insurer-managed-bi-team"},
+        {"group": "Contract staffing", "industry": "Technical skills", "title": "Data and BI specialists on demand", "who": "Delivery and analytics managers",
+         "steps": ["Data engineers, BI developers (Power BI, SAS), data scientists and analysts", "Project-based teams or individuals who join your team", "Managed by our experienced architects"],
+         "industries": "Any industry", "case": "power-bi-staffing-ca-firm"},
+        {"group": "Contract staffing", "industry": "Functional expertise", "title": "Functional consultants", "who": "Finance, risk and operations leaders",
+         "steps": ["Finance and accounting, risk and regulatory reporting, and actuarial specialists", "Supply chain, procurement and sales operations analysts", "Business analysts who turn requirements into data and BI specifications"],
+         "industries": "Banking, insurance, manufacturing, professional services"},
+        {"group": "Contract staffing", "industry": "AI skills", "title": "AI engineers and forward deployed engineers", "who": "CTOs and AI programme leads",
+         "steps": ["AI and machine learning engineers, LLM and prompt engineers", "Forward deployed engineers who build AI systems inside your team", "MLOps engineers to monitor and run models in production"],
+         "industries": "Any industry building AI products or assistants"},
+    ],
+    "more": "",
+}
+
+# Case studies grouped under products and services. Text-to-SQL and knowledge-graph projects
+# are listed with the product they relate to.
+CASE_GROUPS = [
+    ("Products", [
+        ("askdata", "Text-to-SQL", "/products/text-to-sql/", "AskData", ["actuarial-text-to-sql-reports", "consumer-goods-campaign-text-to-sql"]),
+        ("ontology-studio", "Ontologies and knowledge graphs", "/products/ontology-builder/", "Ontology Studio", ["tax-research-knowledge-graph-slm", "telecom-billing-dispute-root-cause"]),
+        ("ovantaa-crm", "CRM", "/products/crm/", "Ovantaa CRM", []),
+    ]),
+    ("Services", [
+        ("consulting", "Data & AI consulting", "/services/data-ai-consulting/", None, ["gst-dispute-legal-ai", "genai-email-support-assistant", "multi-entity-finance-power-bi"]),
+        ("staffing", "Contract staffing", "/services/data-analytics-staffing/", None, ["insurer-managed-bi-team", "power-bi-staffing-ca-firm"]),
+    ]),
+]

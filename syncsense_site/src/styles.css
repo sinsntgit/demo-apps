@@ -275,7 +275,7 @@ figure.dash figcaption { font-size: .92rem; color: var(--muted); }
 .fold-products { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .fcard { display: flex; flex-direction: column; background: var(--white); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; text-decoration: none; color: var(--ink); transition: border-color .15s, box-shadow .15s; min-width: 0; }
 .fcard:hover { border-color: var(--teal); box-shadow: 0 12px 30px rgba(11,17,102,.10); color: var(--ink); }
-.fshot { height: clamp(96px, 30vh, 300px); overflow: hidden; border-bottom: 1px solid var(--line); background: var(--soft); }
+.fshot { height: clamp(96px, 36vh, 340px); overflow: hidden; border-bottom: 1px solid var(--line); background: var(--soft); }
 .fshot img, .pshot img { width: 100%; height: 100%; object-fit: cover; object-position: left top; }
 .fbody { padding: 10px 14px 12px; }
 .fbody .tag { margin-bottom: .1em; font-size: .72rem; }
@@ -292,7 +292,7 @@ figure.dash figcaption { font-size: .92rem; color: var(--muted); }
 .fcase strong { display: block; font-size: 1.2rem; color: var(--navy); line-height: 1.15; }
 .fcase span { display: block; font-size: .8rem; line-height: 1.3; }
 .fcase em { display: block; font-style: normal; font-size: .7rem; color: var(--muted); margin-top: 3px; }
-@media (max-height: 800px) and (min-width: 901px) { .fdesc { display: none; } .fshot { height: 28vh; } }
+@media (max-height: 800px) and (min-width: 901px) { .fdesc { display: none; } .fshot { height: 34vh; } }
 @media (max-height: 620px) and (min-width: 901px) {
   .bar { min-height: 48px; }
   .fold { padding: 8px 0 10px; }
@@ -300,7 +300,7 @@ figure.dash figcaption { font-size: .92rem; color: var(--muted); }
   .fold-intro h1 { font-size: 1.4rem; }
   .fold-intro .sub { font-size: .9rem; }
   .fold-intro .btn { padding: 7px 16px; }
-  .fshot { height: 29vh; }
+  .fshot { height: 36vh; }
   .fbody { padding: 7px 12px 9px; }
   .fbody h2 { font-size: 1.02rem; }
   .fbody .ticks { font-size: .8rem; }
@@ -382,3 +382,22 @@ body.lb-open { overflow: hidden; }
 .uc-list li { margin: 0; padding: 6px 0; border-bottom: 1px solid var(--line); }
 .uc-list a { text-decoration: none; }
 .uc-list a:hover { text-decoration: underline; }
+
+/* Brand tagline under the name */
+.brand { display: flex; flex-direction: column; line-height: 1.1; }
+.brand .name { font-weight: 700; font-size: 1.1rem; }
+.brand .tagline { font-weight: 500; font-size: .72rem; color: var(--teal); letter-spacing: .01em; margin-top: 2px; }
+@media (max-width: 420px) { .brand .tagline { display: none; } }
+
+/* Group labels inside dropdown menus */
+.main-nav details ul li.grp { padding: 8px 10px 2px; font-size: .7rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.main-nav details ul li.grp:first-child { padding-top: 2px; }
+
+/* Grouped hubs: Products / Services */
+.group-block + .group-block { margin-top: 36px; }
+.group-title { font-size: .8rem !important; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--teal); border-bottom: 2px solid var(--line); padding-bottom: 8px; margin-bottom: 16px; }
+.uc-group { scroll-margin-top: 80px; }
+.uc-group + .uc-group { margin-top: 28px; }
+.uc-group-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+.uc-group-head h2, .uc-group-head h3 { margin: 0; }
+.uc-group-head a { font-size: .92rem; font-weight: 600; }
