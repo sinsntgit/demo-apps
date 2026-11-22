@@ -368,3 +368,16 @@ body.lb-open { overflow: hidden; }
 @media (max-width: 900px) { .why4 { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 520px) { .why4 { grid-template-columns: 1fr; } }
 .services2 .pcard { min-height: 0; }
+
+/* Product pages: short benefit row, centring helpers */
+.benefits { display: grid; grid-template-columns: repeat(4, 1fr); gap: clamp(16px, 2vw, 36px); }
+.benefits strong { display: block; font-size: 1.08rem; color: var(--navy); margin-bottom: .3em; }
+.benefits p { margin: 0; color: var(--muted); font-size: .96rem; }
+@media (max-width: 900px) { .benefits { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 520px) { .benefits { grid-template-columns: 1fr; } }
+.center-v { align-items: center; }
+.center-text { text-align: center; }
+.center-text .lead-in { margin-left: auto; margin-right: auto; }
+.chips-center { justify-content: center; max-width: 900px; margin: 0 auto; }
+.howto h3 { margin-bottom: .2em; }
+.howto p { margin: 0; color: var(--muted); font-size: .96rem; }

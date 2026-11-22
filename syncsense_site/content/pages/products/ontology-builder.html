@@ -16,101 +16,48 @@
 <section class="page-head"><div class="wrap hero-grid"><div>
   <p class="eyebrow">Product · Ontology &amp; knowledge graph</p>
   <h1>Ontology Studio: one shared model of your business data</h1>
-  <p class="answer">The Ontology Studio creates a connected model of what your business terms mean and how they relate, then fills it with your records and documents as a knowledge graph. Reports, analytics and AI assistants then use the same definitions, and AI answers can cite where each fact came from. It is for data leaders whose definitions differ between teams, and for AI projects that need answers they can trust.</p>
-  <div class="actions">{{booking_link}}<a class="btn ghost" href="/free-data-assessment/">Get a free data assessment</a></div>
+  <p class="answer">Ontology Studio builds a connected model of what your business terms mean and how they relate, then fills it with your records and documents as a knowledge graph. Reports, analytics and AI then use the same definitions, and AI answers can cite their sources.</p>
+  <div class="actions">{{booking_link}}<a class="btn ghost" href="/free-data-assessment/">Free data assessment</a></div>
 </div>
-<figure class="screen"><img src="/assets/img/ontology-diagram.webp" alt="Ontology Studio diagram view showing the class hierarchy of a retail order management ontology" width="1600" height="838" fetchpriority="high"><figcaption>The diagram view of a sample retail ontology: party, product, sales channel, order, payment, invoice, shipment and returns.</figcaption></figure>
-</div></section>
-
-<section class="section"><div class="wrap two-col">
-  <div>
-    <h2>Who it is for</h2>
-    <ul class="ticks">
-      <li>Chief data officers and data governance teams who need one definition of core business terms.</li>
-      <li>Teams building AI assistants that must answer from company knowledge, with citations.</li>
-      <li>Regulated businesses that need lineage from a reported figure back to its source.</li>
-      <li>Organisations where the answer to one question sits across several systems.</li>
-    </ul>
-  </div>
-  <div>
-    <h2>Problems it solves</h2>
-    <ul class="ticks">
-      <li>“Customer”, “revenue” or “policy” mean different things in different systems.</li>
-      <li>Plain search misses relationships: a ruling that was overruled, a charge caused by an outage.</li>
-      <li>Generic AI tools invent sources or mix up terms.</li>
-      <li>AI pilots stall because nobody wrote down what the data means.</li>
-    </ul>
-  </div>
-</div></section>
-
-<section class="section alt"><div class="wrap">
-  <h2>How does the Ontology Studio work?</h2>
-  <ol class="howto">
-    <li><h3>Collect sources</h3><p>Documents, databases and system feeds: for example Acts and case law for a tax firm, or billing and network systems for a telecom operator.</p></li>
-    <li><h3>Define the ontology</h3><p>Classes, relations and properties for the domain. Our tax ontology has 165 classes, 108 relations and 74 properties.</p></li>
-    <li><h3>Build the knowledge graph</h3><p>Records and passages are loaded into Neo4j with vector embeddings, tagged with metadata such as source, date and status.</p></li>
-    <li><h3>Answer with evidence</h3><p>Queries follow the graph, citations and meaning together, so AI answers cite the document, page or event behind each claim.</p></li>
-  </ol>
-</div></section>
-
-<section class="section"><div class="wrap two-col">
-  <div>
-    <h2>Start from a pre-built library</h2>
-    <p>Ontology Studio includes 22 ready-made ontologies across 19 industries, from banking, insurance and telecommunications to healthcare, retail, manufacturing and the public sector. Each one lists the standards it builds on, such as FIBO for financial services, HL7 FHIR and SNOMED CT for healthcare, and Schema.org, along with its classes, properties and use cases.</p>
-    <p>Open one to look at it, copy it into your own library, and extend it for your business.</p>
-  </div>
-  <figure class="screen"><img src="/assets/img/ontology-library.webp" alt="Ontology Studio pre-built library with 22 ontologies across industries, each showing the standards it uses and its classes, properties and use cases" width="1600" height="867" loading="lazy" decoding="async"><figcaption>The pre-built library, filtered by industry.</figcaption></figure>
+<figure class="screen"><img src="/assets/img/ontology-diagram.webp" alt="Ontology Studio diagram view of a retail order management ontology" width="1600" height="838" fetchpriority="high"></figure>
 </div></section>
 
 <section class="section"><div class="wrap">
-  <h2>Key features</h2>
-  <div class="grid-3">
-    <div class="card-plain"><h3>Diagram and model editor</h3><p>See the class hierarchy, one module’s relationships, or everything around one class. Add classes, relationships and attributes from the diagram.</p></div>
-    <div class="card-plain"><h3>Test bed and quality checks</h3><p>Try the ontology against your use cases before relying on it, and check quality and reasoning results in one place.</p></div>
-    <div class="card-plain"><h3>Versions and sharing</h3><p>Every change is saved as a new version you can go back to. Share an ontology with everyone or keep it private.</p></div>
-    <div class="card-plain"><h3>Domain understanding</h3><p>Defines what each business object is: a section, a holding and a circular in tax; a subscriber, a plan and a usage record in telecom.</p></div>
-    <div class="card-plain"><h3>Relationship understanding</h3><p>Captures how things relate across systems: overruled, superseded, caused by, billed for, covered by.</p></div>
-    <div class="card-plain"><h3>Metadata, not guesswork</h3><p>Forum, binding reach, effective dates and source are stored as metadata, so the AI does not have to guess them.</p></div>
-    <div class="card-plain"><h3>GraphRAG retrieval</h3><p>Knowledge graph and vector search together, with several retrieval modes, so answers use connected evidence.</p></div>
-    <div class="card-plain"><h3>Safe queries at scale</h3><p>AI-generated queries are checked against the schema before they run; one query can scan all customers instead of one.</p></div>
-    <div class="card-plain"><h3>Lineage and governance</h3><p>Each fact keeps a link to its source system or document, which supports audits and regulatory reporting.</p></div>
-  </div>
+  <div class="benefits"><div><strong>One meaning for every term</strong><p>“Customer”, “policy” or “order” defined once and used everywhere.</p></div><div><strong>Start from a library</strong><p>22 ready-made ontologies across 19 industries, built on standards such as FIBO and HL7 FHIR.</p></div><div><strong>Cited AI answers</strong><p>Knowledge graph and vector search together, so answers point to their evidence.</p></div><div><strong>Lineage you can show</strong><p>Every fact keeps a link to the system or document it came from.</p></div></div>
 </div></section>
 
 <section class="section alt"><div class="wrap">
-  <h2>How is an ontology different from a data warehouse or a semantic layer?</h2>
-  <div class="table-scroll"><table class="grid-table">
-    <tr><th scope="col"></th><th scope="col">Data warehouse</th><th scope="col">Semantic layer</th><th scope="col">Ontology / knowledge graph</th></tr>
-    <tr><th scope="row">Main job</th><td>Store and organise data for reporting</td><td>Define metrics and dimensions for BI tools</td><td>Describe meaning and relationships across systems and documents</td></tr>
-    <tr><th scope="row">Holds documents?</th><td>Rarely</td><td>No</td><td>Yes, linked to entities</td></tr>
-    <tr><th scope="row">Relationships</th><td>Joins designed for queries</td><td>Joins behind each metric</td><td>First-class: typed, directional, with metadata</td></tr>
-    <tr><th scope="row">Best for AI</th><td>Source of numbers</td><td>Consistent metric definitions</td><td>Context, citations and reasoning across sources</td></tr>
-  </table></div>
-  <p style="margin-top:14px">They are complementary. Read more in <a href="/insights/ontology-vs-data-warehouse-vs-semantic-layer/">Ontology vs data warehouse vs semantic layer</a>.</p>
+  <h2 class="center">How it works</h2>
+  <ol class="howto"><li><h3>Collect sources</h3><p>Connect systems and documents.</p></li><li><h3>Define the model</h3><p>Classes, relations and properties, starting from a library ontology.</p></li><li><h3>Build the graph</h3><p>Records and passages loaded with metadata such as source, date and status.</p></li><li><h3>Answer with evidence</h3><p>Queries follow the graph and cite the document or event behind each claim.</p></li></ol>
 </div></section>
 
-{{usecases:ontology-studio}}
+<section class="section"><div class="wrap two-col center-v">
+  <div>
+    <h2>Start from a pre-built library</h2>
+    <p>22 ready-made ontologies across 19 industries, each built on recognised standards: FIBO for financial services, HL7 FHIR and SNOMED CT for healthcare, IEC CIM for utilities, and more. Copy one into your library and extend it for your business.</p>
+    <p><a href="/use-cases/ontology-studio/">See what each one models →</a></p>
+  </div>
+  <figure class="screen"><img src="/assets/img/ontology-library.webp" alt="Ontology Studio pre-built library of ontologies by industry" width="1600" height="867" loading="lazy" decoding="async"></figure>
+</div></section>
 
 <section class="section alt"><div class="wrap two-col">
   <div>
-    <h2>Integrations</h2>
-    <ul class="ticks">
-      <li>Neo4j for the knowledge graph and vector embeddings.</li>
-      <li>MCP tools to connect operational systems such as billing, payments, alarms and logs.</li>
-      <li>Documents: PDF and text sources such as Acts, case law, policies and contracts.</li>
-      <li>Open-source small language models fine-tuned and run on your hardware.</li>
-    </ul>
+    <h2>Works with</h2>
+    <p>Neo4j for the knowledge graph and embeddings, MCP tools to connect operational systems, document sources such as PDFs, and open-source language models on your hardware.</p>
+    <p class="small">How is this different from a data warehouse or semantic layer? <a href="/insights/ontology-vs-data-warehouse-vs-semantic-layer/">Read the comparison</a>.</p>
   </div>
   <div>
     <h2>Security and deployment</h2>
     <ul class="ticks">
-      <li>Runs in your environment; not offered as SaaS.</li>
+      <li>Runs in your environment; not sold as SaaS.</li>
       <li>Private models on your own GPU keep confidential content inside.</li>
-      <li>Release gates before production, for example zero fabricated citations.</li>
-      <li>Every answer can be scored for grounding and relevance.</li>
+      <li>Every change saved as a version you can go back to.</li>
+      <li>Release gates before production, such as zero fabricated citations.</li>
     </ul>
   </div>
 </div></section>
+
+{{usecases:ontology-studio}}
 
 {{faq}}
 {{cta}}

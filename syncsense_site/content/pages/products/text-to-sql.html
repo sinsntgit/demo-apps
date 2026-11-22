@@ -16,112 +16,56 @@
   ["Does it replace our analysts?", "No. It removes routine requests so analysts can work on harder problems. Analysts usually become its data stewards: they teach definitions and review reported answers."]
  ]}
 ---
-<section class="page-head"><div class="wrap hero-grid">
+<section class="page-head"><div class="wrap hero-grid"><div>
+  <p class="eyebrow">Product · Text-to-SQL</p>
+  <h1>AskData: Text-to-SQL that business users can trust</h1>
+  <p class="answer">Business users ask questions of your own databases in plain English and get a table, a chart and a short summary in seconds. AskData runs inside your network, only reads data, and applies each person’s access rules to every answer.</p>
+  <div class="actions">{{booking_link}}<a class="btn ghost" href="/free-data-assessment/">Free data assessment</a></div>
+</div>
+<figure class="screen"><img src="/assets/img/askdata-chat.webp" alt="AskData chat: a plain-English question about net sales by customer country, and the answer as a bar chart" width="1600" height="900" fetchpriority="high"></figure>
+</div></section>
+
+<section class="section"><div class="wrap">
+  <div class="benefits"><div><strong>Answers in seconds</strong><p>Questions in your own words; a table, chart and summary come back straight away.</p></div><div><strong>Checked and correctable</strong><p>Every answer says what was counted. Users report errors; a data steward fixes them for everyone.</p></div><div><strong>Governed access</strong><p>Read-only queries, row-level rules and masked fields on every answer, report and share.</p></div><div><strong>Your data stays put</strong><p>The AI sees the question and table names only. Results never leave your network.</p></div></div>
+</div></section>
+
+<section class="section alt"><div class="wrap">
+  <h2 class="center">How it works</h2>
+  <ol class="howto"><li><h3>Ask</h3><p>Pick a data area and type a question.</p></li><li><h3>Check</h3><p>The AI writes one read-only query; AskData checks it and applies your access rules.</p></li><li><h3>Answer</h3><p>The query runs on your database; AskData draws the chart and summary.</p></li><li><h3>Learn</h3><p>Confirmed answers become examples; reported ones are fixed by a steward.</p></li></ol>
+</div></section>
+
+<section class="section"><div class="wrap two-col center-v">
   <div>
-    <p class="eyebrow">Product · Text-to-SQL</p>
-    <h1>AskData: Text-to-SQL that business users can trust</h1>
-    <p class="answer">AskData lets business users ask questions of your own databases in plain English and get a table, a chart and a short summary in seconds. It runs inside your network, accepts only read-only queries and applies each person’s access rules to every answer. It is for finance, sales, operations and leadership teams that wait days for data today.</p>
-    <div class="actions">{{booking_link}}<a class="btn ghost" href="/free-data-assessment/">Get a free data assessment</a></div>
+    <h2>Try a sample question</h2>
+    <p class="lead-in">Pick a question to see the SQL AskData would write and the result. Runs on made-up sample data in your browser.</p>
+    <p class="small">Reports, forecasts and scheduled emails are built from the same answers.</p>
   </div>
-  <figure class="screen"><img src="/assets/img/askdata-chat.webp" alt="AskData chat: a plain-English question about net sales by customer country, a clarifying question, and the answer as a bar chart" width="1600" height="900" fetchpriority="high"><figcaption>AskData asks a clarifying question when a term is ambiguous, explains how the answer was calculated, and shows a data steward’s confirmation.</figcaption></figure>
+  {{demo_widget}}
+</div></section>
+
+<section class="section alt"><div class="wrap gallery">
+  <figure class="screen"><img src="/assets/img/askdata-report.webp" alt="AskData report with a sales forecast, accuracy statistics and warnings about incomplete data" width="1600" height="838" loading="lazy" decoding="async"><figcaption>Reports and forecasts, with the method and its accuracy shown.</figcaption></figure>
+  <figure class="screen"><img src="/assets/img/askdata-help.webp" alt="AskData built-in help page explaining the five-step flow" width="1600" height="900" loading="lazy" decoding="async"><figcaption>Built-in help with screenshots and search.</figcaption></figure>
 </div></section>
 
 <section class="section"><div class="wrap two-col">
   <div>
-    <h2>Who it is for</h2>
-    <ul class="ticks">
-      <li><strong>CFO and finance:</strong> faster closes and variance answers, monthly packs that send themselves, one definition of revenue.</li>
-      <li><strong>COO and operations:</strong> plant, inventory and delivery questions answered on the floor.</li>
-      <li><strong>Sales and marketing:</strong> customer, product and territory performance, with forecasts and segments.</li>
-      <li><strong>CIO and data office:</strong> self-service without losing control: read-only, governed, audited, your choice of AI.</li>
-      <li><strong>Analysts:</strong> freed from routine requests to work on problems that need them.</li>
-    </ul>
-  </div>
-  <div>
-    <h2>Problems it solves</h2>
-    <ul class="ticks">
-      <li>Every new business question becomes a ticket in the analytics backlog.</li>
-      <li>Dashboards answer last quarter’s questions; the follow-up “why?” needs another request.</li>
-      <li>Different teams have different spreadsheets and different definitions of “revenue”.</li>
-      <li>Security teams block AI tools that would send company data outside.</li>
-    </ul>
-  </div>
-</div></section>
-
-<section class="section alt"><div class="wrap">
-  <h2>How does AskData work?</h2>
-  <p class="lead-in">The key design idea: the AI model only writes SQL. Checking, running, charting and summarising happen in AskData, next to your data.</p>
-  <ol class="howto">
-    <li><h3>Ask</h3><p>Pick a data area and type a question in your own words. One click on <em>Rephrase</em> tidies a vague question first.</p></li>
-    <li><h3>Generate and check</h3><p>The AI model writes one SELECT. AskData parses it, refuses anything that is not a single read-only query, and adds your row filters and masking.</p></li>
-    <li><h3>Run and explain</h3><p>The query runs on your database. AskData builds the chart and a plain-language summary of what was counted, for which period and with which filters.</p></li>
-    <li><h3>Learn</h3><p>Users confirm or report answers. A data steward fixes reported ones and records the rule, so the next person gets it right.</p></li>
-  </ol>
-</div></section>
-
-<section class="section"><div class="wrap">
-  <h2>Try a sample question</h2>
-  <p class="lead-in">Pick a question to see the SQL AskData would write and the result it would return. This runs on made-up sample data in your browser.</p>
-  <div style="max-width:760px">{{demo_widget}}</div>
-</div></section>
-
-<section class="section alt"><div class="wrap">
-  <h2>Reports, forecasts and built-in help</h2>
-  <div class="gallery">
-    <figure class="screen"><img src="/assets/img/askdata-report.webp" alt="AskData report with a sales forecast, accuracy statistics and warnings about incomplete data" width="1600" height="838" loading="lazy" decoding="async"><figcaption>A scheduled report with a forecast. AskData states the method, back-tests it and warns when history is too short or the last month looks incomplete.</figcaption></figure>
-    <figure class="screen"><img src="/assets/img/askdata-help.webp" alt="AskData built-in help page explaining the five-step flow from picking a data model to exploring the answer" width="1600" height="900" loading="lazy" decoding="async"><figcaption>Built-in help with screenshots and search, from asking questions to administration.</figcaption></figure>
-  </div>
-</div></section>
-
-<section class="section"><div class="wrap">
-  <h2>Key features</h2>
-  <div class="grid-3">
-    <div class="card-plain"><h3>Answers you can check</h3><p>Table, nine chart types and a written summary. Analysts can see the exact SQL; business users can be set to results only.</p></div>
-    <div class="card-plain"><h3>Learns your vocabulary</h3><p>Teach definitions such as “net sales” or “overdue receivables” once, with documentation and verified example questions. Retrieval runs locally.</p></div>
-    <div class="card-plain"><h3>Follow-ups and history</h3><p>Ask “only Germany” or “by month” in the same conversation. Chats are saved, searchable and shareable.</p></div>
-    <div class="card-plain"><h3>Forecasts and patterns</h3><p>Forecasts with a range, segments, key drivers and unusual values, using tested methods on AskData’s own server. The method is shown.</p></div>
-    <div class="card-plain"><h3>Reports that send themselves</h3><p>Drag answers into a live report; export to PDF or PowerPoint in your corporate template; schedule it daily, weekly or monthly.</p></div>
-    <div class="card-plain"><h3>Group companies</h3><p>Separate companies or business units with their own users, data, reports and logo, and one shared set of AI models.</p></div>
-  </div>
-</div></section>
-
-{{usecases:askdata}}
-
-<section class="section"><div class="wrap two-col">
-  <div>
-    <h2>Supported systems</h2>
-    <table class="cmp">
-      <thead><tr><th scope="col">Source</th><th scope="col">Status</th></tr></thead>
-      <tbody>
-        <tr><td>PostgreSQL</td><td>Verified against a live server with a read-only role</td></tr>
-        <tr><td>Excel / CSV folders</td><td>Verified end to end, loaded into a sandboxed in-memory database</td></tr>
-        <tr><td>SQL Server, Oracle, MySQL, SingleStore, Snowflake</td><td>Standard vendor connectors on the same code path; confirmed on your systems in the pilot</td></tr>
-        <tr><td>SAP (SD, FI and others)</td><td>Through SAP tables replicated to your reporting database; sample Sales &amp; Finance model included. No live SAP connector.</td></tr>
-      </tbody>
-    </table>
-    <p class="small">AI models: Anthropic Claude, OpenAI, or any OpenAI-compatible self-hosted endpoint such as Ollama or vLLM. Email: any SMTP provider.</p>
+    <h2>Works with</h2>
+    <p>PostgreSQL and Excel/CSV are verified end to end. SQL Server, Oracle, MySQL, SingleStore and Snowflake use standard connectors and are confirmed on your systems in the pilot. SAP works through replicated tables.</p>
+    <p class="small">AI models: Claude, OpenAI, or a self-hosted model such as Ollama or vLLM.</p>
   </div>
   <div>
     <h2>Security and deployment</h2>
     <ul class="ticks">
-      <li><strong>Runs in your environment.</strong> One server process or containers on PostgreSQL; can run offline. Not offered as SaaS.</li>
-      <li><strong>The AI never sees your numbers.</strong> It receives the question and table descriptions only. Results, summaries and report contents never go to the model.</li>
-      <li><strong>Read-only in depth.</strong> SQL guard, read-only sessions, statement timeouts and row caps. We also recommend a database account with SELECT-only grants.</li>
-      <li><strong>Per-person rules.</strong> Row-level filters and masked columns apply to chats, shared items, reports and scheduled emails. Shared content re-runs with the viewer’s own access.</li>
-      <li><strong>Sign-in and audit.</strong> Two-step sign-in, roles (analyst, steward, admin) and an audit log of every sign-in, question and change.</li>
+      <li>Runs on your servers or cloud; not sold as SaaS.</li>
+      <li>Single read-only query only; database grants as a second safeguard.</li>
+      <li>Two-step sign-in, roles and a full audit log.</li>
+      <li>Four-week pilot on your own data before you decide.</li>
     </ul>
   </div>
 </div></section>
 
-<section class="section alt"><div class="wrap">
-  <h2>A four-week pilot on your own data</h2>
-  <ol class="howto">
-    <li><h3>Week 1: Connect</h3><p>Install, connect one source read-only, choose the AI model, set access rules.</p></li>
-    <li><h3>Week 2: Teach</h3><p>Add your definitions and your top questions with their correct answers.</p></li>
-    <li><h3>Week 3: Use</h3><p>Business users ask real questions; stewards review anything reported.</p></li>
-    <li><h3>Week 4: Decide</h3><p>Review accuracy, adoption and cost against criteria agreed before the start.</p></li>
-  </ol>
-</div></section>
+{{usecases:askdata}}
 
 {{faq}}
 {{cta}}

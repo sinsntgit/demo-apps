@@ -198,7 +198,7 @@ def product_cards():
         w, h = IMG_SIZES[p["img"]]
         pts = "".join(f"<li>{esc(x)}</li>" for x in p["points"])
         cards += (f'<a class="pcard" href="{p["href"]}"><div class="pshot">{shot(p["img"], p["alt"], w, h, cls="")}</div>'
-                  f'<span class="tag">{p["tag"]}</span><h3>{p["name"]}</h3><p>{p["text"]}</p><ul class="ticks small-list">{pts}</ul>'
+                  f'<span class="tag">{p["tag"]}</span><h3>{p["name"]}</h3><p>{p["short"]}</p>'
                   f'<span class="more">Learn more →</span></a>')
     return f'<div class="grid-3">{cards}</div>'
 
@@ -248,11 +248,11 @@ def product_usecase_cards():
 
 def usecase_teaser(key):
     u = data.PRODUCT_USE_CASES[key]
-    tiles = "".join(f'<li><a href="/use-cases/{u["slug"]}/#uc-{i + 1}">{esc(c["industry"])}: {esc(c["title"])}</a></li>'
-                    for i, c in enumerate(u["cases"]))
-    return (f'<section class="section alt"><div class="wrap"><h2>{u["product"]} use cases by industry</h2>'
-            f'<p class="lead-in">How {u["product"]} is used in different industries, with examples for each.</p>'
-            f'<ul class="uc-list">{tiles}</ul><p class="actions"><a class="btn ghost" href="/use-cases/{u["slug"]}/">All {u["product"]} use cases →</a></p></div></section>')
+    inds = list(dict.fromkeys(c["industry"] for c in u["cases"]))
+    chips = "".join(f"<li>{esc(x)}</li>" for x in inds)
+    return (f'<section class="section alt"><div class="wrap center-text"><h2>{u["product"]} use cases</h2>'
+            f'<p class="lead-in">{len(u["cases"])} examples across these industries:</p>'
+            f'<ul class="chips chips-center">{chips}</ul><p class="actions center"><a class="btn ghost" href="/use-cases/{u["slug"]}/">See {u["product"]} use cases →</a></p></div></section>')
 
 
 def industry_tiles():
