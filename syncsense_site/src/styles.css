@@ -399,3 +399,16 @@ button.btn.watch { font-family: var(--font); }
 .lb-video[hidden] { display: none; }
 .lb-video iframe { width: 100%; height: 100%; border: 0; display: block; }
 .lb-stage img[hidden] { display: none; }
+
+/* Case study "At a glance" */
+.section.tight { padding: 0 0 8px; }
+.glance { background: var(--soft); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 22px; }
+.glance h2 { font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; color: var(--teal); margin-bottom: 10px; }
+.glance dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px 24px; margin: 0; }
+.glance dt { font-size: .78rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.glance dd { margin: 2px 0 0; font-weight: 600; }
+.glance dl > div { min-width: 0; }
+
+/* Home: small visible page heading above "Our products" */
+.fold-h1 { font-size: clamp(.95rem, 1.05vw, 1.15rem); font-weight: 600; color: var(--muted); letter-spacing: .01em; margin: 0 0 clamp(4px, 1vh, 12px); }
+@media (max-height: 700px) and (min-width: 901px) { .fold-h1 { margin-bottom: 2px; font-size: .9rem; } }

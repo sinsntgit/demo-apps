@@ -48,6 +48,15 @@ VIDEOS = {
     "askdata-full": ("RuLl7zFLINA", "AskData walkthrough (detailed)"),
     "crm": ("KysgqT9mzUA", "Ovantaa CRM dashboard demo"),
 }
+# For VideoObject structured data. YouTube title as published; upload date (YYYY-MM-DD) from YouTube Studio.
+# A video gets structured data only once its upload date is filled in.
+VIDEO_META = {
+    "askdata-short": {"name": "AskData demo highlights", "description": "Short demo of AskData: plain-English questions answered from your own database with a table, chart and summary.", "upload": ""},
+    "askdata-full": {"name": "AskData demo full", "description": "Full walkthrough of AskData Text-to-SQL: asking questions, checking answers, reports, forecasts and administration.", "upload": ""},
+    "crm": {"name": "Ovantaa CRM Account Manager Walkthrough", "description": "Walkthrough of Ovantaa CRM for account managers: dashboard, deals, invoicing and collections.", "upload": ""},
+}
+VIDEO_PAGES = {"/": ["askdata-short", "crm"], "/products/text-to-sql/": ["askdata-short", "askdata-full"], "/products/crm/": ["crm"]}
+FOUNDER_YOUTUBE = "https://www.youtube.com/@santoshtiwari5068"
 BOOKING_URL = ""  # Calendly link. Empty: "Book a demo" opens the contact form with Demo selected.
 DEMO_HREF = BOOKING_URL or "/contact/?interest=demo#form"
 SHARE_IMAGE = "/assets/img/share.png"
@@ -240,7 +249,7 @@ def fold():
     )
     return f"""<section class="fold" aria-label="Products and case studies">
   <div class="wrap">
-    <h1 class="sr">SyncSense: AI data products, data and AI consulting, and contract staffing</h1>
+    <h1 class="fold-h1">AI data products and data consulting for business teams</h1>
     <div class="fold-head"><h2>Our products</h2><a href="/products/">View all products →</a></div>
     <div class="fold-products">{cards}</div>
     <div class="fold-head"><h2>Case studies</h2><a href="/case-studies/">All 9 case studies →</a></div>
@@ -434,7 +443,7 @@ def jsonld(meta, path):
         })
     if "Person" in kinds:
         graph.append({"@type": "Person", "@id": FOUNDER_ID, "name": FOUNDER, "jobTitle": "Founder",
-                      "worksFor": {"@id": ORG_ID}, "url": SITE + "/about/"})
+                      "worksFor": {"@id": ORG_ID}, "url": SITE + "/about/", "sameAs": [FOUNDER_YOUTUBE]})
     if "Article" in kinds:
         graph.append({
             "@type": "Article", "headline": strip_ph(meta["h1"]), "description": strip_ph(meta["description"]),
@@ -443,6 +452,18 @@ def jsonld(meta, path):
             "author": {"@type": "Person", "@id": FOUNDER_ID, "name": FOUNDER, "url": SITE + "/about/"},
             "publisher": {"@id": ORG_ID},
         })
+    if "CaseStudy" in kinds:
+        graph.append({"@type": "Article", "headline": strip_ph(meta["h1"]), "description": strip_ph(meta["description"]), "url": url,
+                      "mainEntityOfPage": url, "image": SITE + SHARE_IMAGE, "author": {"@id": ORG_ID}, "publisher": {"@id": ORG_ID},
+                      "about": meta.get("keyword", "")})
+    for key in VIDEO_PAGES.get(path, []):
+        vm = VIDEO_META[key]
+        if vm["upload"]:
+            vid = VIDEOS[key][0]
+            graph.append({"@type": "VideoObject", "name": vm["name"], "description": vm["description"],
+                          "thumbnailUrl": f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg", "uploadDate": vm["upload"],
+                          "embedUrl": f"https://www.youtube-nocookie.com/embed/{vid}", "contentUrl": f"https://www.youtube.com/watch?v={vid}",
+                          "publisher": {"@id": ORG_ID}})
     if meta.get("faq"):
         graph.append({"@type": "FAQPage", "mainEntity": [
             {"@type": "Question", "name": strip_ph(q), "acceptedAnswer": {"@type": "Answer", "text": strip_ph(re.sub("<[^>]+>", "", a))}}
@@ -793,17 +814,28 @@ def case_page(c):
         status = '<section class="section alt"><div class="wrap"><h2>Engagement status</h2><div class="grid-3">' + "".join(
             f'<div class="card-plain"><p class="tag">{esc(k)}</p><h3>{esc(t)}</h3><p>{d}</p></div>' for k, t, d in c["status"]) + "</div></div></section>"
     used = "".join(f'<li><a href="{h}">{esc(n)}</a></li>' for n, h in c["related"])
+    det = data.CASE_DETAILS.get(c["slug"], {})
+    glance = ""
+    if det.get("glance"):
+        rows = "".join(f"<dt>{esc(k)}</dt><dd>{esc(v)}</dd>" for k, v in det["glance"])
+        glance = f'<section class="section tight"><div class="wrap"><div class="glance"><h2>At a glance</h2><dl>{rows}</dl></div></div></section>'
+    lessons = ""
+    if det.get("lessons"):
+        lis = "".join(f"<li>{esc(x)}</li>" for x in det["lessons"])
+        lessons = f'<section class="section"><div class="wrap narrow"><h2>Lessons for similar projects</h2><ul class="ticks">{lis}</ul></div></section>'
+
     body = f"""
 <section class="page-head"><div class="wrap narrow">
   <p class="eyebrow">Case study · {esc(c['sector'])}</p>
   <h1>{esc(c['title'])}</h1>
   <p class="answer">{c['intro']}</p>
 </div></section>
+{glance}
 <section class="section"><div class="wrap two-col">
   <div><h2>The challenge</h2><ul class="ticks">{ch}</ul></div>
   <div><h2>What we built</h2><ol class="numbered">{steps}</ol></div>
 </div></section>
-{why}{results}{status}
+{why}{results}{status}{lessons}
 <section class="section"><div class="wrap narrow">
   <p class="small">{c['disclosure']}</p>
   <h2>Related</h2><ul class="inline-links">{used}</ul>
@@ -811,7 +843,7 @@ def case_page(c):
 {cta_band("Have a similar problem?", "Tell us about it. We start with a demo or a fixed-scope assessment on your own data.")}
 """
     meta = {"path": path, "title": c["meta_title"], "description": c["description"], "keyword": c["keyword"],
-            "nav": "case-studies", "breadcrumbs": [["Case Studies", "/case-studies/"], [c["short"], None]], "schema": []}
+            "nav": "case-studies", "breadcrumbs": [["Case Studies", "/case-studies/"], [c["short"], None]], "schema": ["CaseStudy"], "h1": c["title"]}
     emit(meta, body)
 
 

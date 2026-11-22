@@ -913,3 +913,68 @@ CASE_GROUPS = [
         ("staffing", "Contract staffing", "/services/data-analytics-staffing/", None, ["insurer-managed-bi-team", "power-bi-staffing-ca-firm"]),
     ]),
 ]
+
+
+# ---------------------------------------------------------------- case study details
+# "At a glance" facts and lessons, from the AI Service Offerings deck and the earlier website.
+# Lessons are SyncSense's own guidance for similar projects, not client statements.
+CASE_DETAILS = {
+    "tax-research-knowledge-graph-slm": {
+        "glance": [("Sector", "Tax and professional services"), ("Built", "Domain ontology, Neo4j knowledge graph with vector embeddings, private small language model"),
+                   ("Technology", "Neo4j, open-source 7–14B language model on the client’s GPU"), ("Scale", "All direct and indirect tax Acts, about 5,000 case laws, treaties and circulars"),
+                   ("Status", "Pilot complete; model fine-tuning in progress")],
+        "lessons": ["Model the domain before choosing a model: the ontology decides what the AI can and cannot get right.",
+                    "Store authority, forum and status as metadata so that overruled rulings are never cited as current law.",
+                    "Set release gates up front (zero fabricated citations, minimum recall) and do not ship until they are met."]},
+    "telecom-billing-dispute-root-cause": {
+        "glance": [("Sector", "Telecom"), ("Built", "Telecom ontology, multi-agent root-cause analysis with a critic agent, cited remediation"),
+                   ("Technology", "MCP tools for billing, network alarms, payments, assurance and logs; small domain model"), ("Scale", "All telecom domains modelled; pilot on billing and network disruptions"),
+                   ("Status", "Pilot complete on synthetic data; telecom model in progress")],
+        "lessons": ["Link events across domains first; most disputes cross the line between billing and network.",
+                    "Let the knowledge graph find the cause and a small model explain it, rather than asking a model to decide.",
+                    "Score every answer for grounding and relevance from day one of the pilot."]},
+    "insurer-managed-bi-team": {
+        "glance": [("Sector", "Insurance"), ("Built", "Managed BI team covering run, change and support"),
+                   ("Team", "8 dedicated people in the client’s BI unit"), ("Scope", "Data freshness, BI execution, development and support"), ("Status", "Ongoing")],
+        "lessons": ["Keep run and change in one team, so new work is built by the people who will support it.",
+                    "Track data freshness every morning; most BI complaints start with a late load.",
+                    "Agree one queue for support and new requests so priorities are visible to the business."]},
+    "actuarial-text-to-sql-reports": {
+        "glance": [("Sector", "Actuarial consulting"), ("Built", "Text-to-SQL language agent and visualization agent, orchestrated at scale"),
+                   ("Data", "1.4TB SQL database, 13 years of employee data"), ("Output", "5,000 client reports a month"), ("Result", "Under 30 minutes per report, from 4+ hours")],
+        "lessons": ["Separate the agent that writes SQL from the one that draws charts; each is easier to test.",
+                    "Run agents in parallel with retries when reports are produced at volume.",
+                    "Give clients plain-language access only after the queries behind standard reports are validated."]},
+    "consumer-goods-campaign-text-to-sql": {
+        "glance": [("Sector", "Consumer goods"), ("Built", "Agentic Text-to-SQL with contextual retrieval and row-level security"),
+                   ("Technology", "ReAct agents, GPT-4 plus three fine-tuned category models"), ("Training data", "2,400+ validated question and query pairs"),
+                   ("Timeline", "8 weeks from proof of concept to production")],
+        "lessons": ["Validated question and query pairs drive accuracy more than the choice of model.",
+                    "Embed the business glossary with the schema so the model uses the company’s own terms.",
+                    "Carry access rules over from source systems before opening self-service to marketing teams."]},
+    "gst-dispute-legal-ai": {
+        "glance": [("Sector", "Tax and legal (logistics operations)"), ("Built", "Legal drafting, GST document checks, case insights and a field chatbot"),
+                   ("Users", "Legal team and logistics staff during inspections"), ("Result", "Filing in 1 week instead of 4–5; 70% less manual effort"),
+                   ("Savings", "Over $1M a year in external counsel")],
+        "lessons": ["Start with the documents that cause penalties when late, such as notice replies and release petitions.",
+                    "Validate e-way bills and invoices automatically before a dispute starts.",
+                    "Give field staff a simple assistant; consistent answers matter more than long ones."]},
+    "genai-email-support-assistant": {
+        "glance": [("Sector", "Software (CRM product)"), ("Built", "GenAI email assistant with human approval"),
+                   ("Technology", "Hybrid search over the knowledge base, persona-based prompts"), ("Result", "50% lower product support cost"), ("Year", "2024")],
+        "lessons": ["Keep a person approving every reply until accuracy is proven on real tickets.",
+                    "Ground replies in the knowledge base and add new articles as soon as they are published.",
+                    "Measure repeat queries; better first answers reduce volume as much as faster ones."]},
+    "multi-entity-finance-power-bi": {
+        "glance": [("Sector", "Cyber security company (finance team)"), ("Built", "Automated Tally extraction, data warehouse, consolidated dashboards"),
+                   ("Technology", "Tally, Microsoft SQL Server, Power BI"), ("Scope", "Cash flow, inventory, receivables, payables and P&L across companies")],
+        "lessons": ["Automate extraction from each company’s books before building any dashboard.",
+                    "Consolidate in a warehouse so that every report uses the same figures.",
+                    "Show comparisons across companies; that is where finance teams find problems early."]},
+    "power-bi-staffing-ca-firm": {
+        "glance": [("Sector", "Chartered accountancy"), ("Service", "Contract staffing: Power BI developers"),
+                   ("Work", "Dashboards and reports for the firm’s clients"), ("Outcome", "Faster analytics delivery; internal staff freed for client work")],
+        "lessons": ["Place specialists inside the client’s team and processes from the first week.",
+                    "Start with the firm’s most requested client reports to show value quickly.",
+                    "Hand over templates and standards so the firm can maintain the dashboards."]},
+}

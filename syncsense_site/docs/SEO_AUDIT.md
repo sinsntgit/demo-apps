@@ -14,6 +14,10 @@ The technical foundation is strong: static HTML, Lighthouse 100 on mobile, uniqu
 | Heading order jumped H1 → H3 on Insights, Products and Contract staffing | Low | Added the missing H2s |
 | llms.txt missed the product and service use-case pages, staffing roles and demo videos | Medium (AI search) | Added |
 | Insights articles had about one internal link each | Medium | "Further reading" links from AskData, Ontology Studio and consulting pages |
+| Case studies thin and unstructured | High | “At a glance” facts and “Lessons for similar projects” on all 9 (235–453 words now), plus Article markup. Timelines, team sizes and quotes still to come from you. |
+| Home H1 hidden | Medium | Small visible heading above “Our products”: “AI data products and data consulting for business teams”. |
+| Videos not described to search engines | Medium | VideoObject markup ready; switches on when upload dates are added to `VIDEO_META` in `build.py`. YouTube titles, descriptions and chapters in `docs/YOUTUBE.md`. |
+| Listing copy | Medium | Ready-to-paste text for Search Console steps, Google Business Profile, LinkedIn, G2, Capterra, Clutch and GoodFirms in `docs/LISTINGS.md`. |
 
 ## Findings
 
