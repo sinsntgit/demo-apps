@@ -1,0 +1,88 @@
+---
+{"path": "/insights/why-ai-pilots-stall/", "schema": ["Article"],
+ "title": "Why AI Pilots Stall, and How to Reach Production | SyncSense",
+ "description": "Most AI pilots stall on data, definitions and trust, not the model. Seven reasons they stall, and how a shared data model and release gates get them live.",
+ "keyword": "why AI pilots fail",
+ "h1": "Why AI pilots stall, and how a shared data model gets them to production",
+ "short": "Why AI pilots stall",
+ "date": "2026-11-22", "read": 7}
+---
+<p><strong>Most AI pilots stall on data and trust, not on the model.</strong> The proof of concept works on a clean sample, then meets real data with unclear definitions, a security review it was not designed for, and users who cannot tell when an answer is wrong. The pilots that reach production plan for these from the start: they agree what the data means, keep data inside the organisation, set release gates, and give users a way to check and correct answers.</p>
+<p>This article covers the seven reasons we see most often, and what to do about each.</p>
+
+<h2>1. Nobody wrote down what the data means</h2>
+<p>A pilot that answers “what was revenue last quarter?” has to know which revenue. Gross or net of returns? Booked or invoiced? Including inter-company sales? In most organisations, the answer depends on who you ask, and the rules live in a few people’s heads.</p>
+<p>When the pilot gives an answer that differs from the finance team’s number, trust drops, and it rarely recovers.</p>
+<p><strong>What to do:</strong> write the definitions down before building. A shared data model (an ontology or semantic model) defines the core business objects, such as customer, order, policy or subscriber, and how they relate. Our <a href="/products/ontology-builder/">Ontology Builder</a> does this at scale, but even a short glossary of 20 terms agreed by finance and operations changes the outcome of a pilot.</p>
+
+<h2>2. The pilot used a clean sample, production has the real mess</h2>
+<p>Pilot data is often an extract someone prepared by hand. Production data has missing values, duplicates, codes nobody remembers and hundreds of tables. A Text-to-SQL pilot on a ten-table demo schema says little about a 1,400-table ERP.</p>
+<p><strong>What to do:</strong> connect to one real source, read-only, in the first week. In the four-week pilots we run for <a href="/products/text-to-sql/">AskData</a>, week one is: install, connect one real source, choose the AI model and set access rules. Any surprise about data quality appears in week one, not month six.</p>
+
+<h2>3. Security review came last</h2>
+<p>Many pilots send data to an external AI service because it is the fastest way to a demo. Then the security team asks where the data goes, and the project stops. For a bank, an insurer or a tax firm holding client opinions, “our data goes to an AI provider” is often a deal-breaker.</p>
+<p><strong>What to do:</strong> design for the boundary from day one.</p>
+<ul>
+  <li>Send the model only what it needs. A Text-to-SQL model needs the question and table descriptions, not rows. In AskData, results never go to the model.</li>
+  <li>Use read-only access with database grants limited to the schemas needed.</li>
+  <li>Where content is confidential, run the model on your own hardware. In our tax research project, an open-source 7–14B model is being fine-tuned on the client’s own GPU, so client opinions never leave the firm.</li>
+</ul>
+
+<h2>4. There was no way to know when the AI was wrong</h2>
+<p>A pilot that shows answers without showing how they were reached asks users for blind trust. The first visible mistake ends adoption. Worse, the mistakes that are not visible get into decisions.</p>
+<p><strong>What to do:</strong> make every answer checkable and correctable.</p>
+<ul>
+  <li>Show what was counted, for which period and with which filters, in plain language.</li>
+  <li>Cite sources for document-based answers, down to document and page.</li>
+  <li>Let users confirm or report an answer, and route reports to a named data steward who fixes them for everyone.</li>
+  <li>Score answers automatically where possible. In our telecom pilot, every answer is scored for grounding and relevance.</li>
+</ul>
+
+<h2>5. Success was never defined</h2>
+<p>“Let’s see what AI can do” is not a success criterion. Without agreed measures, the pilot ends in a demo meeting, everyone says it was interesting, and nothing happens.</p>
+<p><strong>What to do:</strong> agree measurable criteria before the pilot starts, and measure them against your own baseline. For a Text-to-SQL pilot: answer accuracy on your top questions, number of active users, time to answer, and AI cost per question. For a knowledge-graph assistant: release gates. Our tax research assistant ships to production only after two gates are met: zero fabricated citations and at least 85% authority recall.</p>
+
+<h2>6. The model was asked to do too much</h2>
+<p>A common design is to let one large model do everything: read the data, decide, calculate and explain. It is hard to test, expensive to run and impossible to audit.</p>
+<p><strong>What to do:</strong> give the model a narrow job and let tested software do the rest.</p>
+<ul>
+  <li>In AskData, the model only writes SQL. Checking, filtering, running, charting and summarising happen in the application, with code that is covered by tests.</li>
+  <li>In our telecom root-cause pilot, agents trace evidence through the knowledge graph, a critic agent checks it, and a small domain model explains the findings. The model never decides the cause on its own.</li>
+  <li>For forecasts and segments, use tested statistical methods and let the model only choose the method and the columns.</li>
+</ul>
+
+<h2>7. Nobody owned it after the demo</h2>
+<p>Pilots are often run by an innovation team or an external vendor. When the pilot ends, nobody in the business owns the data definitions, the user feedback or the running costs.</p>
+<p><strong>What to do:</strong> assign four roles before you start:</p>
+<ul>
+  <li><strong>Sponsor:</strong> a business leader who chooses the questions that matter and the success criteria.</li>
+  <li><strong>Data steward:</strong> an analyst who knows the data, teaches definitions and reviews reported answers. This is the most important role for accuracy.</li>
+  <li><strong>Administrator:</strong> installs, connects sources read-only, sets access rules and sign-in.</li>
+  <li><strong>Users:</strong> business teams who ask real questions and confirm or report answers.</li>
+</ul>
+<p>A few hours a week from each is usually enough, with more from the steward in the first month.</p>
+
+<h2>What “production-ready” means</h2>
+<p>Moving from proof of concept to a production system adds work that pilots usually skip:</p>
+<ul>
+  <li>Hardening for security and scale: sign-in with two-step verification, role-based access, rate limits, audit logs.</li>
+  <li>MLOps and monitoring: tracking accuracy, failures, latency and cost per question over time.</li>
+  <li>Guardrails: read-only enforcement, refusal of unsafe queries, masking of sensitive fields.</li>
+  <li>Integration: single sign-on, scheduled reports by email, exports to the formats people use.</li>
+</ul>
+<p>Planning for these from the start is what separates a pilot that ships from one that stays a demo. One of the Text-to-SQL projects our team worked on went from proof of concept to production in 8 weeks because these were planned in. <a href="/case-studies/consumer-goods-campaign-text-to-sql/">Read the case study</a>.</p>
+
+<h2>A short checklist</h2>
+<ol>
+  <li>Agree definitions for the 20 terms your pilot depends on.</li>
+  <li>Connect one real source, read-only, in week one.</li>
+  <li>Decide what the AI model may and may not see.</li>
+  <li>Make every answer explainable and correctable.</li>
+  <li>Agree success criteria and release gates before starting.</li>
+  <li>Give the model a narrow job.</li>
+  <li>Name a sponsor, a steward, an administrator and users.</li>
+</ol>
+
+<h2>Summary</h2>
+<p>AI pilots stall when they skip the unglamorous parts: shared definitions, real data, security, feedback, success criteria and ownership. A shared data model fixes the first and makes the rest much easier, because everyone, including the AI, is working from the same meaning.</p>
+<p>Our <a href="/services/data-ai-consulting/">data and AI consulting</a> team takes projects from data readiness through architecture to production with one accountable team. To see where your pilot stands, request a <a href="/free-data-assessment/">free data assessment</a> or <a href="/contact/?interest=demo#form">book a demo</a>.</p>

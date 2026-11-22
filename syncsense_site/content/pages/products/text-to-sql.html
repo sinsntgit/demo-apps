@@ -1,0 +1,127 @@
+---
+{"path": "/products/text-to-sql/", "nav": "products", "schema": ["SoftwareApplication"],
+ "breadcrumbs": [["Products", "/products/"], ["AskData: Text-to-SQL", null]],
+ "title": "AskData: Text-to-SQL for Business Users | SyncSense",
+ "description": "AskData turns plain-English questions into read-only SQL on your own database and returns a table, chart and summary. Runs in your network. Book a demo.",
+ "keyword": "text to SQL tool",
+ "preload": "",
+ "product": {"name": "AskData", "features": ["Natural language to SQL", "Tables, nine chart types and plain-language summaries", "Read-only SQL guard", "Row-level security and column masking", "Training with business definitions and verified examples", "Forecasts, segments, drivers and anomalies", "Scheduled reports to PDF and PowerPoint", "Choice of AI model including self-hosted", "Multi-company tenancy", "Audit log and usage dashboard"]},
+ "faq": [
+  ["What is Text-to-SQL?", "Text-to-SQL converts a question in everyday language into a SQL query that a database can run. AskData adds the parts a business needs around it: checks that the query is read-only, per-person access rules, a chart and summary of the result, and a way to correct answers so they improve."],
+  ["Can the AI make up numbers?", "No. Every number comes from your database. The AI model only writes the query; AskData runs it and calculates the summary and chart itself. The model can misread a question, which is why every answer can be checked, reported and corrected."],
+  ["How accurate is it?", "It depends on your data and on how well AskData is taught your definitions, so we measure accuracy on your own questions in the pilot. The usage dashboard shows success rate, accuracy and auto-corrections from day one. We do not quote an accuracy figure before measuring it on your data."],
+  ["Which databases does it support?", "PostgreSQL and Excel/CSV folders are verified end to end. SQL Server, Oracle, MySQL, SingleStore and Snowflake use their vendors’ standard connectors on the same code path and are confirmed on your systems during the pilot. SAP works through SAP tables replicated to your reporting database or warehouse; there is no live SAP connector."],
+  ["Is AskData available as SaaS?", "No. AskData runs in your environment, on one server or in containers, and can run fully offline. We install and support it with you."],
+  ["What does it cost to run?", "AI usage is paid per question to the model provider you choose, or runs on your own hardware with a self-hosted model. The dashboard shows tokens and spend per question, user and model. [PLACEHOLDER: licence and pricing approach]"],
+  ["Does it replace our analysts?", "No. It removes routine requests so analysts can work on harder problems. Analysts usually become its data stewards: they teach definitions and review reported answers."]
+ ]}
+---
+<section class="page-head"><div class="wrap hero-grid">
+  <div>
+    <p class="eyebrow">Product · Text-to-SQL</p>
+    <h1>AskData: Text-to-SQL that business users can trust</h1>
+    <p class="answer">AskData lets business users ask questions of your own databases in plain English and get a table, a chart and a short summary in seconds. It runs inside your network, accepts only read-only queries and applies each person’s access rules to every answer. It is for finance, sales, operations and leadership teams that wait days for data today.</p>
+    <div class="actions">{{booking_link}}<a class="btn ghost" href="/free-data-assessment/">Get a free data assessment</a></div>
+  </div>
+  <div>{{demo_widget}}</div>
+</div></section>
+
+<section class="section"><div class="wrap two-col">
+  <div>
+    <h2>Who it is for</h2>
+    <ul class="ticks">
+      <li><strong>CFO and finance:</strong> faster closes and variance answers, monthly packs that send themselves, one definition of revenue.</li>
+      <li><strong>COO and operations:</strong> plant, inventory and delivery questions answered on the floor.</li>
+      <li><strong>Sales and marketing:</strong> customer, product and territory performance, with forecasts and segments.</li>
+      <li><strong>CIO and data office:</strong> self-service without losing control: read-only, governed, audited, your choice of AI.</li>
+      <li><strong>Analysts:</strong> freed from routine requests to work on problems that need them.</li>
+    </ul>
+  </div>
+  <div>
+    <h2>Problems it solves</h2>
+    <ul class="ticks">
+      <li>Every new business question becomes a ticket in the analytics backlog.</li>
+      <li>Dashboards answer last quarter’s questions; the follow-up “why?” needs another request.</li>
+      <li>Different teams have different spreadsheets and different definitions of “revenue”.</li>
+      <li>Security teams block AI tools that would send company data outside.</li>
+    </ul>
+  </div>
+</div></section>
+
+<section class="section alt"><div class="wrap">
+  <h2>How does AskData work?</h2>
+  <p class="lead-in">The key design idea: the AI model only writes SQL. Checking, running, charting and summarising happen in AskData, next to your data.</p>
+  <ol class="howto">
+    <li><h3>Ask</h3><p>Pick a data area and type a question in your own words. One click on <em>Rephrase</em> tidies a vague question first.</p></li>
+    <li><h3>Generate and check</h3><p>The AI model writes one SELECT. AskData parses it, refuses anything that is not a single read-only query, and adds your row filters and masking.</p></li>
+    <li><h3>Run and explain</h3><p>The query runs on your database. AskData builds the chart and a plain-language summary of what was counted, for which period and with which filters.</p></li>
+    <li><h3>Learn</h3><p>Users confirm or report answers. A data steward fixes reported ones and records the rule, so the next person gets it right.</p></li>
+  </ol>
+  <p class="small">[PLACEHOLDER: product screenshots for each step]</p>
+</div></section>
+
+<section class="section"><div class="wrap">
+  <h2>Key features</h2>
+  <div class="grid-3">
+    <div class="card-plain"><h3>Answers you can check</h3><p>Table, nine chart types and a written summary. Analysts can see the exact SQL; business users can be set to results only.</p></div>
+    <div class="card-plain"><h3>Learns your vocabulary</h3><p>Teach definitions such as “net sales” or “overdue receivables” once, with documentation and verified example questions. Retrieval runs locally.</p></div>
+    <div class="card-plain"><h3>Follow-ups and history</h3><p>Ask “only Germany” or “by month” in the same conversation. Chats are saved, searchable and shareable.</p></div>
+    <div class="card-plain"><h3>Forecasts and patterns</h3><p>Forecasts with a range, segments, key drivers and unusual values, using tested methods on AskData’s own server. The method is shown.</p></div>
+    <div class="card-plain"><h3>Reports that send themselves</h3><p>Drag answers into a live report; export to PDF or PowerPoint in your corporate template; schedule it daily, weekly or monthly.</p></div>
+    <div class="card-plain"><h3>Group companies</h3><p>Separate companies or business units with their own users, data, reports and logo, and one shared set of AI models.</p></div>
+  </div>
+</div></section>
+
+<section class="section alt"><div class="wrap">
+  <h2>Industry examples</h2>
+  <p class="lead-in">Same product, your industry’s questions. Each page shows example questions, scenarios and the controls that matter in that industry.</p>
+  <ul class="inline-links">
+    <li><a href="/use-cases/insurance/">Text-to-SQL for insurance</a></li>
+    <li><a href="/use-cases/banking-financial-services/">Text-to-SQL for banking</a></li>
+    <li><a href="/use-cases/telecom/">Telecom billing analytics</a></li>
+    <li><a href="/use-cases/tax-professional-services/">Tax and professional services</a></li>
+    <li><a href="/use-cases/retail/">Retail and e-commerce</a></li>
+    <li><a href="/use-cases/healthcare/">Healthcare and pharma</a></li>
+    <li><a href="/use-cases/manufacturing/">Manufacturing</a></li>
+  </ul>
+  <p>Related case studies: <a href="/case-studies/actuarial-text-to-sql-reports/">actuarial reports from 4+ hours to under 30 minutes</a> and <a href="/case-studies/consumer-goods-campaign-text-to-sql/">campaign time-to-insight 90% faster</a>.</p>
+</div></section>
+
+<section class="section"><div class="wrap two-col">
+  <div>
+    <h2>Supported systems</h2>
+    <table class="cmp">
+      <thead><tr><th scope="col">Source</th><th scope="col">Status</th></tr></thead>
+      <tbody>
+        <tr><td>PostgreSQL</td><td>Verified against a live server with a read-only role</td></tr>
+        <tr><td>Excel / CSV folders</td><td>Verified end to end, loaded into a sandboxed in-memory database</td></tr>
+        <tr><td>SQL Server, Oracle, MySQL, SingleStore, Snowflake</td><td>Standard vendor connectors on the same code path; confirmed on your systems in the pilot</td></tr>
+        <tr><td>SAP (SD, FI and others)</td><td>Through SAP tables replicated to your reporting database; sample Sales &amp; Finance model included. No live SAP connector.</td></tr>
+      </tbody>
+    </table>
+    <p class="small">AI models: Anthropic Claude, OpenAI, or any OpenAI-compatible self-hosted endpoint such as Ollama or vLLM. Email: any SMTP provider.</p>
+  </div>
+  <div>
+    <h2>Security and deployment</h2>
+    <ul class="ticks">
+      <li><strong>Runs in your environment.</strong> One server process or containers on PostgreSQL; can run offline. Not offered as SaaS.</li>
+      <li><strong>The AI never sees your numbers.</strong> It receives the question and table descriptions only. Results, summaries and report contents never go to the model.</li>
+      <li><strong>Read-only in depth.</strong> SQL guard, read-only sessions, statement timeouts and row caps. We also recommend a database account with SELECT-only grants.</li>
+      <li><strong>Per-person rules.</strong> Row-level filters and masked columns apply to chats, shared items, reports and scheduled emails. Shared content re-runs with the viewer’s own access.</li>
+      <li><strong>Sign-in and audit.</strong> Two-step sign-in, roles (analyst, steward, admin) and an audit log of every sign-in, question and change.</li>
+    </ul>
+  </div>
+</div></section>
+
+<section class="section alt"><div class="wrap">
+  <h2>A four-week pilot on your own data</h2>
+  <ol class="howto">
+    <li><h3>Week 1: Connect</h3><p>Install, connect one source read-only, choose the AI model, set access rules.</p></li>
+    <li><h3>Week 2: Teach</h3><p>Add your definitions and your top questions with their correct answers.</p></li>
+    <li><h3>Week 3: Use</h3><p>Business users ask real questions; stewards review anything reported.</p></li>
+    <li><h3>Week 4: Decide</h3><p>Review accuracy, adoption and cost against criteria agreed before the start.</p></li>
+  </ol>
+</div></section>
+
+{{faq}}
+{{cta}}

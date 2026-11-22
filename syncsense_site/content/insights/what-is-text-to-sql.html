@@ -1,0 +1,95 @@
+---
+{"path": "/insights/what-is-text-to-sql/", "schema": ["Article"],
+ "title": "What Is Text-to-SQL, and When Can You Trust It? | SyncSense",
+ "description": "What Text-to-SQL is, why answers go wrong, and the six safeguards that let business users trust plain-English answers from company databases.",
+ "keyword": "what is text to SQL",
+ "h1": "What is Text-to-SQL, and when can business users trust the answers?",
+ "short": "What is Text-to-SQL?",
+ "date": "2026-11-22", "read": 7}
+---
+<p><strong>Text-to-SQL turns a question written in everyday language into a SQL query that a database can run.</strong> A finance manager types “overdue receivables by customer and age”, and a language model writes the query that a data analyst would otherwise write by hand. The idea is simple. Whether the answer can be trusted depends almost entirely on what is built around the model.</p>
+
+<p>This article explains how Text-to-SQL works, why answers go wrong, and the safeguards that make it safe to put in front of business users who cannot read SQL.</p>
+
+<h2>Why business teams want it</h2>
+<p>In most organisations, the data needed to answer a business question already exists. The bottleneck is getting a reliable answer out of it quickly, for the person who needs it. A typical pattern looks like this:</p>
+<ul>
+  <li>A manager needs a number today. The request joins the analytics backlog, and the answer arrives after the decision was made.</li>
+  <li>Dashboards answer the questions someone thought to ask months ago. The follow-up, “why?” or “only the west region”, needs another request.</li>
+  <li>Different teams keep different spreadsheets with different definitions of “revenue”, so meetings start by arguing about whose figure is right.</li>
+</ul>
+<p>Text-to-SQL promises to remove the queue: anyone can ask, and the answer comes straight from the system of record in seconds.</p>
+
+<h2>How does Text-to-SQL work?</h2>
+<p>A Text-to-SQL system has four basic steps:</p>
+<ol>
+  <li><strong>Build the prompt.</strong> The system gives the language model the question, a description of the relevant tables (names, columns, types, keys) and, ideally, business definitions and examples of correct queries.</li>
+  <li><strong>Generate.</strong> The model returns a SQL query, usually with a short explanation.</li>
+  <li><strong>Execute.</strong> The query runs on the database.</li>
+  <li><strong>Present.</strong> The result is shown as a table, a chart or a sentence.</li>
+</ol>
+<p>A demo that does only these four steps can look impressive on a clean sample database. Production is different: real schemas have hundreds of tables, cryptic column names and business rules that live in people’s heads.</p>
+
+<h2>Why do Text-to-SQL answers go wrong?</h2>
+<p>When an answer is wrong, it is rarely because the model “made up a number”. The number came from the database. The query asked the wrong question. Common causes:</p>
+<ul>
+  <li><strong>Ambiguous business terms.</strong> “Net sales” might exclude returns in finance and include them in sales operations. The model cannot know which unless it is told.</li>
+  <li><strong>Wrong join or filter.</strong> Joining orders to customers on the wrong key, or forgetting that cancelled orders are flagged rather than deleted.</li>
+  <li><strong>Missing context.</strong> The model does not know that the fiscal year starts in April, or that “region” means sales region, not shipping region.</li>
+  <li><strong>Vague questions.</strong> “How are we doing in the south?” has no single correct query.</li>
+</ul>
+<p>So the question to ask of any Text-to-SQL tool is not only “how accurate is the model?” but “how does the system catch, explain and correct a misread question?”</p>
+
+<h2>Six safeguards that make answers trustworthy</h2>
+<p>These are the controls we built into <a href="/products/text-to-sql/">AskData</a>. Whichever tool you evaluate, ask whether it has each of them.</p>
+
+<h3>1. The model writes SQL, and nothing else</h3>
+<p>In a well-designed system, the language model’s only job is to write a query. Running it, charting the result and writing the summary happen in the application, next to your data. That keeps two promises at once: every number comes from your database, and result data never has to be sent to the AI model.</p>
+
+<h3>2. Every query is checked before it runs</h3>
+<p>The generated SQL should be parsed and refused unless it is a single read-only SELECT. That rules out updates, deletes, schema changes, multiple statements and dangerous functions, whether the SQL was written by the model, edited by a user or saved in a report. Read-only database sessions, statement timeouts and row caps add further layers. And the database account itself should have SELECT-only grants on just the schemas it needs. The application’s guard is defence in depth, not a substitute for database permissions.</p>
+
+<h3>3. Access rules apply to every answer</h3>
+<p>A regional manager should see their region whether they ask a question, open a shared chat or receive a scheduled report. In AskData, row-level rules such as “region = North” or “rep_email = the signed-in user” are applied by rewriting every reference to a filtered table, so aliases, sub-queries and CTEs cannot get round them. Shared content is re-run with the viewer’s own access, so sharing never widens what someone can see.</p>
+
+<h3>4. The answer explains itself</h3>
+<p>Business users should see what was counted, for which period and with which filters, in plain language. Analysts and data stewards should be able to see the exact SQL. If the system cannot tell what a question means, it should ask a clarifying question instead of guessing.</p>
+
+<h3>5. Users can confirm or report an answer</h3>
+<p>A one-click “correct” turns an answer into a verified example. “Incorrect”, with a reason, sends it to a data steward who fixes the query or records a business rule. The next person who asks gets the right answer. Over time, the system’s knowledge of your business sits in the tool, not in one analyst’s head.</p>
+
+<h3>6. It is taught your vocabulary</h3>
+<p>The biggest accuracy gains come from teaching: documentation of tables and columns, definitions of business terms, and verified question-and-SQL pairs. AskData’s sample SAP Sales &amp; Finance model, for example, ships with a field dictionary for SAP table names, 14 business rules and 19 verified example questions. The better the teaching, the less the model has to guess.</p>
+
+<h2>Where does a shared data model come in?</h2>
+<p>Text-to-SQL works best when the meaning of business terms is written down once and shared. That is what an ontology or semantic model does: it defines what a “customer”, “policy” or “order” is and how they relate across systems. When the Text-to-SQL layer sits on that shared model, “revenue” means the same thing in every answer. We explain the difference between an ontology, a data warehouse and a semantic layer in <a href="/insights/ontology-vs-data-warehouse-vs-semantic-layer/">a separate article</a>.</p>
+
+<h2>What about data privacy?</h2>
+<p>The first concern of a CFO or data protection officer is usually: does our data go to an AI company? It does not have to. The model needs the question and a description of the tables, not the rows. In AskData, query results, summaries, chart data and report contents never go to the model, and literals in database error messages are removed before the model is asked to repair a query. If even table names must stay inside the network, use a self-hosted model.</p>
+<p>In India, the Digital Personal Data Protection Act, 2023 makes this design choice more important: keeping personal data inside your environment simplifies what you need to explain and document.</p>
+
+<h2>How accurate is Text-to-SQL?</h2>
+<p>Be wary of any vendor that quotes an accuracy figure before seeing your data. Accuracy depends on your schema, your definitions and how well the system is taught. The honest approach is to measure it on your own questions during a pilot, with success criteria agreed before it starts.</p>
+<p>For a sense of what is possible after teaching, here are results from two Text-to-SQL projects our team has worked on, described in our case studies:</p>
+<ul>
+  <li>At a large consumer goods group, agentic Text-to-SQL reached 95% query accuracy, learned from more than 2,400 validated query pairs, and cut campaign time-to-insight from 3–5 days to under 30 minutes. <a href="/case-studies/consumer-goods-campaign-text-to-sql/">Read the case study</a>.</li>
+  <li>At an actuarial consulting firm, Text-to-SQL agents on a 1.4TB database cut report preparation from 4+ hours to under 30 minutes and now generate 5,000 client reports a month. <a href="/case-studies/actuarial-text-to-sql-reports/">Read the case study</a>.</li>
+</ul>
+<p>Both depended on a large set of validated examples. That is the work a pilot should plan for.</p>
+
+<h2>Does Text-to-SQL replace dashboards or analysts?</h2>
+<p>No. Dashboards remain the right tool for known, recurring KPIs that everyone watches. Text-to-SQL is for the new and follow-up questions dashboards do not answer. Analysts are freed from routine requests and usually become the system’s data stewards: they teach definitions, review reported answers and watch accuracy.</p>
+
+<h2>A practical checklist before you start</h2>
+<ol>
+  <li>Pick one business sponsor and one data area with real, frequent questions.</li>
+  <li>Collect the top 20–50 questions with their correct answers, before the pilot.</li>
+  <li>Give the tool a read-only database account limited to the schemas it needs.</li>
+  <li>Decide access rules (who sees which rows and columns) up front.</li>
+  <li>Name a data steward and give them a few hours a week, especially in the first month.</li>
+  <li>Agree success criteria: answer accuracy, active users, time to answer, AI cost per question.</li>
+</ol>
+
+<h2>Summary</h2>
+<p>Text-to-SQL can give business users fast answers straight from the system of record. They can trust those answers when the model only writes SQL, every query is checked and filtered, the answer explains itself, users can correct it, and the system is taught the business’s vocabulary. Measure accuracy on your own questions, not on a vendor’s benchmark.</p>
+<p>If you would like to see this on your own questions, <a href="/contact/?interest=demo#form">book an AskData demo</a> or request a <a href="/free-data-assessment/">free data assessment</a>, which ends with a working prototype on your data.</p>

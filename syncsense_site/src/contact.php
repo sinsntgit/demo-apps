@@ -1,88 +1,101 @@
 <?php
-// Contact form handler for syncsense.in.
-// Emails form submissions to sales@syncsense.in, then sends the visitor
-// back to the page they came from with ?status=sent or ?status=error.
+// Lead form handler for www.syncsense.in.
+// Emails each enquiry to sales@syncsense.in, then sends the visitor to /thank-you/
+// (or back to the form with ?status=error).
 
 const TO_EMAIL   = 'sales@syncsense.in';
 const FROM_EMAIL = 'no-reply@syncsense.in';
 const FROM_NAME  = 'SyncSense Website';
 
-function back(string $status): void {
-    $ref  = $_SERVER['HTTP_REFERER'] ?? '';
-    $host = preg_replace('/:\d+$/', '', $_SERVER['HTTP_HOST'] ?? '');
-    $path = '/get-in-touch';
+const INDUSTRIES = [
+    'Insurance', 'Banking & Financial Services', 'Telecom', 'Tax & Professional Services',
+    'Retail & E-commerce', 'Healthcare & Pharma', 'Manufacturing', 'Other',
+];
+const INTERESTS = [
+    'demo' => 'AskData demo (Text-to-SQL)', 'ontology' => 'Ontology Builder', 'crm' => 'Ovantaa CRM',
+    'assessment' => 'Free data assessment', 'consulting' => 'Data & AI consulting', 'staffing' => 'Contract staffing',
+];
+const SOURCES = ['demo' => 'Demo request', 'assessment' => 'Free data assessment', 'contact' => 'Contact form'];
+
+function back_with_error(): void {
+    $ref   = $_SERVER['HTTP_REFERER'] ?? '';
+    $host  = preg_replace('/:\d+$/', '', $_SERVER['HTTP_HOST'] ?? '');
+    $path  = '/contact/';
     $parts = $ref !== '' ? parse_url($ref) : false;
-    // Only return to a page on this same site.
     if ($parts && isset($parts['host'], $parts['path']) && strcasecmp($parts['host'], $host) === 0
-        && preg_match('#^/[A-Za-z0-9/_-]*$#', $parts['path'])) {
+        && preg_match('#^/[a-z0-9/_-]*$#', $parts['path'])) {
         $path = $parts['path'];
     }
-    header('Location: ' . $path . '?status=' . $status . '#contact', true, 303);
+    header('Location: ' . $path . '?status=error#form', true, 303);
     exit;
 }
 
 function field(string $name, int $max): string {
     $v = isset($_POST[$name]) && is_string($_POST[$name]) ? trim($_POST[$name]) : '';
-    $v = str_replace(["\0"], '', $v);
-    return mb_substr($v, 0, $max);
+    return mb_substr(str_replace("\0", '', $v), 0, $max);
 }
 
-function oneLine(string $v): string {
+function one_line(string $v): string {
     return trim(preg_replace('/[\r\n\t]+/', ' ', $v));
 }
 
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
-    header('Location: /get-in-touch', true, 303);
+    header('Location: /contact/', true, 303);
     exit;
 }
 
-// Bots fill the hidden "website" field; pretend success and send nothing.
+// Spam trap: bots fill the hidden "website" field. Pretend success, send nothing.
 if (field('website', 200) !== '') {
-    back('sent');
+    header('Location: /thank-you/', true, 303);
+    exit;
 }
 
-$name    = oneLine(field('name', 120));
-$email   = oneLine(field('email', 200));
-$company = oneLine(field('company', 160));
-$phone   = oneLine(field('phone', 40));
-$message = field('message', 5000);
-$source  = oneLine(field('source', 80));
+$name     = one_line(field('name', 120));
+$email    = one_line(field('email', 200));
+$company  = one_line(field('company', 160));
+$role     = one_line(field('role', 120));
+$industry = one_line(field('industry', 60));
+$message  = field('message', 5000);
+$source   = SOURCES[field('source', 20)] ?? 'Website form';
 
-if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-    back('error');
+$interests = [];
+if (isset($_POST['interest']) && is_array($_POST['interest'])) {
+    foreach ($_POST['interest'] as $i) {
+        if (is_string($i) && isset(INTERESTS[$i])) { $interests[] = INTERESTS[$i]; }
+    }
 }
-if ($phone !== '' && !preg_match('/^[0-9+()\-\s.]{6,40}$/', $phone)) {
-    back('error');
+
+if ($name === '' || $company === '' || !filter_var($email, FILTER_VALIDATE_EMAIL) || !in_array($industry, INDUSTRIES, true)) {
+    back_with_error();
 }
 
-$isSignup = $message === '' && $name === '';
-$subject  = $isSignup
-    ? 'Website: insights request from ' . $email
-    : 'Website inquiry from ' . ($name !== '' ? $name : $email);
-
+$subject = $source . ': ' . $name . ' (' . $company . ')';
 $lines = [
-    'Form:    ' . ($source !== '' ? $source : 'Website'),
-    'Name:    ' . ($name !== '' ? $name : '-'),
-    'Email:   ' . $email,
+    'Form:        ' . $source,
+    'Name:        ' . $name,
+    'Work email:  ' . $email,
+    'Company:     ' . $company,
+    'Role:        ' . ($role !== '' ? $role : '-'),
+    'Industry:    ' . $industry,
+    'Interested:  ' . ($interests ? implode(', ', $interests) : '-'),
+    '',
+    $message !== '' ? $message : '(No message.)',
+    '',
+    '--',
+    'Sent ' . gmdate('Y-m-d H:i') . ' UTC from ' . ($_SERVER['HTTP_REFERER'] ?? 'unknown page'),
 ];
-if ($company !== '') { $lines[] = 'Company: ' . $company; }
-if ($phone !== '')   { $lines[] = 'Phone:   ' . $phone; }
-$lines[] = '';
-$lines[] = $message !== '' ? $message : '(No message: visitor asked to stay updated on digital transformation solutions.)';
-$lines[] = '';
-$lines[] = '--';
-$lines[] = 'Sent ' . gmdate('Y-m-d H:i') . ' UTC from ' . ($_SERVER['REMOTE_ADDR'] ?? 'unknown IP');
-$body = implode("\r\n", $lines);
 
-$encodedSubject = '=?UTF-8?B?' . base64_encode($subject) . '?=';
 $headers = [
     'From: ' . FROM_NAME . ' <' . FROM_EMAIL . '>',
     'Reply-To: ' . $email,
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset=UTF-8',
     'Content-Transfer-Encoding: 8bit',
-    'X-Mailer: syncsense-site',
 ];
 
-$ok = mail(TO_EMAIL, $encodedSubject, $body, implode("\r\n", $headers), '-f' . FROM_EMAIL);
-back($ok ? 'sent' : 'error');
+$ok = mail(TO_EMAIL, '=?UTF-8?B?' . base64_encode($subject) . '?=', implode("\r\n", $lines), implode("\r\n", $headers), '-f' . FROM_EMAIL);
+if (!$ok) {
+    back_with_error();
+}
+header('Location: /thank-you/', true, 303);
+exit;

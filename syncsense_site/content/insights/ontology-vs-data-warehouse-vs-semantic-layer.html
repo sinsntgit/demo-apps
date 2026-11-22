@@ -1,0 +1,93 @@
+---
+{"path": "/insights/ontology-vs-data-warehouse-vs-semantic-layer/", "schema": ["Article"],
+ "title": "Ontology vs Data Warehouse vs Semantic Layer | SyncSense",
+ "description": "What a data warehouse, a semantic layer and an ontology each do, how they differ, and when you need each one for reporting and AI. With practical examples.",
+ "keyword": "ontology vs semantic layer",
+ "h1": "Ontology vs data warehouse vs semantic layer: what each does",
+ "short": "Ontology vs warehouse vs semantic layer",
+ "date": "2026-11-22", "read": 7}
+---
+<p><strong>A data warehouse stores and organises data for reporting. A semantic layer defines business metrics on top of it so every BI tool calculates them the same way. An ontology describes what business things are and how they relate, across databases and documents, so people and AI can reason over them.</strong> They are complementary, and most organisations that want trustworthy AI answers end up needing all three.</p>
+<p>The terms are often used loosely, which leads to projects that build the wrong thing. This article explains each one in plain terms, with examples from insurance, telecom and tax.</p>
+
+<h2>What is a data warehouse?</h2>
+<p>A data warehouse is a database designed for analysis rather than for running daily transactions. Data is copied from operational systems (ERP, core banking, policy administration, billing), cleaned, and organised into tables that are fast to query for reporting. A data lake does a similar job for raw and less structured data, often to support data science.</p>
+<p>What a warehouse gives you:</p>
+<ul>
+  <li>One place to query data that originally lived in many systems.</li>
+  <li>History, so you can compare this quarter with last year.</li>
+  <li>Performance for large reports and dashboards.</li>
+</ul>
+<p>What it does not give you on its own: an agreed meaning for business terms. Two analysts can query the same warehouse and calculate “active customer” differently.</p>
+
+<h2>What is a semantic layer?</h2>
+<p>A semantic layer sits between the warehouse and the tools people use. It defines metrics and dimensions (net sales, gross margin, region, product family) once, including the joins and filters behind each. BI tools and, increasingly, AI tools ask the semantic layer for “net sales by region” instead of writing their own SQL.</p>
+<p>What a semantic layer gives you:</p>
+<ul>
+  <li>Consistent metric definitions across dashboards, spreadsheets and reports.</li>
+  <li>Less duplicated logic in individual reports.</li>
+  <li>A natural target for Text-to-SQL: the model chooses metrics and dimensions instead of writing joins from scratch.</li>
+</ul>
+<p>Its limits: a semantic layer is usually built around numeric metrics over structured tables. It does not describe documents, and it says little about how business objects relate beyond the joins needed for a metric.</p>
+
+<h2>What is an ontology?</h2>
+<p>An ontology is a written-down model of a business domain: the kinds of things that exist (classes), how they relate (relations) and what we record about them (properties). When it is filled with your actual records and documents, it becomes a knowledge graph.</p>
+<p>Two examples from our own work:</p>
+<ul>
+  <li><strong>Tax research.</strong> Our tax ontology has 165 classes, 108 relations and 74 properties. It defines what a section, holding, circular and treaty article is, and relations such as overruled, followed, amended and superseded, including the mapping between the 1961 and 2025 Income-tax Acts. Forum, binding reach and case stance are stored as metadata. <a href="/case-studies/tax-research-knowledge-graph-slm/">Read the case study</a>.</li>
+  <li><strong>Telecom.</strong> Our telecom ontology spans network, service, billing, payments and customer. It can link a disputed charge to the outage behind it, which no single system can do. <a href="/case-studies/telecom-billing-dispute-root-cause/">Read the case study</a>.</li>
+</ul>
+<p>What an ontology gives you:</p>
+<ul>
+  <li>Shared meaning across systems and documents, not just tables.</li>
+  <li>Relationships as first-class facts, with direction and metadata.</li>
+  <li>Lineage: each fact keeps a link to the system or document it came from.</li>
+  <li>Context for AI: the model can follow relationships and cite evidence.</li>
+</ul>
+
+<h2>Side by side</h2>
+<div class="table-scroll"><table>
+  <thead><tr><th scope="col"></th><th scope="col">Data warehouse</th><th scope="col">Semantic layer</th><th scope="col">Ontology / knowledge graph</th></tr></thead>
+  <tbody>
+    <tr><th scope="row">Main job</th><td>Store and organise data for analysis</td><td>Define metrics and dimensions once</td><td>Describe meaning and relationships across sources</td></tr>
+    <tr><th scope="row">Typical content</th><td>Fact and dimension tables</td><td>Metric definitions, joins, filters</td><td>Classes, relations, properties, records, documents</td></tr>
+    <tr><th scope="row">Documents</th><td>Rarely</td><td>No</td><td>Yes, linked to entities</td></tr>
+    <tr><th scope="row">Main users</th><td>Data engineers, analysts</td><td>BI developers, analysts</td><td>Data office, domain experts, AI systems</td></tr>
+    <tr><th scope="row">Answers well</th><td>“What happened?” at scale</td><td>“What is net sales by region?” consistently</td><td>“Why?”, “what is connected to this?”, “which source says so?”</td></tr>
+    <tr><th scope="row">Role in AI</th><td>Source of numbers</td><td>Safe metric vocabulary for Text-to-SQL</td><td>Context, citations and reasoning (GraphRAG)</td></tr>
+  </tbody>
+</table></div>
+
+<h2>How do they work together?</h2>
+<p>Consider an insurer that wants actuaries and finance to ask questions in plain English, and auditors to trace IFRS 17 / Ind AS 117 figures back to source.</p>
+<ol>
+  <li>The <strong>data warehouse</strong> holds policy, claims, premium and reserve data from the operational systems.</li>
+  <li>The <strong>semantic layer</strong> defines earned premium, incurred claims and the claims ratio, so every dashboard uses the same calculation.</li>
+  <li>The <strong>ontology</strong> describes policy, coverage, claim, reinsurance treaty and group of contracts, how they relate, and which system each comes from. It also links the policy wording and treaty documents.</li>
+  <li>A <strong>Text-to-SQL</strong> tool such as <a href="/products/text-to-sql/">AskData</a> answers “claims ratio by product and region for the last four quarters” using the shared definitions. An AI assistant answers “which treaty covers this claim?” by following the graph and citing the treaty document.</li>
+</ol>
+
+<h2>Do you need an ontology if you have a semantic layer?</h2>
+<p>Not always. If your questions are mostly about numeric KPIs over structured data, a good warehouse and semantic layer may be enough. An ontology earns its place when:</p>
+<ul>
+  <li>Answers need information from documents as well as databases (contracts, rulings, policies, manuals).</li>
+  <li>The important question is about relationships: what caused this, what is affected, what supersedes what.</li>
+  <li>You need lineage and citations for audit or regulation.</li>
+  <li>The same business object (a customer, a subscriber) lives in several systems with different IDs.</li>
+  <li>You are building AI assistants that must not invent sources.</li>
+</ul>
+
+<h2>What is GraphRAG?</h2>
+<p>Retrieval-augmented generation (RAG) gives a language model relevant text before it answers. Plain RAG finds paragraphs that look similar to the question. GraphRAG also uses the knowledge graph: it follows relationships to find connected evidence. In tax research, plain search might return a ruling that has since been overruled; the graph knows it was overruled and by which case. In our tax project, the knowledge graph and vector embeddings both live in Neo4j and are queried by graph, citation and meaning together, with six retrieval modes.</p>
+
+<h2>Common mistakes</h2>
+<ul>
+  <li><strong>Starting with the tool.</strong> Buying a graph database before agreeing what the core business objects are.</li>
+  <li><strong>Modelling everything.</strong> An ontology should start with the domain that answers real questions, then grow.</li>
+  <li><strong>Leaving domain experts out.</strong> The people who know what “binding” or “earned” means must shape the model.</li>
+  <li><strong>Skipping metadata.</strong> Source, date, status and authority are what let AI answers be checked.</li>
+</ul>
+
+<h2>Summary</h2>
+<p>Use a data warehouse to bring data together, a semantic layer to make metrics consistent, and an ontology to capture meaning and relationships across systems and documents. For AI that business users and auditors can trust, the ontology is often the missing piece.</p>
+<p>Our <a href="/products/ontology-builder/">Ontology Builder</a> builds that shared model from your systems and documents. If you want to see how it would apply to your domain, <a href="/contact/?interest=ontology#form">talk to us</a> or request a <a href="/free-data-assessment/">free data assessment</a>.</p>
