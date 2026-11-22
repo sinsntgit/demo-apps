@@ -33,15 +33,16 @@
     lb = document.createElement("div");
     lb.className = "lb"; lb.hidden = true;
     lb.setAttribute("role", "dialog"); lb.setAttribute("aria-modal", "true"); lb.setAttribute("aria-label", "Enlarged image");
-    lb.innerHTML = '<div class="lb-bar"><span class="lb-cap"></span><button type="button" class="lb-restore">⤡ Restore</button></div><div class="lb-stage"><img alt=""></div>';
+    lb.innerHTML = '<div class="lb-bar"><span class="lb-cap"></span><button type="button" class="lb-restore">⤡ Restore</button></div><div class="lb-stage"><img alt=""><div class="lb-video" hidden></div></div>';
     document.body.appendChild(lb);
     lbImg = lb.querySelector("img"); lbCap = lb.querySelector(".lb-cap");
     lb.querySelector(".lb-restore").addEventListener("click", closeViewer);
-    lb.querySelector(".lb-stage").addEventListener("click", function (e) { if (e.target !== lbImg) closeViewer(); });
+    lb.querySelector(".lb-stage").addEventListener("click", function (e) { if (e.target === e.currentTarget) closeViewer(); });
   }
   function openViewer(src, alt, trigger) {
     if (!lb) buildViewer();
     lastTrigger = trigger || null;
+    lbImg.hidden = false; lb.querySelector(".lb-video").hidden = true;
     lbImg.src = src; lbImg.alt = alt || ""; lbCap.textContent = alt || "";
     lb.hidden = false; document.body.classList.add("lb-open");
     lb.querySelector(".lb-restore").focus();
@@ -49,6 +50,7 @@
   function closeViewer() {
     if (!lb || lb.hidden) return;
     lb.hidden = true; document.body.classList.remove("lb-open"); lbImg.removeAttribute("src");
+    var v = lb.querySelector(".lb-video"); v.textContent = ""; v.hidden = true;
     if (lastTrigger) lastTrigger.focus();
   }
   document.addEventListener("keydown", function (e) {
@@ -57,6 +59,25 @@
       if (e.key === "Tab") { e.preventDefault(); lb.querySelector(".lb-restore").focus(); }
     }
   });
+  // Demo videos: YouTube (privacy-enhanced) loads only when the button is pressed.
+  function openVideo(id, title, trigger) {
+    if (!lb) buildViewer();
+    lastTrigger = trigger || null;
+    lbImg.hidden = true; lbImg.removeAttribute("src"); lbCap.textContent = title || "Demo video";
+    var box = lb.querySelector(".lb-video"); box.hidden = false; box.textContent = "";
+    var f = document.createElement("iframe");
+    f.src = "https://www.youtube-nocookie.com/embed/" + encodeURIComponent(id) + "?autoplay=1&rel=0&modestbranding=1";
+    f.title = title || "Demo video";
+    f.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
+    f.allowFullscreen = true;
+    box.appendChild(f);
+    lb.hidden = false; document.body.classList.add("lb-open");
+    lb.querySelector(".lb-restore").focus();
+  }
+  document.querySelectorAll("[data-video]").forEach(function (b) {
+    b.addEventListener("click", function (e) { e.preventDefault(); openVideo(b.getAttribute("data-video"), b.getAttribute("data-title"), b); });
+  });
+
   // Home cards: buttons carry the full-size image in data-zoom.
   document.querySelectorAll("button[data-zoom]").forEach(function (b) {
     b.addEventListener("click", function () { var i = b.querySelector("img"); openViewer(b.getAttribute("data-zoom"), i ? i.alt : "", b); });

@@ -42,6 +42,12 @@ CITY = "Mumbai, India"
 LINKEDIN = "https://www.linkedin.com/company/data-syncsense/"
 FOUNDER = "Santosh Tiwari"
 TAGLINE = "From data to decisions"
+# YouTube demo videos (IDs). Played in the on-page viewer via youtube-nocookie.com, loaded only on click.
+VIDEOS = {
+    "askdata-short": ("weUL5eJHbhA", "AskData demo (short)"),
+    "askdata-full": ("RuLl7zFLINA", "AskData walkthrough (detailed)"),
+    "crm": ("KysgqT9mzUA", "Ovantaa CRM dashboard demo"),
+}
 BOOKING_URL = ""  # Calendly link. Empty: "Book a demo" opens the contact form with Demo selected.
 DEMO_HREF = BOOKING_URL or "/contact/?interest=demo#form"
 SHARE_IMAGE = "/assets/img/share.png"
@@ -168,7 +174,7 @@ def faq_html(faq):
 
 
 PRODUCTS = [
-    {"name": "AskData", "short": "Ask questions of your own data in plain English and get answers in seconds.", "tag": "Text-to-SQL", "href": "/products/text-to-sql/",
+    {"name": "AskData", "video": "askdata-short", "short": "Ask questions of your own data in plain English and get answers in seconds.", "tag": "Text-to-SQL", "href": "/products/text-to-sql/",
      "img": "askdata-card", "alt": "AskData answer explaining how net sales by customer country were calculated, with a bar chart of the result",
      "text": "Plain-English questions answered from your own databases, with a table, chart and summary.",
      "points": ["Read-only; results never go to the AI", "Learns your terms; answers can be corrected", "Forecasts and scheduled PDF/PowerPoint reports"]},
@@ -176,7 +182,7 @@ PRODUCTS = [
      "img": "ontology-card", "alt": "Ontology Studio showing the class hierarchy diagram of a retail order management ontology",
      "text": "One shared model of what your business terms mean, used for reports and cited AI answers.",
      "points": ["22 ready-made ontologies, 19 industries", "Diagram, test bed, knowledge graph, versions", "Built on FIBO, HL7 FHIR, Schema.org and more"]},
-    {"name": "Ovantaa CRM", "short": "Leads, deals, GST invoices and collections on one customer record.", "tag": "Lead to cash", "href": "/products/crm/",
+    {"name": "Ovantaa CRM", "video": "crm", "short": "Leads, deals, GST invoices and collections on one customer record.", "tag": "Lead to cash", "href": "/products/crm/",
      "img": "crm-card", "alt": "Ovantaa CRM dashboard with open pipeline, closed won, contacts and won revenue for the last six months in rupees",
      "text": "Leads, deals, campaigns, GST invoices and collections on one record, in your own environment.",
      "points": ["Deal board with stage history", "GST invoicing, reminders, receivables", "AI search that never sees your records"]},
@@ -213,6 +219,11 @@ FOLD_CASES = [
 ]
 
 
+def video_button(key, label="▶ Watch demo", cls="btn ghost"):
+    vid, title = VIDEOS[key]
+    return f'<button type="button" class="{cls} watch" data-video="{vid}" data-title="{esc(title)}">{esc(label)}</button>'
+
+
 def fold():
     cards = ""
     for i, p in enumerate(PRODUCTS):
@@ -220,8 +231,9 @@ def fold():
         full = FULL_IMG[p["img"]]
         cards += (f'<div class="fcard"><button type="button" class="fshot" data-zoom="/assets/img/{full}.webp" aria-label="Enlarge {esc(p["name"])} screenshot">'
                   f'<span class="frame">{shot(p["img"], p["alt"], w, h, eager=(i == 0), cls="")}</span><span class="zoom-hint" aria-hidden="true">⤢</span></button>'
-                  f'<a class="fbody" href="{p["href"]}"><p class="tag">{p["tag"]}</p><h2>{p["name"]}</h2><p class="fdesc">{p["short"]}</p>'
-                  f'<span class="more">Learn more →</span></a></div>')
+                  f'<div class="fbody"><p class="tag">{p["tag"]}</p><h2><a href="{p["href"]}">{p["name"]}</a></h2><p class="fdesc">{p["short"]}</p>'
+                  f'<div class="frow"><a class="more" href="{p["href"]}">Learn more →</a>'
+                  f'{video_button(p["video"], "▶ Watch demo", "watch-link") if p.get("video") else ""}</div></div></div>')
     cases = "".join(
         f'<a class="fcase" href="/case-studies/{slug}/"><strong>{esc(stat)}</strong><span>{esc(label)}</span></a>'
         for slug, stat, label, sector in FOLD_CASES
@@ -372,6 +384,7 @@ def render_tokens(body, meta):
         if tok in body:
             body = body.replace(tok, fn())
     body = re.sub(r"\{\{form:(\w+)\}\}", lambda m: form(m.group(1)), body)
+    body = re.sub(r"\{\{video:([\w-]+)(?::([^}]+))?\}\}", lambda m: video_button(m.group(1), m.group(2) or "▶ Watch demo"), body)
     body = re.sub(r"\{\{case_cards:([\w-]+)\}\}", lambda m: case_cards(m.group(1)), body)
     body = re.sub(r"\{\{usecases:([\w-]+)\}\}", lambda m: usecase_teaser(m.group(1)), body)
     body = body.replace("{{faq}}", faq_html(meta.get("faq")))
