@@ -47,6 +47,8 @@ VIDEOS = {
     "askdata-short": ("weUL5eJHbhA", "AskData demo (short)"),
     "askdata-full": ("RuLl7zFLINA", "AskData walkthrough (detailed)"),
     "crm": ("KysgqT9mzUA", "Ovantaa CRM dashboard demo"),
+    "ontology-short": ("aQbUgSToxik", "Ontology Studio demo (short)"),
+    "ontology-full": ("jH_k5LGz63o", "Ontology Studio walkthrough (detailed)"),
 }
 # For VideoObject structured data. YouTube title as published; upload date (YYYY-MM-DD) from YouTube Studio.
 # A video gets structured data only once its upload date is filled in.
@@ -54,8 +56,11 @@ VIDEO_META = {
     "askdata-short": {"name": "AskData demo highlights", "description": "Short demo of AskData: plain-English questions answered from your own database with a table, chart and summary.", "upload": ""},
     "askdata-full": {"name": "AskData demo full", "description": "Full walkthrough of AskData Text-to-SQL: asking questions, checking answers, reports, forecasts and administration.", "upload": ""},
     "crm": {"name": "Ovantaa CRM Account Manager Walkthrough", "description": "Walkthrough of Ovantaa CRM for account managers: dashboard, deals, invoicing and collections.", "upload": ""},
+    "ontology-short": {"name": "Ontology Builder demo highlights", "description": "Short demo of Ontology Studio: building a shared business model and knowledge graph from a ready-made industry ontology.", "upload": ""},
+    "ontology-full": {"name": "Ontology Builder Demo", "description": "Full walkthrough of Ontology Studio: library, diagram, classes and properties, test bed, knowledge graph and versions.", "upload": ""},
 }
-VIDEO_PAGES = {"/": ["askdata-short", "crm"], "/products/text-to-sql/": ["askdata-short", "askdata-full"], "/products/crm/": ["crm"]}
+VIDEO_PAGES = {"/": ["askdata-short", "ontology-short", "crm"], "/products/text-to-sql/": ["askdata-short", "askdata-full"],
+               "/products/ontology-builder/": ["ontology-short", "ontology-full"], "/products/crm/": ["crm"]}
 FOUNDER_YOUTUBE = "https://www.youtube.com/@santoshtiwari5068"
 BOOKING_URL = ""  # Calendly link. Empty: "Book a demo" opens the contact form with Demo selected.
 DEMO_HREF = BOOKING_URL or "/contact/?interest=demo#form"
@@ -187,7 +192,7 @@ PRODUCTS = [
      "img": "askdata-card", "alt": "AskData answer explaining how net sales by customer country were calculated, with a bar chart of the result",
      "text": "Plain-English questions answered from your own databases, with a table, chart and summary.",
      "points": ["Read-only; results never go to the AI", "Learns your terms; answers can be corrected", "Forecasts and scheduled PDF/PowerPoint reports"]},
-    {"name": "Ontology Studio", "short": "One shared model of what your business data means, for reports and AI.", "tag": "Ontology & knowledge graph", "href": "/products/ontology-builder/",
+    {"name": "Ontology Studio", "video": "ontology-short", "short": "One shared model of what your business data means, for reports and AI.", "tag": "Ontology & knowledge graph", "href": "/products/ontology-builder/",
      "img": "ontology-card", "alt": "Ontology Studio showing the class hierarchy diagram of a retail order management ontology",
      "text": "One shared model of what your business terms mean, used for reports and cited AI answers.",
      "points": ["22 ready-made ontologies, 19 industries", "Diagram, test bed, knowledge graph, versions", "Built on FIBO, HL7 FHIR, Schema.org and more"]},
@@ -909,6 +914,8 @@ def write_llms():
 - AskData short demo: https://youtu.be/weUL5eJHbhA
 - AskData detailed walkthrough: https://youtu.be/RuLl7zFLINA
 - Ovantaa CRM dashboard demo: https://youtu.be/KysgqT9mzUA
+- Ontology Studio short demo: https://youtu.be/aQbUgSToxik
+- Ontology Studio detailed walkthrough: https://youtu.be/jH_k5LGz63o
 
 ## Use cases by industry
 {inds}
