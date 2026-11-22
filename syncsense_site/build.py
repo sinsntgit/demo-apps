@@ -41,7 +41,7 @@ PHONE_LINK = "+919136433008"
 CITY = "Mumbai, India"
 LINKEDIN = "https://www.linkedin.com/company/data-syncsense/"
 FOUNDER = "Santosh Tiwari"
-TAGLINE = "Data you can ask. Answers you can trust."
+TAGLINE = "From data to decisions"
 BOOKING_URL = ""  # Calendly link. Empty: "Book a demo" opens the contact form with Demo selected.
 DEMO_HREF = BOOKING_URL or "/contact/?interest=demo#form"
 SHARE_IMAGE = "/assets/img/share.png"
