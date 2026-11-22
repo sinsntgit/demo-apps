@@ -12,7 +12,7 @@ const INDUSTRIES = [
     'Retail & E-commerce', 'Healthcare & Pharma', 'Manufacturing', 'Other',
 ];
 const INTERESTS = [
-    'demo' => 'AskData demo (Text-to-SQL)', 'ontology' => 'Ontology Builder', 'crm' => 'Ovantaa CRM',
+    'demo' => 'AskData demo (Text-to-SQL)', 'ontology' => 'Ontology Studio', 'crm' => 'Ovantaa CRM',
     'assessment' => 'Free data assessment', 'consulting' => 'Data & AI consulting', 'staffing' => 'Contract staffing',
 ];
 const SOURCES = ['demo' => 'Demo request', 'assessment' => 'Free data assessment', 'contact' => 'Contact form'];

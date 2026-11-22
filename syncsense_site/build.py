@@ -221,9 +221,9 @@ def fold():
     return f"""<section class="fold" aria-label="Products and case studies">
   <div class="wrap">
     <div class="fold-intro">
-      <h1>Ask your business data anything, in plain English</h1>
-      <div class="fold-row"><p class="sub">AI data products and senior data consulting. Trusted answers from data spread across many systems, without waiting on IT.</p>
-      <div class="actions">{booking_link()}<a class="btn ghost" href="/free-data-assessment/">Free data assessment</a></div></div>
+      <div><h1>Ask your business data anything, in plain English</h1>
+      <p class="sub">AI data products and senior data consulting: trusted answers from data spread across many systems, without waiting on IT.</p></div>
+      <div class="actions">{booking_link()}<a class="btn ghost" href="/free-data-assessment/">Free data assessment</a></div>
     </div>
     <div class="fold-products">{cards}</div>
     <div class="fold-cases"><p class="fold-label">Case studies <a href="/case-studies/">All 9 →</a></p><div class="fcases">{cases}</div></div>

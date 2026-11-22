@@ -61,10 +61,10 @@ INDUSTRIES = [
     {
         "slug": "banking-financial-services",
         "name": "Banking & Financial Services",
-        "title": "Text-to-SQL for Banking & Financial Services | SyncSense",
+        "title": "Banking Data Analytics & Text-to-SQL | SyncSense",
         "description": "Risk, credit and branch teams ask loan, deposit and collections questions in plain English, with row-level access by branch. See banking use cases.",
         "keyword": "text to SQL for banking",
-        "h1": "Text-to-SQL for banking and financial services",
+        "h1": "Banking and financial services data analytics, in plain English",
         "answer": "Banks and NBFCs hold customer, loan, collateral and transaction data in core banking, loan management and treasury systems. SyncSense gives risk, credit and branch teams plain-English answers from that data, with branch-level access rules and masking applied to every answer.",
         "problems": [
             "Risk and collections teams need daily views of overdue accounts, but each new cut of the data is an IT request.",
