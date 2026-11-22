@@ -7,6 +7,7 @@ frames and the voice are assembled into an MP4 with captions and chapter markers
 ```
 python3 run.py          # record every chapter (about 15 minutes)
 python3 assemble.py     # build build/out/ontostudio-demo.mp4 (+ .vtt, .srt, chapters.json, poster.jpg)
+python3 highlights.py   # a ~5 minute cut of the same footage: build/out/ontostudio-demo-highlights.mp4 (+ captions)
 ```
 
 Needs: Python 3.11+ with the app's requirements, Node + Playwright + Chromium, `ffmpeg`, `pdftoppm` (poppler) and, for the built-in
