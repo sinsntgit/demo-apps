@@ -49,7 +49,7 @@ AREAS = ["India", "Middle East", "Africa", "United Kingdom"]
 INDUSTRY_OPTIONS = [i["name"] for i in data.INDUSTRIES] + ["Other"]
 INTERESTS = [
     ("demo", "AskData demo (Text-to-SQL)"),
-    ("ontology", "Ontology Builder"),
+    ("ontology", "Ontology Studio"),
     ("crm", "Ovantaa CRM"),
     ("assessment", "Free data assessment"),
     ("consulting", "Data & AI consulting"),
@@ -60,7 +60,7 @@ NAV = [
     ("products", "Products", "/products/", [
         ("All products", "/products/"),
         ("AskData: Text-to-SQL", "/products/text-to-sql/"),
-        ("Ontology Builder", "/products/ontology-builder/"),
+        ("Ontology Studio", "/products/ontology-builder/"),
         ("Ovantaa CRM", "/products/crm/"),
     ]),
     ("use-cases", "Use Cases", "/use-cases/", [("All industries", "/use-cases/")]
@@ -162,21 +162,73 @@ def faq_html(faq):
 
 
 PRODUCTS = [
-    ("AskData", "Text-to-SQL", "/products/text-to-sql/",
-     "Business users type a question in plain English and get a table, a chart and a short summary from your own database, in seconds."),
-    ("Ontology Builder", "Shared business model", "/products/ontology-builder/",
-     "Builds one connected model of what your business terms mean and how they relate, so reports and AI use the same definitions."),
-    ("Ovantaa CRM", "Lead to cash", "/products/crm/",
-     "Leads, deals, campaigns, GST-ready invoices and collections on one customer record, hosted in your own environment."),
+    {"name": "AskData", "tag": "Text-to-SQL", "href": "/products/text-to-sql/",
+     "img": "askdata-card", "alt": "AskData answer explaining how net sales by customer country were calculated, with a bar chart of the result",
+     "text": "Plain-English questions answered from your own databases, with a table, chart and summary.",
+     "points": ["Read-only; results never go to the AI", "Learns your terms; answers can be corrected", "Forecasts and scheduled PDF/PowerPoint reports"]},
+    {"name": "Ontology Studio", "tag": "Ontology & knowledge graph", "href": "/products/ontology-builder/",
+     "img": "ontology-card", "alt": "Ontology Studio showing the class hierarchy diagram of a retail order management ontology",
+     "text": "One shared model of what your business terms mean, used for reports and cited AI answers.",
+     "points": ["22 ready-made ontologies, 19 industries", "Diagram, test bed, knowledge graph, versions", "Built on FIBO, HL7 FHIR, Schema.org and more"]},
+    {"name": "Ovantaa CRM", "tag": "Lead to cash", "href": "/products/crm/",
+     "img": "crm-card", "alt": "Ovantaa CRM dashboard with open pipeline, closed won, contacts and won revenue for the last six months in rupees",
+     "text": "Leads, deals, campaigns, GST invoices and collections on one record, in your own environment.",
+     "points": ["Deal board with stage history", "GST invoicing, reminders, receivables", "AI search that never sees your records"]},
 ]
 
 
+def shot(name, alt, w=1600, h=900, eager=False, cls="shot"):
+    load = ' fetchpriority="high"' if eager else ' loading="lazy" decoding="async"'
+    return f'<img class="{cls}" src="/assets/img/{name}.webp" alt="{esc(alt)}" width="{w}" height="{h}"{load}>'
+
+
+IMG_SIZES = {"askdata-card": (960, 541), "ontology-card": (960, 541), "crm-card": (960, 541)}
+
+
 def product_cards():
-    cards = "".join(
-        f'<a class="pcard" href="{href}"><span class="tag">{tag}</span><h3>{name}</h3><p>{text}</p><span class="more">Learn more →</span></a>'
-        for name, tag, href, text in PRODUCTS
-    )
+    cards = ""
+    for p in PRODUCTS:
+        w, h = IMG_SIZES[p["img"]]
+        pts = "".join(f"<li>{esc(x)}</li>" for x in p["points"])
+        cards += (f'<a class="pcard" href="{p["href"]}"><div class="pshot">{shot(p["img"], p["alt"], w, h, cls="")}</div>'
+                  f'<span class="tag">{p["tag"]}</span><h3>{p["name"]}</h3><p>{p["text"]}</p><ul class="ticks small-list">{pts}</ul>'
+                  f'<span class="more">Learn more →</span></a>')
     return f'<div class="grid-3">{cards}</div>'
+
+
+FOLD_CASES = [
+    ("consumer-goods-campaign-text-to-sql", "90%", "faster campaign insight", "Consumer goods · Text-to-SQL"),
+    ("actuarial-text-to-sql-reports", "<30 min", "per actuarial report, from 4+ hours", "Actuarial · Text-to-SQL"),
+    ("gst-dispute-legal-ai", "75%", "faster GST dispute filing", "Tax & legal · AI"),
+    ("genai-email-support-assistant", "50%", "lower product support cost", "Software · GenAI"),
+    ("insurer-managed-bi-team", "8 people", "run an insurer’s whole BI unit", "Insurance · Managed BI"),
+    ("tax-research-knowledge-graph-slm", "5,000", "case laws in a cited tax knowledge graph", "Tax · Ontology"),
+]
+
+
+def fold():
+    cards = ""
+    for i, p in enumerate(PRODUCTS):
+        w, h = IMG_SIZES[p["img"]]
+        pts = "".join(f"<li>{esc(x)}</li>" for x in p["points"])
+        cards += (f'<a class="fcard" href="{p["href"]}"><div class="fshot">{shot(p["img"], p["alt"], w, h, eager=(i == 0), cls="")}</div>'
+                  f'<div class="fbody"><p class="tag">{p["tag"]}</p><h2>{p["name"]}</h2><p class="fdesc">{p["text"]}</p>'
+                  f'<ul class="ticks">{pts}</ul></div></a>')
+    cases = "".join(
+        f'<a class="fcase" href="/case-studies/{slug}/"><strong>{esc(stat)}</strong><span>{esc(label)}</span><em>{esc(sector)}</em></a>'
+        for slug, stat, label, sector in FOLD_CASES
+    )
+    return f"""<section class="fold" aria-label="Products and case studies">
+  <div class="wrap">
+    <div class="fold-intro">
+      <h1>Ask your business data anything, in plain English</h1>
+      <div class="fold-row"><p class="sub">AI data products and senior data consulting. Trusted answers from data spread across many systems, without waiting on IT.</p>
+      <div class="actions">{booking_link()}<a class="btn ghost" href="/free-data-assessment/">Free data assessment</a></div></div>
+    </div>
+    <div class="fold-products">{cards}</div>
+    <div class="fold-cases"><p class="fold-label">Case studies <a href="/case-studies/">All 9 →</a></p><div class="fcases">{cases}</div></div>
+  </div>
+</section>"""
 
 
 def industry_tiles():
@@ -188,7 +240,7 @@ def industry_tiles():
 
 
 def product_industry_grid():
-    head = "<tr><th scope=\"col\">Industry</th><th scope=\"col\">AskData (Text-to-SQL)</th><th scope=\"col\">Ontology Builder</th><th scope=\"col\">CRM &amp; consulting</th></tr>"
+    head = "<tr><th scope=\"col\">Industry</th><th scope=\"col\">AskData (Text-to-SQL)</th><th scope=\"col\">Ontology Studio</th><th scope=\"col\">CRM &amp; consulting</th></tr>"
     rows = "".join(
         f'<tr><th scope="row"><a href="/use-cases/{i["slug"]}/">{i["name"]}</a></th><td>“{esc(i["grid"][0])}”</td><td>{esc(i["grid"][1])}</td><td>{esc(i["grid"][2])}</td></tr>'
         for i in data.INDUSTRIES
@@ -225,7 +277,7 @@ def flow():
   <div class="flow-col"><p class="flow-label">Your systems</p>
     <ul><li>ERP and finance</li><li>Core banking, policy or billing systems</li><li>CRM and sales data</li><li>Documents, Excel and CSV</li></ul></div>
   <div class="flow-arrow" aria-hidden="true">→</div>
-  <div class="flow-col hl"><p class="flow-label">Ontology Builder</p>
+  <div class="flow-col hl"><p class="flow-label">Ontology Studio</p>
     <ul><li>One meaning for “customer”, “policy”, “order”</li><li>How they relate</li><li>Lineage and metadata</li></ul></div>
   <div class="flow-arrow" aria-hidden="true">→</div>
   <div class="flow-col"><p class="flow-label">Ways to use it</p>
@@ -275,6 +327,7 @@ def breadcrumb_html(crumbs):
 
 TOKENS = {
     "{{product_cards}}": product_cards,
+    "{{fold}}": fold,
     "{{industry_tiles}}": industry_tiles,
     "{{product_industry_grid}}": product_industry_grid,
     "{{case_cards}}": lambda: case_cards(),
@@ -439,7 +492,7 @@ def layout(meta, body):
       <p><strong>SyncSense</strong>: AI data products and senior data consulting. Based in {CITY}; working with clients in India, the Middle East, Africa and the UK.</p>
       <p><a href="mailto:{EMAIL}">{EMAIL}</a><br><a href="tel:{PHONE_LINK}">{PHONE}</a><br><a href="{LINKEDIN}" rel="noopener" target="_blank">SyncSense on LinkedIn</a></p>
     </div>
-    <div><h2>Products</h2><ul><li><a href="/products/text-to-sql/">AskData: Text-to-SQL</a></li><li><a href="/products/ontology-builder/">Ontology Builder</a></li><li><a href="/products/crm/">Ovantaa CRM</a></li></ul>
+    <div><h2>Products</h2><ul><li><a href="/products/text-to-sql/">AskData: Text-to-SQL</a></li><li><a href="/products/ontology-builder/">Ontology Studio</a></li><li><a href="/products/crm/">Ovantaa CRM</a></li></ul>
       <h2>Services</h2><ul><li><a href="/services/data-ai-consulting/">Data &amp; AI consulting</a></li><li><a href="/services/data-analytics-staffing/">Contract staffing</a></li><li><a href="/free-data-assessment/">Free data assessment</a></li></ul></div>
     <div><h2>Use cases</h2><ul>{footer_inds}</ul></div>
     <div><h2>Company</h2><ul><li><a href="/about/">About</a></li><li><a href="/case-studies/">Case studies</a></li><li><a href="/insights/">Insights</a></li><li><a href="/contact/">Contact</a></li><li><a href="/privacy-policy/">Privacy policy</a></li></ul></div>
@@ -535,7 +588,7 @@ def industry_page(ind):
 </div></section>
 
 <section class="section"><div class="wrap two-col">
-  <div><h2>What the Ontology Builder would connect</h2><p>{ind['ontology_intro']}</p><ul class="chips">{ents}</ul></div>
+  <div><h2>What the Ontology Studio would connect</h2><p>{ind['ontology_intro']}</p><ul class="chips">{ents}</ul></div>
   <div><h2>Kept under control</h2><ul class="ticks">{''.join(f'<li>{c}</li>' for c in ind['controls'])}</ul></div>
 </div></section>
 {extra}
@@ -629,11 +682,11 @@ def write_llms():
     arts = "\n".join(f"- [{a['h1']}]({SITE}{a['path']})" for a in ARTICLES)
     txt = f"""# SyncSense
 
-> SyncSense is a data and AI company in Mumbai, India. It builds AI products (AskData for Text-to-SQL, Ontology Builder, Ovantaa CRM) and provides data management, BI and AI consulting and contract staffing. It helps organisations get trusted answers from data spread across many systems, in plain English, without waiting on IT. Founded by {FOUNDER}; the team has 25+ years of enterprise data, BI and data integration delivery.
+> SyncSense is a data and AI company in Mumbai, India. It builds AI products (AskData for Text-to-SQL, Ontology Studio, Ovantaa CRM) and provides data management, BI and AI consulting and contract staffing. It helps organisations get trusted answers from data spread across many systems, in plain English, without waiting on IT. Founded by {FOUNDER}; the team has 25+ years of enterprise data, BI and data integration delivery.
 
 ## Products
 - [AskData: Text-to-SQL]({SITE}/products/text-to-sql/): business users ask questions of their own databases in plain English and get SQL, a table, a chart and a summary. Runs in the customer's environment; the AI model receives only the question and table descriptions, never result data. Read-only by design.
-- [Ontology Builder]({SITE}/products/ontology-builder/): builds a domain ontology and knowledge graph (classes, relations, properties, metadata) from documents and systems, used for cited AI answers (GraphRAG) and shared definitions.
+- [Ontology Studio]({SITE}/products/ontology-builder/): builds a domain ontology and knowledge graph (classes, relations, properties, metadata) from documents and systems, used for cited AI answers (GraphRAG) and shared definitions.
 - [Ovantaa CRM]({SITE}/products/crm/): CRM, campaigns, GST-ready invoicing and collections for small and mid-size B2B teams in India and the GCC, hosted in the customer's own environment.
 
 ## Services

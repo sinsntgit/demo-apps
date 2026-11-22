@@ -40,8 +40,8 @@ INDUSTRIES = [
         "scenarios": [
             {"title": "An actuary checks the claims ratio without waiting for IT", "product": "AskData",
              "body": "<p>The actuary types: “Claims ratio by product and region for the last 4 quarters.” AskData writes one read-only query against the claims and premium tables, returns a table and chart, and states which period and filters it used.</p><p>A follow-up, “only motor, by month”, stays in the same conversation. If the number looks wrong, the actuary reports it and a data steward corrects the definition for everyone.</p>"},
-            {"title": "One definition of “earned premium” across finance and actuarial", "product": "Ontology Builder",
-             "body": "<p>The Ontology Builder models policy, coverage, claim, reserve, reinsurance treaty and the accounting entries that feed IFRS 17 / Ind AS 117 groupings.</p><p>Each reported figure can be traced back through the model to the source tables, which gives auditors a lineage view and gives AI assistants a shared vocabulary.</p>"},
+            {"title": "One definition of “earned premium” across finance and actuarial", "product": "Ontology Studio",
+             "body": "<p>The Ontology Studio models policy, coverage, claim, reserve, reinsurance treaty and the accounting entries that feed IFRS 17 / Ind AS 117 groupings.</p><p>Each reported figure can be traced back through the model to the source tables, which gives auditors a lineage view and gives AI assistants a shared vocabulary.</p>"},
             {"title": "A managed team keeps BI running while it is modernised", "product": "Consulting & staffing",
              "body": "<p>A dedicated team watches daily data loads, runs scheduled reports, fixes issues for business users and builds new pipelines and dashboards on request.</p><p>The same people who support the reporting estate also extend it, so new work does not stop for support. We run this model today for a large insurer (see the case study below).</p>"},
         ],
@@ -85,8 +85,8 @@ INDUSTRIES = [
         "scenarios": [
             {"title": "A risk analyst lists overdue borrowers in seconds", "product": "AskData",
              "body": "<p>“Top 20 borrowers with overdue EMIs over 60 days” returns a ranked table with branch and amount. A branch manager asking the same question sees only their own branch, because row-level rules apply to every answer, report and shared chat.</p>"},
-            {"title": "A single customer view across lending and deposits", "product": "Ontology Builder",
-             "body": "<p>The Ontology Builder links customer, account, loan, collateral, guarantor and transaction, and records which source system each attribute comes from. The same model then feeds regulatory reports and AskData, so “exposure” is calculated one way.</p>"},
+            {"title": "A single customer view across lending and deposits", "product": "Ontology Studio",
+             "body": "<p>The Ontology Studio links customer, account, loan, collateral, guarantor and transaction, and records which source system each attribute comes from. The same model then feeds regulatory reports and AskData, so “exposure” is calculated one way.</p>"},
             {"title": "A credit risk data mart and relationship view", "product": "Consulting & CRM",
              "body": "<p>Our consultants design a credit risk data mart on your warehouse. For smaller lenders and financial services firms that invoice their clients, Ovantaa CRM gives relationship managers deals, tasks and GST-ready invoicing on one customer record, hosted in your own environment.</p>"},
         ],
@@ -130,7 +130,7 @@ INDUSTRIES = [
         "scenarios": [
             {"title": "The billing team finds every double charge, not just the one complaint", "product": "AskData",
              "body": "<p>“Subscribers billed twice in October” runs one query across all customers and returns the list. The team can fix the batch instead of handling each complaint as it arrives.</p>"},
-            {"title": "A charge linked to the outage behind it", "product": "Ontology Builder",
+            {"title": "A charge linked to the outage behind it", "product": "Ontology Studio",
              "body": "<p>The telecom ontology connects network element, alarm, service, subscriber, plan, usage record, invoice and payment. An agent investigating a disputed charge can see the outage, the affected service and the billing event as one connected story, with the evidence cited.</p>"},
             {"title": "A retention view and reconciled billing data", "product": "Consulting",
              "body": "<p>Our consultants build a churn-risk view for retention teams and reconcile billing data against usage and payments, using the same ontology so the numbers agree.</p>"},
@@ -175,7 +175,7 @@ INDUSTRIES = [
         "scenarios": [
             {"title": "A consultant tracks pending GST notices across clients", "product": "AskData",
              "body": "<p>Practice data such as notices, deadlines and engagements usually sits in a practice management database or spreadsheets. AskData answers “Clients with pending GST notices this quarter” from that data, and can email the list to each partner every Monday with only their clients.</p>"},
-            {"title": "A research assistant that cites its sources", "product": "Ontology Builder",
+            {"title": "A research assistant that cites its sources", "product": "Ontology Studio",
              "body": "<p>The ontology defines what a section, holding, circular and treaty article is, and how they relate: overruled, followed, amended, superseded, and mapped between the 1961 and 2025 Acts. Answers come back in the firm’s memo format, each claim cited to document and page.</p>"},
             {"title": "Contract and notice review", "product": "Consulting",
              "body": "<p>We build review workflows on LLMs that read batches of contracts or notices, interpret clauses such as liability, indemnity and termination, extract key dates to your calendar and flag high-risk terms for a lawyer to look at first.</p>"},
@@ -220,7 +220,7 @@ INDUSTRIES = [
         "scenarios": [
             {"title": "A category manager spots falling sell-through early", "product": "AskData",
              "body": "<p>“Stores where sell-through dropped more than 15% this month” returns the stores, the drop and a chart. The weekly version is scheduled to each regional manager, with only their stores.</p>"},
-            {"title": "One product and promotion model across channels", "product": "Ontology Builder",
+            {"title": "One product and promotion model across channels", "product": "Ontology Studio",
              "body": "<p>The model links product, SKU, store, supplier, promotion, channel and customer, so “net sales” and “promotion uplift” mean the same in the ERP, the e-commerce platform and the loyalty system.</p>"},
             {"title": "Demand and inventory dashboards, and a customer view", "product": "Consulting & CRM",
              "body": "<p>We build demand and inventory dashboards on your warehouse. For B2B distributors, Ovantaa CRM manages dealers, orders, campaigns and GST invoicing on one record.</p>"},
@@ -265,7 +265,7 @@ INDUSTRIES = [
         "scenarios": [
             {"title": "An operations head checks occupancy before the morning meeting", "product": "AskData",
              "body": "<p>“Average bed occupancy by department last week” returns a table and chart from the hospital’s reporting database. Patient identifiers are excluded from the data model, so they never appear in an answer.</p>"},
-            {"title": "A shared model of episodes, procedures and payers", "product": "Ontology Builder",
+            {"title": "A shared model of episodes, procedures and payers", "product": "Ontology Studio",
              "body": "<p>On anonymized data, the model links patient episode, provider, department, procedure, drug and payer. Revenue by payer and length of stay by procedure then use one definition across finance and operations.</p>"},
             {"title": "Field-force tracking for medical reps", "product": "CRM & consulting",
              "body": "<p>Ovantaa CRM can track doctor and account visits, tasks and follow-ups for medical reps. We also build operational reporting on your warehouse.</p>"},
@@ -310,7 +310,7 @@ INDUSTRIES = [
         "scenarios": [
             {"title": "A plant head sees downtime the same day", "product": "AskData",
              "body": "<p>“Machines with downtime over 4 hours this month” returns the list by line. AskData ships with a sample SAP Sales &amp; Finance model (30 tables with SAP names, 14 business rules and 19 verified example questions) that shows how SAP data replicated to a reporting database is taught.</p>"},
-            {"title": "One model from machine to margin", "product": "Ontology Builder",
+            {"title": "One model from machine to margin", "product": "Ontology Studio",
              "body": "<p>The model links plant, line, machine, part, material, supplier and work order to cost centres and P&amp;L lines, so a question about margin can be traced to the production events behind it.</p>"},
             {"title": "Dealers, distributors and dashboards", "product": "CRM & consulting",
              "body": "<p>Ovantaa CRM manages dealers and distributors with GST-ready invoicing and collections. Our consultants build production, quality and financial dashboards like the demo below.</p>"},
@@ -383,7 +383,7 @@ CASE_STUDIES = [
             ("Next", "Production", "Ships only after release gates: zero fabricated citations and 85%+ authority recall."),
         ],
         "disclosure": "Client name withheld at the client’s request. Figures describe the pilot corpus and model design.",
-        "related": [("Ontology Builder", ONT), ("Tax & professional services use cases", "/use-cases/tax-professional-services/"), ("Data & AI consulting", CONS)],
+        "related": [("Ontology Studio", ONT), ("Tax & professional services use cases", "/use-cases/tax-professional-services/"), ("Data & AI consulting", CONS)],
     },
     {
         "slug": "telecom-billing-dispute-root-cause",
@@ -421,7 +421,7 @@ CASE_STUDIES = [
             ("Next", "Production", "Connect live billing and OSS data, and measure dispute resolution time."),
         ],
         "disclosure": "The ontology covers all telecom domains; the pilot applied it to billing and network root-cause analysis on synthetic data. Every answer is scored automatically for grounding (adherence) and relevance. No production results are claimed yet.",
-        "related": [("Ontology Builder", ONT), ("Telecom use cases", "/use-cases/telecom/"), ("Data & AI consulting", CONS)],
+        "related": [("Ontology Studio", ONT), ("Telecom use cases", "/use-cases/telecom/"), ("Data & AI consulting", CONS)],
     },
     {
         "slug": "insurer-managed-bi-team",
