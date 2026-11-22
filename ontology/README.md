@@ -130,6 +130,8 @@ Verified here, with a stand-in AI model that returns a fixed retail ontology (`t
   nothing written to the graphs folder; in-memory reuse for the chosen minutes; explorer and Turtle download working live; schedules
   refused; back to a stored copy by building. Data sources that keep no uploaded files: profiled then deleted, a graph says why it
   cannot load them, switching off deletes the copies already kept. The overview's class counts;
+- long documents: from the second part on, the model is given the document's beginning and the entities found in its earlier
+  parts, so a later "the assessee" is linked to the company named on page 1 (with the stand-in model);
 - OWL and Turtle import keeping modules, rules (incl. disjoint classes), cardinalities, namespace and scope (round trip of the sample;
   the user's 69-class tax ontology comes back with its 8 modules and 50 rules);
 - every screen in a headless browser, including visual editing on the diagram, as administrator and as viewer;

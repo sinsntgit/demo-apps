@@ -37,6 +37,19 @@ def answer(prompt: str) -> dict | str:
                 {"subject": "e1", "property": "involvesParty", "object": "e3", "quote": "C.I.T., KOLKATA-IV Versus M/S. COATS OF INDIA LTD."},
                 {"subject": "e2", "property": "decidedByCourt", "object": "e1", "quote": "IN THE HIGH COURT AT CALCUTTA"}],
                 "notes": ["The surplus credited to capital reserve has no place in the ontology."]}
+        if "long-judgment" in doc:
+            if "(part 1 of" in prompt:
+                return {"entities": [
+                    {"id": "e1", "class": "JudicialDecision", "label": "C.I.T., Kolkata-IV v. Coats of India Ltd.", "quote": "C.I.T., KOLKATA-IV Versus M/S. COATS OF INDIA LTD."},
+                    {"id": "e2", "class": "Taxpayer", "label": "Coats of India Ltd", "quote": "M/S. COATS OF INDIA LTD."}], "relations": []}
+            # a later part: it only says "the assessee"; link it if the application said who that is
+            earlier = prompt.split("Found in the earlier parts of THIS document")[1].split("\n\n")[0] if "Found in the earlier parts of THIS document" in prompt else ""
+            dec = re.search(r"- (x\d+) \| JudicialDecision \|", earlier)
+            tp = re.search(r"- (x\d+) \| Taxpayer \| Coats", earlier)
+            if dec and tp and "<document_start>" in prompt:
+                return {"entities": [], "relations": [{"subject": dec.group(1), "property": "involvesParty", "object": tp.group(1),
+                                                       "quote": "the assessee succeeds on every ground"}]}
+            return {"entities": [{"id": "e1", "class": "Taxpayer", "label": "The assessee", "quote": "the assessee succeeds on every ground"}], "relations": []}
         if "coats-note" in doc:
             known = re.findall(r"\n- (x\d+) \| Taxpayer \| ", prompt)
             return {"entities": [

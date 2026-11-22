@@ -1208,3 +1208,31 @@ def test_pause_resume_and_cancel_a_graph_build(admin, monkeypatch):
     assert c.post(f"/api/jobs/{jid}/control", headers=H, json={"action": "cancel"}).status_code == 409
     c.delete(f"/api/ontologies/{oid}", headers=H)
     c.delete(f"/api/datasources/{ds['id']}", headers=H)
+
+
+def test_later_parts_of_a_long_document_know_its_parties(admin, fake_llm):
+    """A document longer than one part: from the second part on, the model is given the document's beginning and the
+    entities found in its earlier parts, so "the assessee" is linked to the company named on page 1, not made a new entity."""
+    c, mid = admin
+    oid = c.post("/api/ontologies/import", headers=H, files={"file": ("tax.json", json.dumps(LEGAL).encode(), "application/json")}).json()["id"]
+    ds = c.post("/api/datasources", headers=H, json={"name": "Long cases", "kind": "files"}).json()
+    filler = "".join(f"Paragraph {i}: the Tribunal considered the submissions on valuation and the accounts at length.\n" for i in range(600))
+    text = JUDGMENT + filler + "In the end, the assessee succeeds on every ground.\n"
+    assert len(text) > 45_000 and "COATS" not in text[40_000:]
+    c.post(f"/api/datasources/{ds['id']}/files", headers=H, files=[("files", ("long-judgment.txt", text.encode(), "text/plain"))])
+    c.post(f"/api/ontologies/{oid}/datasources", headers=H, json={"data_source_id": ds["id"]})
+    key = c.get(f"/api/ontologies/{oid}/graph").json()["documents"][0]["key"]
+    n = len(fake_llm.REQUESTS)
+    j = wait_job(c, c.post(f"/api/ontologies/{oid}/graph/extract", headers=H, json={"documents": [key], "model_id": mid}).json()["id"])
+    assert j["status"] == "done", j
+    assert any("read in 2 parts" in x["text"] for x in j["log"])
+    part2 = fake_llm.REQUESTS[n + 1]["messages"][-1]["content"]
+    assert "(part 2 of 2)" in part2 and "<document_start>" in part2 and "COATS OF INDIA LTD" in part2.split("<document_start>")[1]
+    assert "Found in the earlier parts of THIS document" in part2 and "| Taxpayer | Coats of India Ltd" in part2
+    assert "<document_start>" not in fake_llm.REQUESTS[n]["messages"][-1]["content"]          # the first part needs none
+    x = c.get(f"/api/ontologies/{oid}/graph/extracted").json()
+    assert [e["label"] for e in x["entities"] if e["class"] == "Taxpayer"] == ["Coats of India Ltd"]   # no "The assessee" entity
+    rel = x["relations"][0]
+    assert rel["p"] == "involvesParty" and rel["mentions"][0]["quote"] == "the assessee succeeds on every ground"
+    c.delete(f"/api/ontologies/{oid}", headers=H)
+    c.delete(f"/api/datasources/{ds['id']}", headers=H)

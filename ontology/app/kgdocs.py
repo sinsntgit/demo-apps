@@ -312,18 +312,48 @@ def forget_document(store: dict, key: str):
     store["suggestions"] = [s for s in store["suggestions"] if s["a"] not in gone and s["b"] not in gone]
 
 
-def registry(store: dict, text: str, limit: int = 300) -> str:
-    """Entities already extracted that this part of a document mentions by name - so the model reuses their ids."""
+ANCHORS = 60            # entities from earlier parts of the same document given with every later part
+HEAD = 2_000            # characters of a document's beginning given with every later part
+
+
+def _line(e: dict) -> str:
+    return f"- {e['id']} | {e['class']} | {e['label']}" + (f" | also: {', '.join(e['aliases'][:4])}" if e["aliases"] else "")
+
+
+def registry(store: dict, text: str, limit: int = 300, doc_key: str | None = None) -> str:
+    """What the model is told is already known, so it reuses ids instead of creating duplicates:
+    1. with doc_key (a later part of a long document): the entities found in this document's earlier parts - the parties,
+       court, provisions... - whether or not this part names them (it may only say "the assessee" or "the Company");
+    2. entities from anywhere (other documents too) that this part mentions by name."""
+    mine = []
+    if doc_key:
+        mine = sorted((e for e in store["entities"] if e["status"] != "rejected" and any(m["doc"] == doc_key for m in e["mentions"])),
+                      key=lambda e: -sum(m["doc"] == doc_key for m in e["mentions"]))[:ANCHORS]
     flat = " " + name_key(text) + " "                     # "Limited" in one document matches "Ltd" in another
-    hits = []
+    seen = {e["id"] for e in mine}
+    named = []
     for e in store["entities"]:
-        if e["status"] == "rejected":
+        if e["status"] == "rejected" or e["id"] in seen:
             continue
         if any((" " + name_key(n) + " ") in flat for n in [e["label"]] + e["aliases"] if len(name_key(n)) >= 4):
-            hits.append(f"- {e['id']} | {e['class']} | {e['label']}" + (f" | also: {', '.join(e['aliases'][:4])}" if e["aliases"] else ""))
-        if len(hits) >= limit:
+            named.append(e)
+        if len(named) >= limit:
             break
-    return "\n".join(hits) or "(none yet)"
+    out = []
+    if mine:
+        out.append("Found in the earlier parts of THIS document (this part may refer to them only by role - \"the assessee\", "
+                   "\"the appellant\", \"the Company\", \"the Court\" - link those references to these ids):\n" + "\n".join(map(_line, mine)))
+    if named:
+        out.append("Already in the graph and named in this part:\n" + "\n".join(map(_line, named)))
+    return "\n\n".join(out) or "(none yet)"
+
+
+def head(text: str) -> str:
+    """The beginning of a document (title, parties, court, date), cut at a line end."""
+    if len(text) <= HEAD:
+        return text
+    cut = text.rfind("\n", HEAD // 2, HEAD)
+    return text[:cut if cut > 0 else HEAD]
 
 
 # ---- review --------------------------------------------------------------------------------------------
