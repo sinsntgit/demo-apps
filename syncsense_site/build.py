@@ -229,9 +229,9 @@ def fold():
     return f"""<section class="fold" aria-label="Products and case studies">
   <div class="wrap">
     <h1 class="sr">SyncSense: AI data products, data and AI consulting, and contract staffing</h1>
-    <p class="fold-label">Our products <a href="/products/">Compare products →</a></p>
+    <div class="fold-head"><h2>Our products</h2><a href="/products/">View all products →</a></div>
     <div class="fold-products">{cards}</div>
-    <p class="fold-label">Case studies <a href="/case-studies/">All 9 →</a></p>
+    <div class="fold-head"><h2>Case studies</h2><a href="/case-studies/">All 9 case studies →</a></div>
     <div class="fcases">{cases}</div>
   </div>
 </section>"""
