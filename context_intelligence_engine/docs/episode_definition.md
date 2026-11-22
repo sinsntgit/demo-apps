@@ -8,7 +8,7 @@ Three layers (AGENTS.md §2.5):
 | **Episode** | one distinct customer need inside a session, with its own outcome; the leading login/IVR span is a separate `access` episode | signals -> features -> clusters |
 | Need journey | the same L2 need across a `previous_session_id` thread within 30 days | repeat contact, unresolved needs, temporal history |
 
-## Boundary rules (deterministic, versioned `episode_model 1.0.0`)
+## Boundary rules (deterministic, versioned `episode_model 1.1.0`)
 
 A customer turn with a classified intent opens a new **goal** episode when:
 
@@ -22,6 +22,7 @@ It does **not** open a new episode when:
 - the turn carries a **value signal** (price, comparison, ...): "That's too much, can I lower my bill?" inside a bill question is evidence about that need. It is kept as a secondary intent and a value signal, so cross-sell is still visible;
 - the intent is an **account-access problem said during authentication** ("I don't have the PIN"): that is friction in the access episode;
 - the intent is a **representative request**: that is friction, not a need. If the call only ever asks for a person, the episode's intent is `ESCALATION.REP.REQUEST`;
+- the turn is a **system event with no customer words** (the platform re-routes the call through another skill agent) and the customer has already spoken: the routing label is not a new need (added in 1.1.0 after reviewing the real sample, where 6 of 49 goal episodes were such re-routes);
 - the domain agent changes but the need does not (recorded as `+role_change` evidence only).
 
 ## Episode outcome

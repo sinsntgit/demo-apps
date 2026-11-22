@@ -19,7 +19,7 @@ VERSIONS = {
     "schema": "1.0.0",
     "rules": "0.3.0",            # lexicon + platform-intent map
     "taxonomy": "v0-draft",
-    "episode_model": "1.0.0",
+    "episode_model": "1.1.0",
     "fixtures": "1.0.0",
 }
 

@@ -3,11 +3,11 @@
   "schema": "1.0.0",
   "rules": "0.3.0",
   "taxonomy": "v0-draft",
-  "episode_model": "1.0.0",
+  "episode_model": "1.1.0",
   "fixtures": "1.0.0"
  },
- "generated_at": "2026-11-19T06:04:29+00:00",
- "generated_seconds": 22.0,
+ "generated_at": "2026-11-22T06:46:18+00:00",
+ "generated_seconds": 25.6,
  "gates": {
   "G0_calibration": {
    "pass": true,
@@ -524,8 +524,8 @@
   },
   "G4_clusters": {
    "episodes_scored": 97423,
-   "ARI_need_vs_intent": 0.59,
-   "NMI_need_vs_intent": 0.82,
+   "ARI_need_vs_intent": 0.549,
+   "NMI_need_vs_intent": 0.783,
    "families": {
     "geo": {
      "clusters": 6,
@@ -535,7 +535,7 @@
     "need": {
      "clusters": 38,
      "stable_share": 0.921,
-     "mean_stability": 0.925
+     "mean_stability": 0.901
     },
     "risk": {
      "clusters": 5,
@@ -550,7 +550,7 @@
    },
    "sme_label_reviews": 0,
    "pass": true,
-   "summary": "Need clusters vs true intent: ARI 0.59, NMI 0.82; need stable share 0.921; SME label reviews 0"
+   "summary": "Need clusters vs true intent: ARI 0.55, NMI 0.78; need stable share 0.921; SME label reviews 0"
   },
   "G5_patterns": {
    "planted_city_intent_effects": 11,
@@ -649,9 +649,9 @@
      "ndcg": 0.811
     },
     "hybrid": {
-     "p10": 0.812,
+     "p10": 0.813,
      "mrr": 0.911,
-     "ndcg": 0.821
+     "ndcg": 0.822
     }
    },
    "filters_correct": true,

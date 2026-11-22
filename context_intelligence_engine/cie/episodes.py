@@ -6,6 +6,8 @@ Boundary rules (priority order), applied to customer turns that carry an intent:
   2. a substantive turn intent (conf >= .70) with a different L2 that holds for INTENT_HOLD_TURNS customer turns
      (a domain-agent role change is recorded as supporting evidence, never a boundary on its own);
   3. an explicit new-need cue ("also", "one more thing") with a different L2.
+A routing change on a system-event turn (no customer words), after the customer has spoken, never opens an episode
+(episode_model 1.1.0; real-sample review: the platform re-routes the same need through other skills).
 A keyword-only intent change on a turn that carries a value signal (price, comparison, ...) does NOT open an episode:
 it is evidence about the current need (kept as a secondary intent + value signal).
 ESCALATION.REP.REQUEST never opens a new goal episode once one is open (it is friction, not a need).
@@ -42,6 +44,7 @@ def segment_session(sid, turns, ti, tools, sigs, tax):
         if s["family"] == "value":
             value_at[s["seq"]] = True
     eps, cur = [], None
+    spoke = False                                    # has the customer said anything yet?
     utter_seqs = [t["seq"] for t in turns if t["kind"] == "utterance"]
 
     def holds(seq, l2):
@@ -54,8 +57,12 @@ def segment_session(sid, turns, ti, tools, sigs, tax):
         role = t["agent_role"] or ""
         it = tint.get(t["seq"])
         start_reason = None
+        if t["kind"] == "utterance" and t["user_text"]:
+            spoke = True
         if it and "@auth_phase" in (it["method"] or "") and (cur is None or cur["kind"] == "access"):
             it = None                                # auth-phase friction stays in the access episode
+        if it and t["kind"] == "event" and spoke and cur is not None and cur["kind"] == "goal":
+            it = None                                # episode_model 1.1.0: a re-route on a system-event turn (no customer words) is not a new need
         if it and it["intent_id"] not in (UNKNOWN,):
             code, conf = it["intent_id"], it["confidence"]
             l2 = tax.l2(code)
