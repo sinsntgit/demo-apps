@@ -1,94 +1,41 @@
 ---
-{"path": "/", "nav": "home", "schema": ["ProfessionalService"],
+{
+ "path": "/",
+ "nav": "home",
+ "schema": [
+  "ProfessionalService"
+ ],
  "title": "AI Data Products & Data Consulting in India | SyncSense",
  "description": "Ask your business data anything in plain English. SyncSense builds AskData (Text-to-SQL), Ontology Studio and Ovantaa CRM, plus data and AI consulting.",
- "keyword": "AI data products",
- "faq": [
-  ["What does SyncSense do?", "SyncSense builds AI data products (AskData for Text-to-SQL, Ontology Studio and Ovantaa CRM) and provides data management, BI and AI consulting and contract staffing. We help organisations get trusted answers from data spread across many systems, without waiting on IT."],
-  ["What is Text-to-SQL?", "Text-to-SQL turns a question written in plain English into a database query. In AskData, the AI model writes one read-only SQL query; AskData checks it, applies your access rules, runs it on your database and returns a table, a chart and a short summary."],
-  ["Does our data leave our network?", "No. AskData runs in your environment. The AI model receives only the question and a description of the relevant tables, never your rows or results. You can also use a self-hosted model so that nothing leaves your network at all."],
-  ["How accurate are the answers?", "It depends on your data and how well AskData is taught your business terms, so we measure accuracy on your own questions during a four-week pilot. Every answer can be checked, and wrong answers are reported to a data steward who corrects them for everyone."],
-  ["Do we need to replace our BI tools?", "No. Keep dashboards for the KPIs everyone watches. AskData answers the new and follow-up questions dashboards don't, and works on the databases and warehouses you already have."],
-  ["How do we start?", "Book a 30-minute demo. If it fits, we run a free, fixed-scope data assessment that ends with a working prototype on your data, then a four-week pilot."]
- ]}
+ "keyword": "AI data products"
+}
 ---
 {{fold}}
 
-<section class="section">
+<section class="section home-why">
   <div class="wrap">
-    <div class="section-title"><h2>Three problems we hear in almost every organisation</h2></div>
-    <div class="pains">
-      <div class="card-plain"><h3>Waiting on IT for data</h3><p>A manager needs a number today. The request joins the analytics backlog and the answer arrives after the decision was made.</p></div>
-      <div class="card-plain"><h3>No shared definitions</h3><p>Finance, sales and operations each have their own “revenue” and “customer”. Meetings start by arguing about whose figure is right.</p></div>
-      <div class="card-plain"><h3>AI pilots that stall</h3><p>A promising proof of concept meets real data, security reviews and missing definitions, and never reaches production.</p></div>
+    <h2 class="center">Why SyncSense</h2>
+    <div class="why4">
+      <div><strong>25+ years</strong><p>of enterprise data, BI and integration delivery behind every product.</p></div>
+      <div><strong>Your environment</strong><p>Products run on your servers or cloud. Nothing is sold as SaaS.</p></div>
+      <div><strong>Your data stays yours</strong><p>The AI sees questions and table names, never your results.</p></div>
+      <div><strong>Products and people</strong><p>Consulting to implement them, specialists to run them.</p></div>
     </div>
   </div>
 </section>
 
 <section class="section alt">
   <div class="wrap">
-    <div class="section-title"><h2>How the products work together</h2><p class="lead-in">Ontology Studio gives the business one shared model of its data. AskData answers questions on top of it, Ovantaa CRM puts customer data in front of sales and service teams, and our consulting and staffing make it work in your environment. All three run in your own environment; none is sold as SaaS.</p></div>
-    {{flow}}
-  </div>
-</section>
-
-<section class="section">
-  <div class="wrap">
-    <div class="section-title"><p class="eyebrow">Use cases</p><h2>Questions people ask in every industry</h2><p class="lead-in">The products have no industry-specific code: they learn each organisation’s tables and vocabulary.</p></div>
-    {{industry_tiles}}
-  </div>
-</section>
-
-<section class="section alt">
-  <div class="wrap">
-    <div class="section-title"><h2>How we engage</h2></div>
+    <h2 class="center">How we engage</h2>
     {{engage_steps}}
   </div>
 </section>
 
 <section class="section">
-  <div class="wrap two-col">
-    <div>
-      <p class="eyebrow">Services</p>
-      <h2>Consulting and staffing behind the products</h2>
-      <p><strong><a href="/services/data-ai-consulting/">Data &amp; AI consulting</a>:</strong> data readiness, architecture, data warehousing, BI and reporting, and taking AI from pilot to production, including private small language models on your own hardware.</p>
-      <p><strong><a href="/services/data-analytics-staffing/">Contract staffing</a>:</strong> data engineers, BI developers, data scientists, solution architects and forward deployed engineers, project-based or on demand, managed by experienced architects.</p>
-      <div class="facts compact">
-        <div><strong>25+ years</strong>enterprise data, BI and integration delivery</div>
-        <div><strong>15+ years</strong>on SAS-based programmes</div>
-      </div>
-    </div>
-    <div class="card-plain">
-      <h3>Technologies we work with</h3>
-      <ul class="chips"><li>Alteryx</li><li>SAS</li><li>Power BI</li><li>Neo4j</li><li>PostgreSQL</li><li>SQL Server</li><li>Oracle</li><li>Snowflake</li><li>MySQL</li><li>SAP (replicated data)</li><li>Tally</li><li>Claude</li><li>OpenAI</li><li>Open-source LLMs (Ollama, vLLM)</li></ul>
-      <p class="small">[CONFIRM: Alteryx partnership status, and any other partnerships to name]</p>
-    </div>
+  <div class="wrap grid-2 services2">
+    <a class="pcard" href="/services/data-ai-consulting/"><span class="tag">Services</span><h3>Data &amp; AI consulting</h3><p>Data readiness, reporting, data platforms, and AI from pilot to production.</p><span class="more">Learn more →</span></a>
+    <a class="pcard" href="/services/data-analytics-staffing/"><span class="tag">Services</span><h3>Contract staffing</h3><p>Technical, functional and AI specialists, project-based or on demand.</p><span class="more">Learn more →</span></a>
   </div>
 </section>
 
-<section class="section alt" id="security">
-  <div class="wrap">
-    <div class="section-title"><p class="eyebrow">Security &amp; privacy</p><h2>Your data stays where it is</h2></div>
-    <div class="grid-2">
-      <div class="card-plain"><h3>Where the data stays</h3><p>Our products run in your environment, on your servers or your cloud account. With AskData, the AI model receives only the question and a description of the relevant tables. Query results, customer names and figures stay with you.</p></div>
-      <div class="card-plain"><h3>Read-only and access-controlled</h3><p>AskData accepts only a single read-only query, applies each person’s row-level rules and masked fields to every answer, report and shared chat, and logs every question.</p></div>
-      <div class="card-plain"><h3>Your choice of AI model</h3><p>Use a provider you already have a contract with, or a model hosted on your own servers, so that not even table names leave your network.</p></div>
-      <div class="card-plain"><h3>No training on your data</h3><p>We do not use client data to train models. What AskData learns (your definitions and verified example questions) stays in your installation.</p></div>
-    </div>
-  </div>
-</section>
-
-<section class="section">
-  <div class="wrap narrow founder">
-    <div class="avatar" aria-hidden="true">ST</div>
-    <div>
-      <p class="eyebrow">Founder</p>
-      <h2>Santosh Tiwari</h2>
-      <p>Santosh founded SyncSense to put enterprise-grade data and AI tools in the hands of business users, at lower cost and with faster time to value. The team has more than 25 years of experience delivering enterprise data warehousing, BI and data integration projects, including 15+ years on SAS-based programmes. [PLACEHOLDER: founder photo and a two-line personal bio]</p>
-      <p><a href="/about/">More about SyncSense</a> · <a href="https://www.linkedin.com/company/data-syncsense/" rel="noopener" target="_blank">SyncSense on LinkedIn</a></p>
-    </div>
-  </div>
-</section>
-
-{{faq}}
 {{cta}}

@@ -168,15 +168,15 @@ def faq_html(faq):
 
 
 PRODUCTS = [
-    {"name": "AskData", "tag": "Text-to-SQL", "href": "/products/text-to-sql/",
+    {"name": "AskData", "short": "Ask questions of your own data in plain English and get answers in seconds.", "tag": "Text-to-SQL", "href": "/products/text-to-sql/",
      "img": "askdata-card", "alt": "AskData answer explaining how net sales by customer country were calculated, with a bar chart of the result",
      "text": "Plain-English questions answered from your own databases, with a table, chart and summary.",
      "points": ["Read-only; results never go to the AI", "Learns your terms; answers can be corrected", "Forecasts and scheduled PDF/PowerPoint reports"]},
-    {"name": "Ontology Studio", "tag": "Ontology & knowledge graph", "href": "/products/ontology-builder/",
+    {"name": "Ontology Studio", "short": "One shared model of what your business data means, for reports and AI.", "tag": "Ontology & knowledge graph", "href": "/products/ontology-builder/",
      "img": "ontology-card", "alt": "Ontology Studio showing the class hierarchy diagram of a retail order management ontology",
      "text": "One shared model of what your business terms mean, used for reports and cited AI answers.",
      "points": ["22 ready-made ontologies, 19 industries", "Diagram, test bed, knowledge graph, versions", "Built on FIBO, HL7 FHIR, Schema.org and more"]},
-    {"name": "Ovantaa CRM", "tag": "Lead to cash", "href": "/products/crm/",
+    {"name": "Ovantaa CRM", "short": "Leads, deals, GST invoices and collections on one customer record.", "tag": "Lead to cash", "href": "/products/crm/",
      "img": "crm-card", "alt": "Ovantaa CRM dashboard with open pipeline, closed won, contacts and won revenue for the last six months in rupees",
      "text": "Leads, deals, campaigns, GST invoices and collections on one record, in your own environment.",
      "points": ["Deal board with stage history", "GST invoicing, reminders, receivables", "AI search that never sees your records"]},
@@ -217,21 +217,22 @@ def fold():
     cards = ""
     for i, p in enumerate(PRODUCTS):
         w, h = IMG_SIZES[p["img"]]
-        pts = "".join(f"<li>{esc(x)}</li>" for x in p["points"])
         full = FULL_IMG[p["img"]]
         cards += (f'<div class="fcard"><button type="button" class="fshot" data-zoom="/assets/img/{full}.webp" aria-label="Enlarge {esc(p["name"])} screenshot">'
                   f'<span class="frame">{shot(p["img"], p["alt"], w, h, eager=(i == 0), cls="")}</span><span class="zoom-hint" aria-hidden="true">⤢</span></button>'
-                  f'<a class="fbody" href="{p["href"]}"><p class="tag">{p["tag"]}</p><h2>{p["name"]}</h2><p class="fdesc">{p["text"]}</p>'
-                  f'<ul class="ticks">{pts}</ul><span class="more">See {esc(p["name"])} →</span></a></div>')
+                  f'<a class="fbody" href="{p["href"]}"><p class="tag">{p["tag"]}</p><h2>{p["name"]}</h2><p class="fdesc">{p["short"]}</p>'
+                  f'<span class="more">Learn more →</span></a></div>')
     cases = "".join(
-        f'<a class="fcase" href="/case-studies/{slug}/"><strong>{esc(stat)}</strong><span>{esc(label)}</span><em>{esc(sector)}</em></a>'
+        f'<a class="fcase" href="/case-studies/{slug}/"><strong>{esc(stat)}</strong><span>{esc(label)}</span></a>'
         for slug, stat, label, sector in FOLD_CASES
     )
     return f"""<section class="fold" aria-label="Products and case studies">
   <div class="wrap">
     <h1 class="sr">SyncSense: AI data products, data and AI consulting, and contract staffing</h1>
+    <p class="fold-label">Our products <a href="/products/">Compare products →</a></p>
     <div class="fold-products">{cards}</div>
-    <div class="fold-cases"><p class="fold-label">Case studies <a href="/case-studies/">All 9 →</a></p><div class="fcases">{cases}</div></div>
+    <p class="fold-label">Case studies <a href="/case-studies/">All 9 →</a></p>
+    <div class="fcases">{cases}</div>
   </div>
 </section>"""
 
