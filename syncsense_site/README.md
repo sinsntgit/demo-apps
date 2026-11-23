@@ -47,4 +47,4 @@ The PHP server serves pages at their folder URLs, such as `/products/`. The redi
 3. Upload `site.zip` to the website root with Hostinger's file upload.
 4. Run the static archive deploy (`hosting_websites_deploy-static-site-archive` with `archive_path: site.zip`).
 
-A deploy replaces everything on the website. The live website is `syncsense.in` (served at www.syncsense.in). The preview site `resolute-mediumturquoise-seahorse-79.hostingersite.com` is kept for testing and is not indexed by search engines.
+A deploy replaces everything on the website. The live website is `syncsense.in` (served at www.syncsense.in). The preview site `close-antiquewhite-walrus-53.hostingersite.com` is kept for testing and is not indexed by search engines.

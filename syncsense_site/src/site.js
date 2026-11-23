@@ -91,6 +91,44 @@
     img.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
   });
 
+  // Home hero: product tabs with gentle auto-rotation (stops on hover, focus or any click).
+  var tabsRoot = document.querySelector("[data-tabs]");
+  if (tabsRoot) {
+    var tabs = Array.prototype.slice.call(tabsRoot.querySelectorAll('[role="tab"]'));
+    var current = 0, timer = null, stopped = false;
+    var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var select = function (i, focus) {
+      current = (i + tabs.length) % tabs.length;
+      tabs.forEach(function (t, j) {
+        var on = j === current;
+        t.setAttribute("aria-selected", String(on)); t.tabIndex = on ? 0 : -1;
+        document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
+      });
+      if (focus) tabs[current].focus();
+    };
+    var stop = function () { stopped = true; if (timer) clearInterval(timer); };
+    tabs.forEach(function (t, i) {
+      t.addEventListener("click", function () { stop(); select(i); });
+      t.addEventListener("keydown", function (e) {
+        if (e.key === "ArrowRight") { stop(); select(current + 1, true); e.preventDefault(); }
+        if (e.key === "ArrowLeft") { stop(); select(current - 1, true); e.preventDefault(); }
+      });
+    });
+    ["mouseenter", "focusin", "touchstart"].forEach(function (ev) { tabsRoot.addEventListener(ev, stop, { passive: true }); });
+    if (!reduce) timer = setInterval(function () { if (!stopped && !document.hidden) select(current + 1); }, 7000);
+  }
+
+  // Home "What we offer": the picture follows the item you point at.
+  var offerLinks = Array.prototype.slice.call(document.querySelectorAll("[data-offer]"));
+  offerLinks.forEach(function (a) {
+    var show = function () {
+      var k = a.getAttribute("data-offer");
+      offerLinks.forEach(function (o) { o.classList.toggle("active", o === a); });
+      document.querySelectorAll("[data-offer-media]").forEach(function (m) { m.hidden = m.getAttribute("data-offer-media") !== k; });
+    };
+    a.addEventListener("mouseenter", show); a.addEventListener("focus", show);
+  });
+
   // AskData sample demo (made-up data, runs in the browser only).
   var root = document.querySelector("[data-t2s]");
   if (!root) return;

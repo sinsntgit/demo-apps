@@ -314,11 +314,13 @@ def case_cards(industry=None):
     return f'<div class="grid-3">{cards}</div>'
 
 
-def insight_cards():
-    cards = "".join(
-        f'<a class="ccard" href="{a["path"]}"><span class="tag">Article · {a["date_label"]}</span><h3>{esc(a["h1"])}</h3><p>{esc(a["description"])}</p><span class="more">Read →</span></a>'
-        for a in ARTICLES
-    )
+def insight_cards(limit=None):
+    cards = ""
+    for a in ARTICLES[:limit] if limit else ARTICLES:
+        cover = a.get("cover")
+        img = f'<img class="acover" src="{cover}" alt="" width="1200" height="630" loading="lazy" decoding="async">' if cover else ""
+        cards += (f'<a class="ccard acard" href="{a["path"]}">{img}<span class="tag">Article · {a["date_label"]}</span><h3>{esc(a["h1"])}</h3>'
+                  f'<p>{esc(a["description"])}</p><span class="more">Read →</span></a>')
     return f'<div class="grid-3">{cards}</div>'
 
 
@@ -375,9 +377,220 @@ def breadcrumb_html(crumbs):
     return f'<nav class="crumbs wrap" aria-label="Breadcrumb">{" <span aria-hidden=true>/</span> ".join(parts)}</nav>'
 
 
+
+# ---------------------------------------------------------------- home page (redesign)
+ICONS = {
+    "insurance": '<path d="M12 3a9 9 0 0 1 9 9H3a9 9 0 0 1 9-9z"/><path d="M12 12v6a2 2 0 0 0 4 0"/>',
+    "banking-financial-services": '<path d="M3 10l9-6 9 6"/><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18"/>',
+    "telecom": '<circle cx="12" cy="9" r="1.6"/><path d="M12 11v10M8 21h8M8.5 5.5a5 5 0 0 0 0 7M15.5 5.5a5 5 0 0 1 0 7M5.5 3a9 9 0 0 0 0 12M18.5 3a9 9 0 0 1 0 12"/>',
+    "tax-professional-services": '<path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4M9 17l6-6"/><circle cx="9.5" cy="11.5" r=".9"/><circle cx="14.5" cy="16.5" r=".9"/>',
+    "retail": '<path d="M5 8h14l-1 13H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
+    "healthcare": '<path d="M20.8 8.6a5 5 0 0 0-8.8-3.2A5 5 0 0 0 3.2 8.6C3.2 14 12 20 12 20s8.8-6 8.8-11.4z"/><path d="M7 12h3l1.5-2.5 2 4 1.5-1.5h2"/>',
+    "manufacturing": '<path d="M3 21V11l5 3v-3l5 3V8l8 4v9z"/><path d="M3 21h18M7 17h2M12 17h2M17 17h2"/>',
+}
+
+
+def icon(key, cls="ico"):
+    return f'<svg class="{cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{ICONS[key]}</svg>'
+
+
+def home_hero():
+    tabs, panels = "", ""
+    for i, p in enumerate(PRODUCTS):
+        w, h = IMG_SIZES[p["img"]]
+        sel = "true" if i == 0 else "false"
+        tabs += f'<button type="button" role="tab" id="ht-{i}" aria-controls="hp-{i}" aria-selected="{sel}"{"" if i == 0 else " tabindex=-1"}>{p["name"]}</button>'
+        vid = video_button(p["video"], "▶ Watch demo", "watch-link light") if p.get("video") else ""
+        panels += (f'<div class="hero2-panel" role="tabpanel" id="hp-{i}" aria-labelledby="ht-{i}"{"" if i == 0 else " hidden"}>'
+                   f'<button type="button" class="fshot" data-zoom="/assets/img/{FULL_IMG[p["img"]]}.webp" aria-label="Enlarge {esc(p["name"])} screenshot">'
+                   f'<span class="frame">{shot(p["img"], p["alt"], w, h, eager=(i == 0), cls="")}</span><span class="zoom-hint" aria-hidden="true">⤢</span></button>'
+                   f'<div class="hero2-cap"><p><strong>{p["name"]}</strong> · {p["tag"]}<br><span>{p["short"]}</span></p>'
+                   f'<div class="frow"><a class="more" href="{p["href"]}">Learn more →</a>{vid}</div></div></div>')
+    cases = "".join(f'<a class="fcase" href="/case-studies/{slug}/"><strong>{esc(stat)}</strong><span>{esc(label)}</span></a>'
+                    for slug, stat, label, sector in FOLD_CASES)
+    return f"""<section class="hero2">
+  <div class="wrap hero2-grid">
+    <div class="hero2-copy">
+      <p class="hero2-label">AI data products · Consulting · Staffing</p>
+      <h1>AI data products and data consulting for business teams</h1>
+      <p class="hero2-sub">Trusted answers from data spread across many systems, without waiting on IT.</p>
+      <div class="actions">{booking_link("Book a demo", "btn btn-light")}<a class="btn ghost-light" href="/free-data-assessment/">Free data assessment</a></div>
+    </div>
+    <div class="hero2-show" data-tabs>
+      <div class="hero2-tabs" role="tablist" aria-label="Our products">{tabs}</div>
+      {panels}
+    </div>
+  </div>
+</section>
+<section class="home-cases" aria-label="Case study results">
+  <div class="wrap">
+    <div class="fold-head"><h2>Case studies</h2><a href="/case-studies/">All 9 case studies →</a></div>
+    <div class="fcases">{cases}</div>
+  </div>
+</section>"""
+
+
+def home_about():
+    stats = [("25+", "years", "of enterprise data, BI and data integration delivery", "dark"),
+             ("3", "products", "AskData, Ontology Studio and Ovantaa CRM, all running in your environment", "tint"),
+             ("22", "ready-made ontologies", "across 19 industries, built on standards such as FIBO and HL7 FHIR", "tint"),
+             ("15+", "years", "on SAS-based programmes", "dark")]
+    cards = "".join(f'<div class="statc {k}"><strong>{n}</strong><span class="u">{u}</span><p>{d}</p></div>' for n, u, d, k in stats)
+    return f"""<section class="section">
+  <div class="wrap about-grid">
+    <div>
+      <p class="eyebrow">About us</p>
+      <h2>From data to decisions</h2>
+      <p>SyncSense builds AI data products and provides data and AI consulting and contract staffing. We help organisations get trusted answers from data spread across many systems, without waiting on IT.</p>
+      <p>Our founding team’s background spans organisations such as SAS, Oracle, Deloitte, BDO and leading analytics firms. Based in Mumbai, we work with clients across India, the Middle East, Africa and the UK.</p>
+      <p><a class="more" href="/about/">More about SyncSense →</a></p>
+    </div>
+    <div class="stat-cards">{cards}</div>
+  </div>
+</section>"""
+
+
+def home_offer():
+    items = [("01", "AskData", "Text-to-SQL: plain-English questions answered from your own databases.", "/products/text-to-sql/", "askdata-chat", 1600, 900, ""),
+             ("02", "Ontology Studio", "One shared model of what your business data means, for reports and AI.", "/products/ontology-builder/", "ontology-diagram", 1600, 838, ""),
+             ("03", "Ovantaa CRM", "Leads, deals, GST invoicing and collections on one customer record.", "/products/crm/", "crm-dashboard", 1600, 733, ""),
+             ("04", "Data & AI consulting", "Data readiness, MIS automation, data platforms and AI from pilot to production.", "/services/data-ai-consulting/", "dash-revenue-b", 1737, 818, ""),
+             ("05", "Contract staffing", "Technical, functional and AI specialists, project-based or on demand.", "/services/data-analytics-staffing/", "", 0, 0,
+              "Data engineers · BI developers · Data scientists · Finance, risk and actuarial consultants · AI and MLOps engineers")]
+    lis, media = "", ""
+    for i, (n, name, d, href, img, w, h, panel) in enumerate(items):
+        lis += (f'<li><a href="{href}" data-offer="{i}"{" class=active" if i == 0 else ""}><span class="num">{n}</span>'
+                f'<span><strong>{name}</strong><em>{d}</em></span></a></li>')
+        if img:
+            media += f'<figure class="offer-fig" data-offer-media="{i}"{"" if i == 0 else " hidden"}><img src="/assets/img/{img}.webp" alt="{esc(name)} screenshot" width="{w}" height="{h}" loading="lazy" decoding="async"></figure>'
+        else:
+            media += f'<div class="offer-fig offer-panel" data-offer-media="{i}" hidden><p class="eyebrow">{name}</p><p>{panel}</p></div>'
+    return f"""<section class="section soft">
+  <div class="wrap offer-grid">
+    <div>
+      <p class="eyebrow">What we offer</p>
+      <h2>Products and services</h2>
+      <ol class="offer-list">{lis}</ol>
+    </div>
+    <div class="offer-media">{media}</div>
+  </div>
+</section>"""
+
+
+def home_cases():
+    picks = ["consumer-goods-campaign-text-to-sql", "tax-research-knowledge-graph-slm", "insurer-managed-bi-team"]
+    by = {c["slug"]: c for c in data.CASE_STUDIES}
+    cards = ""
+    for i, sl in enumerate(picks):
+        c = by[sl]
+        kind = "dark" if i != 1 else "tint"
+        cards += (f'<a class="ccase" href="/case-studies/{sl}/"><div class="ccase-cover {kind}"><strong>{esc(c["headline_stat"])}</strong></div>'
+                  f'<div class="ccase-body"><span class="tag">{esc(c["sector"])}</span><h3>{esc(c["title"])}</h3><span class="more">Read the case study →</span></div></a>')
+    return f"""<section class="section">
+  <div class="wrap">
+    <div class="sec-head"><div><p class="eyebrow">Case studies</p><h2>Real projects, real results</h2></div><a class="more" href="/case-studies/">All case studies →</a></div>
+    <div class="grid-3">{cards}</div>
+  </div>
+</section>"""
+
+
+def home_industries():
+    cards = "".join(f'<a class="icard" href="/use-cases/{i["slug"]}/">{icon(i["slug"])}<h3>{i["name"]}</h3><p>“{esc(i["questions"][0])}”</p></a>'
+                    for i in data.INDUSTRIES)
+    cards += '<a class="icard tint" href="/use-cases/"><h3>All use cases</h3><p>By product, by service and by industry.</p><span class="more">Browse →</span></a>'
+    return f"""<section class="section soft">
+  <div class="wrap">
+    <div class="sec-head"><div><p class="eyebrow">Industries</p><h2>Industries we serve</h2></div></div>
+    <div class="icards">{cards}</div>
+  </div>
+</section>"""
+
+
+TECH = ["SAS", "Alteryx", "Power BI", "Neo4j", "PostgreSQL", "SQL Server", "Oracle", "Snowflake", "MySQL", "SAP data", "Tally", "Claude", "OpenAI", "Ollama", "vLLM", "DuckDB"]
+
+
+def home_tech():
+    tiles = "".join(f'<li><span>{esc(t)}</span></li>' for t in TECH)
+    return f"""<section class="tech-band">
+  <div class="wrap">
+    <p class="eyebrow center">Technologies</p>
+    <h2 class="center">Technologies we work with</h2>
+    <ul class="tech-tiles">{tiles}</ul>
+  </div>
+</section>"""
+
+
+def home_contact():
+    return f"""<section class="section soft" id="contact">
+  <div class="wrap contact-grid">
+    <div>
+      <p class="eyebrow">Ready to get started?</p>
+      <h2>Talk to us about your data</h2>
+      <p>Book a demo, request a free data assessment, or ask about consulting and staffing. We usually reply within one business day.</p>
+      <p><a href="mailto:{EMAIL}">{EMAIL}</a><br><a href="tel:{PHONE_LINK}">{PHONE}</a></p>
+    </div>
+    {form("contact")}
+  </div>
+</section>"""
+
+
+def home_insights():
+    return f"""<section class="section">
+  <div class="wrap">
+    <div class="sec-head"><div><p class="eyebrow">Insights</p><h2>Latest articles</h2></div><a class="more" href="/insights/">All articles →</a></div>
+    {insight_cards(3)}
+  </div>
+</section>"""
+
+
+def make_cover(a):
+    """Branded cover image for an article (1200x630), written into public/. Skipped if Pillow is missing."""
+    rel = f"/assets/img/insights/{a['path'].strip('/').split('/')[-1]}.webp"
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except Exception:
+        return None
+    dest = OUT / rel.lstrip("/")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    bg = Image.open(ROOT / "assets/img/hero-network.webp").convert("RGB").resize((1200, 563)).crop((0, 0, 1200, 563))
+    im = Image.new("RGB", (1200, 630), (6, 9, 42)); im.paste(bg, (0, 67))
+    d = ImageDraw.Draw(im)
+    def font(size, bold=True):
+        for f in (["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"] if bold else ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]):
+            try:
+                return ImageFont.truetype(f, size)
+            except Exception:
+                pass
+        return ImageFont.load_default()
+    d.text((70, 70), "SYNCSENSE INSIGHTS", font=font(26), fill=(127, 227, 236))
+    words, lines, cur = strip_ph(a["h1"]).split(), [], ""
+    f = font(54)
+    for w_ in words:
+        test = (cur + " " + w_).strip()
+        if d.textlength(test, font=f) > 1000:
+            lines.append(cur); cur = w_
+        else:
+            cur = test
+    lines.append(cur)
+    y = 140
+    for ln in lines[:5]:
+        d.text((70, y), ln, font=f, fill=(255, 255, 255)); y += 70
+    d.text((70, 560), "www.syncsense.in", font=font(24, False), fill=(200, 206, 240))
+    im.save(dest, "WEBP", quality=80, method=6)
+    return rel
+
+
 TOKENS = {
     "{{product_cards}}": product_cards,
     "{{fold}}": fold,
+    "{{home_hero}}": lambda: home_hero(),
+    "{{home_about}}": lambda: home_about(),
+    "{{home_offer}}": lambda: home_offer(),
+    "{{home_cases}}": lambda: home_cases(),
+    "{{home_industries}}": lambda: home_industries(),
+    "{{home_tech}}": lambda: home_tech(),
+    "{{home_contact}}": lambda: home_contact(),
+    "{{home_insights}}": lambda: home_insights(),
     "{{product_usecase_cards}}": product_usecase_cards,
     "{{usecase_groups}}": lambda: usecase_groups(),
     "{{case_groups}}": lambda: case_groups(),
@@ -534,7 +747,9 @@ def layout(meta, body):
 <meta name="theme-color" content="#0b1166">
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png">
-{preload}<link rel="stylesheet" href="/assets/styles.css?v={STYLE_V}">
+{preload}<link rel="preload" href="/assets/fonts/poppins-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/poppins-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/assets/styles.css?v={STYLE_V}">
 <script type="application/ld+json">{jsonld(meta, path)}</script>
 </head>
 <body>
@@ -553,11 +768,17 @@ def layout(meta, body):
 {body}
 </main>
 <footer class="site-footer">
+  <div class="wrap footer-top">
+    <a class="footer-logo" href="/"><img src="{LOGO}" alt="" width="44" height="44" loading="lazy"><span><strong>SyncSense</strong><em>{TAGLINE}</em></span></a>
+    <div class="social">
+      <a href="{LINKEDIN}" rel="noopener" target="_blank" aria-label="SyncSense on LinkedIn"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4.98 3.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM3 9.5h4V21H3zM9.5 9.5h3.8v1.6h.1c.5-1 1.8-2 3.8-2 4 0 4.8 2.6 4.8 6V21h-4v-5.1c0-1.2 0-2.8-1.7-2.8s-2 1.3-2 2.7V21h-4z"/></svg></a>
+      <a href="{FOUNDER_YOUTUBE}" rel="noopener" target="_blank" aria-label="SyncSense demos on YouTube"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M23 7.2a3 3 0 0 0-2.1-2.1C19 4.6 12 4.6 12 4.6s-7 0-8.9.5A3 3 0 0 0 1 7.2 31 31 0 0 0 .5 12a31 31 0 0 0 .5 4.8 3 3 0 0 0 2.1 2.1c1.9.5 8.9.5 8.9.5s7 0 8.9-.5a3 3 0 0 0 2.1-2.1 31 31 0 0 0 .5-4.8 31 31 0 0 0-.5-4.8zM9.8 15.1V8.9L15.2 12z"/></svg></a>
+    </div>
+  </div>
   <div class="wrap footer-grid">
     <div class="footer-brand">
-      <img src="{LOGO}" alt="" width="48" height="48" loading="lazy">
-      <p><strong>SyncSense</strong>: AI data products and senior data consulting. Based in {CITY}; working with clients in India, the Middle East, Africa and the UK.</p>
-      <p><a href="mailto:{EMAIL}">{EMAIL}</a><br><a href="tel:{PHONE_LINK}">{PHONE}</a><br><a href="{LINKEDIN}" rel="noopener" target="_blank">SyncSense on LinkedIn</a></p>
+      <p>AI data products, data and AI consulting, and contract staffing. Based in {CITY}; working with clients in India, the Middle East, Africa and the UK.</p>
+      <p><a href="mailto:{EMAIL}">{EMAIL}</a><br><a href="tel:{PHONE_LINK}">{PHONE}</a></p>
     </div>
     <div><h2>Products</h2><ul><li><a href="/products/text-to-sql/">AskData: Text-to-SQL</a></li><li><a href="/products/ontology-builder/">Ontology Studio</a></li><li><a href="/products/crm/">Ovantaa CRM</a></li></ul>
       <h2>Services</h2><ul><li><a href="/services/data-ai-consulting/">Data &amp; AI consulting</a></li><li><a href="/services/data-analytics-staffing/">Contract staffing</a></li><li><a href="/free-data-assessment/">Free data assessment</a></li></ul></div>
@@ -613,7 +834,9 @@ def load_articles():
         meta, body = read_page(f)
         d = date.fromisoformat(meta["date"])
         meta["date_label"] = d.strftime("%d %b %Y").lstrip("0")
-        ARTICLES.append({**meta, "body": body})
+        art = {**meta, "body": body}
+        art["cover"] = make_cover(art)
+        ARTICLES.append(art)
     ARTICLES.sort(key=lambda a: a["date"], reverse=True)
 
 

@@ -9,7 +9,7 @@ A scheduled task runs every Monday and follows this file to publish one new arti
 - Topic list: `content/insights/TOPICS.md`. Take the first unchecked topic, then tick it.
 - LinkedIn draft: `docs/linkedin/<YYYY-MM-DD>-<slug>.md`.
 - **Deploy target**: Hostinger website `syncsense.in`, hosting username `u820401878` (live site, www.syncsense.in).
-  The preview site `resolute-mediumturquoise-seahorse-79.hostingersite.com` is for testing only; do not deploy articles there.
+  The preview site `close-antiquewhite-walrus-53.hostingersite.com` is for testing only; do not deploy articles there.
 
 ## Steps
 
