@@ -8,8 +8,8 @@ A scheduled task runs every Monday and follows this file to publish one new arti
 - Articles: `content/insights/<slug>.html` (copy the header format of an existing article).
 - Topic list: `content/insights/TOPICS.md`. Take the first unchecked topic, then tick it.
 - LinkedIn draft: `docs/linkedin/<YYYY-MM-DD>-<slug>.md`.
-- **Deploy target**: Hostinger website `resolute-mediumturquoise-seahorse-79.hostingersite.com`, hosting username `u820401878`.
-  When the site moves to www.syncsense.in, change this line to `syncsense.in`.
+- **Deploy target**: Hostinger website `syncsense.in`, hosting username `u820401878` (live site, www.syncsense.in).
+  The preview site `resolute-mediumturquoise-seahorse-79.hostingersite.com` is for testing only; do not deploy articles there.
 
 ## Steps
 
@@ -38,6 +38,6 @@ If any step fails (for example the deploy), still commit and push the article, a
 ## LinkedIn post rules
 
 - 150 to 250 words. First line is a hook that works on its own in the feed: a sharp question or a concrete, true observation.
-- 3 to 5 short takeaways as separate lines, then the article link (use `https://www.syncsense.in/insights/<slug>/` once the site is live; until then the preview URL).
+- 3 to 5 short takeaways as separate lines, then the article link (`https://www.syncsense.in/insights/<slug>/`).
 - End with a question that invites comments, and 3 to 5 relevant hashtags (for example #DataAnalytics #GenAI #TextToSQL #DataGovernance #CFO).
 - Same no-invented-facts and no-buzzword rules as the article.

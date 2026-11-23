@@ -642,6 +642,7 @@ def industry_page(ind):
   <div class="actions">{booking_link()}<a class="btn ghost" href="/free-data-assessment/">Get a free data assessment</a></div>
 </div></section>
 
+{demo_strip()}
 <section class="section"><div class="wrap two-col">
   <div><h2>Data problems {esc(ind['name'].lower())} teams tell us about</h2><ul class="ticks">{probs}</ul></div>
   <div class="panel"><h2>Questions you could ask AskData</h2><ul class="qlist">{qs}</ul>
@@ -684,7 +685,17 @@ def case_card(c):
             f'<p>{esc(c["summary"])}</p>{"<p class=stat>" + esc(c["headline_stat"]) + "</p>" if c.get("headline_stat") else ""}<span class="more">Read the case study →</span></a>')
 
 
+def demo_strip():
+    btns = (video_button("askdata-short", "▶ AskData") + video_button("ontology-short", "▶ Ontology Studio")
+            + video_button("crm", "▶ Ovantaa CRM"))
+    return (f'<section class="section tight-top"><div class="wrap"><div class="demo-strip"><p><strong>Product demos</strong>'
+            f'<span>See the products in action, in a few minutes each.</span></p><div class="actions">{btns}</div></div></div></section>')
+
+
 def product_usecase_page(u):
+    global UC_VIDEOS
+    UC_VIDEOS = {"askdata": video_button("askdata-short", "▶ Watch demo"), "ontology-studio": video_button("ontology-short", "▶ Watch demo"),
+                 "ovantaa-crm": video_button("crm", "▶ Watch demo")}
     path = f"/use-cases/{u['slug']}/"
     cases_by_slug = {c["slug"]: c for c in data.CASE_STUDIES}
 
@@ -746,7 +757,7 @@ def product_usecase_page(u):
     <p class="eyebrow">Use cases · {kind} · <a href="{u['product_href']}">{u['product']}</a></p>
     <h1>{u['h1']}</h1>
     <p class="answer">{u['answer']}</p>
-    <div class="actions">{booking_link()}<a class="btn ghost" href="{u['product_href']}">About {u['product']}</a></div>
+    <div class="actions">{booking_link()}{UC_VIDEOS.get(u["slug"], "")}<a class="btn ghost" href="{u['product_href']}">About {u['product']}</a></div>
   </div>
   {hero_media}
 </div></section>

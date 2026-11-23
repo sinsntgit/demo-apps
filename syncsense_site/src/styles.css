@@ -412,3 +412,10 @@ button.btn.watch { font-family: var(--font); }
 /* Home: small visible page heading above "Our products" */
 .fold-h1 { font-size: clamp(.95rem, 1.05vw, 1.15rem); font-weight: 600; color: var(--muted); letter-spacing: .01em; margin: 0 0 clamp(4px, 1vh, 12px); }
 @media (max-height: 700px) and (min-width: 901px) { .fold-h1 { margin-bottom: 2px; font-size: .9rem; } }
+
+/* Product demos strip on industry pages */
+.section.tight-top { padding: 22px 0 0; }
+.demo-strip { display: flex; justify-content: space-between; align-items: center; gap: 16px 28px; flex-wrap: wrap; background: var(--soft); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 20px; }
+.demo-strip p { margin: 0; display: flex; flex-direction: column; }
+.demo-strip span { color: var(--muted); font-size: .92rem; }
+.demo-strip .actions { margin: 0; }
