@@ -434,7 +434,7 @@ def home_about():
     stats = [("25+", "years", "of enterprise data, BI and data integration delivery", "dark"),
              ("3", "products", "AskData, Ontology Studio and Ovantaa CRM, all running in your environment", "tint"),
              ("22", "ready-made ontologies", "across 19 industries, built on standards such as FIBO and HL7 FHIR", "tint"),
-             ("15+", "years", "on SAS-based programmes", "dark")]
+             ("10+", "projects", "executed", "dark")]
     cards = "".join(f'<div class="statc {k}"><strong>{n}</strong><span class="u">{u}</span><p>{d}</p></div>' for n, u, d, k in stats)
     return f"""<section class="section">
   <div class="wrap about-grid">
