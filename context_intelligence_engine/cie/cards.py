@@ -191,6 +191,9 @@ def run(con):
             prev = active.get(p["pattern_key"])
             if prev and json.loads(prev["governance"]).get("metrics_hash") == h:
                 kept += 1
+                if con.execute("SELECT COUNT(*) FROM evidence_ref WHERE card_id=?", (prev["card_id"],)).fetchone()[0] < 3:
+                    # evidence_ref is a derived table that --rebuild clears while cards (and their reviews) are kept: restore the quotes
+                    con.executemany("INSERT INTO evidence_ref VALUES(?,?,?,?,?,?,?)", [(prev["card_id"], *q) for q in quotes])
                 continue
             status = "draft"
             version = 1

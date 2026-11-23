@@ -167,16 +167,30 @@ def _walk_spans(spans, trace_id, sid, parent, depth, out_spans, out_tools, seq):
         _walk_spans(kids, trace_id, sid, span_id, depth + 1, out_spans, out_tools, seq)
 
 
+def _utc(ts):
+    """Parse a trace timestamp to an aware UTC datetime; None when missing or unparsable (sorts last)."""
+    try:
+        d = dt.datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return d if d.tzinfo else d.replace(tzinfo=dt.timezone.utc)
+
+
+def trace_order_key(t):
+    """Conversation order: trace created_at first (stamped by the agent server, one clock per session), then the number N in
+    'turn N workflow' as tie-break. Array order in the export is not conversation order (it follows updated_at, newest first)."""
+    d = _utc(t.get("created_at"))
+    m = TURN_RE.search(t.get("name") or "")
+    return (d is None, d or dt.datetime.max.replace(tzinfo=dt.timezone.utc), int(m.group(1)) if m else 10 ** 6)
+
+
 def normalise(rec, source, counter):
     sid = rec.get("session_id") or rec.get("id")
     traces = rec.get("traces") or []
     if not sid or not isinstance(traces, list):
         raise ValueError("missing session_id or traces")
 
-    def key(t):
-        m = TURN_RE.search(t.get("name") or "")
-        return (int(m.group(1)) if m else 10 ** 6, t.get("created_at") or "")
-    traces = sorted(traces, key=key)
+    traces = sorted(traces, key=trace_order_key)
     turns, ctraces, spans, tools = [], [], [], []
     roles_seen, n_user = set(), 0
     for seq, t in enumerate(traces):

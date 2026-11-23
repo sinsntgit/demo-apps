@@ -125,7 +125,7 @@ Metrics with an error message in at least one session: `Action_Completion_Voice_
 
 1. **Billing/IVR/authentication dominate** (confirmed representative). Expect risk/friction insights first; buying/value signals will be rarer.
 2. **The platform already labels intent** in tool spans (`intent_name`, agent paraphrases in `retrieve_intent_matches.user_intent` / `explain_bill_init_mcp.query`). These are the strongest evidence for the taxonomy, but several labels are generic routing labels (`bill_plus_operator`, `bill_problem_general`, `bill_explain_incorrect`, `RecentAccountActivity`) and must not override the customer's explicit words.
-3. **Turn order must be rebuilt** from `turn N`; windows start mid-call. Customer turns are often system events (DTMF, no-input, function results): friction evidence, not utterances.
+3. **Turn order must be rebuilt** from `created_at` (tie-break: `turn N`; the two agree in all 36 sessions); windows start mid-call. Customer turns are often system events (DTMF, no-input, function results): friction evidence, not utterances.
 4. **Redaction is imperfect for display**: a place name and exact dollar amounts appear in redacted text. Quotes are re-masked before evidence cards.
 5. **Repeat-contact linkage** depends on `previous_session_id` (empty in the sample; confirmed available in production). **Location** is not in the export (an assumed contract is used until Verizon supplies it).
 6. **Some evaluators error** (e.g. a model-gateway 404): status must be kept and never coerced to 0.

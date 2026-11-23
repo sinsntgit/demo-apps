@@ -6,8 +6,8 @@
   "episode_model": "1.1.0",
   "fixtures": "1.0.0"
  },
- "generated_at": "2026-11-22T06:46:18+00:00",
- "generated_seconds": 25.6,
+ "generated_at": "2026-11-23T12:10:03+00:00",
+ "generated_seconds": 40.6,
  "gates": {
   "G0_calibration": {
    "pass": true,
@@ -660,8 +660,24 @@
    "summary": "60 queries: MRR bm25 0.897, dense 0.897, hybrid 0.911; filters ok; as-of ok"
   },
   "G8_api_performance": {
-   "pass": null,
-   "summary": "skipped (--quick)"
+   "routes_tested": 17,
+   "route_errors": [],
+   "api_p95_ms_warm": 118.7,
+   "pipeline_seconds_by_stage": {
+    "retrieval_index": 0.0,
+    "facts": 2.0,
+    "cards": 1.0,
+    "scoring": 1.0,
+    "patterns": 3.0,
+    "clusters": 25.0,
+    "episodes+features": 25.0,
+    "signals+intents": 117.0,
+    "ingest": 88.0
+   },
+   "pipeline_seconds_total": 262.0,
+   "note": "Latency measured after cache warm-up (server pre-warms at start); cold first calls of heavy aggregates take 1-5 s.",
+   "pass": true,
+   "summary": "17 routes OK, API p95 119 ms (warm); full pipeline 4.4 min on this machine"
   },
   "G9_volume": {
    "synthetic_sessions": 100000,

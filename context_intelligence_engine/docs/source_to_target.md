@@ -11,7 +11,7 @@
 | `dataset_metadata` (synthetic only) | `data_provenance`, `is_synthetic`, `provenance_id` | batch / scenario / template / generator version / seed |
 | `metrics.*` (session) | `agent_evaluation` (entity `session`) | grouped by base name; `_status`, `_rationale`/`_explanation`/`_error_message`, `_model_alias`, `_scorer_version_id` kept; tokens/costs/`@aggregates` dropped; canonical names for 17 metrics |
 | `metrics.cm_policy_metric` (JSON string) | `agent_evaluation(policy_compliance)`, `policy_verdict`, `journey_label` | per-policy verdict, severity, type, evidence, reason |
-| `traces[]` | `conversation_trace`, `conversation_turn` | sorted by `turn N` in `name`, then `created_at`; `seq` = 0..n-1 |
+| `traces[]` | `conversation_trace`, `conversation_turn` | sorted by `created_at` (agent-server clock), then `turn N` in `name` as tie-break; `seq` = 0..n-1 |
 | `traces[].redacted_input` | `conversation_turn.user_text` or `kind='event'` | `<event>`/`<context>` -> `event_type` (session_start, disconnect, dtmf + key, no_input + secs, function_result + name); PII re-scrub; language tag |
 | `traces[].redacted_output` | `agent_text`, `agent_role`, `roles` | concatenate non-tool messages; strip lower-case markup (`[prosody ...]`, `[warm]`); keep UPPER placeholders; roles lower-cased |
 | `traces[].spans[]` (recursive) | `trace_span` | id, parent, depth, type, name, step |

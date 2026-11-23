@@ -210,8 +210,8 @@ git-ignored and must never be committed.
 
 - A line is a `session` with `traces[]`. Each trace has `spans[]` → a `workflow` span → nested `llm`
   and `tool` spans. Recurse; never assume depth.
-- Trace order in the file is arbitrary. Turn number = N in `name` (`"turn N workflow"`); numbering
-  can start above 1 because exports are windows. Fall back to `created_at`.
+- Trace order in the file is arbitrary (it follows `updated_at`, newest first). Sort by trace `created_at`, then N in `name` as tie-break. Turn number = N in `name` (`"turn N workflow"`); numbering
+  can start above 1 because exports are windows; `turn_no` is stored as sent, `seq` is the position after sorting.
 - `input`/`output` are JSON **strings** of `[{role, content}]`. `output` may be `null`. `content` may be
   a dict (tool payloads).
 - `output[].role` is the agent/skill name. Lower-case it (`Root_agent` and `root_agent` are the same).
@@ -639,3 +639,4 @@ Parallel lanes for agents:
 | 2026-11-19 | Score dimensions renamed for telecom users (Customer Reach, Repeat-Call Pull, Demand Momentum, Proof Strength, Revenue & Retention Impact, Local Hotspot, Priority Score); DB keys unchanged; definitions live in cie/glossary.py and are served to every screen | User request |
 | 2026-11-19 | KMeans is the only clustering algorithm everywhere (need, risk, value, geo, L4 discovery). HDBSCAN/MiniBatchKMeans removed from the spec | User decision |
 | 2026-11-22 | episode_model 1.1.0: a platform routing change on a system-event turn (no customer words) no longer opens a goal episode once the customer has spoken. Real sample: 49 -> 43 goal episodes in 3 of 36 sessions, reviewed by transcript (SME review pending) | Real-sample review |
+| 2026-11-23 | Turn order now sorts by trace created_at first, turn number second (server stamps one clock per session; both agree in 36/36 real sessions and 20K synthetic). Array order is updated_at descending and is never used | User decision |
