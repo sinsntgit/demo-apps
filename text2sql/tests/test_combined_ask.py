@@ -232,3 +232,11 @@ def test_a_combined_model_without_confirmed_matches_cannot_be_asked(setup):
         assert r.status_code == 400 and "not ready" in r.json()["detail"]
     finally:
         c.delete(f"/api/combined/{made['id']}", headers=H)
+
+
+def test_scripts_are_revalidated_after_an_update(client):
+    """Browsers must check for a newer copy of the app's scripts: an older cached chat.js hid combined models on Ask."""
+    r = client.get("/static/js/chat.js")
+    assert r.status_code == 200 and r.headers["cache-control"] == "no-cache" and r.headers.get("etag")
+    again = client.get("/static/js/chat.js", headers={"If-None-Match": r.headers["etag"]})
+    assert again.status_code == 304                     # unchanged files cost almost nothing

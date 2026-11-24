@@ -329,6 +329,10 @@ async def security_layer(request: Request, call_next):
         "script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
     if request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"
+    elif request.url.path.startswith("/static/") and "Cache-Control" not in response.headers:
+        # always ask the server whether a file changed (a cheap 304 if not): after an update the browser must not keep
+        # running the previous version's scripts - without this, browsers may reuse them for hours
+        response.headers["Cache-Control"] = "no-cache"
     if config.COOKIE_SECURE:
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response

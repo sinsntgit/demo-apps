@@ -609,7 +609,7 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 <section id="combined" data-title="Combined data models" data-role="Data stewards &amp; administrators">
 <h2>Combined data models: two or more data models together</h2>
 <p>Some questions need data from more than one system: <i>“Which of our top SAP customers have the most open CRM tickets?”</i> A <b>combined data model</b> puts two to four data models (up to six if an administrator allows it) side by side and records which fields mean the same thing in each — the <b>matches</b>, such as SAP's customer number <code>KUNNR</code> and the CRM's <code>sap_no</code>. Each data model keeps its own training, access and filters.</p>
-<p>Once its matches link every data model, it appears on the <b>Ask</b> page like any other data model — see <a href="#/help/combined-ask">Asking across data models</a> below.</p>
+<p>It is listed on the <b>Ask</b> page like any other data model — see <a href="#/help/combined-ask">Asking across data models</a> below. Until confirmed matches link every data model it shows as <i>(not ready)</i> and cannot be asked yet.</p>
 <figure><img src="/static/help/img/combined-card.png" alt="The Sample: SAP + CRM card on the Data models page: combined data model, linked, value check on, combining the SAP and CRM samples with 1 confirmed match"><figcaption>A combined data model on the Data models page.</figcaption></figure>
 <h3>Creating one</h3>
 <ol>

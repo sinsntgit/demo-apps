@@ -75,6 +75,12 @@ const OUT = process.argv[2], B = 'http://localhost:8010/';
     await page.click('.modal footer .primary'); await page.waitForSelector('.modal h3:has-text("Suggestions to check")');
     await page.waitForSelector('.modal >> text=Matches · Retail + CRM');
     await page.click('.modal button:has-text("Find matches")'); await page.waitForSelector('.toast:has-text("values checked for")');
+    const ask = await (await browser.newContext()).newPage();          // meanwhile the Ask page lists it as not ready
+    await ask.context().addCookies(await page.context().cookies());
+    await ask.goto(B + '#/ask'); await ask.waitForSelector('.ask-bar');
+    const listed = await ask.locator('.ask-bar select >> nth=0 >> option').allTextContents();
+    if (!listed.includes('Retail + CRM  ·  Combined data model (not ready)')) throw new Error('not-ready model on Ask: ' + listed);
+    await ask.context().close();
   });
 
   await step('add a match by hand; the model becomes linked', async () => {

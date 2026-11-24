@@ -115,7 +115,7 @@ export async function connectionsView(root) {
       c.notice ? h('div', { class: 'small', style: 'margin-top:4px;color:var(--bad)' }, '⚠ ' + c.notice) : null,
       h('div', { class: 'small dim', style: 'margin-top:4px' }, 'Combines ', c.members.map((m, i) => [i ? ' + ' : '', h('b', {}, m.name), ` (${m.alias})`]),
         ` · ${c.matches.confirmed} confirmed match${c.matches.confirmed === 1 ? '' : 'es'}` + (c.matches.suggested ? ` · ${c.matches.suggested} suggested` : '')),
-      h('div', { class: 'small dim', style: 'margin-top:2px' }, c.ready ? 'Ask questions across these data models on the Ask page.' : 'It appears on the Ask page once confirmed matches link every data model.')),
+      h('div', { class: 'small dim', style: 'margin-top:2px' }, c.ready ? 'Ask questions across these data models on the Ask page.' : 'Listed on the Ask page as “not ready” until confirmed matches link every data model.')),
       canEdit ? h('div', { class: 'row wrap' }, h('button', { class: 'btn sm primary', onclick: () => matches(c.id) }, '🔗 Matches'),
         h('button', { class: 'btn sm', onclick: () => editCombined(c) }, 'Edit'),
         h('button', { class: 'btn sm danger', onclick: async () => {

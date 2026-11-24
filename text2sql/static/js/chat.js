@@ -6,7 +6,7 @@ const prefs = { get(k) { try { return localStorage.getItem('t2s-' + k); } catch 
 
 export async function chatView(root, convId) {
   const [conns, models, convs, opts] = await Promise.all([api('GET', '/api/connections'), api('GET', '/api/models'), api('GET', '/api/chat/conversations'), api('GET', '/api/chat/options')]);
-  const active = conns.filter(c => c.is_active && (c.db_type !== 'combined' || c.ready));     // a combined model once its matches link every data model
+  const active = conns.filter(c => c.is_active);      // a combined model that is not linked yet is listed, with what to do
   let conv = null;                                   // {id, title, connection_id}
   const first = active.reduce((m, c) => (!m || c.id < m.id ? c : m), null)?.id;      // no choice remembered: the oldest data model
   let connId = Number(prefs.get('conn')) || first;
@@ -59,7 +59,7 @@ export async function chatView(root, convId) {
     if (!r.error) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
   }
 
-  const connSel = select(active.map(c => [c.id, `${c.name}  ·  ${c.db_label}`]), connId, v => { connId = Number(v); prefs.set('conn', v); if (conv && conv.connection_id !== connId) newChat(); else welcome(); });
+  const connSel = select(active.map(c => [c.id, `${c.name}  ·  ${c.db_label}${c.db_type === 'combined' && !c.ready ? ' (not ready)' : ''}`]), connId, v => { connId = Number(v); prefs.set('conn', v); if (conv && conv.connection_id !== connId) newChat(); else welcome(); });
   const opt = m => h('option', { value: m.id, selected: m.id === modelId }, m.name);
   const both = models.some(m => m.group === 'shared') && models.some(m => m.group !== 'shared');
   const modelSel = h('select', { onchange: e => { modelId = Number(e.target.value); prefs.set('model', e.target.value); } },
@@ -167,6 +167,7 @@ export async function chatView(root, convId) {
     const c = active.find(x => x.id === connId);
     const warn = !active.length ? 'No data model is available to you yet. Ask an administrator to connect a database.'
       : !models.length ? 'No AI model is enabled yet. An administrator can add one under Admin → Models.'
+      : c.db_type === 'combined' && !c.ready ? 'This combined data model is not ready yet: a data steward or administrator must confirm a match that links each of its data models to the others (Data models → 🔗 Matches).'
       : !c.table_count ? 'This data model has no schema yet. A steward needs to open Data models and press “Sync schema”.' : null;
     fill(inner, h('div', { class: 'empty' }, h('h1', { style: 'margin-bottom:8px' }, 'What would you like to know?'),
       warn ? h('div', { class: 'banner warn', style: 'max-width:520px;margin:12px auto' }, warn)
