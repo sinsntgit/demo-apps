@@ -82,7 +82,7 @@ def _full(db, user, r: Report) -> dict:
     owner = db.get(User, r.owner_id)
     out = {**_summary(db, user, r, {r.owner_id: (owner.name or owner.email) if owner else ""}),
            "header_text": r.header_text, "footer_text": r.footer_text, "page_numbers": r.page_numbers,
-           "components": [{k: v for k, v in c.items() if k != "sql"} for c in r.components or []]}
+           "components": [{k: v for k, v in c.items() if k not in ("sql", "plan")} for c in r.components or []]}
     if reporting.is_owner(user, r):
         out["schedule"] = r.schedule or ScheduleIn().model_dump()
         out["shares"] = [{"scope": s.scope, "user_id": s.user_id, "role": s.role, "group_id": s.group_id, "can_edit": s.can_edit}

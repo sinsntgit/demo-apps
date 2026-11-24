@@ -131,7 +131,7 @@ def test_create_validate_decide_and_delete(admin):
 
     v = client.post("/api/combined", headers=H, json=body()).json()
     assert v["name"] == "Retail + CRM" and not v["ready"]                        # nothing confirmed yet
-    assert client.post("/api/chat/ask", headers=H, json={"connection_id": v["id"], "question": "x"}).json()["detail"].startswith("Questions across a combined")
+    assert client.post("/api/chat/ask", headers=H, json={"connection_id": v["id"], "question": "x"}).json()["detail"].startswith("This combined data model is not ready")
     # a steward's own match, then reject / restore on a suggestion
     added = client.post(f"/api/combined/{v['id']}/matches", headers=H, json={
         "left_member": retail["id"], "left_table": "customers", "left_columns": ["customer_name"], "right_member": crm["id"],

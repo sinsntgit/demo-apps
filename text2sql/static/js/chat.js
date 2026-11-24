@@ -6,7 +6,7 @@ const prefs = { get(k) { try { return localStorage.getItem('t2s-' + k); } catch 
 
 export async function chatView(root, convId) {
   const [conns, models, convs, opts] = await Promise.all([api('GET', '/api/connections'), api('GET', '/api/models'), api('GET', '/api/chat/conversations'), api('GET', '/api/chat/options')]);
-  const active = conns.filter(c => c.is_active && c.db_type !== 'combined');      // combined models cannot be asked yet
+  const active = conns.filter(c => c.is_active && (c.db_type !== 'combined' || c.ready));     // a combined model once its matches link every data model
   let conv = null;                                   // {id, title, connection_id}
   const first = active.reduce((m, c) => (!m || c.id < m.id ? c : m), null)?.id;      // no choice remembered: the oldest data model
   let connId = Number(prefs.get('conn')) || first;
@@ -170,7 +170,7 @@ export async function chatView(root, convId) {
       : !c.table_count ? 'This data model has no schema yet. A steward needs to open Data models and press “Sync schema”.' : null;
     fill(inner, h('div', { class: 'empty' }, h('h1', { style: 'margin-bottom:8px' }, 'What would you like to know?'),
       warn ? h('div', { class: 'banner warn', style: 'max-width:520px;margin:12px auto' }, warn)
-        : h('p', {}, `Asking `, h('b', {}, c.name), c.description ? ` — ${c.description}` : '', h('br'), h('span', { class: 'small dim' }, `${c.table_count} tables · ${c.db_label}`))));
+        : h('p', {}, `Asking `, h('b', {}, c.name), c.description ? ` — ${c.description}` : '', h('br'), h('span', { class: 'small dim' }, `${c.table_count} tables · ${c.db_label}` + (c.members ? ` — ${c.members.map(m => `${m.name} (${m.alias})`).join(' + ')}; each step runs on its own data model and the results are combined here` : '')))));
   }
 
   function newChat() {

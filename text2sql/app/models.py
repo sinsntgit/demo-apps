@@ -175,6 +175,8 @@ class QueryRun(Base):
     attempts: Mapped[int] = mapped_column(Integer, default=0)      # model calls incl. repairs
     context: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # what was sent to the model
     analysis: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # predictive: {"spec", "result" | "error"}
+    # combined data models: {"steps": [{id, source, sql, rows, ms, filters, columns}], "combine", "generated": <the model's plan>}
+    plan: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     rephrase_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)   # asked using this rephrased wording
     company_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     # "these results are incorrect" -> review queue -> training

@@ -1,6 +1,6 @@
 // Combined data models (Data models → ＋ Combined data model): the bundled "Sample: SAP + CRM", its confirmed customer-number
 // match with the "strip leading zeros" rule, the value check (percentages only), the diagram's orange match line, creating a
-// combined model, deciding on suggestions, and the Ask page refusing combined models for now.
+// combined model, deciding on suggestions, and asking questions across data models (steps, combine, edit, warnings, limits).
 // Usage: node tests/e2e/combined.js <screenshot dir>
 const { chromium } = require('playwright');
 const OUT = process.argv[2], B = 'http://localhost:8010/';
@@ -90,14 +90,49 @@ const OUT = process.argv[2], B = 'http://localhost:8010/';
     await page.waitForSelector('.modal >> text=✓ every data model is linked');
   });
 
-  await step('ask page does not offer combined models yet; the server refuses them', async () => {
-    const conns = await call('GET', '/api/connections');
-    const combo = conns.find(c => c.name === 'Retail + CRM');
-    const r = await call('POST', '/api/chat/ask', { connection_id: combo.id, question: 'how many accounts' });
-    if (!/next update|not yet/i.test(JSON.stringify(r))) throw new Error('ask: ' + JSON.stringify(r).slice(0, 200));
-    await page.goto(B + '#/ask'); await page.reload(); await page.waitForSelector('select');
-    const all = (await page.locator('select').allInnerTexts()).join('|');
-    if (all.includes('SAP + CRM') || all.includes('Retail + CRM')) throw new Error('combined offered on Ask');
+  await step('ask a question across SAP and CRM: one tab per step, then combine', async () => {
+    await page.goto(B + '#/ask'); await page.reload(); await page.waitForSelector('.ask-bar');
+    const opts = await page.locator('.ask-bar select >> nth=0 >> option').allTextContents();
+    if (!opts.some(o => o.startsWith('Sample: SAP + CRM')) || !opts.some(o => o.startsWith('Retail + CRM'))) throw new Error('combined models not offered: ' + opts);
+    await page.selectOption('.ask-bar select >> nth=0', { index: opts.findIndex(o => o.startsWith('Sample: SAP + CRM')) });
+    await page.waitForSelector('text=each step runs on its own data model');
+    await page.fill('.composer textarea', 'Which of our top SAP customers have the most open CRM tickets?'); await page.press('.composer textarea', 'Enter');
+    await page.waitForSelector('.run h3:has-text("Plan · 2 steps + combine")', { timeout: 20000 });
+    for (const t of ['s1 · sap', 's2 · crm', 'Combine']) await page.waitForSelector(`.run .plan button:text-is("${t}")`);
+    const info = await page.locator('.run .plan .small.dim').first().innerText();
+    if (!/Sample: SAP Sales & Finance · [\d,]+ rows read/.test(info)) throw new Error('step info: ' + info);
+    await page.click('.run .plan button:text-is("s2 · crm")'); await page.waitForSelector('.run .plan pre.sql:has-text("open_tickets")');
+    await page.click('.run .plan button:text-is("Combine")'); await page.waitForSelector('.run .plan pre.sql:has-text("LEFT JOIN")');
+    await page.click('.run button:text-is("Table")'); await page.waitForSelector('.run table tbody tr');
+    const rows = await page.locator('.run table tbody tr').count(); if (rows !== 10) throw new Error('rows ' + rows);
+    await page.click('.run .plan button:text-is("s1 · sap")');
+    await noToasts(); await page.setViewportSize({ width: 1320, height: 1300 });
+    await page.locator('.run').last().screenshot({ path: `${OUT}/combined-answer.png` });
+    await page.setViewportSize({ width: 1320, height: 900 });
+  });
+
+  await step('edit a step of the plan and run it again', async () => {
+    await page.click('.run button:text-is("✎ Edit plan")');
+    await page.click('.run .plan button:text-is("Combine")');
+    const ta = page.locator('.run .plan textarea');
+    await ta.fill((await ta.inputValue()).replace(/LIMIT 10/i, 'LIMIT 3'));
+    await page.click('.run button:text-is("▶ Run edited plan")');
+    await page.waitForSelector('.run .sec-head:has-text("edited by you")');
+    await page.click('.run button:text-is("Table")'); await page.waitForSelector('.run table tbody tr');
+    const rows = await page.locator('.run table tbody tr').count(); if (rows !== 3) throw new Error('rows after edit ' + rows);
+  });
+
+  await step('a plan that matches nothing explains why', async () => {
+    await page.click('button:has-text("New chat")').catch(() => {});
+    await page.fill('.composer textarea', 'Customers and tickets without the key rule'); await page.press('.composer textarea', 'Enter');
+    await page.waitForSelector('.run .banner.warn:has-text("No rows matched")', { timeout: 20000 });
+  });
+
+  await step('a question over the row limit fails with a clear message', async () => {
+    await call('PUT', '/api/admin/settings', { combined_step_max_rows: 1000 });
+    await page.fill('.composer textarea', 'List every billing item with its tickets'); await page.press('.composer textarea', 'Enter');
+    await page.waitForSelector('.run .banner.bad:has-text("more than 1,000 rows")', { timeout: 20000 });
+    await call('PUT', '/api/admin/settings', { combined_step_max_rows: 200000 });
   });
 
   await step('delete the combined model keeps its data models', async () => {

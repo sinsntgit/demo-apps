@@ -84,7 +84,10 @@ def result_component(run: QueryRun) -> dict:
             "show_chart": True, "show_table": True, "show_summary": True, "table_rows": 25,
             "chart": {k: v for k, v in (run.chart or {}).items() if k != "hide"},
             # predictive answers carry their method + columns, so the model is re-fitted on fresh data each time
-            "analysis": (run.analysis or {}).get("spec"), "show_analysis": True, "hide": list((run.chart or {}).get("hide") or [])}
+            "analysis": (run.analysis or {}).get("spec"), "show_analysis": True, "hide": list((run.chart or {}).get("hide") or []),
+            # a combined data model's answer stores its plan (steps + combine), copied from the run - never from the browser
+            "plan": {"steps": [{k: st[k] for k in ("id", "source", "sql")} for st in run.plan["steps"]], "combine": run.plan["combine"]}
+            if run.plan else None}
 
 
 def _width(c) -> int:
@@ -210,7 +213,8 @@ def render(db, report: Report, viewer: User) -> dict:
         else:
             try:
                 spec = c.get("analysis") if c.get("show_analysis", True) and cfg["predictive_enabled"] else None
-                res = engine.run_sql(db, conn, next(x["sql"] for x in report.components if x["id"] == c["id"]), cfg, viewer, spec)
+                stored = next(x for x in report.components if x["id"] == c["id"])
+                res = engine.run_sql(db, conn, stored["sql"], cfg, viewer, spec, plan=stored.get("plan"))
                 c.update(status="ok", columns=res["columns"], rows=res["rows"], row_count=res["row_count"],
                          analysis=res.get("analysis"),
                          truncated=res["truncated"], summary=res["summary"], filtered=bool(res["filters"]),
@@ -221,6 +225,7 @@ def render(db, report: Report, viewer: User) -> dict:
                 c.update(status="error", message=str(e))
         if c.get("status") != "ok" or not sees_sql(viewer):
             c.pop("sql", None)          # do not reveal schema details of data the viewer cannot use
+            c.pop("plan", None)
         if not sees_sql(viewer):        # results-only account: no Python code either, on screen or in the PDF
             c["hide"] = sorted(set(c.get("hide") or []) | {"code"})
             a = c.get("analysis")

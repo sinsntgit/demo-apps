@@ -608,8 +608,8 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 
 <section id="combined" data-title="Combined data models" data-role="Data stewards &amp; administrators">
 <h2>Combined data models: two or more data models together</h2>
-<p>Some questions need data from more than one system: <i>“Which customers with high SAP revenue have many open CRM tickets?”</i> A <b>combined data model</b> puts two to four data models (up to six if an administrator allows it) side by side and records which fields mean the same thing in each — the <b>matches</b>, such as SAP's customer number <code>KUNNR</code> and the CRM's <code>sap_no</code>. Each data model keeps its own training, access and filters.</p>
-<p><b>Coming next:</b> asking questions of a combined data model arrives in the next update. For now you set one up and check its matches; the Ask page does not offer combined data models yet.</p>
+<p>Some questions need data from more than one system: <i>“Which of our top SAP customers have the most open CRM tickets?”</i> A <b>combined data model</b> puts two to four data models (up to six if an administrator allows it) side by side and records which fields mean the same thing in each — the <b>matches</b>, such as SAP's customer number <code>KUNNR</code> and the CRM's <code>sap_no</code>. Each data model keeps its own training, access and filters.</p>
+<p>Once its matches link every data model, it appears on the <b>Ask</b> page like any other data model — see <a href="#/help/combined-ask">Asking across data models</a> below.</p>
 <figure><img src="/static/help/img/combined-card.png" alt="The Sample: SAP + CRM card on the Data models page: combined data model, linked, value check on, combining the SAP and CRM samples with 1 confirmed match"><figcaption>A combined data model on the Data models page.</figcaption></figure>
 <h3>Creating one</h3>
 <ol>
@@ -646,9 +646,24 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 <table>
 <tr><th>Setting</th><th>Default</th><th>Meaning</th></tr>
 <tr><td>Data models in one combined model</td><td>4</td><td>2 to 6.</td></tr>
-<tr><td>Rows read from one data model per step</td><td>200,000</td><td>For questions across data models (next update).</td></tr>
-<tr><td>Rows in one combined answer before joining</td><td>500,000</td><td>For questions across data models (next update).</td></tr>
+<tr><td>Rows read from one data model per step</td><td>200,000</td><td>A step that would read more stops the answer with a message.</td></tr>
+<tr><td>Rows in one combined answer before joining</td><td>500,000</td><td>The total read by all steps of one answer.</td></tr>
 </table>
+<h3 id="combined-ask">Asking across data models</h3>
+<p>Pick the combined data model on the Ask page and ask as usual. Instead of one SQL query, the AI writes a <b>plan</b>:</p>
+<ol>
+<li><b>One step per data model</b> — for example net sales per customer from SAP, and open tickets per customer from the CRM. Each step runs on its own data model exactly like a normal question: the read-only check, your data filters for that data model, and its masked columns all apply.</li>
+<li><b>A combine step</b> that joins the step results on the AskData server, using the confirmed matches and their key rules (so SAP's <code>0000100001</code> meets the CRM's <code>100001</code>). It can read the step results and nothing else.</li>
+</ol>
+<figure><img src="/static/help/img/combined-answer.png" alt="An answer across SAP and CRM: a plan with tabs s1 sap, s2 crm and Combine, the SAP step's SQL with 159 rows read, and a table of the top 10 customers with net sales and open tickets"><figcaption>An answer across SAP and CRM: one tab per step, then Combine.</figcaption></figure>
+<ul>
+<li>Each step's tab shows its data model, how many rows it read and whether your data filters were applied. <b>✎ Edit plan</b> lets you change any step or the combine query and run it again.</li>
+<li>The AI model never sees data from either system: it gets the same schema and training notes as for each data model on its own, plus the list of matches.</li>
+<li><b>Row limits:</b> a step that would read more than the limit, or steps that together read more than the total, stop with a clear message instead of an approximate answer. Ask for totals (per customer, per month) rather than detail.</li>
+<li><b>Warnings</b> appear above the result when no rows matched across the data models (check the key rule) or when the key repeats on both sides, which can count rows more than once.</li>
+<li>Shared chats, reports, PDFs, PowerPoint and scheduled emails re-run the plan with each viewer's own access, as for any answer. People set to see results only never see the plan.</li>
+<li><b>Not yet:</b> confirming an answer across data models does not add it to training (it is recorded), and reported problems on these answers are not yet in the stewards' review queue.</li>
+</ul>
 </section>
 
 <section id="groups" data-title="User groups (admin)" data-role="Administrators">

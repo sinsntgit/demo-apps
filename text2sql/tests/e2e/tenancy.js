@@ -74,7 +74,7 @@ const OUT = process.argv[2], B = 'http://localhost:8010/';
     const models = await nw.locator('.ask-bar select >> nth=1 >> option').allTextContents();
     if (models.join() !== 'Claude (shared)') throw new Error('models: ' + models);
     const conns = await nw.locator('.ask-bar select >> nth=0 >> option').allTextContents();
-    if (conns.length !== 3 || !conns.every(c => c.startsWith('Sample:'))) throw new Error('data models: ' + conns);
+    if (conns.length !== 4 || !conns.every(c => c.startsWith('Sample:'))) throw new Error('data models: ' + conns);
     await nw.selectOption('.ask-bar select >> nth=0', { index: conns.findIndex(c => c.includes('Retail')) });
     await nw.fill('.composer textarea', 'revenue by category'); await nw.press('.composer textarea', 'Enter');
     await nw.waitForSelector('.run .chart-box canvas');

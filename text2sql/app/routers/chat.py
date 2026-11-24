@@ -6,17 +6,13 @@ from pydantic import BaseModel
 from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
-from .. import connectors, engine, graph, predict, reporting, security, sqlguard, summarize, tenancy
+from .. import connectors, engine, graph, matching, planner, predict, reporting, security, sqlguard, summarize, tenancy
 from ..db import get_db, now
 from ..deps import audit, can_use, current_user, get_connection, get_settings, sees_sql
 from ..models import ISSUE_TYPES, ROLES, Connection, Conversation, ConversationShare, LLMModel, QueryRun, RephraseLog, User, UserGroup
 from .training import upsert_pair
 
 router = APIRouter(prefix="/api", tags=["chat"])
-
-
-COMBINED_NOT_YET = ("Questions across a combined data model are not available yet - they arrive in the next update. "
-                    "For now you can set it up and check how its data models match (Data models page).")
 
 
 class AskIn(BaseModel):
@@ -38,6 +34,7 @@ class RephraseIn(BaseModel):
 
 class ExecIn(BaseModel):
     sql: str | None = None
+    plan: dict | None = None        # combined data models: the edited steps and combine query
 
 
 class FeedbackIn(BaseModel):
@@ -67,7 +64,8 @@ def run_dto(r: QueryRun, rows: bool = True) -> dict:
             "followups": r.followups or [], "feedback": r.feedback, "feedback_note": r.feedback_note,
             "model_label": r.model_label, "input_tokens": r.input_tokens, "output_tokens": r.output_tokens,
             "cost": round(r.cost, 6), "llm_ms": r.llm_ms, "db_ms": r.db_ms, "attempts": r.attempts,
-            "context": r.context, "created_at": r.created_at.isoformat(),
+            "context": r.context, "created_at": r.created_at.isoformat(), "plan": planner.plan_dto(r.plan),
+            "warnings": (r.context or {}).get("warnings") or [],
             "issue_type": r.issue_type or "", "issue_label": ISSUE_TYPES.get(r.issue_type or "", ""),
             "issue_status": r.issue_status or "", "issue_resolution": r.issue_resolution or ""}
 
@@ -78,7 +76,7 @@ def shaped(dto: dict, user: User) -> dict:
     if sees_sql(user):
         return dto
     ctx = dto.get("context") or {}
-    dto.update(generated_sql="", final_sql="", technical=False, context={"filters": ctx.get("filters") or []}, attempts=0)
+    dto.update(generated_sql="", final_sql="", technical=False, context={"filters": ctx.get("filters") or []}, attempts=0, plan=None)
     a = dto.get("analysis")
     if isinstance(a, dict) and isinstance(a.get("result"), dict):
         dto["analysis"] = {**a, "result": {k: v for k, v in a["result"].items() if k != "code"}}
@@ -126,17 +124,21 @@ def _viewer_dto(db: Session, viewer: User, conn: Connection, run: QueryRun, cfg:
     with the viewer's own data access and filters (as a shared report is), so nobody sees rows they may not."""
     dto = run_dto(run, rows=False)
     dto.update(asked_by=names.get(run.user_id, "someone else"), shared_view=True, rows=None, rows_stored=False,
-               context={"filters": []}, analysis=None)
+               context={"filters": []}, analysis=None, warnings=[])
+    if dto["plan"]:
+        dto["plan"]["steps"] = [{**st, "rows": None, "ms": None, "filters": None} for st in dto["plan"]["steps"]]
     if run.status != "success" or not run.final_sql:
         return dto
     spec = (run.analysis or {}).get("spec") if cfg["predictive_enabled"] else None
     try:
-        res = engine.run_sql(db, conn, run.final_sql, cfg, viewer, spec)
+        res = engine.run_sql(db, conn, run.final_sql, cfg, viewer, spec, plan=run.plan)
     except (sqlguard.SQLBlocked, connectors.ConnectorError) as e:
         dto.update(status="error", error=f"Could not be run with your access: {e}")
         return dto
     dto.update(columns=res["columns"], rows=res["rows"], row_count=res["row_count"], truncated=res["truncated"],
                summary=res["summary"], analysis=res.get("analysis"), rows_stored=True, context={"filters": res["filters"]})
+    if res.get("steps"):           # a combined answer: the viewer's own row counts per step
+        dto.update(plan={**dto["plan"], "steps": res["steps"]}, warnings=res["warnings"])
     return dto
 
 
@@ -174,11 +176,18 @@ def ask(body: AskIn, request: Request, user: User = Depends(current_user), db: S
     conn = get_connection(db, user, body.connection_id)
     if not conn.is_active:
         raise HTTPException(400, "This data model is disabled.")
-    if conn.db_type == "combined":
-        raise HTTPException(400, COMBINED_NOT_YET)
+    combined = conn.db_type == "combined"
+    if combined:
+        ms = matching.members(db, conn)
+        if not matching.connected(db, conn):
+            raise HTTPException(400, "This combined data model is not ready: a steward must first confirm a match that links each of its "
+                                     "data models to the others (Data models → 🔗 Matches).")
+        if any(not c.is_active for _, c in ms):
+            raise HTTPException(400, "One of the data models in this combined data model is disabled.")
     model = _pick_model(db, user, body.model_id)
     review_first = body.review_first and sees_sql(user)      # reviewing SQL needs to see it
-    graph.refresh(db, conn)                                  # join paths up to date, committed before this question is recorded
+    for src in [c for _, c in ms] if combined else [conn]:
+        graph.refresh(db, src)                               # join paths up to date, committed before this question is recorded
 
     if body.conversation_id:
         conv = _conv(db, user, body.conversation_id, edit=True)
@@ -200,10 +209,15 @@ def ask(body: AskIn, request: Request, user: User = Depends(current_user), db: S
             log.used, run.rephrase_id = True, log.id
     db.add(run)
     # predictive analysis is used only when the user ticked it for this question and an admin allows it
-    prompt = engine.generate(db, run, conn, model, history,
-                             {**cfg, "predictive_enabled": bool(cfg["predictive_enabled"] and body.predictive)})
-    if prompt and not review_first:
-        engine.execute(db, run, conn, cfg, model, prompt, user=user)
+    gen_cfg = {**cfg, "predictive_enabled": bool(cfg["predictive_enabled"] and body.predictive)}
+    if combined:
+        prompt = engine.generate_plan(db, run, conn, model, history, gen_cfg)
+        if prompt and not review_first:
+            engine.execute_plan(db, run, conn, cfg, model, prompt, user=user)
+    else:
+        prompt = engine.generate(db, run, conn, model, history, gen_cfg)
+        if prompt and not review_first:
+            engine.execute(db, run, conn, cfg, model, prompt, user=user)
     conv.updated_at = now()
     audit(db, request, user, "query.asked", conn.name, f"run status={run.status}")
     db.commit()
@@ -233,8 +247,6 @@ def rephrase(body: RephraseIn, user: User = Depends(current_user), db: Session =
     conn = get_connection(db, user, body.connection_id)
     if not conn.is_active:
         raise HTTPException(400, "This data model is disabled.")
-    if conn.db_type == "combined":
-        raise HTTPException(400, COMBINED_NOT_YET)
     chosen = next((m for m in tenancy.models_for(db, user.company_id) if m.id == cfg["rephrase_model_id"]), None)
     model = chosen if chosen and chosen.enabled else _pick_model(db, user, body.model_id)
     history = []
@@ -257,6 +269,27 @@ def execute(run_id: int, body: ExecIn, request: Request, user: User = Depends(cu
     run = _own_run(db, user, run_id)
     conn = get_connection(db, user, run.connection_id)
     cfg = get_settings(db, user.company_id)
+    if conn.db_type == "combined":
+        if body.sql is not None:
+            raise HTTPException(400, "This answer is a plan of several steps: edit the steps instead.")
+        if body.plan is not None:
+            if not sees_sql(user):
+                raise HTTPException(403, "Your account shows results only, so SQL cannot be edited. Use “Incorrect” to report a problem.")
+            members = planner.members_by_alias(db, conn)
+            try:
+                engine._set_plan(run, planner.clean(body.plan, members), members)
+            except planner.PlanError as e:
+                raise HTTPException(400, str(e))
+        if not run.plan:
+            raise HTTPException(400, "There is no plan to run.")
+        run.feedback = "" if run.edited else run.feedback
+        engine.execute_plan(db, run, conn, cfg, user=user)
+        audit(db, request, user, "query.executed", conn.name,
+              f"run #{run.id} status={run.status}{' (edited plan)' if run.edited else ''}")
+        db.commit()
+        return shaped(run_dto(run), user)
+    if body.plan is not None:
+        raise HTTPException(400, "Plans are only used by combined data models.")
     if body.sql is not None:
         if not sees_sql(user):
             raise HTTPException(403, "Your account shows results only, so SQL cannot be edited. Use “Incorrect” to report a problem.")
@@ -295,7 +328,7 @@ def rerun_analysis(run_id: int, body: AnalysisIn, request: Request, user: User =
     elif "k" in body.model_fields_set:
         spec.pop("k", None)                     # back to automatic
     run.analysis = {"spec": predict.clean_spec(spec)}
-    engine.execute(db, run, conn, get_settings(db, user.company_id), user=user)
+    (engine.execute_plan if conn.db_type == "combined" else engine.execute)(db, run, conn, get_settings(db, user.company_id), user=user)
     audit(db, request, user, "query.analysis_rerun", conn.name, f"run #{run.id} {spec.get('type')}")
     db.commit()
     return shaped(run_dto(run), user)
@@ -331,6 +364,10 @@ def feedback(run_id: int, body: FeedbackIn, request: Request, user: User = Depen
     if run.issue_status == "open":
         run.issue_status, run.issue_type = "", ""
     run.feedback = "corrected" if run.edited else "correct"
+    if conn.db_type == "combined":      # verified plan examples arrive with training for combined models; the verdict is kept
+        audit(db, request, user, "query.feedback", conn.name, f"run #{run.id} {run.feedback} (combined data model, not added to training)")
+        db.commit()
+        return {"run": shaped(run_dto(run, rows=False), user), "training": "recorded"}
     trusted = user.role in ("admin", "steward") or get_settings(db, user.company_id)["feedback_mode"] == "instant"
     status = "approved" if trusted else "pending"
     upsert_pair(db, conn, run.question, run.final_sql, "correction" if run.edited else "confirmed", status, user.id,

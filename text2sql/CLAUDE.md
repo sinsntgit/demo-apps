@@ -40,7 +40,7 @@ sync) · `admin` (everything; never row-filtered; sees all reports).
 
 These are the product's promises. A change that weakens one is wrong even if the feature "works".
 
-1. **No result data goes to the AI model.** `app/engine.py::build_prompt` (and the smaller
+1. **No result data goes to the AI model.** `app/engine.py::build_prompt`, `build_plan_prompt` for combined data models (each member's same knowledge + the confirmed matches), and the smaller
    `build_rephrase_prompt` for ✨ Rephrase: table/column names, documentation titles, similar verified
    questions, earlier questions — no SQL) are the *only* places content is assembled for a model: schema metadata, confirmed
    join paths and entities from the metadata graph (`app/graph.py::prompt_section` - names and keys only), approved training
@@ -102,8 +102,9 @@ Python 3.11+ · FastAPI · SQLAlchemy 2 (metadata store: SQLite by default, Post
 | `retrieval.py` | Local BM25 over training items; document chunking. No embeddings API. |
 | `graph.py` | Metadata graph (names, keys, relationships - never data): `GraphEntity` / `GraphBinding` / `GraphEdge`. Edges from schema FKs and from equi-joins in approved SQL pairs (`JOIN ON/USING` and `WHERE a.x = b.y`, unprefixed columns resolved when unambiguous, TRIM/CAST unwrapped; sqlglot, aliases resolved per SELECT, CTEs and sub-query correlations ignored) are confirmed automatically; key-like columns (`keylike`: last word id/no/code/key…, SAP-style, or named after their table) with the same name ignoring spaces/case (`norm`) are *suggested*. `diagnose` tells the steward what the build read (FKs, approved/pending examples, examples whose joins could not be read). `rebuild` merges with stored rows and never overwrites a steward decision (`decided_by`); rejected pairs are never re-suggested. `ensure`/`refresh` rebuild when `Connection.graph_signature` (schema + approved SQL) changes - covering every path that changes training; `refresh` runs at the start of `chat.ask`, before anything is written. `prompt_section` connects the question's seed tables (entities, tables of the top examples, BM25) through confirmed edges (BFS) and returns the *Join paths* text and the tables to send first. |
 | `matching.py` | Combined data models: `members`, match *suggestions* between data models from metadata (`candidates`/`score`: names, training descriptions, keys, types; `MIN_SCORE`), key rules (`NORMALISATIONS`, `normalise` in Python and `duck_expr` in DuckDB - keep them identical, a test compares them), the optional value-overlap check (`check_values_of`, `find(check_values=True)`: distinct values via `connectors.distinct_values_sql`, guarded and row-filtered, only percentages/counts stored in `GraphEdge.stats`, never values), `connected` (every member linked by confirmed matches). |
+| `planner.py` | Answers across a combined data model: a plan `{"steps": [{id, source, sql}], "combine"}`. `clean` validates it against the members' aliases; `run` guards, row-filters (per member, for the person asking), runs (`connectors.run_query`, capped by `combined_step_max_rows`; over the cap = `LimitError`, never truncated) and masks each step, then `_combine` loads the step results into a fresh in-memory DuckDB (external access off, configuration locked; empty steps become untyped empty views) and runs the combine SQL, which `check_combine` restricts to the step tables. `_warnings`: nothing matched, keys repeated on both sides. |
 | `llm.py` | Providers: `anthropic` (official SDK), `openai`, `openai_compatible`. Tolerant JSON answer parser. |
-| `engine.py` | The pipeline: `build_prompt` → `generate` → `execute` (guard → filters → run → mask → summarise, with auto-repair) and `run_sql` (same for stored SQL, used by reports). |
+| `engine.py` | The pipeline: `build_prompt` → `generate` → `execute` (guard → filters → run → mask → summarise, with auto-repair) and `run_sql` (same for stored SQL, used by reports; for a combined data model it runs the stored plan). Combined models: `build_plan_prompt` → `generate_plan` → `execute_plan` (see `planner.py`). |
 | `predict.py` | Predictive analysis: script templates (forecast, classify, regress, cluster, anomaly), feature selection, `run(spec, columns, rows)` → narrative, metrics, plot specs, tables, stats, warnings and the exact code that ran. |
 | `summarize.py` | Shape-aware summary (single / trend / ranking / cross / pivot / listing / values) and default chart suggestion. Measures vs dimensions; additive vs averaged. |
 | `docparse.py` | Text extraction from uploaded training documents. |
@@ -184,8 +185,17 @@ leading zeros) and the combined *Sample: SAP + CRM* (`main.add_samples` → `add
 A combined data model is a `Connection` with `db_type="combined"`, no source of its own (`connectors` refuses to run, test or
 introspect it), its members in `CombinedMember` (alias prefixes table names: `sap.kna1`), settings `{overlap_check, notice}` in
 `config_enc`. Matches are `GraphEdge` rows with `kind="match"` between two member connections, plus `normalisation` and `stats`.
-`deps.can_use` requires access to every member. Deleting a member switches the combined model off with a notice. Asking a
-combined model is refused (`chat.COMBINED_NOT_YET`) until phase 3; the Ask and Training pages hide combined models.
+`deps.can_use` requires access to every member. Deleting a member switches the combined model off with a notice. The Training
+page hides combined models; the Ask page offers them once `matching.connected` (ask refuses them before that).
+
+Asking (phase 3): `chat.ask` → `engine.generate_plan` (`build_plan_prompt`: each member's `_knowledge` - the same schema / join
+paths / docs / examples a single-model question gets - plus the confirmed matches with their key rules as DuckDB expressions)
+→ `engine.execute_plan` (repairs like `execute`, never for `LimitError` or time-outs) → `planner.run`. `QueryRun.plan` holds the
+steps with their row counts and the model's original plan (`generated`, for "edited"); `final_sql` / `generated_sql` hold the
+plan as readable text (`planner.text`). Every re-run path passes the stored plan: `engine.run_sql(..., plan=)` (shared chats,
+reports - the component's `plan` is copied from the run, never from the browser). `shaped()` drops the plan for results-only
+users; `reports.py` never sends it to the editor. Feedback "correct" on a combined answer is recorded but not added to
+training (phase 4).
 
 ### Reports
 
@@ -384,7 +394,11 @@ No filler, no internal identifiers, no claiming more than the checks showed.
   *new* SAP questions with it has not been measured (stand-in model only).
 - Combined data models (phase 2): set-up, suggestions, key rules, value check and diagram verified on the bundled samples
   (pytest + `tests/e2e/combined.js`). Suggestion quality on real company data is unmeasured; the value check has not run against a
-  live database server; asking across data models (phase 3) and AI ranking of match candidates are not built.
+  live database server; AI ranking of match candidates is not built.
+- Asking across data models (phase 3): verified with the stand-in model on the SAP + CRM sample (`tests/test_combined_ask.py`:
+  totals against an independent calculation, per-member filters and masking, limits, repair, warnings, edited plans,
+  results-only, shared chats, reports/PDF, privacy). Real-model plan quality is unmeasured; plans have only run on file data
+  models. Not built yet (phase 4): verified plan examples, review queue and dashboard breakdown for combined answers.
 - Not built: free-form AI-written analysis code (deliberately), per-series forecasts in one question, SSO, scheduled data refresh of file models, report free-form (pixel) positioning,
   group selection in the Data models page's "Access" dialog (groups are set under Admin → Data access).
 

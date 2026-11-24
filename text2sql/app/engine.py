@@ -1,6 +1,7 @@
 """The question -> SQL -> result pipeline.
 
-Privacy boundary: `build_prompt` (and the smaller `build_rephrase_prompt`) are the only places content is assembled for the model.
+Privacy boundary: `build_prompt`, `build_plan_prompt` (combined data models) and the smaller `build_rephrase_prompt` are the
+only places content is assembled for the model.
 It contains schema metadata, confirmed join paths and entities from the metadata graph (names and keys only),
 approved training text, earlier questions + SQL, and the
 new question. Query results are never included. Database error text used for automatic
@@ -15,8 +16,8 @@ from sqlalchemy.orm import Session
 import concurrent.futures
 import json
 
-from . import connectors, graph, llm, predict, retrieval, rowfilter, security, sqlguard, summarize
-from .models import Connection, LLMModel, QueryRun, TrainingItem
+from . import connectors, graph, llm, matching, predict, retrieval, rowfilter, security, sqlguard, summarize
+from .models import Connection, GraphEdge, LLMModel, QueryRun, TrainingItem
 
 log = logging.getLogger("text2sql.engine")
 
@@ -50,6 +51,26 @@ Column names inside "analysis" must be exactly the aliases your SQL returns. Add
 """
 
 
+PLAN_SYSTEM = """You answer business questions that may need data from several separate data models (different databases or file folders) by writing a short plan of SQL steps.
+
+How a plan runs:
+- Each step is ONE read-only SELECT (CTEs allowed) on ONE data model, in that data model's SQL dialect, using only its tables and columns. Steps cannot see each other.
+- The platform runs the steps, then runs your "combine" query in DuckDB SQL over the step results, which are available as tables named after the steps (s1, s2, ...). The combine query can only use those tables.
+- Use one step per data model you need. If one data model is enough, write one step and combine "SELECT * FROM s1".
+
+Rules:
+- Each step may return at most {step_rows} rows and all steps together at most {total_rows}. Aggregate inside the steps (for example totals per customer or per month) and return detail rows only when the question asks for them.
+- Every step must return the columns the combine query joins on, under clear aliases.
+- Join steps only on the matches listed under "Matches between data models", and apply each match's key rule exactly as given there (the systems store the same key differently).
+- Write each step in its own dialect; write the combine query in DuckDB SQL. Give the final columns clear, readable aliases and order the result so it answers the question. Unless the question asks for every row, limit detail listings to {max_rows} rows in the combine query.
+- Prefer the patterns in each data model's verified example queries and follow its business documentation.
+- You never see the data. Do not guess literal values that are not in the schema notes, documentation or examples.
+- If the question cannot be answered from these data models, or is too ambiguous, do not write a plan; ask one short clarifying question instead.
+
+{predictive}
+Reply with a single JSON object and nothing else:
+{{"steps": [{{"id": "s1", "source": "<data model short name>", "sql": "<SELECT for that data model>"}}], "combine": "<DuckDB SELECT over s1, s2, ...>", "explanation": "<one or two sentences on how the plan answers the question>", "followups": ["<3 natural next questions>"], "clarification": "<question for the user, only when there are no steps>"{analysis_key}}}"""
+
 REPHRASE_SYSTEM = """You rewrite a business user's question so that a text-to-SQL assistant can answer it precisely and on the first attempt. You do not answer the question and you do not write SQL.
 
 Make the question self-contained and specific:
@@ -69,8 +90,9 @@ def build_rephrase_prompt(db: Session, conn: Connection, question: str, history:
     """A deliberately small prompt: table and column names (no types, DDL or comments), the titles of the
     business documentation, a few similar verified questions and earlier questions - never SQL, data or results.
     Returns (system, user)."""
-    tables = (conn.schema_json or {}).get("tables", [])
-    lines = [f"{connectors.table_fqn(t)}({', '.join(c['name'] for c in t['columns'])})" for t in tables]
+    srcs = [(m.alias + ".", c) for m, c in matching.members(db, conn)] if conn.db_type == "combined" else [("", conn)]
+    lines = [f"{pre}{connectors.table_fqn(t)}({', '.join(c['name'] for c in t['columns'])})"
+             for pre, src in srcs for t in (src.schema_json or {}).get("tables", [])]
     if sum(len(x) for x in lines) > REPHRASE_SCHEMA_BUDGET:
         lines = retrieval.top(question + " " + " ".join(history[-2:]), lines, lambda x: x.replace("_", " "), 25)
     out, used = [], 0
@@ -79,7 +101,7 @@ def build_rephrase_prompt(db: Session, conn: Connection, question: str, history:
             break
         out.append(x)
         used += len(x)
-    terms = [d.title for d in _approved(db, conn.id, "documentation") if d.title][:40]
+    terms = [d.title for _, src in srcs for d in _approved(db, src.id, "documentation") if d.title][:40]
     parts = [f"## Data model\n{conn.name}" + (f" - {conn.description}" if conn.description else ""),
              "## Tables and columns\n" + ("\n".join(out) or "(not synced)")]
     if terms:
@@ -131,6 +153,48 @@ def rephrase(db: Session, conn: Connection, model: LLMModel, question: str, hist
             "unclear": str(obj.get("unclear") or "").strip()[:300], "similar": similar[:3]}
 
 
+def build_plan_prompt(db: Session, combined: Connection, question: str, history: list[QueryRun], cfg: dict,
+                      predictive: bool = True):
+    """The prompt for a combined data model: per member data model the same knowledge a single-model question gets
+    (schema, join paths, documentation, verified examples - metadata and approved training only), the confirmed matches
+    between them with their key rules, earlier questions with their plans, and the question. Never data or results.
+    Returns (system, user, context_summary)."""
+    from . import planner
+    ms = matching.members(db, combined)
+    budget = max(20_000, SCHEMA_CHAR_BUDGET * 2 // max(len(ms), 1))
+    earlier = [h.question for h in history]
+    parts, context = [], {"members": {}}
+    for m, conn in ms:
+        text, ctx = _knowledge(db, conn, question, earlier, budget)
+        parts.append(f"# Data model `{m.alias}`: {conn.name} - {connectors.DIALECT_NAME[conn.db_type]} SQL"
+                     + (f"\n{conn.description}" if conn.description else "") + "\n\n" + text)
+        context["members"][m.alias] = ctx
+    alias = {conn.id: m.alias for m, conn in ms}
+    lines = []
+    for e in db.scalars(select(GraphEdge).where(GraphEdge.kind == "match", GraphEdge.status == "confirmed",
+                                                GraphEdge.left_connection_id.in_(list(alias)), GraphEdge.right_connection_id.in_(list(alias)))):
+        la, ra = alias[e.left_connection_id], alias[e.right_connection_id]
+        rule = e.normalisation or ""
+        cmp = " AND ".join(f"{matching.duck_expr(rule, '<' + la + ' step>.' + lc)} = {matching.duck_expr(rule, '<' + ra + ' step>.' + rc)}"
+                           for lc, rc in zip(e.left_columns, e.right_columns))
+        lines.append(f"- {la}.{e.left_table}.{', '.join(e.left_columns)} = {ra}.{e.right_table}.{', '.join(e.right_columns)}"
+                     f" (key rule: {matching.NORMALISATIONS.get(rule, rule)}{'; ' + e.cardinality if e.cardinality else ''})."
+                     f" In the combine query join with: {cmp}")
+    parts.append("# Matches between data models\n" + ("\n".join(lines) or "(none confirmed - only questions about one data model can be answered)"))
+    context["matches"] = len(lines)
+    tail = []
+    if history:
+        tail.append("## Conversation so far (the new question may refer back to it)")
+        for h in history[-3:]:
+            tail.append(f"Question: {h.question}\nPlan:\n{h.final_sql or h.generated_sql}")
+    tail.append(f"## Question\n{question}")
+    system = PLAN_SYSTEM.format(step_rows=f"{int(cfg['combined_step_max_rows']):,}", total_rows=f"{int(cfg['combined_total_max_rows']):,}",
+                                max_rows=cfg["max_rows"], predictive=PREDICTIVE.format().replace("your SQL", "your combine query") if predictive else "",
+                                analysis_key=', "analysis": <object as described above, or null>' if predictive else "")
+    context["history_turns"] = min(len(history), 3)
+    return system + "\n\n" + "\n\n".join(parts), "\n\n".join(tail), context
+
+
 def scrub_error(msg: str) -> str:
     """Remove literal values from a database error before it is shown to the model."""
     msg = re.sub(r"'(?:[^']|'')*'", "'?'", msg or "")
@@ -147,11 +211,29 @@ def _approved(db: Session, conn_id: int, kind: str) -> list[TrainingItem]:
 def build_prompt(db: Session, conn: Connection, question: str, history: list[QueryRun], max_rows: int,
                  predictive: bool = True):
     """Returns (system, user, context_summary)."""
+    stable, context = _knowledge(db, conn, question, [h.question for h in history])
+    tail = []
+    if history:
+        tail.append("## Conversation so far (the new question may refer back to it)")
+        for h in history[-3:]:
+            tail.append(f"Question: {h.question}\nSQL:\n{h.final_sql or h.generated_sql}")
+    tail.append(f"## Question\n{question}")
+
+    system = SYSTEM.format(dialect=connectors.DIALECT_NAME[conn.db_type], max_rows=max_rows,
+                           predictive=PREDICTIVE.format() if predictive else "",
+                           analysis_key=', "analysis": <object as described above, or null>' if predictive else "") + "\n\n" + stable
+    context["history_turns"] = min(len(history), 3)
+    return system, "\n\n".join(tail), context
+
+
+def _knowledge(db: Session, conn: Connection, question: str, earlier: list[str], budget: int = SCHEMA_CHAR_BUDGET):
+    """What the model is told about one data model: schema, join paths, documentation, verified examples
+    (metadata and approved training only - never data). Returns (text, context_summary)."""
     tables = (conn.schema_json or {}).get("tables", [])
     pairs = _approved(db, conn.id, "sql_pair")
     docs = _approved(db, conn.id, "documentation") + _approved(db, conn.id, "document")
     extra_ddl = _approved(db, conn.id, "ddl")
-    search = question + " " + " ".join(h.question for h in history[-2:])
+    search = question + " " + " ".join(earlier[-2:])
 
     ex = retrieval.top(search, pairs, lambda p: p.question + " " + p.sql, 6)
     doc_hits = retrieval.top(search, docs, lambda d: d.title + " " + d.content, 6)
@@ -172,7 +254,7 @@ def build_prompt(db: Session, conn: Connection, question: str, history: list[Que
         g = graph.prompt_section(db, conn, search, seeds)
     except Exception:
         log.exception("metadata graph skipped for data model #%s", conn.id)
-    if len(tables) <= MAX_FULL_SCHEMA_TABLES and sum(len(d) for _, d in ddl_all) <= SCHEMA_CHAR_BUDGET:
+    if len(tables) <= MAX_FULL_SCHEMA_TABLES and sum(len(d) for _, d in ddl_all) <= budget:
         chosen = ddl_all
     else:   # large schema: the graph's tables first, then the most relevant tables + any used by the retrieved examples
         by_name = {connectors.table_fqn(t).lower(): (t, d) for t, d in ddl_all}
@@ -186,7 +268,7 @@ def build_prompt(db: Session, conn: Connection, question: str, history: list[Que
                 ranked.append((t, connectors.table_ddl(t)))
         chosen, used = [], 0
         for t, d in ranked:
-            if used + len(d) > SCHEMA_CHAR_BUDGET:
+            if used + len(d) > budget:
                 break
             chosen.append((t, d))
             used += len(d)
@@ -208,22 +290,9 @@ def build_prompt(db: Session, conn: Connection, question: str, history: list[Que
         parts.append("\n## Verified example queries")
         parts += [f"Question: {p.question}\nSQL:\n{p.sql}" + (f"\nAnalysis: {p.content}" if p.content.strip().startswith("{") else "")
                   for p in ex]
-    stable = "\n\n".join(parts)
-
-    tail = []
-    if history:
-        tail.append("## Conversation so far (the new question may refer back to it)")
-        for h in history[-3:]:
-            tail.append(f"Question: {h.question}\nSQL:\n{h.final_sql or h.generated_sql}")
-    tail.append(f"## Question\n{question}")
-
-    system = SYSTEM.format(dialect=connectors.DIALECT_NAME[conn.db_type], max_rows=max_rows,
-                           predictive=PREDICTIVE.format() if predictive else "",
-                           analysis_key=', "analysis": <object as described above, or null>' if predictive else "") + "\n\n" + stable
     context = {"tables": [connectors.table_fqn(t) for t, _ in chosen], "examples": [p.id for p in ex],
-               "docs": [d.id for d in doc_hits], "history_turns": min(len(history), 3),
-               "join_paths": len(g["edges"]), "entities": g["entities"]}
-    return system, "\n\n".join(tail), context
+               "docs": [d.id for d in doc_hits], "join_paths": len(g["edges"]), "entities": g["entities"]}
+    return "\n\n".join(parts), context
 
 
 def _mask(conn: Connection, checked, res: dict):
@@ -239,16 +308,23 @@ def _mask(conn: Connection, checked, res: dict):
         res["columns"][i].pop("additive", None)
 
 
-def run_sql(db: Session, conn: Connection, sql: str, cfg: dict, user, spec: dict | None = None) -> dict:
-    """Guard, apply the user's data filters, run and mask. Used for stored SQL (reports).
+def run_sql(db: Session, conn: Connection, sql: str, cfg: dict, user, spec: dict | None = None, plan: dict | None = None) -> dict:
+    """Guard, apply the user's data filters, run and mask. Used for stored SQL (reports, shared chats).
+    A combined data model runs its stored `plan` instead (every step guarded, filtered and masked for this user).
     With `spec`, also runs that predictive analysis on the fresh rows.
     Raises sqlguard.SQLBlocked / connectors.ConnectorError."""
-    checked = sqlguard.check(sql, conn.db_type)
-    to_run, applied = rowfilter.apply(checked, rowfilter.applicable(db, user, conn), conn.db_type, user)
     cap = cfg["analysis_max_rows"] if spec else cfg["max_rows"]
-    res = connectors.run_query(conn, security.decrypt_json(conn.config_enc), to_run, cap, cfg["query_timeout_s"])
-    _mask(conn, checked, res)
-    res["filters"] = applied
+    if conn.db_type == "combined":
+        from . import planner
+        if not plan:
+            raise planner.PlanError("This answer has no stored plan; ask the question again.")
+        res = planner.run(db, conn, planner.clean(plan, planner.members_by_alias(db, conn)), cfg, user, cap)
+    else:
+        checked = sqlguard.check(sql, conn.db_type)
+        to_run, applied = rowfilter.apply(checked, rowfilter.applicable(db, user, conn), conn.db_type, user)
+        res = connectors.run_query(conn, security.decrypt_json(conn.config_enc), to_run, cap, cfg["query_timeout_s"])
+        _mask(conn, checked, res)
+        res["filters"] = applied
     res["summary"] = summarize.summarize(res["columns"], res["rows"], res["truncated"])
     res["row_count"] = len(res["rows"])
     if spec:
@@ -332,6 +408,11 @@ def execute(db: Session, run: QueryRun, conn: Connection, cfg: dict, model: LLMM
     _mask(conn, checked, res)
     run.final_sql = checked.sql
     run.context = {**(run.context or {}), "filters": applied}      # which row filters were enforced
+    return _finish(run, res, cfg, spec)
+
+
+def _finish(run: QueryRun, res: dict, cfg: dict, spec: dict | None):
+    """Store a successful result on the run (summary, chart, rows if kept, predictive analysis)."""
     run.status, run.error = "success", ""
     run.columns, run.row_count, run.truncated, run.db_ms = res["columns"], len(res["rows"]), res["truncated"], res["ms"]
     run.summary = summarize.summarize(res["columns"], res["rows"], res["truncated"])
@@ -345,6 +426,90 @@ def execute(db: Session, run: QueryRun, conn: Connection, cfg: dict, model: LLMM
         run._live_analysis = {"spec": spec, **outcome}
         run.analysis = run._live_analysis if cfg["store_results"] else {"spec": spec}
     return res["rows"]
+
+
+# ---- combined data models: a plan of steps, one per data model, combined on the server --------------------------------------
+def generate_plan(db: Session, run: QueryRun, combined: Connection, model: LLMModel, history: list[QueryRun], cfg: dict):
+    """Ask the model for a plan; fills run.plan / generated_sql / status. Does not execute."""
+    from . import planner
+    system, user, context = build_plan_prompt(db, combined, run.question, history, cfg, cfg["predictive_enabled"])
+    run.context = context
+    try:
+        ans = _call(run, model, system, user)
+    except llm.LLMError as e:
+        run.status, run.error = "error", str(e)
+        return None
+    run.explanation, run.followups = ans["explanation"], ans["followups"]
+    if not ans.get("plan"):
+        run.status = "clarification"
+        run.explanation = ans["clarification"] or "I could not write a plan for that. Could you rephrase the question?"
+        return None
+    members = planner.members_by_alias(db, combined)
+    try:
+        plan = planner.clean(ans["plan"], members)
+    except planner.PlanError as e:
+        run.status, run.error = "error", f"The AI model's plan could not be used: {e}"
+        return None
+    _set_plan(run, plan, members, generated=True)
+    spec = predict.clean_spec(ans.get("analysis")) if cfg["predictive_enabled"] else None
+    run.analysis = {"spec": spec} if spec else None
+    run.status = "pending_review"
+    return system, user
+
+
+def _set_plan(run: QueryRun, plan: dict, members: dict, generated: bool = False):
+    from . import planner
+    names = {a: c.name for a, c in members.items()}
+    keep = (run.plan or {}).get("generated")
+    run.plan = {**plan, "generated": plan if generated else (keep or plan)}
+    if generated:
+        run.generated_sql = planner.text(plan, names)
+    run.final_sql = planner.text(plan, names)
+    run.edited = not planner.same(plan, run.plan["generated"])
+
+
+def execute_plan(db: Session, run: QueryRun, combined: Connection, cfg: dict, model: LLMModel | None = None,
+                 prompt: tuple | None = None, user=None):
+    """Run run.plan for this person. With `model` and `prompt`, a failing model-written plan is sent back for repair
+    (error text scrubbed of literals) up to N times. Row-limit and time-out failures are never repaired."""
+    from . import planner
+    members = planner.members_by_alias(db, combined)
+    repairs_left = cfg["max_repair_attempts"] if (model and prompt and not run.edited) else 0
+    spec = (run.analysis or {}).get("spec")
+    cap = cfg["analysis_max_rows"] if spec else cfg["max_rows"]
+    while True:
+        problem, status = None, "error"
+        try:
+            plan = planner.clean(run.plan, members)
+            res = planner.run(db, combined, plan, cfg, user, cap)
+        except sqlguard.SQLBlocked as e:
+            problem, status = str(e), "blocked"
+        except connectors.ConnectorError as e:
+            problem = str(e)
+            if isinstance(e, (planner.LimitError, connectors.QueryTimeout)):
+                repairs_left = 0
+        if problem is None:
+            break
+        if repairs_left <= 0:
+            run.status, run.error = status, problem
+            return
+        repairs_left -= 1
+        fix = (f"{prompt[1]}\n\n## Your previous plan failed\nPlan:\n{run.final_sql}\n\n"
+               f"Error: {problem if status == 'blocked' else scrub_error(problem)}\n\n"
+               "Return the corrected plan as JSON in the same format.")
+        try:
+            ans = _call(run, model, prompt[0], fix)
+            new = planner.clean(ans.get("plan"), members)
+        except (llm.LLMError, planner.PlanError):
+            run.status, run.error = status, problem
+            return
+        _set_plan(run, new, members, generated=True)
+        run.explanation = ans["explanation"] or run.explanation
+        run.followups = ans["followups"] or run.followups
+    run.plan = {**run.plan, "steps": [{**s, **{k: v for k, v in r.items() if k in ("data_model", "rows", "ms", "filters", "columns")}}
+                                      for s, r in zip(run.plan["steps"], res["steps"])]}
+    run.context = {**(run.context or {}), "filters": res["filters"], "warnings": res["warnings"]}
+    return _finish(run, res, cfg, spec)
 
 
 _analysis_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="analysis")

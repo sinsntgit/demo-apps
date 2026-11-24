@@ -98,9 +98,52 @@ def rephrase(text: str) -> dict:
                                "unclear": "which time period" if not any(t in q.lower() for t in ("month", "year", "202", "week", "day")) else ""})}
 
 
+# Combined data model "Sample: SAP + CRM": plans of steps (one per data model) and a combine query run on the server.
+SAP_SALES = ("SELECT c.KUNNR AS customer, c.NAME1 AS customer_name, "
+             "ROUND(SUM(CASE WHEN k.VBTYP = 'M' THEN k.NETWR ELSE -k.NETWR END), 2) AS net_sales "
+             "FROM vbrk k JOIN kna1 c ON c.KUNNR = k.KUNRG WHERE k.FKDAT BETWEEN DATE '2025-01-01' AND DATE '2025-12-31' GROUP BY 1, 2")
+CRM_OPEN = "SELECT sap_no, COUNT(*) AS open_tickets FROM tickets t JOIN accounts a ON a.account_id = t.account_id WHERE t.status <> 'Closed' AND a.sap_no IS NOT NULL GROUP BY 1"
+STRIP = "coalesce(nullif(ltrim(trim(CAST({} AS VARCHAR)), '0'), ''), '0')"
+PLANS = [
+    ("plan broken", None),
+    ("every billing item", {"steps": [{"id": "s1", "source": "sap", "sql": "SELECT * FROM vbrp"},
+                                      {"id": "s2", "source": "crm", "sql": CRM_OPEN}],
+                            "combine": "SELECT * FROM s1 JOIN s2 ON s1.KUNNR = s2.sap_no"}),
+    ("without the key rule", {"steps": [{"id": "s1", "source": "sap", "sql": SAP_SALES}, {"id": "s2", "source": "crm", "sql": CRM_OPEN}],
+                              "combine": "SELECT s1.customer_name, s2.open_tickets FROM s1 JOIN s2 ON s1.customer = CAST(s2.sap_no AS VARCHAR)"}),
+    ("every posting", {"steps": [{"id": "s1", "source": "sap", "sql": "SELECT KUNNR, DMBTR FROM bseg WHERE KOART = 'D'"},
+                                 {"id": "s2", "source": "crm", "sql": "SELECT a.sap_no, t.ticket_id FROM tickets t JOIN accounts a ON a.account_id = t.account_id WHERE a.sap_no IS NOT NULL"}],
+                       "combine": f"SELECT COUNT(*) AS joined_rows, ROUND(SUM(s1.DMBTR), 2) AS amount FROM s1 JOIN s2 ON {STRIP.format('s1.KUNNR')} = {STRIP.format('s2.sap_no')}"}),
+    ("outside the steps", {"steps": [{"id": "s1", "source": "crm", "sql": CRM_OPEN}], "combine": "SELECT * FROM kna1"}),
+    ("tickets by priority", {"steps": [{"id": "s1", "source": "crm", "sql": "SELECT priority, COUNT(*) AS tickets FROM tickets GROUP BY 1"}],
+                             "combine": "SELECT * FROM s1 ORDER BY tickets DESC"}),
+    ("open tickets", {"steps": [{"id": "s1", "source": "sap", "sql": SAP_SALES}, {"id": "s2", "source": "crm", "sql": CRM_OPEN}],
+                      "combine": f"SELECT s1.customer_name, s1.net_sales AS net_sales_2025, COALESCE(s2.open_tickets, 0) AS open_tickets "
+                                 f"FROM s1 LEFT JOIN s2 ON {STRIP.format('s1.customer')} = {STRIP.format('s2.sap_no')} "
+                                 "ORDER BY s1.net_sales DESC LIMIT 10"}),
+]
+
+
+def plan(user: str) -> dict:
+    question = user.split("## Question")[-1].split("## Your previous plan failed")[0].lower()
+    repairing = "previous plan failed" in user
+    for key, p in PLANS:
+        if key in question:
+            if p is None:           # a step that fails until the model repairs it
+                p = PLANS[-1][1] if repairing else {"steps": [{"id": "s1", "source": "sap", "sql": "SELECT no_such_column FROM kna1"},
+                                                              {"id": "s2", "source": "crm", "sql": CRM_OPEN}], "combine": "SELECT * FROM s1"}
+            return {**p, "explanation": "Net sales from SAP, open tickets from the CRM, matched on the customer number.",
+                    "followups": ["Which of these customers have urgent tickets?", "Show net sales by month for these customers"]}
+    if "weather" in question:
+        return {"steps": [], "clarification": "Neither data model has weather data. Did you mean tickets by priority?"}
+    return {**PLANS[-1][1], "explanation": "Combines SAP net sales with CRM open tickets.", "followups": []}
+
+
 def answer(system: str, user: str) -> dict:
     if "rewrite a business user's question" in system:
         return rephrase(user.split("## Question to rewrite")[-1])
+    if "short plan of SQL steps" in system:
+        return plan(user)
     question = user.split("## Question")[-1].split("## Your previous attempt failed")[0].lower()
     repairing = "previous attempt failed" in user
     if "ping" == user.strip():

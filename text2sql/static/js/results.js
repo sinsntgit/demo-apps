@@ -458,7 +458,7 @@ export const ISSUES = [['wrong_numbers', 'The numbers are wrong'], ['missing', '
 export function runCard(run, ctx = {}) {
   const root = h('div', {});
   const tech = run.technical !== false;              // false: this account sees results only (no SQL, no code)
-  let block = null, ablock = null, editing = false;
+  let block = null, ablock = null, editing = false, tab = 0, drafts = null;
   const cleanup = () => { block?.destroy(); block = null; ablock?.destroy(); ablock = null; };
   const refresh = updated => { Object.assign(run, updated); ctx.onChange?.(run); draw(); };
 
@@ -467,10 +467,14 @@ export function runCard(run, ctx = {}) {
     const meta = h('span', { class: 'small dim' }, [run.model_label, run.llm_ms ? `${(run.llm_ms / 1000).toFixed(1)}s to write` : null,
       run.status === 'success' ? `${run.db_ms} ms to run` : null, run.attempts > 1 ? (run.status === 'success' ? `auto-corrected ×${run.attempts - 1}` : `${run.attempts - 1} repair attempt(s) failed`) : null,
       run.edited ? 'edited by you' : null].filter(Boolean).join(' · '));
-    sec.append(h('div', { class: 'sec-head' }, h('h3', {}, tech ? 'SQL' : 'How this was answered'), meta, h('span', { class: 'spacer' }),
-      tech ? h('button', { class: 'btn sm ghost', onclick: () => navigator.clipboard?.writeText(run.final_sql).then(() => toast('SQL copied')) }, 'Copy') : null,
-      ctx.readonly || !tech ? null : h('button', { class: 'btn sm' + (editing ? ' active' : ''), onclick: () => { editing = !editing; draw(); } }, editing ? 'Cancel edit' : '✎ Edit SQL')));
-    if (editing) {
+    const plan = run.plan;
+    sec.append(h('div', { class: 'sec-head' }, h('h3', {}, !tech ? 'How this was answered' : plan ? `Plan · ${plan.steps.length} step${plan.steps.length === 1 ? '' : 's'} + combine` : 'SQL'), meta, h('span', { class: 'spacer' }),
+      tech ? h('button', { class: 'btn sm ghost', onclick: () => navigator.clipboard?.writeText(run.final_sql).then(() => toast(plan ? 'Plan copied' : 'SQL copied')) }, 'Copy') : null,
+      ctx.readonly || !tech ? null : h('button', { class: 'btn sm' + (editing ? ' active' : ''), onclick: () => { editing = !editing; drafts = null; draw(); } }, editing ? 'Cancel edit' : plan ? '✎ Edit plan' : '✎ Edit SQL')));
+    if (plan && tech) {
+      sec.append(planView(plan));
+      if (!editing && run.explanation) sec.append(h('p', { class: 'muted small', style: 'margin:8px 0 0' }, run.explanation));
+    } else if (editing) {
       const ta = h('textarea', { class: 'sql-edit', spellcheck: 'false' }, prettySQL(run.final_sql));
       const runBtn = h('button', { class: 'btn primary', onclick: () => busy(runBtn, async () => {
         const updated = await api('POST', `/api/chat/runs/${run.id}/execute`, { sql: ta.value });
@@ -484,16 +488,42 @@ export function runCard(run, ctx = {}) {
       if (run.explanation) sec.append(h('p', { class: 'muted small', style: 'margin:8px 0 0' }, run.explanation));
     } else if (run.explanation) sec.append(h('p', { class: 'muted small', style: 'margin:0' }, run.explanation));
     if (run.status === 'pending_review' && !editing && !ctx.readonly) {
-      const go = h('button', { class: 'btn primary', onclick: () => busy(go, async () => refresh(await api('POST', `/api/chat/runs/${run.id}/execute`, {}))) }, '▶ Run this SQL');
-      sec.append(h('div', { class: 'feedback' }, go, h('span', { class: 'small muted' }, 'Review the SQL, edit it if needed, then run it.')));
+      const go = h('button', { class: 'btn primary', onclick: () => busy(go, async () => refresh(await api('POST', `/api/chat/runs/${run.id}/execute`, {}))) }, plan ? '▶ Run this plan' : '▶ Run this SQL');
+      sec.append(h('div', { class: 'feedback' }, go, h('span', { class: 'small muted' }, plan ? 'Review each step, edit it if needed, then run the plan.' : 'Review the SQL, edit it if needed, then run it.')));
     }
     if (run.status === 'error' || run.status === 'blocked') {
       sec.append(h('div', { class: 'banner bad', style: 'margin-top:10px' },
-        h('b', {}, !tech ? 'This question could not be answered: ' : run.status === 'blocked' ? 'Blocked by the read-only guard: ' : 'The database returned an error: '), run.error));
+        h('b', {}, !tech ? 'This question could not be answered: ' : run.status === 'blocked' ? 'Blocked by the read-only guard: ' : plan ? 'The plan could not run: ' : 'The database returned an error: '), run.error));
     }
+    if (run.status === 'success' && run.warnings?.length) sec.append(h('div', { class: 'banner warn', style: 'margin-top:10px' }, run.warnings.map(w => h('div', {}, '⚠ ' + w))));
     if (run.status === 'success' && !ctx.readonly) sec.append(feedbackBar());
     else if (run.feedback || run.issue_status) sec.append(h('div', { class: 'feedback' }, feedbackBadge()));
     return sec;
+  }
+
+  // a combined data model's answer: one tab per step (each on its own data model) and the combine step
+  function planView(plan) {
+    const tabs = [...plan.steps.map(st => ({ key: st.id, label: `${st.id} · ${st.source}`, st })), { key: 'combine', label: 'Combine' }];
+    if (tab >= tabs.length) tab = 0;
+    if (editing && !drafts) drafts = [...plan.steps.map(st => prettySQL(st.sql)), prettySQL(plan.combine)];
+    const box = h('div', {});
+    const t = tabs[tab];
+    const info = t.st ? [h('b', {}, t.st.data_model || t.st.source), t.st.rows != null ? ` · ${fmtNum(t.st.rows)} row${t.st.rows === 1 ? '' : 's'} read` : '',
+      t.st.ms != null ? ` · ${t.st.ms} ms` : '', t.st.filters ? h('span', { class: 'badge warn', style: 'margin-left:6px' }, `🔒 ${t.st.filters} data filter${t.st.filters === 1 ? '' : 's'} applied`) : null]
+      : ['Runs on the AskData server over the step results (', plan.steps.map(st => st.id).join(', '), '); it can read nothing else.'];
+    if (editing) {
+      const ta = h('textarea', { class: 'sql-edit', spellcheck: 'false', 'aria-label': `SQL of ${t.label}`, oninput: e => { drafts[tab] = e.target.value; } }, drafts[tab]);
+      const runBtn = h('button', { class: 'btn primary', onclick: () => busy(runBtn, async () => {
+        const body = { steps: plan.steps.map((st, i) => ({ id: st.id, source: st.source, sql: drafts[i] })), combine: drafts[plan.steps.length] };
+        const updated = await api('POST', `/api/chat/runs/${run.id}/execute`, { plan: body });
+        editing = updated.status !== 'success'; if (!editing) drafts = null;
+        refresh(updated);
+      }) }, '▶ Run edited plan');
+      fill(box, ta, h('div', { class: 'row', style: 'margin-top:8px' }, runBtn, h('span', { class: 'small dim' }, 'Each step: one read-only SELECT in its data model’s SQL. Combine: DuckDB SQL over the step tables.')));
+    } else fill(box, h('pre', { class: 'sql', html: highlightSQL(prettySQL(t.st ? t.st.sql : plan.combine)) }));
+    return h('div', { class: 'plan' }, h('div', { class: 'row wrap', style: 'gap:4px;margin-bottom:6px', role: 'tablist' },
+      tabs.map((x, i) => h('button', { class: 'btn sm' + (i === tab ? ' primary' : ''), role: 'tab', 'aria-selected': String(i === tab), onclick: () => { tab = i; draw(); } }, x.label))),
+      h('div', { class: 'small dim', style: 'margin-bottom:4px' }, info), box);
   }
 
   function feedbackBadge() {
@@ -513,6 +543,7 @@ export function runCard(run, ctx = {}) {
       if (res.training === 'review') toast('Thanks — sent to a data steward for review. The outcome will show here.');
       else if (res.training === 'approved') toast('Saved as a verified example — the model will use it from now on.');
       else if (res.training === 'pending') toast('Thanks — sent to a data steward for approval before it is used for training.');
+      else if (res.training === 'recorded') toast('Thanks — recorded. Answers across data models are not used for training yet.');
       refresh(res.run.rows == null ? { ...res.run, rows: run.rows } : res.run);
     });
     if (run.feedback) {
@@ -520,7 +551,7 @@ export function runCard(run, ctx = {}) {
       bar.append(feedbackBadge(), ['fixed', 'noted', 'dismissed'].includes(run.issue_status) ? null : change);
       return bar;
     }
-    const yes = h('button', { class: 'btn sm good', onclick: () => send(yes, 'correct') }, run.edited ? '✓ Yes — save my correction for training' : tech ? '✓ Correct' : '✓ Yes, correct');
+    const yes = h('button', { class: 'btn sm good', onclick: () => send(yes, 'correct') }, run.edited && !run.plan ? '✓ Yes — save my correction for training' : tech ? '✓ Correct' : '✓ Yes, correct');
     const no = h('button', { class: 'btn sm danger', onclick: () => {
       const type = select([['', 'Choose…'], ...ISSUES], '');
       const note = h('textarea', { style: 'min-height:90px', placeholder: 'e.g. “March revenue should be about 1.2M — returns seem to be counted twice.”' });
@@ -535,7 +566,7 @@ export function runCard(run, ctx = {}) {
           } }, 'Send for review')],
       });
     } }, tech ? '✗ Incorrect' : '✗ No, something is wrong');
-    bar.append(h('span', { class: 'small muted' }, run.edited ? 'Does your edited SQL give the right answer?' : tech ? 'Is this SQL correct?' : 'Are these results correct?'), yes,
+    bar.append(h('span', { class: 'small muted' }, run.edited ? `Does your edited ${run.plan ? 'plan' : 'SQL'} give the right answer?` : tech ? `Is this ${run.plan ? 'plan' : 'SQL'} correct?` : 'Are these results correct?'), yes,
       ...(run.edited || !tech ? [] : [h('button', { class: 'btn sm', onclick: () => { editing = true; draw(); } }, '✎ Fix it')]), no);
     return bar;
   }

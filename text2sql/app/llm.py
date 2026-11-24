@@ -139,16 +139,19 @@ def parse_answer(text: str) -> dict:
             obj = json.loads(c)
         except ValueError:
             continue
-        if isinstance(obj, dict) and ("sql" in obj or "clarification" in obj):
+        if isinstance(obj, dict) and ("sql" in obj or "clarification" in obj or "steps" in obj):
             fu = obj.get("followups") or []
-            return {"sql": (obj.get("sql") or "").strip(),
+            steps = obj.get("steps")
+            return {"sql": (obj.get("sql") or "").strip() if isinstance(obj.get("sql"), str) else "",
+                    # a combined data model's plan: steps on separate data models and the query that combines them
+                    "plan": {"steps": steps, "combine": obj.get("combine") or ""} if isinstance(steps, list) and steps else None,
                     "explanation": str(obj.get("explanation") or "").strip(),
                     "followups": [str(x).strip() for x in fu if str(x).strip()][:4] if isinstance(fu, list) else [],
                     "clarification": str(obj.get("clarification") or "").strip(),
                     "analysis": obj.get("analysis") if isinstance(obj.get("analysis"), dict) else None}
     m = re.search(r"```(?:sql)?\s*(.+?)```", text, re.S | re.I)
     if m:
-        return {"sql": m.group(1).strip(), "explanation": "", "followups": [], "clarification": "", "analysis": None}
+        return {"sql": m.group(1).strip(), "explanation": "", "followups": [], "clarification": "", "analysis": None, "plan": None}
     if re.match(r"\s*(select|with)\b", text, re.I):
-        return {"sql": text, "explanation": "", "followups": [], "clarification": "", "analysis": None}
-    return {"sql": "", "explanation": "", "followups": [], "clarification": text[:1000], "analysis": None}
+        return {"sql": text, "explanation": "", "followups": [], "clarification": "", "analysis": None, "plan": None}
+    return {"sql": "", "explanation": "", "followups": [], "clarification": text[:1000], "analysis": None, "plan": None}
