@@ -232,7 +232,7 @@ How it works: Claude receives only your question, today's date, user names and t
 
 See [`docs/ROADMAP-CRITICAL-GAPS.md`](docs/ROADMAP-CRITICAL-GAPS.md). Done: foundation, roles, custom fields, lead conversion, duplicates, attachments, two-factor. Next: quotes → invoices, automation rules, email/calendar sync.
 
-Field-sales gaps against Salesfokuz (mobile app, attendance, visits, beat plans, targets, expenses, orders) and the phased plan to close them: [`docs/ROADMAP-SALESFOKUZ-GAPS.md`](docs/ROADMAP-SALESFOKUZ-GAPS.md).
+Field-sales gaps against Salesfokuz (mobile app, attendance, visits, beat plans, targets, expenses, orders) and the phased plan to close them: [`docs/ROADMAP-SALESFOKUZ-GAPS.md`](docs/ROADMAP-SALESFOKUZ-GAPS.md). Comparison with Zoho CRM and HubSpot (1:1 email, sequences, workflows, pipelines, API, reports): [`docs/COMPARISON-ZOHO-HUBSPOT.md`](docs/COMPARISON-ZOHO-HUBSPOT.md).
 
 ## Features
 * **Deal stage history** — every stage move is stored permanently: from → to, date/time, who moved it, the deal owner *at that moment*, the deal value, an optional comment, and the days spent in the previous stage. Shown on the deal page (*Stage history*), via **🕘 History** on every card/row of the Deals board and list, and recorded however the stage changes (drag-and-drop, *Change stage*, or the edit form). Moving a card on the board asks for an optional comment. Deals that existed before this feature get a single starting entry; earlier movements can't be reconstructed. Deleting a deal deletes its history.
