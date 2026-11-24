@@ -41,7 +41,7 @@ PHONE_LINK = "+919136433008"
 CITY = "Mumbai, India"
 LINKEDIN = "https://www.linkedin.com/company/data-syncsense/"
 FOUNDER = "Santosh Tiwari"
-TAGLINE = "From data to decisions"
+TAGLINE = "Data in sync. Decisions that make sense."
 # YouTube demo videos (IDs). Played in the on-page viewer via youtube-nocookie.com, loaded only on click.
 VIDEOS = {
     "askdata-short": ("weUL5eJHbhA", "AskData demo (short)"),
@@ -506,16 +506,31 @@ def home_industries():
 </section>"""
 
 
-TECH = ["SAS", "Alteryx", "Power BI", "Neo4j", "PostgreSQL", "SQL Server", "Oracle", "Snowflake", "MySQL", "SAP data", "Tally", "Claude", "OpenAI", "Ollama", "vLLM", "DuckDB"]
+TECH = [
+    ("Data Management", ["Alteryx", "dbt", "Fivetran"]),
+    ("SAS", []),
+    ("Azure Data Fabric", []),
+    ("Cloud Data Warehouse", ["Snowflake", "SingleStore"]),
+    ("Full Stack Development", []),
+    ("Web Development", []),
+    ("AI/ML Technologies", []),
+]
+
+
+def tech_tiles():
+    out = ""
+    for name, items in TECH:
+        sub = "".join(f"<li>{esc(x)}</li>" for x in items)
+        out += f'<li class="tech-card"><strong>{esc(name)}</strong>{"<ul>" + sub + "</ul>" if sub else ""}</li>'
+    return f'<ul class="tech-cards">{out}</ul>'
 
 
 def home_tech():
-    tiles = "".join(f'<li><span>{esc(t)}</span></li>' for t in TECH)
     return f"""<section class="tech-band">
   <div class="wrap">
     <p class="eyebrow center">Technologies</p>
     <h2 class="center">Technologies we work with</h2>
-    <ul class="tech-tiles">{tiles}</ul>
+    {tech_tiles()}
   </div>
 </section>"""
 
@@ -589,6 +604,7 @@ TOKENS = {
     "{{home_cases}}": lambda: home_cases(),
     "{{home_industries}}": lambda: home_industries(),
     "{{home_tech}}": lambda: home_tech(),
+    "{{tech_tiles}}": lambda: tech_tiles(),
     "{{home_contact}}": lambda: home_contact(),
     "{{home_insights}}": lambda: home_insights(),
     "{{product_usecase_cards}}": product_usecase_cards,
@@ -1056,7 +1072,7 @@ def case_page(c):
     det = data.CASE_DETAILS.get(c["slug"], {})
     glance = ""
     if det.get("glance"):
-        rows = "".join(f"<dt>{esc(k)}</dt><dd>{esc(v)}</dd>" for k, v in det["glance"])
+        rows = "".join(f"<div><dt>{esc(k)}</dt><dd>{esc(v)}</dd></div>" for k, v in det["glance"])
         glance = f'<section class="section tight"><div class="wrap"><div class="glance"><h2>At a glance</h2><dl>{rows}</dl></div></div></section>'
     lessons = ""
     if det.get("lessons"):

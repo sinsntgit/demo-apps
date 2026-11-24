@@ -566,3 +566,15 @@ h3 { font-weight: 600; }
 .social svg { width: 18px; height: 18px; }
 
 [hidden] { display: none !important; }
+
+/* Technologies: grouped cards */
+.tech-cards { list-style: none; padding: 0; margin: 26px auto 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; max-width: 1180px; }
+.tech-card { margin: 0; flex: 1 1 220px; max-width: 280px; background: rgba(255,255,255,.75); border-radius: 18px; padding: 22px 20px; text-align: center; box-shadow: 0 6px 18px rgba(11,17,102,.08); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 120px; }
+.tech-card strong { color: var(--navy); font-size: 1.05rem; }
+.tech-card ul { list-style: none; padding: 0; margin: 10px 0 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.tech-card ul li { margin: 0; background: #fff; border: 1px solid var(--tint2); border-radius: 999px; padding: 3px 12px; font-size: .85rem; font-weight: 500; color: var(--ink); }
+.section.alt .tech-cards, .section .two-col .tech-cards { justify-content: flex-start; margin-top: 12px; }
+.two-col .tech-card { flex-basis: 180px; max-width: none; background: var(--soft); box-shadow: none; border: 1px solid var(--line); }
+/* At a glance: label above value */
+.glance dl > div { display: block; }
+.glance dd { font-weight: 600; line-height: 1.45; }
