@@ -102,6 +102,18 @@ def same_company(user: User, obj) -> bool:
 def can_use(db: Session, user: User, conn: Connection) -> bool:
     if conn is None or conn.company_id != user.company_id:      # never another company's data model
         return False
+    if conn.db_type == "combined":                              # the combined model itself and every data model in it
+        from .models import CombinedMember
+        ids = list(db.scalars(select(CombinedMember.member_id).where(CombinedMember.combined_id == conn.id)))
+        mem = [db.get(Connection, i) for i in ids]
+        if any(m is None or m.db_type == "combined" or not _can_use_one(db, user, m) for m in mem):
+            return False
+    return _can_use_one(db, user, conn)
+
+
+def _can_use_one(db: Session, user: User, conn: Connection) -> bool:
+    if conn is None or conn.company_id != user.company_id:
+        return False
     if user.role == "admin":
         return True
     if not conn.is_active:

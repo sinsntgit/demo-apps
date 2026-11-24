@@ -6,7 +6,7 @@ import { relationshipsTab } from './relationships.js';
 const SOURCE = { manual: 'added manually', upload: 'uploaded', import: 'imported', confirmed: 'confirmed by a user', correction: 'user correction' };
 
 export async function trainingView(root, arg) {
-  const conns = await api('GET', '/api/connections');
+  const conns = (await api('GET', '/api/connections')).filter(c => c.db_type !== 'combined');   // a combined model's matches live on the Data models page
   if (!conns.length) return fill(root, h('div', { class: 'page' }, h('div', { class: 'empty' }, 'Connect a data model first (Data models).')));
   let connId = Number(arg) || conns[0].id;
   if (!conns.some(c => c.id === connId)) connId = conns[0].id;

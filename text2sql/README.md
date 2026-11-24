@@ -16,7 +16,8 @@ python -m uvicorn app.main:app --port 8000
 ```
 
 Open http://localhost:8000. The first-run admin password is printed in the server log (you must change it
-at first sign-in). Two sample data models are created so you can try it immediately: **Sample: Retail sales**
+at first sign-in). Sample data models are created so you can try it immediately: **Sample: Retail sales**,
+**Sample: CRM** (accounts and support tickets for the SAP sample's customers), the combined **Sample: SAP + CRM**,
 and **Sample: SAP Sales & Finance** — SAP SD and FI tables (VBAK, VBRK, BKPF, BSEG, KNA1 …) with real SAP
 names and fields, invented numbers, and ready-made training (field dictionary, business rules, 19 verified
 queries). See Help → Data models. Then:
@@ -40,6 +41,7 @@ answers a few questions about the sample data (add it as a *Self-hosted* model, 
 | **Model choice** | Admins register models (Anthropic Claude, OpenAI, self-hosted OpenAI-compatible such as Ollama / vLLM); users choose one per question. Keys are encrypted at rest. |
 | **Answers** | Shows the generated SQL and a one-line explanation. Optional *review SQL before running*. Auto-repair when the database rejects the SQL. Clarifying question when the request is ambiguous. |
 | **Relationships (metadata graph)** | Per data model: how tables join and which business entities live where - names and keys only, never data. Shown as a diagram (tables and joins, click a table to see its joins) or a list, with a panel that explains what the joins were worked out from. Joins come from database foreign keys and from the joins in approved verified SQL - written as JOIN, USING or in WHERE, with or without table prefixes (confirmed automatically), and from matching key-like column names, ignoring spaces and case (suggestions a steward confirms or rejects; rejected ones are not suggested again). Stewards can add joins, set how many rows are on each side, and add entities with the words people use for them. Confirmed joins and matching entities are given to the AI as *join paths* for each question; for large schemas the tables on those paths are chosen first. Kept up to date after schema syncs and training changes; steward decisions are never overwritten; all changes audited. |
+| **Combined data models** | Two to four data models (up to six by setting) side by side, e.g. SAP + CRM, set up by administrators and stewards. Each keeps its own training, access and filters; a person can use one only with access to every data model in it. *Matches* - fields that mean the same thing in different data models - are suggested from names, training descriptions, keys and types, and confirmed by a steward, each with a key rule from a fixed list (strip leading zeros, trim, upper/lower case, digits only, text↔number). An optional value check (off by default, per combined model) compares the values on the server and keeps only percentages and counts - never sent to the AI. Matches appear as orange lines in a diagram across all the data models. A ready-made *Sample: SAP + CRM* has the customer-number match confirmed. **Asking questions of a combined data model is not available yet** (next update). |
 | **Confirm / correct** | *Correct* turns the answer into a verified example. *Edit SQL* → run → *save my correction* teaches the model the right query. *Incorrect* flags it with a note. Analyst feedback can go through a steward approval queue (admin setting). |
 | **Predictive** | Opt-in per question (“Use predictive capability”): forecasting, classification / regression, key drivers, segmentation and anomaly detection. The AI model only names the method and columns; the server runs its own tested scikit-learn / statsmodels routines on the query result and shows key figures, charts, result tables, statistical output and the exact Python that ran (feature engineering included). Each part can be shown or hidden. Works in reports and PDFs. |
 | **Summary** | Explains the result by its shape (trend, ranking, two-way breakdown, pivot, listing): leaders and shares, highs and lows, change over the period, concentration. Averages, rates and prices are never totalled. Computed on the server. |
@@ -141,6 +143,10 @@ T2S_TEST_PG=user:password@host:5432/dbname python -m pytest
 - The Claude and OpenAI integrations were exercised against local stand-in servers that speak the same
   API, not against the real services. In particular, how well a real model recognises a predictive
   question and prepares the right data set for it has not been measured.
+- Combined data models: set-up, match suggestions, the value check and the diagram are verified on the bundled samples
+  (SAP, CRM, Retail) in tests and a browser. How good the suggestions are on real company data has not been measured,
+  and the value check has not been run against a live database server (only file data models). Asking questions across
+  data models is not built yet.
 
 ## Production notes
 

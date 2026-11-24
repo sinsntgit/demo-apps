@@ -10,7 +10,7 @@ from .. import connectors, security
 from ..db import get_db, now
 from .. import config
 from ..deps import admin_only, audit, can_use, current_user, get_connection, same_company, steward_up
-from ..models import Connection, ConnectionAccess, TrainingItem, User
+from ..models import CombinedMember, Connection, ConnectionAccess, GraphEdge, TrainingItem, User
 
 router = APIRouter(prefix="/api/connections", tags=["connections"])
 
@@ -32,6 +32,8 @@ class AccessIn(BaseModel):
 
 
 def _public(c: Connection, db: Session, full: bool) -> dict:
+    if c.db_type == "combined":
+        return _public_combined(c, db, full)
     tables = (c.schema_json or {}).get("tables", [])
     out = {"id": c.id, "name": c.name, "description": c.description, "db_type": c.db_type,
            "db_label": connectors.DB_TYPES[c.db_type]["label"], "is_active": c.is_active,
@@ -48,9 +50,27 @@ def _public(c: Connection, db: Session, full: bool) -> dict:
     return out
 
 
+def _public_combined(c: Connection, db: Session, full: bool) -> dict:
+    from .. import matching
+    ms = matching.members(db, c)
+    ids = [conn.id for _, conn in ms]
+    status = dict(db.execute(select(GraphEdge.status, func.count()).where(
+        GraphEdge.kind == "match", GraphEdge.left_connection_id.in_(ids), GraphEdge.right_connection_id.in_(ids))
+        .group_by(GraphEdge.status)).all()) if ids else {}
+    cfg = security.decrypt_json(c.config_enc) if c.config_enc else {}
+    return {"id": c.id, "name": c.name, "description": c.description, "db_type": "combined", "db_label": connectors.DB_TYPES["combined"]["label"],
+            "is_active": c.is_active, "table_count": sum(len((conn.schema_json or {}).get("tables", [])) for _, conn in ms),
+            "schema_synced_at": None, "restricted": c.restricted, "members": [{"id": conn.id, "name": conn.name, "alias": m.alias} for m, conn in ms],
+            "matches": {"confirmed": status.get("confirmed", 0), "suggested": status.get("suggested", 0)},
+            "ready": matching.connected(db, c), "notice": cfg.get("notice", ""), "overlap_check": bool(cfg.get("overlap_check")),
+            "training_count": 0, "masked_columns": [], "allow_samples": False}
+
+
 def _validate(body: ConnIn, user: User, old_folder: str = ""):
     if body.db_type not in connectors.DB_TYPES:
         raise HTTPException(400, "Unknown database type.")
+    if body.db_type == "combined":
+        raise HTTPException(400, "Create combined data models with “＋ Combined data model” on the Data models page.")
     if not body.name.strip():
         raise HTTPException(400, "Name is required.")
     folder = str((body.config or {}).get("folder") or "").strip()
@@ -106,6 +126,8 @@ def create(body: ConnIn, request: Request, user: User = Depends(admin_only), db:
 def update(conn_id: int, body: ConnIn, request: Request, user: User = Depends(admin_only),
            db: Session = Depends(get_db)):
     c = _mine(db, user, conn_id)
+    if c.db_type == "combined":
+        raise HTTPException(400, "Edit a combined data model from its own Edit button.")
     old = security.decrypt_json(c.config_enc)
     _validate(body, user, str(old.get("folder") or "").strip())
     if db.scalar(select(Connection.id).where(Connection.name == body.name.strip(), Connection.company_id == user.company_id,
@@ -136,6 +158,14 @@ def update(conn_id: int, body: ConnIn, request: Request, user: User = Depends(ad
 def remove(conn_id: int, request: Request, user: User = Depends(admin_only), db: Session = Depends(get_db)):
     c = _mine(db, user, conn_id)
     connectors.forget(c.id)
+    for m in db.scalars(select(CombinedMember).where(CombinedMember.member_id == c.id)):     # combined models that used it
+        comb = db.get(Connection, m.combined_id)
+        if comb:
+            cfg = security.decrypt_json(comb.config_enc) if comb.config_enc else {}
+            cfg["notice"] = f"“{c.name}” was deleted, so it was taken out of this combined data model and the model was switched off. " \
+                            "Add another data model (Edit) or delete this combined model."
+            comb.config_enc, comb.is_active = security.encrypt_json(cfg), False
+            audit(db, request, user, "combined.member_removed", comb.name, c.name)
     audit(db, request, user, "connection.deleted", c.name)
     db.delete(c)
     db.commit()
@@ -156,6 +186,8 @@ def test(conn_id: int, user: User = Depends(steward_up), db: Session = Depends(g
 @router.post("/{conn_id}/sync")
 def sync_schema(conn_id: int, request: Request, user: User = Depends(steward_up), db: Session = Depends(get_db)):
     c = get_connection(db, user, conn_id)
+    if c.db_type == "combined":
+        raise HTTPException(400, connectors.NOT_A_SOURCE)
     try:
         schema = connectors.introspect(c, security.decrypt_json(c.config_enc))
     except connectors.ConnectorError as e:

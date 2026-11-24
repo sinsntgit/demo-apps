@@ -510,9 +510,11 @@
 <p>A data model is one database, or one folder of Excel / CSV files, together with its own training, access list and privacy settings. Create as many as you need — for example one per business area.</p>
 <figure><img src="/static/help/img/datamodels.png" alt="The Data models page listing connections with test, sync, files, training, edit and delete buttons"><figcaption>The Data models page.</figcaption></figure>
 <h3>The sample data models</h3>
-<p>Two ready-to-try data models come with the platform. Both are folders of CSV files; delete them under <b>Data models</b> when you no longer need them (they do not come back).</p>
+<p>Three ready-to-try data models and one combined data model come with the platform. The data models are folders of CSV files; delete any of them under <b>Data models</b> when you no longer need them (they do not come back).</p>
 <ul>
 <li><b>Sample: Retail sales</b> — customers, products, orders and order items of a small shop.</li>
+<li><b>Sample: CRM</b> — accounts, contacts and support tickets as a CRM would hold them, for the customers of the SAP sample: about 85% of SAP customers have a CRM account, the account keeps the SAP customer number <i>without</i> the leading zeros (<code>sap_no</code> 100001 for <code>KUNNR</code> 0000100001), names are sometimes written differently, and 25 prospects have no SAP number at all. 159 accounts, 256 contacts, 766 tickets; its training has a field dictionary, 4 business notes and 7 verified examples.</li>
+<li><b>Sample: SAP + CRM</b> — a <a href="#/help/combined">combined data model</a> of the two, with the customer-number match already confirmed.</li>
 <li><b>Sample: SAP Sales &amp; Finance</b> — a copy of SAP <b>SD</b> (sales &amp; distribution) and <b>FI</b> (financial accounting) tables with their real SAP names and fields, for demonstrating the platform on SAP-shaped data without an SAP connection. Acme Industrial, a maker of pumps, valves, motors, spare parts and services, with three company codes: <b>1000</b> Germany (EUR), <b>2000</b> USA (USD) and <b>3000</b> UK (GBP); January 2024 to 15 November 2026. The numbers are invented.</li>
 </ul>
 <table>
@@ -601,7 +603,52 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 <tr><td>Masked columns</td><td>One column name or pattern per line (<code>email</code>, <code>*phone*</code>, <code>ssn</code>). Values of these columns are replaced with •••••• in every result, including when the column is renamed or wrapped in a function. For strict protection, also remove the column from the database account's grants.</td></tr>
 <tr><td>Share sample values of chosen columns</td><td>Off by default. When on, up to 20 distinct values of the columns you list as <code>table.column</code> are given to the AI model as hints. Use only for harmless code lists such as statuses or regions. Takes effect at the next schema sync; turning it off removes the stored values.</td></tr>
 </table>
-<p>Deleting a data model deletes its training and all chats about it. The source database is never touched.</p>
+<p>Deleting a data model deletes its training and all chats about it. The source database is never touched. A combined data model that used it is switched off and shows a notice until you pick another data model for it.</p>
+</section>
+
+<section id="combined" data-title="Combined data models" data-role="Data stewards &amp; administrators">
+<h2>Combined data models: two or more data models together</h2>
+<p>Some questions need data from more than one system: <i>“Which customers with high SAP revenue have many open CRM tickets?”</i> A <b>combined data model</b> puts two to four data models (up to six if an administrator allows it) side by side and records which fields mean the same thing in each — the <b>matches</b>, such as SAP's customer number <code>KUNNR</code> and the CRM's <code>sap_no</code>. Each data model keeps its own training, access and filters.</p>
+<p><b>Coming next:</b> asking questions of a combined data model arrives in the next update. For now you set one up and check its matches; the Ask page does not offer combined data models yet.</p>
+<figure><img src="/static/help/img/combined-card.png" alt="The Sample: SAP + CRM card on the Data models page: combined data model, linked, value check on, combining the SAP and CRM samples with 1 confirmed match"><figcaption>A combined data model on the Data models page.</figcaption></figure>
+<h3>Creating one</h3>
+<ol>
+<li><b>Data models → ＋ Combined data model</b> (administrators and stewards).</li>
+<li>Give it a name and pick the data models. Each gets a <b>short name</b> (<code>sap</code>, <code>crm</code>) that is put in front of its table names, so <code>sap.kna1</code> and <code>crm.accounts</code> can never be confused.</li>
+<li>Decide whether to <b>Check values to confirm matches</b> (below), then <b>Create and find matches</b>.</li>
+</ol>
+<figure><img src="/static/help/img/combined-form.png" alt="The combined data model form with a name, two data models with short names retail and crm, and the Check values option"><figcaption>Creating a combined data model.</figcaption></figure>
+<p>Combined data models cannot contain other combined models. A person can use one only if they have access to <b>every</b> data model in it; each data model's row filters and masked columns still apply to them.</p>
+<h3>Matches</h3>
+<p><b>🔗 Matches</b> opens the list of matches. AskData <b>suggests</b> them from the column names, the descriptions in each data model's training (a description of <code>sap_no</code> that mentions <code>KUNNR</code> counts), which columns are keys, and their types. A suggestion is never used until a steward <b>confirms</b> it. A rejected suggestion is not suggested again; <b>Restore</b> brings it back. <b>＋ Add match</b> records one by hand.</p>
+<figure><img src="/static/help/img/combined-matches.png" alt="The Matches screen: two suggestions of KUNNR to sap_no with confirm, edit, check values and reject buttons, and the confirmed kna1.KUNNR to accounts.sap_no match with values 100%"><figcaption>Suggestions to check and the confirmed match, with its value check.</figcaption></figure>
+<p>Every match has a <b>key rule</b>, applied to both sides before the values are compared — because systems rarely store a key the same way:</p>
+<table>
+<tr><th>Key rule</th><th>For example</th></tr>
+<tr><td>As is</td><td>the values are identical</td></tr>
+<tr><td>Trim spaces · Upper case · Lower case</td><td><code>"AB12 "</code> = <code>"ab12"</code></td></tr>
+<tr><td>Strip leading zeros</td><td>SAP's <code>0000100001</code> = the CRM's <code>100001</code></td></tr>
+<tr><td>Digits only</td><td><code>CUST-0042</code> = <code>0042</code></td></tr>
+<tr><td>Text to number · Number to text</td><td>a number stored as text in one system and as a number in the other</td></tr>
+</table>
+<p>The data model is <b>linked</b> (a green badge) once confirmed matches connect every data model to the others.</p>
+<h3>Checking values</h3>
+<p>Names can mislead, so a match can be checked against the data: <b>Check values</b> reads the distinct values of the two columns (up to 10,000 each), applies the key rule and reports how many exist on the other side, for example <i>“100% of crm.accounts values exist in Sample: SAP Sales &amp; Finance”</i>. It also works out whether each side is one row per value (1:1, N:1…).</p>
+<ul>
+<li>It is <b>off by default</b> and switched on per combined data model (Edit → <i>Check values to confirm matches</i>). When on, <b>⟳ Find matches</b> also checks the most likely suggestions and drops those whose values hardly overlap (under 5%).</li>
+<li>It runs <b>on this server only</b>. Values are never sent to the AI model and never stored: only the percentages and counts are kept. For masked columns only the percentages are shown.</li>
+<li>It runs with the row filters of the person who presses the button, read-only, with the normal query time-out.</li>
+</ul>
+<h3>The diagram</h3>
+<p><b>◉ Diagram</b> draws the tables of all the data models: <b>orange</b> lines are matches between data models (dashed while still a suggestion), blue lines each data model's own confirmed joins from its Relationships tab. Click a table to see and decide on its matches.</p>
+<figure><img src="/static/help/img/combined-diagram.png" alt="The combined diagram: crm.accounts joined to sap.kna1 by an orange line labelled KUNNR = sap_no 1:1, dashed orange suggestions to sap.bseg and sap.knvv, and blue joins inside each data model"><figcaption>The SAP + CRM sample: the customer-number match in orange.</figcaption></figure>
+<h3>Limits (Admin → Settings)</h3>
+<table>
+<tr><th>Setting</th><th>Default</th><th>Meaning</th></tr>
+<tr><td>Data models in one combined model</td><td>4</td><td>2 to 6.</td></tr>
+<tr><td>Rows read from one data model per step</td><td>200,000</td><td>For questions across data models (next update).</td></tr>
+<tr><td>Rows in one combined answer before joining</td><td>500,000</td><td>For questions across data models (next update).</td></tr>
+</table>
 </section>
 
 <section id="groups" data-title="User groups (admin)" data-role="Administrators">
@@ -733,7 +780,7 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 <h3>Adding a company</h3>
 <ol>
 <li><b>Admin → Companies → ＋ Add company.</b> Enter the company name and the email and name of its first administrator.</li>
-<li>Keep <b>Add the sample data models</b> ticked to give them the Retail and SAP samples to try.</li>
+<li>Keep <b>Add the sample data models</b> ticked to give them the Retail, SAP and CRM samples and the SAP + CRM combined model to try.</li>
 <li>Pass the one-time password shown to their administrator securely; they choose their own at first sign-in.</li>
 <li>Give the company an AI model: share one (below), or let their administrator add their own key under AI models.</li>
 </ol>
@@ -819,6 +866,7 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 <tr><td>AI model that rephrases</td><td>The user's model</td><td>Pick a smaller, cheaper model here to keep rephrasing cheap; rewording does not need the most capable model.</td></tr>
 <tr><td>Allow predictive questions</td><td>On</td><td>Master switch for forecasts, predictions, segmentation, key drivers and anomalies. Users still opt in per question with <i>Use predictive capability</i>. See <a href="#/help/predictive">Predictive questions</a>.</td></tr>
 <tr><td>Rows a predictive question may read</td><td>50,000</td><td>Models need history, so predictive questions use this larger limit instead of <i>Maximum rows returned</i>.</td></tr>
+<tr><td>Combined data models: data models in one, rows per step, rows per answer</td><td>4 · 200,000 · 500,000</td><td>See <a href="#/help/combined">Combined data models</a>.</td></tr>
 <tr><td>Keep result snapshots in chat history</td><td>On</td><td>Off = results are never stored by AskData; users re-run to see them again.</td></tr>
 <tr><td>When an analyst confirms or corrects SQL</td><td>Approval first</td><td>Whether analyst feedback trains the model straight away or waits in the review queue.</td></tr>
 <tr><td>Web address of this app</td><td>blank</td><td>Used for the “open the live report” link in report emails.</td></tr>

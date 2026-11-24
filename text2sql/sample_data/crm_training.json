@@ -1,0 +1,59 @@
+{
+ "name": "Sample: CRM",
+ "folder": "crm",
+ "description": "CRM-style accounts, contacts and support tickets for the customers of the SAP sample - the customer numbers match SAP's KUNNR without the leading zeros.",
+ "dictionary": [
+  {
+   "title": "CRM field dictionary",
+   "content": "-- accounts  One row per CRM account (customer or prospect): account_id CRM account key (ACC-00001); account_name the name as the sales team writes it; sap_no the customer's SAP customer number (KUNNR) without leading zeros, e.g. 100001 for SAP '0000100001', empty for prospects; country ISO country code; industry; segment Enterprise, Mid-market or Small business; account_owner the sales rep; created_on date the account was created.\n-- contacts  People at an account: contact_id; account_id the account they belong to; full_name; job_title; email.\n-- tickets  Customer support tickets: ticket_id; account_id the account that raised it; opened_on; category (Delivery delay, Invoice question, Product defect, Spare parts, Installation, Account change, Warranty claim); priority Low, Medium, High or Urgent; status Open, In progress, Waiting on customer or Closed; closed_on date closed (empty while open); satisfaction customer rating 1-5 given when a ticket is closed."
+  }
+ ],
+ "documentation": [
+  {
+   "title": "About this data",
+   "content": "A sample CRM for Acme Industrial: accounts, their contacts and the support tickets they raise. Accounts that are customers carry their SAP customer number in sap_no (without SAP's leading zeros); prospects have none. Data runs from January 2025 and was extracted on 2026-11-15 - use DATE '2026-11-15' as today."
+  },
+  {
+   "title": "Open tickets",
+   "content": "A ticket is open while its status is not 'Closed' - that includes 'Open', 'In progress' and 'Waiting on customer'."
+  },
+  {
+   "title": "Response targets by priority",
+   "content": "Urgent tickets should close within 3 days, High within 8, Medium within 15 and Low within 25 days. Time to close = closed_on - opened_on, in days."
+  },
+  {
+   "title": "Customers and prospects",
+   "content": "An account with a sap_no is a customer that exists in SAP; an account without one is a prospect. To link a CRM account to SAP, match sap_no to the SAP customer number with the leading zeros removed."
+  }
+ ],
+ "examples": [
+  {
+   "question": "How many open tickets do we have by priority?",
+   "sql": "SELECT priority, COUNT(*) AS open_tickets\nFROM tickets\nWHERE status <> 'Closed'\nGROUP BY priority\nORDER BY CASE priority WHEN 'Urgent' THEN 1 WHEN 'High' THEN 2 WHEN 'Medium' THEN 3 ELSE 4 END"
+  },
+  {
+   "question": "Which accounts have the most open tickets?",
+   "sql": "SELECT a.account_name, a.segment, COUNT(*) AS open_tickets\nFROM tickets t\nJOIN accounts a ON a.account_id = t.account_id\nWHERE t.status <> 'Closed'\nGROUP BY a.account_name, a.segment\nORDER BY open_tickets DESC\nLIMIT 10"
+  },
+  {
+   "question": "What is the average customer satisfaction by ticket category?",
+   "sql": "SELECT category, ROUND(AVG(satisfaction), 2) AS avg_satisfaction, COUNT(*) AS closed_tickets\nFROM tickets\nWHERE status = 'Closed' AND satisfaction IS NOT NULL\nGROUP BY category\nORDER BY avg_satisfaction"
+  },
+  {
+   "question": "How many tickets were opened per month?",
+   "sql": "SELECT CAST(date_trunc('month', opened_on) AS DATE) AS month, COUNT(*) AS tickets\nFROM tickets\nGROUP BY 1\nORDER BY 1"
+  },
+  {
+   "question": "How long does it take to close a ticket, by priority?",
+   "sql": "SELECT priority, ROUND(AVG(closed_on - opened_on), 1) AS avg_days_to_close, COUNT(*) AS closed_tickets\nFROM tickets\nWHERE status = 'Closed'\nGROUP BY priority\nORDER BY avg_days_to_close"
+  },
+  {
+   "question": "Which accounts are prospects without an SAP customer number?",
+   "sql": "SELECT account_name, country, industry, account_owner, created_on\nFROM accounts\nWHERE sap_no IS NULL\nORDER BY created_on DESC"
+  },
+  {
+   "question": "How many contacts does each account owner manage?",
+   "sql": "SELECT a.account_owner, COUNT(DISTINCT a.account_id) AS accounts, COUNT(c.contact_id) AS contacts\nFROM accounts a\nLEFT JOIN contacts c ON c.account_id = a.account_id\nGROUP BY a.account_owner\nORDER BY contacts DESC"
+  }
+ ]
+}

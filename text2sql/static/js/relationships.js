@@ -71,7 +71,6 @@ export async function relationshipsTab(el, connId) {
   let showAll = false;
   const SHOW = 10;
   let view = (() => { try { return localStorage.getItem('askdata.relview') || 'diagram'; } catch { return 'diagram'; } })();
-  let allTables = false, showSugg = false, selected = null, camera = null;
   const setView = v => { view = v; try { localStorage.setItem('askdata.relview', v); } catch { /* private window */ } draw(); };
 
   function foundPanel(conf) {
@@ -139,7 +138,13 @@ export async function relationshipsTab(el, connId) {
   }
 
   // ---- the diagram: tables as boxes, joins as lines (solid = confirmed, dashed = suggestion), entities as green tags ----------------
-  function diagramView(sugg, conf) {
+  const dstate = { allTables: false, showSugg: false, selected: null, camera: null };
+  const diagramView = (sugg, conf) => graphDiagram({ tables: g.tables, conf, sugg, entities: g.entities, st: dstate, redraw: draw, joinCell, evidence, act, editEdge, editEntity });
+
+  try { await reload(); } catch (ex) { fail(ex); fill(el, h('div', { class: 'empty' }, 'Could not load the relationships.')); }
+}
+
+export function graphDiagram({ tables, conf, sugg, entities, st, redraw, joinCell, evidence, act, editEdge, editEntity, matchLabel }) {
     const NS = 'http://www.w3.org/2000/svg';
     const s = (tag, attrs = {}, ...kids) => { const n = document.createElementNS(NS, tag);
       for (const [k, v] of Object.entries(attrs)) if (v != null && v !== false) n.setAttribute(k, v);
@@ -147,15 +152,15 @@ export async function relationshipsTab(el, connId) {
     const key = t => t.toLowerCase();
     const nodes = new Map(), links = [];
     const addNode = (id, label, kind) => { if (!nodes.has(id)) nodes.set(id, { id, label, kind, w: Math.max(56, label.length * 7.4 + 22), h: 26 }); return nodes.get(id); };
-    [...conf, ...(showSugg ? sugg : [])].forEach(e => { addNode(key(e.left_table), e.left_table, 'table'); addNode(key(e.right_table), e.right_table, 'table');
+    [...conf, ...(st.showSugg ? sugg : [])].forEach(e => { addNode(key(e.left_table), e.left_table, 'table'); addNode(key(e.right_table), e.right_table, 'table');
       links.push({ a: key(e.left_table), b: key(e.right_table), e }); });
-    g.entities.forEach(ent => { const id = 'ent:' + ent.id; addNode(id, ent.name, 'entity').ent = ent;
+    entities.forEach(ent => { const id = 'ent:' + ent.id; addNode(id, ent.name, 'entity').ent = ent;
       ent.bindings.forEach(b => { addNode(key(b.table), b.table, 'table'); links.push({ a: id, b: key(b.table), ent }); }); });
-    if (allTables) g.tables.forEach(t => addNode(key(t.name), t.name, 'table'));
+    if (st.allTables) tables.forEach(t => addNode(key(t.name), t.name, 'table'));
     const list = [...nodes.values()];
     if (!list.length) return h('div', { class: 'stack' }, h('div', { class: 'empty' }, `Nothing to draw yet: no confirmed joins or entities.${sugg.length ? ` There ${sugg.length === 1 ? 'is 1 suggestion' : `are ${sugg.length} suggestions`} to check.` : ''} See “Where these joins come from” above.`),
-      h('div', { class: 'row' }, sugg.length ? h('button', { class: 'btn sm', onclick: () => { showSugg = true; draw(); } }, `Show the ${sugg.length} suggestion${sugg.length === 1 ? '' : 's'}`) : null,
-        h('button', { class: 'btn sm', onclick: () => { allTables = true; draw(); } }, 'Show every table')));
+      h('div', { class: 'row' }, sugg.length ? h('button', { class: 'btn sm', onclick: () => { st.showSugg = true; redraw(); } }, `Show the ${sugg.length} suggestion${sugg.length === 1 ? '' : 's'}`) : null,
+        h('button', { class: 'btn sm', onclick: () => { st.allTables = true; redraw(); } }, 'Show every table')));
 
     // layout: each connected group is laid out on its own (force-directed, deterministic), the groups are then placed side by
     // side, largest first, and the whole picture is scaled evenly to the frame; overlapping boxes are nudged apart at the end
@@ -213,13 +218,13 @@ export async function relationshipsTab(el, connId) {
       list.forEach(n => { n.x = Math.min(W - n.w / 2 - 4, Math.max(n.w / 2 + 4, n.x)); n.y = Math.min(H - n.h / 2 - 4, Math.max(n.h / 2 + 4, n.y)); });
       if (!moved) break;
     }
-    if (!camera) camera = { x: 0, y: 0, w: W, h: H };
-    const svg = s('svg', { class: 'kg', viewBox: `${camera.x} ${camera.y} ${camera.w} ${camera.h}`, role: 'img', 'aria-label': 'Diagram of tables and joins' });
+    if (!st.camera) st.camera = { x: 0, y: 0, w: W, h: H };
+    const svg = s('svg', { class: 'kg', viewBox: `${st.camera.x} ${st.camera.y} ${st.camera.w} ${st.camera.h}`, role: 'img', 'aria-label': 'Diagram of tables and joins' });
     const gEdges = s('g'), gLabels = s('g'), gNodes = s('g');
     svg.append(gEdges, gNodes, gLabels);              // join labels on top, with a halo so they stay readable
     links.forEach(l => {
-      const cls = l.ent ? 'e ent' : l.e.status === 'suggested' ? 'e sugg' : 'e';
-      const tip = l.ent ? `${l.ent.name} is stored in ${nodes.get(l.b).label}` : `${l.e.status === 'suggested' ? 'Suggestion: ' : ''}${l.e.join}  (${l.e.origin_label})`;
+      const cls = l.ent ? 'e ent' : 'e' + (l.e.kind === 'match' ? ' match' : '') + (l.e.status === 'suggested' ? ' sugg' : '');
+      const tip = l.ent ? `${l.ent.name} is stored in ${nodes.get(l.b).label}` : `${l.e.status === 'suggested' ? 'Suggestion: ' : ''}${l.e.kind === 'match' ? 'Match between data models: ' : ''}${l.e.join}  (${l.e.origin_label})${matchLabel && l.e.kind === 'match' ? ' · ' + matchLabel(l.e) : ''}`;
       l.line = s('line', { class: cls }); l.hit = s('line', { class: 'hit' }, s('title', {}, tip));
       l.hit.addEventListener('click', ev => { ev.stopPropagation(); if (l.e) select(nodes.get(l.a).id); });
       gEdges.append(l.line, l.hit);
@@ -241,24 +246,24 @@ export async function relationshipsTab(el, connId) {
       list.forEach(n => n.el.setAttribute('transform', `translate(${n.x},${n.y})`));
       links.forEach(l => { const p = nodes.get(l.a), q = nodes.get(l.b);
         for (const ln of [l.line, l.hit]) { ln.setAttribute('x1', p.x); ln.setAttribute('y1', p.y); ln.setAttribute('x2', q.x); ln.setAttribute('y2', q.y); } });
-      fill(gLabels, links.filter(l => l.e && selected && (l.a === selected || l.b === selected)).map(l => {
+      fill(gLabels, links.filter(l => l.e && st.selected && (l.a === st.selected || l.b === st.selected)).map(l => {
         const p = nodes.get(l.a), q = nodes.get(l.b); const cols = l.e.left_columns.map((c, i) => c === l.e.right_columns[i] ? c : `${c} = ${l.e.right_columns[i]}`).join(', ');
         return s('text', { class: 'elabel', x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 - 6, 'text-anchor': 'middle' }, cols + (l.e.cardinality ? `  ${l.e.cardinality}` : ''));
       }));
     }
     // pan by dragging the background, zoom with the wheel
     let pan = null;
-    svg.addEventListener('pointerdown', ev => { pan = { x: ev.clientX, y: ev.clientY, cx: camera.x, cy: camera.y }; svg.setPointerCapture(ev.pointerId); svg.classList.add('grabbing'); });
-    svg.addEventListener('pointermove', ev => { if (!pan) return; const r = svg.getBoundingClientRect(); const sc = camera.w / r.width;
-      camera.x = pan.cx - (ev.clientX - pan.x) * sc; camera.y = pan.cy - (ev.clientY - pan.y) * sc; svg.setAttribute('viewBox', `${camera.x} ${camera.y} ${camera.w} ${camera.h}`); });
+    svg.addEventListener('pointerdown', ev => { pan = { x: ev.clientX, y: ev.clientY, cx: st.camera.x, cy: st.camera.y }; svg.setPointerCapture(ev.pointerId); svg.classList.add('grabbing'); });
+    svg.addEventListener('pointermove', ev => { if (!pan) return; const r = svg.getBoundingClientRect(); const sc = st.camera.w / r.width;
+      st.camera.x = pan.cx - (ev.clientX - pan.x) * sc; st.camera.y = pan.cy - (ev.clientY - pan.y) * sc; svg.setAttribute('viewBox', `${st.camera.x} ${st.camera.y} ${st.camera.w} ${st.camera.h}`); });
     svg.addEventListener('pointerup', ev => { if (pan && Math.hypot(ev.clientX - pan.x, ev.clientY - pan.y) < 4) select(null); pan = null; svg.classList.remove('grabbing'); });
     svg.addEventListener('wheel', ev => { ev.preventDefault(); const p = toSvg(ev); const f = ev.deltaY > 0 ? 1.15 : 1 / 1.15;
-      const w = Math.min(W * 3, Math.max(W / 5, camera.w * f)), hh = w * (H / W);
-      camera = { x: p.x - (p.x - camera.x) * (w / camera.w), y: p.y - (p.y - camera.y) * (hh / camera.h), w, h: hh }; svg.setAttribute('viewBox', `${camera.x} ${camera.y} ${camera.w} ${camera.h}`); }, { passive: false });
+      const w = Math.min(W * 3, Math.max(W / 5, st.camera.w * f)), hh = w * (H / W);
+      st.camera = { x: p.x - (p.x - st.camera.x) * (w / st.camera.w), y: p.y - (p.y - st.camera.y) * (hh / st.camera.h), w, h: hh }; svg.setAttribute('viewBox', `${st.camera.x} ${st.camera.y} ${st.camera.w} ${st.camera.h}`); }, { passive: false });
 
     const info = h('div', {});
     function select(id) {
-      selected = id;
+      st.selected = id;
       const near = new Set(id ? [id, ...links.filter(l => l.a === id || l.b === id).flatMap(l => [l.a, l.b])] : []);
       list.forEach(n => { n.el.classList.toggle('sel', n.id === id); n.el.classList.toggle('dim', !!id && !near.has(n.id)); });
       links.forEach(l => { const on = !id || l.a === id || l.b === id; l.line.classList.toggle('dim', !on); });
@@ -269,7 +274,7 @@ export async function relationshipsTab(el, connId) {
         h('div', { class: 'small' }, 'Stored in ', n.ent.bindings.map(b => b.table + (b.key_columns.length ? ` (${b.key_columns.join(', ')})` : '')).join(', ')),
         h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 'btn sm', onclick: () => editEntity(n.ent) }, 'Edit'))));
       const mine = links.filter(l => l.e && (l.a === id || l.b === id)).map(l => l.e);
-      const t = g.tables.find(x => key(x.name) === id);
+      const t = tables.find(x => key(x.name) === id);
       fill(info, h('div', { class: 'card flush' }, h('div', { class: 'item' }, h('b', {}, n.label), h('span', { class: 'small dim' }, `  ${t ? t.columns.length + ' columns · ' : ''}${mine.length} join${mine.length === 1 ? '' : 's'}`)),
         mine.map(e => h('div', { class: 'item' }, h('div', { class: 'row top' }, h('div', { style: 'flex:1;min-width:0' }, joinCell(e), evidence(e)),
           e.status === 'suggested' ? h('div', { class: 'row' }, h('button', { class: 'btn sm primary', onclick: act(e, 'confirm', 'Confirmed') }, '✓ Confirm'),
@@ -277,15 +282,13 @@ export async function relationshipsTab(el, connId) {
             : h('div', { class: 'row' }, h('span', { class: 'badge good' }, 'confirmed'), h('button', { class: 'btn sm', onclick: () => editEdge(e) }, 'Edit')))))));
     }
     place();
-    select(selected && nodes.has(selected) ? selected : null);
+    select(st.selected && nodes.has(st.selected) ? st.selected : null);
     return h('div', { class: 'stack' },
       h('div', { class: 'row wrap small' }, h('span', { class: 'kg-key' }, h('i', { class: 'k-conf' }), 'confirmed join'), h('span', { class: 'kg-key' }, h('i', { class: 'k-sugg' }), 'suggestion'),
-        h('span', { class: 'kg-key' }, h('i', { class: 'k-ent' }), 'business entity'), h('span', { class: 'spacer' }),
-        sugg.length ? check(`Show suggestions (${sugg.length})`, showSugg, v => { showSugg = v; camera = null; draw(); }) : null,
-        check('Show every table', allTables, v => { allTables = v; camera = null; draw(); }),
-        h('button', { class: 'btn sm', onclick: () => { camera = null; draw(); } }, 'Fit')),
+        entities.length ? h('span', { class: 'kg-key' }, h('i', { class: 'k-ent' }), 'business entity') : null,
+        [...conf, ...sugg].some(e => e.kind === 'match') ? h('span', { class: 'kg-key' }, h('i', { class: 'k-match' }), 'match between data models') : null, h('span', { class: 'spacer' }),
+        sugg.length ? check(`Show suggestions (${sugg.length})`, st.showSugg, v => { st.showSugg = v; st.camera = null; redraw(); }) : null,
+        check('Show every table', st.allTables, v => { st.allTables = v; st.camera = null; redraw(); }),
+        h('button', { class: 'btn sm', onclick: () => { st.camera = null; redraw(); } }, 'Fit')),
       svg, info);
   }
-
-  try { await reload(); } catch (ex) { fail(ex); fill(el, h('div', { class: 'empty' }, 'Could not load the relationships.')); }
-}

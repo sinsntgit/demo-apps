@@ -51,7 +51,11 @@ DEFAULT_SETTINGS = {
     "predictive_enabled": True,    # forecasts, predictions, segmentation, anomaly detection
     "analysis_max_rows": 50000,    # rows a predictive question may pull from the source
     "rephrase_enabled": True,      # "✨ Rephrase" on the Ask page: tidy a question before it is asked
-    "rephrase_model_id": 0,        # AI model that rephrases; 0 = the model the user picked for the question
+    "rephrase_model_id": 0,
+    # combined data models (questions across several data models)
+    "combined_max_sources": 4,     # data models per combined data model (2 to 6)
+    "combined_step_max_rows": 200000,   # rows one source may return to a combined answer before it fails
+    "combined_total_max_rows": 500000,  # rows held across all sources of one combined answer        # AI model that rephrases; 0 = the model the user picked for the question
     # outgoing email, for scheduled reports
     "smtp_host": "",
     "smtp_port": 587,

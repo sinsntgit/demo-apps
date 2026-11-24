@@ -12,7 +12,7 @@ from . import config, security
 from . import connectors as connectors_mod
 from .db import Base, SessionLocal, engine
 from .models import Connection, LLMModel, TrainingItem, User
-from .routers import admin, analytics, auth, chat, companies, connections, graph, reports, training
+from .routers import admin, analytics, auth, chat, combined, companies, connections, graph, reports, training
 
 log = logging.getLogger("text2sql")
 STATIC = config.BASE_DIR / "static"
@@ -135,7 +135,57 @@ def bootstrap():
             _first_run(db)
         first = db.scalar(select(Company.id).order_by(Company.id).limit(1))
     if first:
-        add_sample_model("sap_training.json", first)
+        add_samples(first)
+
+
+def add_samples(company_id: int):
+    """The bundled samples a company gets (each once - a deleted sample does not come back): SAP, CRM, and the
+    combined SAP + CRM model with its customer-number match confirmed."""
+    add_sample_model("sap_training.json", company_id)
+    add_sample_model("crm_training.json", company_id)
+    add_combined_sample(company_id)
+
+
+COMBINED_SAMPLE = "Sample: SAP + CRM"
+
+
+def add_combined_sample(company_id: int):
+    """A ready-made combined data model of the SAP and CRM samples. The match CRM accounts.sap_no = SAP kna1.KUNNR is
+    confirmed with the 'strip leading zeros' rule; other suggestions are left for a steward to look at."""
+    from .db import now
+    from .models import CombinedMember, GraphEdge, Setting
+    flag = _sample_flag("combined_sap_crm", company_id)
+    with SessionLocal() as db:
+        if db.get(Setting, flag):
+            return
+        by_name = {c.name: c for c in db.scalars(select(Connection).where(Connection.company_id == company_id))}
+        sap, crm = by_name.get("Sample: SAP Sales & Finance"), by_name.get("Sample: CRM")
+        if COMBINED_SAMPLE in by_name or not sap or not crm or not sap.schema_json or not crm.schema_json:
+            if COMBINED_SAMPLE in by_name or (sap is None and crm is None):
+                db.add(Setting(key=flag, value={"v": True}))
+                db.commit()
+            return
+        comb = Connection(company_id=company_id, name=COMBINED_SAMPLE, db_type="combined", config_enc=security.encrypt_json({"overlap_check": True}),
+                          description="The SAP sample and the CRM sample together: CRM accounts are SAP customers, matched on the customer number "
+                                      "with SAP's leading zeros removed.")
+        db.add(comb)
+        db.flush()
+        db.add(CombinedMember(company_id=company_id, combined_id=comb.id, member_id=sap.id, alias="sap", position=0))
+        db.add(CombinedMember(company_id=company_id, combined_id=comb.id, member_id=crm.id, alias="crm", position=1))
+        db.add(GraphEdge(company_id=company_id, left_connection_id=sap.id, left_table="kna1", left_columns=["KUNNR"], right_connection_id=crm.id,
+                         right_table="accounts", right_columns=["sap_no"], kind="match", cardinality="1:1", normalisation="strip_zeros",
+                         origin="steward", status="confirmed", confidence=1.0, decided_at=now(),
+                         evidence=["Confirmed in the bundled sample: CRM keeps the SAP customer number without its leading zeros"]))
+        db.add(Setting(key=flag, value={"v": True}))
+        db.commit()
+        try:                                      # the other suggestions, from names and descriptions only
+            from . import config as cfgmod, matching
+            matching.find(db, comb, None, {**cfgmod.DEFAULT_SETTINGS}, check_values=False)
+            db.commit()
+        except Exception as e:                    # a convenience, never a start-up blocker
+            log.warning("Suggestions for the combined sample could not be made: %s", e)
+            db.rollback()
+        log.info("Added the combined sample to company #%s", company_id)
 
 
 def _sample_flag(spec_file: str, company_id: int) -> str:
@@ -285,6 +335,7 @@ async def security_layer(request: Request, call_next):
 
 
 for r in (auth.router, connections.router, training.router, chat.router, admin.router, analytics.router, reports.router, graph.router,
+          combined.router,
           companies.router):
     app.include_router(r)
 

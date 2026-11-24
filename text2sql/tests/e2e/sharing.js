@@ -22,7 +22,7 @@ const OUT = process.argv[2], B = 'http://localhost:8010/';
   await signIn(admin, 'admin@example.com', 'Admin-Passw0rd!');
   await call(admin, 'POST', '/api/admin/models', { name: 'Demo model', provider: 'openai_compatible', model_id: 'fake-1', base_url: 'http://127.0.0.1:8765/v1', is_default: true });
   const conns = await call(admin, 'GET', '/api/connections');
-  const retail = conns.find(c => c.name.includes('Retail')), sap = conns.find(c => c.name.includes('SAP'));
+  const retail = conns.find(c => c.name.includes('Retail')), sap = conns.find(c => c.name.includes('SAP Sales'));
   const tom = await call(admin, 'POST', '/api/admin/users', { email: 'tom@example.com', name: 'Tom Becker', role: 'analyst' });
   const lena = await call(admin, 'POST', '/api/admin/users', { email: 'lena@example.com', name: 'Lena Okafor', role: 'analyst' });
   await call(admin, 'POST', '/api/admin/groups', { name: 'North sales team', description: 'Account managers in the North', user_ids: [tom.id] });

@@ -394,7 +394,20 @@ class GraphEdge(Base):
     status: Mapped[str] = mapped_column(String(10), default="suggested")
     evidence: Mapped[list] = mapped_column(JSON, default=list)
     confidence: Mapped[float] = mapped_column(Float, default=0)
+    stats: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)            # value-overlap check: percentages and counts only, never values
     decided_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)     # a steward's decision is never overwritten by a rebuild
     decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+
+class CombinedMember(Base):
+    """One data model inside a combined data model (Connection.db_type == "combined"), with the alias the AI model uses."""
+    __tablename__ = "combined_members"
+    __table_args__ = (UniqueConstraint("combined_id", "member_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    combined_id: Mapped[int] = mapped_column(ForeignKey("connections.id", ondelete="CASCADE"), index=True)
+    member_id: Mapped[int] = mapped_column(ForeignKey("connections.id", ondelete="CASCADE"), index=True)
+    alias: Mapped[str] = mapped_column(String(30))
+    position: Mapped[int] = mapped_column(Integer, default=0)

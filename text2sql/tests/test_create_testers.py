@@ -63,7 +63,7 @@ def test_provision_creates_people_companies_and_shares_a_model(admin, tmp_path):
     out = ct.provision(api, rows, "Trial shared model", log=log.append)
     assert [r["status"] for r in out] == ["created"] * 3 and all(r["temporary_password"] for r in out)
     co = next(c for c in client.get("/api/admin/companies").json() if c["name"] == "Trial Co (script test)")
-    assert co["users"] == 2 and co["data_models"] == 2                              # sample data models came with it
+    assert co["users"] == 2 and co["data_models"] == 4                              # sample data models came with it
     ann, bob = out[0], out[1]
     assert _sign_in(ann["email"], ann["temporary_password"]).status_code == 200
     assert _sign_in(bob["email"], bob["temporary_password"]).status_code == 200

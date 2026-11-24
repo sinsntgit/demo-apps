@@ -43,12 +43,16 @@ DB_TYPES = {
         F("role", "Role"), F("schemas", "Schemas (comma separated)", placeholder="PUBLIC")]},
     "files": {"label": "Excel / CSV folder", "driver": "duckdb", "fields": [
         F("folder", "Folder path on the server", placeholder="leave blank to upload files here")]},
+    # not a database: two or more data models answered together (app/matching.py, routers/combined.py)
+    "combined": {"label": "Combined data model", "driver": "", "fields": []},
 }
 DEFAULT_PORT = {"postgres": 5432, "mysql": 3306, "singlestore": 3306, "mssql": 1433, "oracle": 1521}
 DIALECT_NAME = {
     "postgres": "PostgreSQL", "mysql": "MySQL", "singlestore": "SingleStore (MySQL-compatible)",
     "mssql": "Microsoft SQL Server (T-SQL)", "oracle": "Oracle", "snowflake": "Snowflake", "files": "DuckDB",
+    "combined": "DuckDB",
 }
+NOT_A_SOURCE = "A combined data model has no database of its own: it uses the data models it combines."
 SECRET_FIELDS = {"password"}
 
 
@@ -310,6 +314,8 @@ def _package(names, raw_rows, max_rows, ms):
 # ---- public API -------------------------------------------------------------------
 def run_query(conn, cfg: dict, sql: str, max_rows: int, timeout_s: int) -> dict:
     """Run an already-guarded SELECT. Returns {columns, rows, truncated, ms}."""
+    if conn.db_type == "combined":
+        raise ConnectorError(NOT_A_SOURCE)
     def work():
         t0 = time.time()
         if conn.db_type == "files":
@@ -357,6 +363,8 @@ def run_query(conn, cfg: dict, sql: str, max_rows: int, timeout_s: int) -> dict:
 
 
 def test(conn, cfg) -> str:
+    if conn.db_type == "combined":
+        raise ConnectorError(NOT_A_SOURCE)
     probe = {"oracle": "SELECT 1 FROM dual"}.get(conn.db_type, "SELECT 1")
     if conn.db_type == "files":
         con = _duck_db(conn.id, cfg)
@@ -369,6 +377,8 @@ def test(conn, cfg) -> str:
 
 def introspect(conn, cfg, timeout_s=120) -> dict:
     """Read table/column metadata (never row data, unless sample columns were opted in)."""
+    if conn.db_type == "combined":
+        raise ConnectorError(NOT_A_SOURCE)
     def work():
         tables = []
         if conn.db_type == "files":
@@ -478,3 +488,30 @@ def table_ddl(t) -> str:
     if t.get("comment"):
         head += f"  -- {t['comment']}"
     return head + "\n" + "\n".join(lines) + "\n);"
+
+
+SQLGLOT_DIALECT = {"postgres": "postgres", "mysql": "mysql", "singlestore": "mysql", "mssql": "tsql", "oracle": "oracle",
+                   "snowflake": "snowflake", "files": "duckdb"}
+
+
+def distinct_values_sql(conn, table: dict, column: str, limit: int) -> str:
+    """SELECT DISTINCT <column> FROM <table> WHERE <column> IS NOT NULL, limited, written by sqlglot in the source's
+    dialect from schema names only (nothing typed by a user or a model is pasted in)."""
+    import sqlglot
+    from sqlglot import exp
+    q_ = lambda n: exp.to_identifier(n, quoted=not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", n))   # quote only when needed
+    tb = exp.Table(this=q_(table["name"]), db=q_(table["schema"]) if table.get("schema") else None)
+    col = exp.Column(this=q_(column))
+    q = sqlglot.select(col).distinct().from_(tb).where(exp.Not(this=exp.Is(this=col.copy(), expression=exp.Null()))).limit(limit)
+    return q.sql(dialect=SQLGLOT_DIALECT.get(conn.db_type, "duckdb"))
+
+
+def count_sql(conn, table: dict, column: str) -> str:
+    """SELECT COUNT(<column>) AS n, COUNT(DISTINCT <column>) AS d FROM <table>: is the column unique (one row per value)?"""
+    import sqlglot
+    from sqlglot import exp
+    q_ = lambda n: exp.to_identifier(n, quoted=not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", n))
+    tb = exp.Table(this=q_(table["name"]), db=q_(table["schema"]) if table.get("schema") else None)
+    col = exp.Column(this=q_(column))
+    q = sqlglot.select(exp.alias_(exp.Count(this=col.copy()), "n"), exp.alias_(exp.Count(this=exp.Distinct(expressions=[col.copy()])), "d")).from_(tb)
+    return q.sql(dialect=SQLGLOT_DIALECT.get(conn.db_type, "duckdb"))

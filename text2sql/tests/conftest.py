@@ -47,5 +47,5 @@ def admin(client):
         "name": "Fake", "provider": "openai_compatible", "model_id": "fake-1",
         "base_url": f"http://127.0.0.1:{FAKE_PORT}/v1", "is_default": True, "price_in": 1, "price_out": 2}).json()
     client.put("/api/admin/settings", headers=H, json={"rate_limit_per_min": 600})      # the suite asks a lot of questions
-    conn = client.get("/api/connections").json()[0]
+    conn = next(c for c in client.get("/api/connections").json() if c["name"] == "Sample: Retail sales")
     return client, conn["id"], m["id"]

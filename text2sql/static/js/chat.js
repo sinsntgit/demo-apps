@@ -6,10 +6,11 @@ const prefs = { get(k) { try { return localStorage.getItem('t2s-' + k); } catch 
 
 export async function chatView(root, convId) {
   const [conns, models, convs, opts] = await Promise.all([api('GET', '/api/connections'), api('GET', '/api/models'), api('GET', '/api/chat/conversations'), api('GET', '/api/chat/options')]);
-  const active = conns.filter(c => c.is_active);
+  const active = conns.filter(c => c.is_active && c.db_type !== 'combined');      // combined models cannot be asked yet
   let conv = null;                                   // {id, title, connection_id}
-  let connId = Number(prefs.get('conn')) || active[0]?.id;
-  if (!active.some(c => c.id === connId)) connId = active[0]?.id;
+  const first = active.reduce((m, c) => (!m || c.id < m.id ? c : m), null)?.id;      // no choice remembered: the oldest data model
+  let connId = Number(prefs.get('conn')) || first;
+  if (!active.some(c => c.id === connId)) connId = first;
   let modelId = Number(prefs.get('model')) || models[0]?.id;
   if (!models.some(m => m.id === modelId)) modelId = models[0]?.id;
   let review = prefs.get('review') === '1' && state.me?.sees_sql !== false;

@@ -7,10 +7,11 @@ from sqlalchemy.orm import Session
 from .. import connectors, graph
 from ..db import get_db, now
 from ..deps import audit, get_connection, steward_up
-from ..models import GraphBinding, GraphEdge, GraphEntity, User
+from ..models import Connection, GraphBinding, GraphEdge, GraphEntity, User
 
 router = APIRouter(prefix="/api/graph", tags=["graph"])
-ORIGIN = {"schema": "Foreign key", "verified_sql": "Verified SQL", "names": "Matching names", "steward": "Added by a steward"}
+ORIGIN = {"schema": "Foreign key", "verified_sql": "Verified SQL", "names": "Matching names", "steward": "Added by a steward",
+          "matching": "Suggested match"}
 
 
 class EdgeIn(BaseModel):
@@ -24,6 +25,7 @@ class EdgeIn(BaseModel):
 class EdgeUpdate(BaseModel):
     action: str = ""                  # confirm | reject | restore | "" (edit only)
     cardinality: str | None = None
+    normalisation: str | None = None  # matches between data models: a key rule from matching.NORMALISATIONS
     left_columns: list[str] | None = None
     right_columns: list[str] | None = None
 
@@ -147,12 +149,18 @@ def update_edge(edge_id: int, body: EdgeUpdate, request: Request, user: User = D
         if e.origin in ("schema", "verified_sql"):
             raise HTTPException(400, "This join comes from the database or a verified example; its columns cannot be edited. "
                                      "Reject it and add the right one instead.")
+        rconn = conn if e.right_connection_id == conn.id else db.get(Connection, e.right_connection_id)
         _, lc = _check_side(conn, e.left_table, body.left_columns if body.left_columns is not None else e.left_columns)
-        _, rc = _check_side(conn, e.right_table, body.right_columns if body.right_columns is not None else e.right_columns)
+        _, rc = _check_side(rconn, e.right_table, body.right_columns if body.right_columns is not None else e.right_columns)
         if len(lc) != len(rc):
             raise HTTPException(400, "Pick the same number of columns on both sides (they are matched in order).")
         e.left_columns, e.right_columns, e.origin = lc, rc, "steward"
         e.status = "confirmed"
+    if body.normalisation is not None:
+        from .. import matching
+        if body.normalisation not in matching.NORMALISATIONS or (e.kind != "match" and body.normalisation):
+            raise HTTPException(400, "Unknown key rule.")
+        e.normalisation = body.normalisation
     action = {"confirm": "confirmed", "reject": "rejected"}.get(body.action)
     if body.action and body.action not in ("confirm", "reject", "restore"):
         raise HTTPException(400, "Unknown action.")
@@ -160,11 +168,12 @@ def update_edge(edge_id: int, body: EdgeUpdate, request: Request, user: User = D
         e.status = action
     if body.action == "restore":            # back to how it was found: a suggestion again, or confirmed for automatic joins
         e.decided_by, e.decided_at = None, None
-        e.status = "suggested" if e.origin == "names" else "confirmed"
+        e.status = "suggested" if e.origin in ("names", "matching") else "confirmed"
     else:
         e.decided_by, e.decided_at = user.id, now()
-    audit(db, request, user, f"graph.edge_{action or ('restored' if body.action == 'restore' else 'updated')}", conn.name,
-          graph.join_text(e))
+    word = "match" if e.kind == "match" else "edge"
+    audit(db, request, user, f"graph.{word}_{action or ('restored' if body.action == 'restore' else 'updated')}", conn.name,
+          graph.join_text(e) + (f" ({e.normalisation})" if e.normalisation else ""))
     db.commit()
     return _edge_dto(e)
 

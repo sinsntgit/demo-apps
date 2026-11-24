@@ -1,0 +1,767 @@
+ticket_id,account_id,opened_on,category,priority,status,closed_on,satisfaction
+T-000001,ACC-00001,2025-03-30,Delivery delay,Medium,Closed,2025-04-01,4
+T-000002,ACC-00001,2026-08-03,Delivery delay,Low,Closed,2026-08-23,4
+T-000003,ACC-00001,2026-08-23,Delivery delay,Medium,Closed,2026-08-27,3
+T-000004,ACC-00001,2025-05-01,Spare parts,Medium,Closed,2025-05-06,2
+T-000005,ACC-00001,2025-07-12,Spare parts,Medium,Closed,2025-07-14,4
+T-000006,ACC-00001,2026-05-24,Warranty claim,Medium,Closed,2026-06-03,4
+T-000007,ACC-00001,2026-01-06,Delivery delay,Low,Closed,2026-01-28,5
+T-000008,ACC-00001,2025-11-04,Warranty claim,Medium,Closed,2025-11-18,3
+T-000009,ACC-00001,2025-05-01,Product defect,Medium,Closed,2025-05-11,3
+T-000010,ACC-00001,2025-02-10,Invoice question,Urgent,Closed,2025-02-12,4
+T-000011,ACC-00001,2026-05-24,Product defect,Medium,Closed,2026-05-26,5
+T-000012,ACC-00002,2026-09-18,Spare parts,Low,Closed,2026-10-12,3
+T-000013,ACC-00002,2026-02-12,Invoice question,Medium,Closed,2026-02-14,3
+T-000014,ACC-00002,2025-10-12,Invoice question,High,Closed,2025-10-20,3
+T-000015,ACC-00002,2026-01-03,Delivery delay,Medium,Closed,2026-01-10,3
+T-000016,ACC-00003,2025-05-09,Account change,Medium,Closed,2025-05-10,4
+T-000017,ACC-00004,2025-06-16,Delivery delay,Low,Closed,2025-06-19,1
+T-000018,ACC-00004,2025-04-14,Spare parts,High,Closed,2025-04-15,5
+T-000019,ACC-00004,2025-06-02,Delivery delay,Medium,In progress,,
+T-000020,ACC-00005,2025-06-15,Product defect,Medium,Closed,2025-06-26,3
+T-000021,ACC-00005,2025-01-28,Invoice question,High,Closed,2025-01-29,4
+T-000022,ACC-00005,2026-01-11,Installation,High,Closed,2026-01-14,4
+T-000023,ACC-00005,2025-12-04,Installation,Medium,Closed,2025-12-10,5
+T-000024,ACC-00006,2025-09-23,Warranty claim,Low,Closed,2025-10-04,4
+T-000025,ACC-00006,2025-12-24,Product defect,Urgent,Closed,2025-12-25,2
+T-000026,ACC-00006,2025-12-12,Product defect,Low,Closed,2025-12-31,5
+T-000027,ACC-00006,2026-10-31,Delivery delay,Low,Waiting on customer,,
+T-000028,ACC-00006,2026-02-02,Product defect,High,Closed,2026-02-09,5
+T-000029,ACC-00006,2026-10-14,Invoice question,Low,Closed,2026-11-06,4
+T-000030,ACC-00006,2025-03-28,Spare parts,Medium,Closed,2025-04-01,1
+T-000031,ACC-00006,2026-04-22,Invoice question,High,Closed,2026-04-29,4
+T-000032,ACC-00006,2026-07-16,Warranty claim,Medium,Closed,2026-07-19,4
+T-000033,ACC-00007,2025-12-29,Account change,High,Closed,2026-01-06,4
+T-000034,ACC-00007,2026-05-29,Product defect,Low,Closed,2026-06-14,1
+T-000035,ACC-00007,2025-07-07,Product defect,Medium,Closed,2025-07-11,3
+T-000036,ACC-00007,2025-05-04,Delivery delay,Medium,Closed,2025-05-19,5
+T-000037,ACC-00007,2026-07-28,Product defect,Low,Closed,2026-07-29,5
+T-000038,ACC-00007,2026-07-30,Spare parts,Low,Closed,2026-08-01,4
+T-000039,ACC-00008,2026-03-03,Product defect,Low,Closed,2026-03-05,4
+T-000040,ACC-00008,2025-08-06,Spare parts,Medium,Closed,2025-08-10,5
+T-000041,ACC-00008,2026-01-10,Warranty claim,Low,Closed,2026-01-24,3
+T-000042,ACC-00008,2026-02-12,Product defect,High,Closed,2026-02-15,3
+T-000043,ACC-00008,2026-06-12,Spare parts,Medium,Closed,2026-06-23,4
+T-000044,ACC-00009,2025-04-18,Installation,Low,Closed,2025-05-12,3
+T-000045,ACC-00009,2026-03-09,Product defect,High,Closed,2026-03-13,4
+T-000046,ACC-00009,2026-06-12,Installation,Medium,Closed,2026-06-14,3
+T-000047,ACC-00010,2025-08-16,Warranty claim,Low,Closed,2025-08-30,1
+T-000048,ACC-00011,2025-10-24,Delivery delay,Medium,Closed,2025-11-01,4
+T-000049,ACC-00011,2025-09-14,Delivery delay,Low,Closed,2025-09-30,4
+T-000050,ACC-00011,2026-05-02,Product defect,Low,Closed,2026-05-23,5
+T-000051,ACC-00011,2026-05-22,Warranty claim,Medium,Closed,2026-05-31,4
+T-000052,ACC-00011,2025-12-17,Invoice question,Low,Closed,2026-01-09,4
+T-000053,ACC-00011,2025-12-22,Installation,Urgent,Closed,2025-12-22,2
+T-000054,ACC-00012,2026-04-02,Product defect,Low,Closed,2026-04-12,5
+T-000055,ACC-00012,2025-09-08,Delivery delay,Low,Closed,2025-09-14,4
+T-000056,ACC-00012,2026-01-26,Product defect,Low,Closed,2026-02-15,3
+T-000057,ACC-00012,2025-01-06,Delivery delay,Low,Closed,2025-01-10,4
+T-000058,ACC-00012,2025-01-24,Product defect,Low,Closed,2025-01-26,4
+T-000059,ACC-00012,2025-06-08,Spare parts,Medium,Closed,2025-06-20,5
+T-000060,ACC-00012,2026-05-22,Installation,Low,Closed,2026-06-11,3
+T-000061,ACC-00012,2026-06-10,Installation,Medium,Closed,2026-06-14,5
+T-000062,ACC-00013,2026-10-05,Delivery delay,Low,Closed,2026-10-12,4
+T-000063,ACC-00013,2025-03-13,Delivery delay,Medium,Closed,2025-03-15,4
+T-000064,ACC-00015,2025-04-12,Invoice question,Medium,Closed,2025-04-21,5
+T-000065,ACC-00015,2026-04-23,Delivery delay,Medium,Closed,2026-04-29,4
+T-000066,ACC-00015,2026-04-30,Product defect,Low,Closed,2026-05-16,5
+T-000067,ACC-00015,2025-10-03,Delivery delay,Medium,Closed,2025-10-09,2
+T-000068,ACC-00015,2026-06-21,Product defect,Low,Closed,2026-07-10,5
+T-000069,ACC-00015,2025-04-26,Delivery delay,Medium,Closed,2025-05-11,4
+T-000070,ACC-00016,2026-02-12,Spare parts,Low,Closed,2026-03-06,1
+T-000071,ACC-00016,2025-09-17,Product defect,Medium,Closed,2025-09-19,4
+T-000072,ACC-00016,2025-10-09,Invoice question,High,Closed,2025-10-09,5
+T-000073,ACC-00016,2025-06-02,Installation,Low,Closed,2025-06-18,4
+T-000074,ACC-00016,2026-03-15,Warranty claim,High,Closed,2026-03-21,5
+T-000075,ACC-00016,2026-07-17,Spare parts,Low,Closed,2026-08-09,4
+T-000076,ACC-00016,2025-05-22,Product defect,Medium,Closed,2025-05-23,5
+T-000077,ACC-00016,2025-06-24,Spare parts,Medium,Closed,2025-07-03,3
+T-000078,ACC-00016,2026-10-31,Product defect,Low,Open,,
+T-000079,ACC-00016,2026-02-08,Account change,Low,Closed,2026-02-10,3
+T-000080,ACC-00017,2025-09-02,Installation,Medium,Closed,2025-09-08,5
+T-000081,ACC-00018,2026-05-31,Account change,Medium,Closed,2026-06-06,2
+T-000082,ACC-00018,2026-01-29,Account change,Medium,Closed,2026-02-07,5
+T-000083,ACC-00018,2025-01-23,Product defect,Low,Closed,2025-02-16,5
+T-000084,ACC-00018,2026-08-25,Invoice question,Medium,Closed,2026-09-08,5
+T-000085,ACC-00018,2025-04-22,Installation,Low,Closed,2025-05-13,2
+T-000086,ACC-00018,2026-10-25,Installation,High,Open,,
+T-000087,ACC-00018,2025-01-02,Invoice question,High,Closed,2025-01-02,4
+T-000088,ACC-00018,2025-05-12,Delivery delay,Medium,Closed,2025-05-25,4
+T-000089,ACC-00018,2025-03-14,Spare parts,Low,Closed,2025-03-22,3
+T-000090,ACC-00018,2025-01-11,Account change,Medium,Closed,2025-01-21,4
+T-000091,ACC-00019,2026-01-15,Invoice question,Low,Closed,2026-01-25,5
+T-000092,ACC-00019,2026-02-10,Delivery delay,Low,Closed,2026-03-05,5
+T-000093,ACC-00019,2026-05-23,Invoice question,Urgent,Closed,2026-05-24,3
+T-000094,ACC-00019,2025-10-30,Invoice question,Low,Closed,2025-11-18,3
+T-000095,ACC-00019,2026-03-04,Delivery delay,High,Closed,2026-03-06,5
+T-000096,ACC-00019,2025-01-25,Delivery delay,Urgent,Closed,2025-01-25,5
+T-000097,ACC-00019,2026-04-06,Warranty claim,High,Closed,2026-04-07,5
+T-000098,ACC-00019,2025-12-04,Delivery delay,Low,Closed,2025-12-20,5
+T-000099,ACC-00019,2026-11-12,Warranty claim,Medium,Waiting on customer,,
+T-000100,ACC-00020,2026-03-19,Account change,Low,Closed,2026-03-25,4
+T-000101,ACC-00020,2025-07-17,Invoice question,Low,Closed,2025-08-01,1
+T-000102,ACC-00020,2026-10-03,Installation,High,Closed,2026-10-03,4
+T-000103,ACC-00020,2025-03-05,Invoice question,Low,Closed,2025-03-24,4
+T-000104,ACC-00020,2026-09-24,Invoice question,Low,Closed,2026-10-16,4
+T-000105,ACC-00020,2025-01-04,Invoice question,Medium,Closed,2025-01-06,1
+T-000106,ACC-00020,2026-05-02,Account change,Medium,Closed,2026-05-14,5
+T-000107,ACC-00021,2025-03-22,Delivery delay,Medium,Closed,2025-03-27,3
+T-000108,ACC-00021,2025-02-04,Account change,Medium,Closed,2025-02-09,5
+T-000109,ACC-00021,2025-03-15,Warranty claim,Low,Closed,2025-03-18,4
+T-000110,ACC-00022,2025-10-28,Delivery delay,Low,Closed,2025-11-05,5
+T-000111,ACC-00022,2025-09-11,Spare parts,Low,Closed,2025-09-20,5
+T-000112,ACC-00022,2025-12-01,Invoice question,Low,Closed,2025-12-08,4
+T-000113,ACC-00022,2025-04-13,Invoice question,Medium,Closed,2025-04-28,5
+T-000114,ACC-00022,2026-04-05,Delivery delay,High,Closed,2026-04-09,3
+T-000115,ACC-00022,2026-09-07,Account change,Urgent,Closed,2026-09-07,4
+T-000116,ACC-00022,2026-04-05,Spare parts,Medium,Closed,2026-04-05,2
+T-000117,ACC-00022,2026-09-27,Delivery delay,Low,Closed,2026-10-07,3
+T-000118,ACC-00023,2026-07-16,Delivery delay,Medium,Closed,2026-07-28,4
+T-000119,ACC-00023,2026-07-01,Warranty claim,Low,Closed,2026-07-23,3
+T-000120,ACC-00024,2026-02-19,Installation,Low,Closed,2026-02-24,4
+T-000121,ACC-00024,2026-02-20,Delivery delay,Medium,Closed,2026-02-25,3
+T-000122,ACC-00024,2025-05-26,Warranty claim,Medium,Closed,2025-05-28,4
+T-000123,ACC-00024,2026-06-01,Warranty claim,Low,Closed,2026-06-06,4
+T-000124,ACC-00024,2025-04-22,Installation,Medium,Closed,2025-04-28,4
+T-000125,ACC-00024,2025-02-14,Spare parts,Urgent,Closed,2025-02-14,4
+T-000126,ACC-00024,2025-03-30,Account change,High,Closed,2025-04-01,4
+T-000127,ACC-00024,2026-09-28,Delivery delay,Medium,Closed,2026-10-13,3
+T-000128,ACC-00024,2026-02-14,Invoice question,High,Closed,2026-02-19,3
+T-000129,ACC-00026,2025-01-24,Installation,Low,Closed,2025-02-07,5
+T-000130,ACC-00026,2026-04-15,Delivery delay,High,Closed,2026-04-21,2
+T-000131,ACC-00026,2026-03-17,Delivery delay,Medium,Closed,2026-03-18,2
+T-000132,ACC-00027,2025-10-22,Spare parts,Urgent,Closed,2025-10-23,4
+T-000133,ACC-00027,2025-08-15,Invoice question,Low,Closed,2025-09-08,3
+T-000134,ACC-00027,2026-09-21,Warranty claim,Low,Closed,2026-09-25,3
+T-000135,ACC-00027,2026-05-07,Invoice question,Low,Closed,2026-05-23,3
+T-000136,ACC-00027,2025-07-23,Account change,Low,Closed,2025-07-31,4
+T-000137,ACC-00027,2025-06-22,Account change,High,Closed,2025-06-30,2
+T-000138,ACC-00027,2026-04-09,Product defect,Medium,Closed,2026-04-12,3
+T-000139,ACC-00027,2026-02-08,Spare parts,Medium,Closed,2026-02-20,5
+T-000140,ACC-00027,2026-01-04,Installation,Low,Closed,2026-01-11,3
+T-000141,ACC-00027,2025-02-19,Warranty claim,Low,Closed,2025-02-28,4
+T-000142,ACC-00027,2026-08-23,Invoice question,High,Closed,2026-08-23,5
+T-000143,ACC-00027,2025-10-25,Delivery delay,Medium,Closed,2025-11-05,5
+T-000144,ACC-00027,2025-08-21,Invoice question,Medium,Closed,2025-08-22,1
+T-000145,ACC-00027,2025-04-19,Spare parts,Medium,Closed,2025-05-02,4
+T-000146,ACC-00027,2025-07-29,Warranty claim,Medium,Closed,2025-08-03,3
+T-000147,ACC-00028,2026-10-24,Product defect,Medium,In progress,,
+T-000148,ACC-00028,2025-06-19,Delivery delay,High,Closed,2025-06-27,1
+T-000149,ACC-00028,2025-06-13,Spare parts,Low,Closed,2025-06-13,4
+T-000150,ACC-00028,2025-07-21,Spare parts,Low,Closed,2025-08-09,4
+T-000151,ACC-00028,2026-03-02,Spare parts,High,Closed,2026-03-06,2
+T-000152,ACC-00028,2026-05-05,Product defect,Medium,Closed,2026-05-18,5
+T-000153,ACC-00028,2026-11-03,Spare parts,Medium,Closed,2026-11-06,3
+T-000154,ACC-00028,2025-05-07,Invoice question,Low,Closed,2025-05-29,5
+T-000155,ACC-00028,2025-02-23,Account change,Low,Closed,2025-03-08,4
+T-000156,ACC-00028,2025-09-29,Product defect,Low,Closed,2025-10-05,2
+T-000157,ACC-00028,2025-06-23,Delivery delay,Low,Closed,2025-07-16,3
+T-000158,ACC-00028,2025-12-01,Account change,Low,Closed,2025-12-20,3
+T-000159,ACC-00028,2026-10-08,Product defect,High,In progress,,
+T-000160,ACC-00028,2026-06-28,Invoice question,Medium,Closed,2026-07-11,5
+T-000161,ACC-00028,2025-11-12,Delivery delay,High,Closed,2025-11-13,4
+T-000162,ACC-00029,2025-02-13,Installation,Medium,Closed,2025-02-15,5
+T-000163,ACC-00029,2025-07-24,Installation,High,Closed,2025-07-25,5
+T-000164,ACC-00030,2026-10-10,Spare parts,Low,Closed,2026-10-13,5
+T-000165,ACC-00030,2025-10-29,Warranty claim,Low,Closed,2025-10-29,4
+T-000166,ACC-00030,2025-02-19,Spare parts,Medium,Closed,2025-03-01,5
+T-000167,ACC-00030,2026-05-03,Delivery delay,High,Closed,2026-05-03,5
+T-000168,ACC-00030,2026-06-16,Delivery delay,High,Closed,2026-06-16,4
+T-000169,ACC-00030,2025-04-04,Delivery delay,Medium,Closed,2025-04-17,1
+T-000170,ACC-00030,2025-02-25,Installation,Low,Closed,2025-03-12,4
+T-000171,ACC-00030,2026-05-22,Delivery delay,Medium,Closed,2026-05-27,3
+T-000172,ACC-00030,2025-08-26,Warranty claim,Medium,Closed,2025-08-28,4
+T-000173,ACC-00030,2026-07-29,Warranty claim,High,Closed,2026-08-03,2
+T-000174,ACC-00030,2025-03-30,Invoice question,Medium,Closed,2025-04-10,3
+T-000175,ACC-00030,2026-07-13,Delivery delay,Medium,Closed,2026-07-20,5
+T-000176,ACC-00030,2026-09-01,Invoice question,High,Closed,2026-09-01,4
+T-000177,ACC-00031,2025-05-10,Delivery delay,Low,Closed,2025-06-01,3
+T-000178,ACC-00031,2025-11-05,Warranty claim,High,Closed,2025-11-07,5
+T-000179,ACC-00031,2025-12-01,Delivery delay,Medium,Closed,2025-12-08,4
+T-000180,ACC-00031,2025-04-15,Warranty claim,Low,Closed,2025-04-21,4
+T-000181,ACC-00031,2025-11-06,Account change,Medium,Closed,2025-11-12,2
+T-000182,ACC-00032,2025-05-26,Account change,Low,Closed,2025-05-26,5
+T-000183,ACC-00032,2026-03-17,Spare parts,Medium,Closed,2026-03-30,5
+T-000184,ACC-00032,2026-10-31,Account change,High,In progress,,
+T-000185,ACC-00033,2026-06-15,Invoice question,Medium,Closed,2026-06-25,5
+T-000186,ACC-00033,2026-05-17,Delivery delay,High,Closed,2026-05-21,4
+T-000187,ACC-00033,2025-07-24,Spare parts,Medium,Closed,2025-08-07,4
+T-000188,ACC-00033,2026-06-09,Invoice question,Low,Closed,2026-06-20,4
+T-000189,ACC-00033,2026-04-13,Warranty claim,Low,Closed,2026-04-25,4
+T-000190,ACC-00033,2026-09-21,Delivery delay,Medium,Closed,2026-09-29,4
+T-000191,ACC-00033,2025-03-18,Delivery delay,Medium,Closed,2025-03-29,4
+T-000192,ACC-00033,2025-11-07,Warranty claim,Medium,Closed,2025-11-14,5
+T-000193,ACC-00033,2026-04-19,Installation,Low,Closed,2026-05-13,2
+T-000194,ACC-00034,2025-12-30,Warranty claim,High,Closed,2026-01-05,4
+T-000195,ACC-00034,2025-07-10,Spare parts,Medium,Closed,2025-07-18,4
+T-000196,ACC-00034,2025-11-25,Invoice question,Medium,Closed,2025-11-27,4
+T-000197,ACC-00034,2025-11-07,Delivery delay,High,Closed,2025-11-12,5
+T-000198,ACC-00034,2025-12-20,Delivery delay,Medium,Closed,2025-12-20,3
+T-000199,ACC-00034,2025-10-28,Delivery delay,Low,Closed,2025-11-01,5
+T-000200,ACC-00034,2026-04-08,Delivery delay,Low,Closed,2026-04-20,5
+T-000201,ACC-00034,2026-09-15,Spare parts,Urgent,Closed,2026-09-17,3
+T-000202,ACC-00034,2026-06-28,Product defect,Low,Closed,2026-07-19,5
+T-000203,ACC-00034,2025-09-28,Delivery delay,Medium,Closed,2025-10-13,4
+T-000204,ACC-00035,2026-03-13,Delivery delay,Medium,Closed,2026-03-24,4
+T-000205,ACC-00035,2026-09-17,Delivery delay,Low,Closed,2026-09-27,5
+T-000206,ACC-00035,2026-05-11,Invoice question,Medium,Closed,2026-05-12,3
+T-000207,ACC-00035,2025-05-10,Installation,Low,Closed,2025-05-21,4
+T-000208,ACC-00035,2026-07-22,Invoice question,High,Closed,2026-07-28,4
+T-000209,ACC-00035,2025-02-23,Product defect,High,Closed,2025-03-02,4
+T-000210,ACC-00035,2025-10-06,Installation,High,Closed,2025-10-09,4
+T-000211,ACC-00036,2026-07-22,Delivery delay,High,Closed,2026-07-22,4
+T-000212,ACC-00036,2025-02-17,Delivery delay,Low,Closed,2025-03-08,5
+T-000213,ACC-00036,2026-05-28,Spare parts,High,Closed,2026-05-30,4
+T-000214,ACC-00036,2026-09-03,Product defect,High,Closed,2026-09-03,4
+T-000215,ACC-00036,2025-06-28,Delivery delay,Low,Closed,2025-06-29,4
+T-000216,ACC-00036,2026-11-03,Invoice question,Low,Open,,
+T-000217,ACC-00036,2025-09-22,Product defect,High,Closed,2025-09-22,4
+T-000218,ACC-00036,2026-10-20,Product defect,Medium,In progress,,
+T-000219,ACC-00036,2025-05-02,Delivery delay,High,Closed,2025-05-08,4
+T-000220,ACC-00036,2026-02-01,Installation,Medium,Open,,
+T-000221,ACC-00036,2026-07-16,Spare parts,Low,Closed,2026-07-22,5
+T-000222,ACC-00036,2026-03-14,Account change,Low,Closed,2026-03-17,5
+T-000223,ACC-00036,2025-08-12,Spare parts,High,Closed,2025-08-12,3
+T-000224,ACC-00037,2026-10-29,Invoice question,Medium,Open,,
+T-000225,ACC-00037,2026-09-07,Invoice question,Low,Closed,2026-09-22,4
+T-000226,ACC-00037,2026-08-12,Installation,Medium,Closed,2026-08-17,3
+T-000227,ACC-00037,2026-01-07,Installation,Urgent,Closed,2026-01-10,4
+T-000228,ACC-00037,2026-04-09,Delivery delay,High,Closed,2026-04-14,3
+T-000229,ACC-00038,2026-08-22,Invoice question,Medium,Closed,2026-09-03,4
+T-000230,ACC-00038,2025-08-28,Invoice question,High,Closed,2025-08-28,4
+T-000231,ACC-00039,2026-07-02,Installation,Low,Closed,2026-07-27,4
+T-000232,ACC-00039,2025-08-28,Delivery delay,Low,Closed,2025-09-09,4
+T-000233,ACC-00040,2026-05-04,Delivery delay,Medium,Closed,2026-05-10,3
+T-000234,ACC-00040,2025-10-24,Account change,Medium,Closed,2025-11-05,5
+T-000235,ACC-00041,2025-01-22,Spare parts,Low,Closed,2025-02-09,4
+T-000236,ACC-00041,2025-09-25,Installation,High,Closed,2025-09-26,5
+T-000237,ACC-00041,2026-09-16,Warranty claim,Urgent,Closed,2026-09-16,4
+T-000238,ACC-00042,2025-04-03,Warranty claim,Low,Closed,2025-04-23,2
+T-000239,ACC-00042,2026-06-03,Invoice question,Medium,Closed,2026-06-08,4
+T-000240,ACC-00042,2025-08-16,Product defect,Low,Open,,
+T-000241,ACC-00042,2025-01-29,Spare parts,High,Closed,2025-02-06,5
+T-000242,ACC-00042,2026-05-11,Delivery delay,Low,Closed,2026-06-04,1
+T-000243,ACC-00042,2025-11-02,Invoice question,Medium,Closed,2025-11-05,4
+T-000244,ACC-00042,2026-02-04,Installation,Low,Closed,2026-02-09,4
+T-000245,ACC-00043,2025-04-10,Product defect,High,Closed,2025-04-10,4
+T-000246,ACC-00043,2025-12-14,Delivery delay,Low,Closed,2025-12-17,4
+T-000247,ACC-00043,2025-08-15,Delivery delay,Medium,Closed,2025-08-29,4
+T-000248,ACC-00043,2025-06-02,Spare parts,Low,Closed,2025-06-06,1
+T-000249,ACC-00043,2025-10-31,Product defect,Low,Closed,2025-11-15,2
+T-000250,ACC-00043,2026-05-10,Delivery delay,Low,Closed,2026-06-04,4
+T-000251,ACC-00043,2026-05-04,Product defect,High,Closed,2026-05-07,5
+T-000252,ACC-00043,2025-09-25,Invoice question,Urgent,Closed,2025-09-25,4
+T-000253,ACC-00043,2025-06-16,Spare parts,Low,Closed,2025-06-25,3
+T-000254,ACC-00043,2026-03-29,Installation,High,Closed,2026-03-31,4
+T-000255,ACC-00043,2026-06-24,Delivery delay,Low,Closed,2026-06-25,5
+T-000256,ACC-00043,2026-08-09,Spare parts,Low,Closed,2026-08-25,5
+T-000257,ACC-00044,2026-10-06,Spare parts,High,Closed,2026-10-09,1
+T-000258,ACC-00044,2026-06-17,Invoice question,Medium,Closed,2026-06-18,4
+T-000259,ACC-00045,2026-08-12,Delivery delay,Medium,Closed,2026-08-26,5
+T-000260,ACC-00045,2026-01-01,Account change,Medium,Closed,2026-01-11,5
+T-000261,ACC-00045,2026-08-14,Product defect,High,Closed,2026-08-15,5
+T-000262,ACC-00045,2026-06-10,Warranty claim,Low,Closed,2026-06-14,1
+T-000263,ACC-00045,2025-08-18,Installation,Medium,Closed,2025-08-27,3
+T-000264,ACC-00045,2025-01-31,Delivery delay,Low,Closed,2025-02-23,3
+T-000265,ACC-00045,2026-09-06,Delivery delay,Medium,Closed,2026-09-13,5
+T-000266,ACC-00045,2025-04-07,Spare parts,Medium,Closed,2025-04-10,4
+T-000267,ACC-00045,2025-10-14,Invoice question,Low,Closed,2025-10-18,4
+T-000268,ACC-00045,2025-08-21,Warranty claim,Low,Closed,2025-09-13,4
+T-000269,ACC-00045,2025-01-19,Spare parts,High,Closed,2025-01-25,4
+T-000270,ACC-00045,2025-02-07,Invoice question,Medium,Open,,
+T-000271,ACC-00045,2025-12-10,Account change,Medium,Closed,2025-12-20,5
+T-000272,ACC-00045,2025-02-24,Invoice question,Low,Closed,2025-03-17,5
+T-000273,ACC-00045,2026-03-09,Delivery delay,Medium,Closed,2026-03-12,4
+T-000274,ACC-00046,2026-10-01,Invoice question,Low,Closed,2026-10-02,4
+T-000275,ACC-00046,2026-06-17,Invoice question,Low,Closed,2026-06-18,3
+T-000276,ACC-00046,2026-10-26,Delivery delay,Low,Closed,2026-11-11,5
+T-000277,ACC-00046,2026-08-28,Account change,Medium,Closed,2026-08-31,4
+T-000278,ACC-00046,2026-02-21,Invoice question,Medium,Closed,2026-02-23,5
+T-000279,ACC-00046,2026-04-11,Spare parts,Medium,Closed,2026-04-23,3
+T-000280,ACC-00046,2026-04-17,Invoice question,High,Closed,2026-04-24,4
+T-000281,ACC-00046,2025-09-06,Spare parts,Low,Closed,2025-09-23,4
+T-000282,ACC-00046,2025-01-13,Invoice question,High,Closed,2025-01-16,4
+T-000283,ACC-00046,2025-10-04,Product defect,Low,Closed,2025-10-28,1
+T-000284,ACC-00047,2025-07-27,Installation,Medium,Closed,2025-07-30,5
+T-000285,ACC-00047,2026-05-02,Delivery delay,Low,Closed,2026-05-22,5
+T-000286,ACC-00047,2025-04-16,Invoice question,Low,Closed,2025-05-04,2
+T-000287,ACC-00047,2026-08-09,Spare parts,Low,Closed,2026-08-17,5
+T-000288,ACC-00047,2026-01-24,Invoice question,High,Closed,2026-01-28,5
+T-000289,ACC-00047,2026-02-05,Installation,Medium,Closed,2026-02-15,1
+T-000290,ACC-00048,2025-11-28,Delivery delay,Urgent,Closed,2025-11-29,5
+T-000291,ACC-00048,2026-03-13,Product defect,High,Closed,2026-03-17,4
+T-000292,ACC-00048,2026-07-04,Product defect,High,Closed,2026-07-10,4
+T-000293,ACC-00048,2026-03-17,Delivery delay,Medium,Closed,2026-03-28,4
+T-000294,ACC-00048,2025-03-11,Spare parts,Medium,Closed,2025-03-22,4
+T-000295,ACC-00048,2026-08-11,Product defect,Low,Closed,2026-08-24,4
+T-000296,ACC-00049,2025-11-15,Installation,Medium,Closed,2025-11-24,4
+T-000297,ACC-00049,2026-06-06,Installation,High,Closed,2026-06-08,4
+T-000298,ACC-00049,2025-08-01,Spare parts,Medium,Closed,2025-08-06,2
+T-000299,ACC-00049,2025-04-20,Invoice question,Medium,Open,,
+T-000300,ACC-00050,2026-05-25,Delivery delay,High,Closed,2026-06-02,4
+T-000301,ACC-00050,2025-07-23,Product defect,Medium,Closed,2025-07-28,4
+T-000302,ACC-00050,2025-01-30,Product defect,Low,Closed,2025-02-15,4
+T-000303,ACC-00050,2026-03-17,Spare parts,High,Closed,2026-03-17,4
+T-000304,ACC-00050,2025-05-28,Spare parts,Medium,Closed,2025-06-02,1
+T-000305,ACC-00051,2025-09-13,Invoice question,Low,Closed,2025-10-01,5
+T-000306,ACC-00052,2026-08-22,Installation,Low,Closed,2026-09-13,4
+T-000307,ACC-00052,2025-09-07,Warranty claim,Low,Closed,2025-09-19,3
+T-000308,ACC-00052,2025-10-25,Invoice question,Medium,Closed,2025-11-04,4
+T-000309,ACC-00052,2026-02-17,Invoice question,Medium,Closed,2026-02-28,4
+T-000310,ACC-00052,2026-04-24,Delivery delay,Low,Closed,2026-04-25,3
+T-000311,ACC-00052,2025-06-09,Installation,Low,Closed,2025-06-15,3
+T-000312,ACC-00053,2026-05-03,Warranty claim,Medium,Closed,2026-05-17,4
+T-000313,ACC-00053,2025-09-25,Invoice question,Medium,Closed,2025-10-06,4
+T-000314,ACC-00053,2026-06-07,Delivery delay,Low,Closed,2026-06-10,4
+T-000315,ACC-00053,2025-10-04,Spare parts,Medium,Closed,2025-10-04,4
+T-000316,ACC-00053,2025-11-15,Account change,Low,Closed,2025-12-07,3
+T-000317,ACC-00053,2025-11-25,Invoice question,Low,Closed,2025-11-27,4
+T-000318,ACC-00053,2026-05-28,Invoice question,High,Closed,2026-06-01,2
+T-000319,ACC-00053,2026-02-13,Account change,Low,Closed,2026-02-27,5
+T-000320,ACC-00053,2025-05-16,Spare parts,High,Closed,2025-05-21,4
+T-000321,ACC-00053,2025-12-26,Account change,High,Closed,2026-01-02,3
+T-000322,ACC-00053,2025-12-27,Account change,High,Closed,2025-12-31,2
+T-000323,ACC-00054,2025-06-09,Warranty claim,Medium,Closed,2025-06-18,4
+T-000324,ACC-00054,2026-08-02,Product defect,High,Closed,2026-08-10,3
+T-000325,ACC-00054,2026-08-13,Invoice question,Low,Closed,2026-09-06,5
+T-000326,ACC-00054,2025-02-13,Spare parts,High,Closed,2025-02-13,5
+T-000327,ACC-00055,2026-06-24,Spare parts,Low,Closed,2026-07-04,4
+T-000328,ACC-00056,2026-07-27,Product defect,Low,Closed,2026-08-20,4
+T-000329,ACC-00056,2025-09-13,Delivery delay,Urgent,Closed,2025-09-15,4
+T-000330,ACC-00056,2025-11-15,Invoice question,Low,Closed,2025-11-30,4
+T-000331,ACC-00057,2025-05-01,Delivery delay,Medium,Closed,2025-05-06,4
+T-000332,ACC-00057,2026-04-18,Invoice question,High,Closed,2026-04-21,2
+T-000333,ACC-00057,2026-01-05,Delivery delay,Medium,Closed,2026-01-13,4
+T-000334,ACC-00057,2025-11-13,Spare parts,Medium,Closed,2025-11-23,4
+T-000335,ACC-00057,2025-10-24,Warranty claim,Low,Closed,2025-10-24,4
+T-000336,ACC-00057,2026-05-13,Delivery delay,Low,Closed,2026-06-05,4
+T-000337,ACC-00057,2026-05-16,Account change,Urgent,Closed,2026-05-18,1
+T-000338,ACC-00057,2026-10-22,Spare parts,Low,In progress,,
+T-000339,ACC-00057,2026-10-31,Invoice question,Low,Closed,2026-10-31,1
+T-000340,ACC-00058,2026-09-24,Invoice question,Low,Closed,2026-10-05,4
+T-000341,ACC-00058,2026-07-19,Delivery delay,High,Closed,2026-07-23,3
+T-000342,ACC-00058,2026-08-04,Warranty claim,High,Closed,2026-08-10,5
+T-000343,ACC-00058,2026-05-22,Spare parts,Medium,Closed,2026-05-31,4
+T-000344,ACC-00058,2025-05-26,Invoice question,Medium,Closed,2025-06-09,4
+T-000345,ACC-00058,2025-02-10,Delivery delay,High,Closed,2025-02-13,5
+T-000346,ACC-00058,2026-09-18,Delivery delay,High,Closed,2026-09-24,3
+T-000347,ACC-00058,2025-02-26,Delivery delay,Medium,Closed,2025-03-08,2
+T-000348,ACC-00059,2026-10-03,Installation,High,In progress,,
+T-000349,ACC-00059,2025-03-03,Product defect,Medium,Closed,2025-03-12,4
+T-000350,ACC-00060,2026-08-18,Invoice question,High,Closed,2026-08-21,4
+T-000351,ACC-00060,2025-04-27,Account change,Low,Closed,2025-05-20,2
+T-000352,ACC-00060,2025-09-17,Invoice question,Medium,Closed,2025-09-25,5
+T-000353,ACC-00060,2026-04-15,Account change,Low,Closed,2026-04-18,5
+T-000354,ACC-00060,2026-08-04,Delivery delay,Low,Closed,2026-08-06,5
+T-000355,ACC-00060,2026-05-31,Warranty claim,Medium,Closed,2026-06-03,4
+T-000356,ACC-00061,2025-02-28,Spare parts,Medium,Closed,2025-03-01,1
+T-000357,ACC-00061,2025-08-07,Account change,Medium,Closed,2025-08-11,4
+T-000358,ACC-00061,2026-09-29,Account change,Urgent,Closed,2026-09-29,5
+T-000359,ACC-00061,2025-06-22,Delivery delay,Medium,Closed,2025-06-22,5
+T-000360,ACC-00061,2026-01-17,Delivery delay,Medium,Closed,2026-01-28,5
+T-000361,ACC-00061,2026-09-11,Delivery delay,Medium,Closed,2026-09-21,5
+T-000362,ACC-00061,2025-09-06,Warranty claim,Low,Closed,2025-09-20,1
+T-000363,ACC-00062,2026-01-25,Spare parts,High,Closed,2026-01-29,4
+T-000364,ACC-00062,2025-10-03,Product defect,High,Closed,2025-10-08,5
+T-000365,ACC-00062,2026-05-11,Spare parts,High,Closed,2026-05-11,2
+T-000366,ACC-00062,2026-10-23,Spare parts,Medium,Closed,2026-11-07,5
+T-000367,ACC-00062,2026-04-05,Product defect,Medium,Closed,2026-04-07,4
+T-000368,ACC-00062,2025-11-15,Installation,High,Closed,2025-11-15,3
+T-000369,ACC-00062,2026-04-24,Invoice question,Low,Closed,2026-05-05,4
+T-000370,ACC-00062,2026-05-11,Spare parts,Low,Closed,2026-05-25,5
+T-000371,ACC-00062,2026-10-09,Delivery delay,Low,Closed,2026-10-17,4
+T-000372,ACC-00062,2025-09-26,Delivery delay,Medium,Closed,2025-09-30,5
+T-000373,ACC-00062,2026-07-29,Spare parts,High,Closed,2026-08-01,5
+T-000374,ACC-00062,2026-10-12,Account change,Low,Closed,2026-11-06,5
+T-000375,ACC-00062,2025-05-25,Product defect,Medium,Closed,2025-06-04,5
+T-000376,ACC-00062,2026-10-13,Delivery delay,Low,Closed,2026-11-04,4
+T-000377,ACC-00063,2026-04-10,Spare parts,Medium,Closed,2026-04-19,5
+T-000378,ACC-00063,2025-05-28,Spare parts,Low,Closed,2025-06-20,4
+T-000379,ACC-00063,2025-12-15,Invoice question,Low,Closed,2025-12-17,4
+T-000380,ACC-00063,2025-12-28,Warranty claim,Urgent,Closed,2025-12-31,5
+T-000381,ACC-00063,2026-05-12,Installation,Low,Closed,2026-05-20,4
+T-000382,ACC-00064,2025-09-05,Installation,Medium,Open,,
+T-000383,ACC-00064,2026-08-13,Spare parts,Low,Closed,2026-08-19,3
+T-000384,ACC-00064,2025-01-16,Account change,Medium,Closed,2025-01-22,4
+T-000385,ACC-00064,2025-01-28,Account change,Medium,Closed,2025-02-07,3
+T-000386,ACC-00064,2025-02-16,Spare parts,Low,Closed,2025-03-12,4
+T-000387,ACC-00064,2025-09-21,Spare parts,High,Closed,2025-09-21,5
+T-000388,ACC-00064,2025-11-17,Delivery delay,Low,Closed,2025-12-10,5
+T-000389,ACC-00064,2025-01-20,Invoice question,Low,Closed,2025-02-13,5
+T-000390,ACC-00064,2026-01-06,Spare parts,Medium,Closed,2026-01-10,4
+T-000391,ACC-00065,2026-06-20,Product defect,Medium,Closed,2026-06-28,1
+T-000392,ACC-00066,2026-10-02,Installation,Low,Closed,2026-10-18,3
+T-000393,ACC-00066,2025-09-23,Account change,High,Closed,2025-09-25,5
+T-000394,ACC-00066,2025-06-15,Account change,Medium,Closed,2025-06-22,4
+T-000395,ACC-00066,2025-08-07,Invoice question,Medium,Closed,2025-08-19,4
+T-000396,ACC-00066,2025-01-28,Account change,Low,Closed,2025-01-30,5
+T-000397,ACC-00066,2025-12-26,Invoice question,Low,Closed,2026-01-08,5
+T-000398,ACC-00066,2026-11-04,Spare parts,Medium,Closed,2026-11-12,1
+T-000399,ACC-00066,2025-09-05,Invoice question,Low,Closed,2025-09-29,4
+T-000400,ACC-00066,2026-05-26,Warranty claim,Low,Closed,2026-05-31,4
+T-000401,ACC-00066,2025-10-01,Invoice question,Urgent,Closed,2025-10-03,3
+T-000402,ACC-00067,2025-11-01,Delivery delay,Medium,Closed,2025-11-05,5
+T-000403,ACC-00067,2025-11-06,Product defect,Low,Closed,2025-11-09,5
+T-000404,ACC-00067,2026-02-11,Account change,Low,Closed,2026-03-04,5
+T-000405,ACC-00067,2025-02-03,Product defect,Medium,Closed,2025-02-03,1
+T-000406,ACC-00067,2025-08-26,Account change,Medium,Closed,2025-08-26,2
+T-000407,ACC-00067,2025-03-08,Product defect,High,Closed,2025-03-15,5
+T-000408,ACC-00067,2025-01-03,Product defect,Low,Closed,2025-01-07,4
+T-000409,ACC-00068,2025-07-01,Delivery delay,Low,Closed,2025-07-02,3
+T-000410,ACC-00068,2026-07-24,Spare parts,Urgent,Closed,2026-07-26,4
+T-000411,ACC-00068,2026-07-12,Account change,Low,Closed,2026-07-25,5
+T-000412,ACC-00068,2025-10-03,Delivery delay,Medium,Closed,2025-10-16,4
+T-000413,ACC-00068,2026-01-30,Product defect,High,Closed,2026-01-30,3
+T-000414,ACC-00068,2025-09-18,Spare parts,Medium,Closed,2025-09-25,5
+T-000415,ACC-00068,2025-03-30,Product defect,High,Closed,2025-03-30,4
+T-000416,ACC-00068,2026-10-24,Spare parts,Medium,In progress,,
+T-000417,ACC-00068,2026-04-30,Warranty claim,Medium,Closed,2026-05-10,4
+T-000418,ACC-00069,2026-09-20,Invoice question,High,Closed,2026-09-27,5
+T-000419,ACC-00069,2026-08-27,Installation,Medium,Closed,2026-08-31,2
+T-000420,ACC-00071,2026-02-10,Product defect,Low,Closed,2026-02-13,4
+T-000421,ACC-00071,2025-06-28,Product defect,High,Closed,2025-06-30,4
+T-000422,ACC-00071,2025-09-01,Product defect,Medium,Closed,2025-09-13,3
+T-000423,ACC-00071,2025-01-01,Product defect,Medium,Closed,2025-01-06,4
+T-000424,ACC-00071,2025-11-28,Spare parts,Low,Closed,2025-12-12,2
+T-000425,ACC-00071,2025-04-01,Installation,Low,Closed,2025-04-26,3
+T-000426,ACC-00071,2025-02-14,Invoice question,Medium,Closed,2025-02-15,5
+T-000427,ACC-00072,2025-03-23,Warranty claim,High,Closed,2025-03-31,4
+T-000428,ACC-00072,2026-10-21,Spare parts,High,Closed,2026-10-28,5
+T-000429,ACC-00072,2026-03-23,Product defect,Medium,Closed,2026-03-25,4
+T-000430,ACC-00072,2026-06-09,Invoice question,High,Closed,2026-06-12,5
+T-000431,ACC-00072,2025-02-11,Installation,High,Closed,2025-02-16,5
+T-000432,ACC-00073,2025-07-24,Installation,Medium,Closed,2025-07-25,4
+T-000433,ACC-00073,2026-08-21,Delivery delay,Low,Closed,2026-08-22,5
+T-000434,ACC-00073,2025-12-09,Invoice question,Low,Closed,2025-12-26,3
+T-000435,ACC-00073,2025-11-17,Product defect,Medium,Closed,2025-11-26,4
+T-000436,ACC-00074,2025-08-01,Spare parts,Medium,Closed,2025-08-15,4
+T-000437,ACC-00074,2025-05-25,Spare parts,Medium,Closed,2025-05-31,4
+T-000438,ACC-00074,2026-11-11,Product defect,Low,Open,,
+T-000439,ACC-00074,2026-02-23,Installation,Urgent,Closed,2026-02-23,3
+T-000440,ACC-00074,2025-10-26,Invoice question,Low,Closed,2025-11-13,4
+T-000441,ACC-00074,2026-04-01,Spare parts,Low,Closed,2026-04-06,4
+T-000442,ACC-00074,2025-02-20,Delivery delay,Low,Closed,2025-03-11,4
+T-000443,ACC-00074,2026-07-29,Spare parts,Medium,Closed,2026-08-05,4
+T-000444,ACC-00075,2025-02-21,Product defect,Medium,Closed,2025-03-01,5
+T-000445,ACC-00075,2026-03-11,Delivery delay,Low,Closed,2026-04-02,3
+T-000446,ACC-00075,2026-04-03,Spare parts,Low,Closed,2026-04-21,5
+T-000447,ACC-00075,2025-06-07,Delivery delay,Low,Closed,2025-06-24,5
+T-000448,ACC-00075,2026-11-13,Delivery delay,Urgent,Open,,
+T-000449,ACC-00075,2026-01-25,Delivery delay,Low,Closed,2026-02-14,4
+T-000450,ACC-00075,2026-04-21,Delivery delay,Low,Closed,2026-05-01,4
+T-000451,ACC-00075,2025-12-27,Product defect,Low,Closed,2026-01-16,5
+T-000452,ACC-00075,2025-10-25,Account change,Medium,Closed,2025-11-09,5
+T-000453,ACC-00075,2025-07-25,Product defect,Medium,Closed,2025-07-27,3
+T-000454,ACC-00075,2025-08-21,Invoice question,Medium,Closed,2025-08-24,5
+T-000455,ACC-00075,2025-06-05,Product defect,Medium,Closed,2025-06-15,4
+T-000456,ACC-00075,2025-12-04,Spare parts,Medium,Closed,2025-12-13,5
+T-000457,ACC-00075,2026-04-11,Invoice question,Low,Closed,2026-05-06,3
+T-000458,ACC-00075,2025-02-06,Spare parts,Low,Closed,2025-02-09,4
+T-000459,ACC-00076,2025-09-25,Invoice question,Low,Closed,2025-09-28,3
+T-000460,ACC-00076,2026-07-09,Delivery delay,Low,Closed,2026-07-14,4
+T-000461,ACC-00076,2025-09-20,Warranty claim,Medium,Closed,2025-10-02,4
+T-000462,ACC-00076,2025-09-03,Delivery delay,Medium,Closed,2025-09-10,5
+T-000463,ACC-00076,2025-02-24,Invoice question,Medium,Closed,2025-03-02,4
+T-000464,ACC-00076,2025-06-25,Spare parts,Low,Closed,2025-06-25,4
+T-000465,ACC-00076,2025-04-23,Delivery delay,Low,Closed,2025-04-25,4
+T-000466,ACC-00077,2026-09-26,Installation,High,Closed,2026-09-30,4
+T-000467,ACC-00077,2026-04-18,Invoice question,Medium,Closed,2026-04-28,5
+T-000468,ACC-00078,2025-03-10,Product defect,Urgent,Closed,2025-03-13,1
+T-000469,ACC-00078,2025-12-04,Spare parts,High,Closed,2025-12-05,3
+T-000470,ACC-00078,2026-01-10,Installation,High,Closed,2026-01-15,4
+T-000471,ACC-00078,2026-05-20,Spare parts,Medium,Closed,2026-05-24,3
+T-000472,ACC-00078,2025-11-07,Installation,High,Closed,2025-11-09,4
+T-000473,ACC-00078,2026-06-10,Warranty claim,Low,Closed,2026-06-30,2
+T-000474,ACC-00078,2025-09-16,Product defect,High,Closed,2025-09-19,3
+T-000475,ACC-00078,2025-08-31,Installation,High,Closed,2025-08-31,4
+T-000476,ACC-00080,2025-12-10,Spare parts,Medium,Closed,2025-12-22,5
+T-000477,ACC-00080,2025-10-27,Product defect,Low,Closed,2025-11-10,4
+T-000478,ACC-00081,2026-02-08,Spare parts,Low,Closed,2026-02-24,5
+T-000479,ACC-00081,2025-06-16,Invoice question,Medium,Closed,2025-06-21,2
+T-000480,ACC-00081,2026-08-02,Warranty claim,High,Closed,2026-08-07,4
+T-000481,ACC-00081,2026-06-11,Delivery delay,Medium,Closed,2026-06-19,4
+T-000482,ACC-00082,2025-05-02,Installation,Medium,Closed,2025-05-06,5
+T-000483,ACC-00082,2025-02-05,Account change,High,Closed,2025-02-05,5
+T-000484,ACC-00082,2025-05-28,Invoice question,Low,Closed,2025-06-13,2
+T-000485,ACC-00082,2026-08-27,Product defect,Medium,Closed,2026-09-03,3
+T-000486,ACC-00082,2026-03-07,Spare parts,Medium,Closed,2026-03-09,5
+T-000487,ACC-00082,2026-01-25,Installation,Medium,Closed,2026-02-02,4
+T-000488,ACC-00082,2026-05-23,Delivery delay,High,Closed,2026-05-28,5
+T-000489,ACC-00082,2025-03-05,Account change,Low,Closed,2025-03-10,4
+T-000490,ACC-00083,2026-03-25,Invoice question,Medium,Closed,2026-04-05,4
+T-000491,ACC-00083,2026-04-29,Installation,Low,Closed,2026-05-18,4
+T-000492,ACC-00084,2026-02-10,Installation,Medium,Closed,2026-02-13,3
+T-000493,ACC-00084,2025-02-12,Warranty claim,Medium,Closed,2025-02-21,4
+T-000494,ACC-00084,2025-09-29,Spare parts,Urgent,Closed,2025-09-29,5
+T-000495,ACC-00084,2026-02-27,Delivery delay,High,Closed,2026-03-03,3
+T-000496,ACC-00084,2026-10-12,Warranty claim,Medium,Closed,2026-10-24,4
+T-000497,ACC-00084,2025-12-16,Delivery delay,Medium,Closed,2025-12-26,4
+T-000498,ACC-00084,2025-05-27,Invoice question,Medium,Closed,2025-06-05,3
+T-000499,ACC-00084,2025-03-09,Spare parts,High,Closed,2025-03-09,5
+T-000500,ACC-00084,2026-08-15,Spare parts,Medium,Closed,2026-08-23,5
+T-000501,ACC-00084,2025-05-16,Delivery delay,Low,Closed,2025-06-09,3
+T-000502,ACC-00084,2025-10-17,Delivery delay,High,Closed,2025-10-23,5
+T-000503,ACC-00084,2026-01-29,Spare parts,Medium,Closed,2026-01-31,5
+T-000504,ACC-00085,2025-05-23,Spare parts,Medium,Closed,2025-06-06,4
+T-000505,ACC-00085,2025-02-03,Invoice question,Low,Closed,2025-02-06,4
+T-000506,ACC-00085,2025-12-15,Installation,Urgent,Closed,2025-12-16,3
+T-000507,ACC-00085,2025-08-02,Invoice question,Low,In progress,,
+T-000508,ACC-00085,2025-06-27,Warranty claim,Low,Closed,2025-07-10,4
+T-000509,ACC-00085,2025-10-08,Warranty claim,Medium,Closed,2025-10-20,4
+T-000510,ACC-00085,2026-02-23,Warranty claim,Low,Closed,2026-02-24,5
+T-000511,ACC-00085,2025-12-04,Product defect,Medium,Closed,2025-12-19,4
+T-000512,ACC-00086,2026-06-13,Delivery delay,Low,Closed,2026-07-08,5
+T-000513,ACC-00086,2025-09-29,Warranty claim,Low,Closed,2025-10-08,5
+T-000514,ACC-00086,2026-09-20,Installation,Medium,Closed,2026-09-26,4
+T-000515,ACC-00086,2026-10-19,Invoice question,Medium,Open,,
+T-000516,ACC-00086,2025-06-17,Delivery delay,Medium,Closed,2025-06-28,4
+T-000517,ACC-00086,2025-06-29,Product defect,Medium,Closed,2025-06-29,5
+T-000518,ACC-00086,2025-04-15,Product defect,Low,Closed,2025-04-26,5
+T-000519,ACC-00086,2025-03-26,Warranty claim,High,Closed,2025-04-02,5
+T-000520,ACC-00086,2025-04-22,Invoice question,Medium,Closed,2025-05-04,3
+T-000521,ACC-00087,2026-06-29,Delivery delay,Medium,Closed,2026-07-01,4
+T-000522,ACC-00087,2026-08-10,Product defect,Medium,Closed,2026-08-20,4
+T-000523,ACC-00087,2026-04-18,Delivery delay,Medium,Closed,2026-04-24,1
+T-000524,ACC-00087,2025-12-30,Product defect,Medium,Closed,2026-01-03,5
+T-000525,ACC-00087,2026-08-09,Spare parts,Medium,Closed,2026-08-23,5
+T-000526,ACC-00087,2025-02-25,Product defect,High,Closed,2025-02-28,5
+T-000527,ACC-00087,2026-04-29,Delivery delay,Medium,Closed,2026-05-14,4
+T-000528,ACC-00087,2025-09-02,Installation,High,Closed,2025-09-02,4
+T-000529,ACC-00088,2026-04-23,Delivery delay,Low,Closed,2026-04-30,5
+T-000530,ACC-00088,2026-07-24,Product defect,Medium,Closed,2026-08-01,2
+T-000531,ACC-00088,2026-05-06,Installation,High,Closed,2026-05-07,3
+T-000532,ACC-00088,2025-06-16,Delivery delay,Medium,Closed,2025-06-28,5
+T-000533,ACC-00088,2025-01-31,Spare parts,Medium,Closed,2025-02-02,5
+T-000534,ACC-00088,2026-09-22,Delivery delay,Low,Closed,2026-09-22,4
+T-000535,ACC-00088,2025-07-11,Spare parts,High,Closed,2025-07-18,3
+T-000536,ACC-00089,2025-10-30,Delivery delay,Low,Closed,2025-11-09,5
+T-000537,ACC-00089,2025-03-18,Product defect,Low,Closed,2025-04-11,4
+T-000538,ACC-00089,2026-04-12,Spare parts,Urgent,Closed,2026-04-13,5
+T-000539,ACC-00090,2025-05-18,Invoice question,Low,Closed,2025-05-29,1
+T-000540,ACC-00090,2025-06-16,Installation,Medium,Waiting on customer,,
+T-000541,ACC-00091,2026-01-01,Installation,High,Closed,2026-01-04,5
+T-000542,ACC-00091,2026-06-29,Invoice question,Low,Closed,2026-07-09,4
+T-000543,ACC-00091,2025-03-07,Product defect,Medium,Closed,2025-03-08,4
+T-000544,ACC-00092,2025-01-14,Delivery delay,Medium,Closed,2025-01-17,5
+T-000545,ACC-00092,2026-03-25,Invoice question,Medium,Closed,2026-04-03,5
+T-000546,ACC-00092,2025-09-21,Spare parts,Urgent,Closed,2025-09-22,4
+T-000547,ACC-00093,2025-01-15,Product defect,Low,Closed,2025-02-01,2
+T-000548,ACC-00093,2026-06-07,Delivery delay,Medium,Closed,2026-06-21,3
+T-000549,ACC-00093,2025-11-07,Spare parts,Medium,Closed,2025-11-12,4
+T-000550,ACC-00093,2025-04-08,Delivery delay,High,Closed,2025-04-13,5
+T-000551,ACC-00093,2025-08-20,Invoice question,Low,Closed,2025-08-31,4
+T-000552,ACC-00094,2025-02-28,Invoice question,Medium,Closed,2025-03-07,2
+T-000553,ACC-00094,2025-10-02,Spare parts,High,Closed,2025-10-07,4
+T-000554,ACC-00094,2025-05-22,Product defect,Medium,Closed,2025-06-02,4
+T-000555,ACC-00094,2025-04-25,Invoice question,High,Closed,2025-04-27,3
+T-000556,ACC-00094,2025-01-31,Account change,Low,Closed,2025-02-07,5
+T-000557,ACC-00094,2025-09-04,Spare parts,Medium,Closed,2025-09-04,2
+T-000558,ACC-00094,2026-01-14,Delivery delay,Low,Closed,2026-01-28,4
+T-000559,ACC-00094,2026-07-23,Warranty claim,Medium,Closed,2026-07-26,4
+T-000560,ACC-00094,2025-08-25,Invoice question,Medium,Closed,2025-08-31,2
+T-000561,ACC-00097,2025-09-21,Account change,Low,Closed,2025-10-11,5
+T-000562,ACC-00098,2025-11-26,Spare parts,Medium,Closed,2025-12-07,4
+T-000563,ACC-00098,2025-08-21,Delivery delay,Low,Closed,2025-09-13,2
+T-000564,ACC-00099,2026-05-04,Delivery delay,Medium,Closed,2026-05-19,4
+T-000565,ACC-00099,2025-08-10,Product defect,Low,Closed,2025-08-19,5
+T-000566,ACC-00100,2025-01-01,Spare parts,Low,Closed,2025-01-20,4
+T-000567,ACC-00100,2026-01-31,Invoice question,Low,Closed,2026-02-03,3
+T-000568,ACC-00100,2025-05-21,Delivery delay,Urgent,Closed,2025-05-23,5
+T-000569,ACC-00100,2025-08-28,Invoice question,Medium,Closed,2025-09-11,5
+T-000570,ACC-00100,2026-08-07,Spare parts,Medium,Closed,2026-08-15,5
+T-000571,ACC-00100,2025-04-08,Account change,Low,Closed,2025-04-11,5
+T-000572,ACC-00100,2025-03-14,Product defect,Low,In progress,,
+T-000573,ACC-00101,2026-01-14,Invoice question,High,Closed,2026-01-15,4
+T-000574,ACC-00102,2026-04-29,Invoice question,Low,Closed,2026-04-29,4
+T-000575,ACC-00102,2026-10-26,Invoice question,High,Closed,2026-10-31,5
+T-000576,ACC-00103,2026-05-22,Account change,High,Closed,2026-05-25,4
+T-000577,ACC-00103,2025-04-26,Spare parts,Low,Closed,2025-05-08,4
+T-000578,ACC-00103,2026-04-26,Spare parts,Medium,Open,,
+T-000579,ACC-00103,2026-03-24,Spare parts,Low,Closed,2026-04-15,1
+T-000580,ACC-00104,2025-03-08,Delivery delay,Medium,Closed,2025-03-09,3
+T-000581,ACC-00105,2025-08-31,Delivery delay,Low,Closed,2025-09-02,5
+T-000582,ACC-00105,2025-12-10,Product defect,Low,Closed,2025-12-19,4
+T-000583,ACC-00105,2025-09-22,Delivery delay,Low,Closed,2025-09-30,3
+T-000584,ACC-00105,2026-10-02,Product defect,Low,Closed,2026-10-25,4
+T-000585,ACC-00105,2025-05-25,Installation,Low,Closed,2025-06-11,5
+T-000586,ACC-00105,2026-03-09,Delivery delay,Medium,Closed,2026-03-16,4
+T-000587,ACC-00105,2026-04-29,Product defect,Low,Closed,2026-05-05,5
+T-000588,ACC-00105,2026-04-25,Product defect,High,Closed,2026-04-26,5
+T-000589,ACC-00105,2026-03-22,Installation,Low,Closed,2026-04-09,3
+T-000590,ACC-00105,2026-04-14,Invoice question,Low,Closed,2026-04-27,4
+T-000591,ACC-00106,2025-07-08,Delivery delay,Low,Closed,2025-07-29,5
+T-000592,ACC-00106,2025-03-05,Warranty claim,Low,Closed,2025-03-27,5
+T-000593,ACC-00106,2025-11-14,Spare parts,Medium,Closed,2025-11-23,2
+T-000594,ACC-00106,2025-04-02,Warranty claim,Low,Closed,2025-04-09,3
+T-000595,ACC-00106,2025-09-09,Spare parts,Medium,Closed,2025-09-12,5
+T-000596,ACC-00106,2026-01-07,Delivery delay,Medium,Closed,2026-01-16,5
+T-000597,ACC-00106,2025-03-13,Spare parts,Medium,Closed,2025-03-15,3
+T-000598,ACC-00106,2025-08-16,Invoice question,Medium,Closed,2025-08-29,5
+T-000599,ACC-00106,2026-04-03,Delivery delay,High,Closed,2026-04-08,4
+T-000600,ACC-00106,2026-04-12,Warranty claim,Low,Closed,2026-04-16,1
+T-000601,ACC-00106,2026-07-25,Spare parts,Low,Closed,2026-08-13,1
+T-000602,ACC-00107,2026-02-21,Spare parts,Low,Closed,2026-03-17,5
+T-000603,ACC-00107,2026-01-07,Invoice question,Low,Closed,2026-01-24,2
+T-000604,ACC-00107,2026-01-31,Product defect,Medium,Open,,
+T-000605,ACC-00107,2025-07-26,Product defect,Medium,Closed,2025-08-01,5
+T-000606,ACC-00107,2026-06-10,Installation,Low,Closed,2026-06-18,4
+T-000607,ACC-00107,2025-06-02,Installation,Urgent,Closed,2025-06-04,3
+T-000608,ACC-00107,2025-12-16,Account change,Medium,Closed,2025-12-17,5
+T-000609,ACC-00107,2026-08-12,Account change,Low,Closed,2026-08-20,4
+T-000610,ACC-00107,2025-12-01,Invoice question,Low,Closed,2025-12-09,5
+T-000611,ACC-00107,2026-09-25,Delivery delay,Medium,Closed,2026-09-28,5
+T-000612,ACC-00107,2026-02-25,Spare parts,High,Closed,2026-02-28,5
+T-000613,ACC-00108,2025-09-03,Account change,Medium,Closed,2025-09-04,4
+T-000614,ACC-00108,2025-11-24,Delivery delay,High,Closed,2025-12-02,4
+T-000615,ACC-00108,2026-07-15,Account change,Urgent,Closed,2026-07-18,5
+T-000616,ACC-00109,2025-07-23,Warranty claim,High,Closed,2025-07-27,5
+T-000617,ACC-00109,2025-11-14,Invoice question,Medium,Closed,2025-11-29,4
+T-000618,ACC-00109,2025-11-16,Warranty claim,Medium,Closed,2025-11-19,4
+T-000619,ACC-00109,2026-06-15,Spare parts,Low,Closed,2026-06-15,5
+T-000620,ACC-00109,2025-08-01,Delivery delay,Low,Closed,2025-08-22,4
+T-000621,ACC-00109,2026-08-06,Delivery delay,Low,Closed,2026-08-19,1
+T-000622,ACC-00109,2025-04-05,Invoice question,Low,Closed,2025-04-21,5
+T-000623,ACC-00109,2025-08-16,Account change,High,Closed,2025-08-16,3
+T-000624,ACC-00109,2026-03-20,Delivery delay,Low,Closed,2026-03-22,5
+T-000625,ACC-00109,2025-11-06,Installation,Urgent,Closed,2025-11-07,4
+T-000626,ACC-00109,2025-01-12,Spare parts,Medium,Closed,2025-01-24,5
+T-000627,ACC-00109,2025-06-18,Delivery delay,Low,Closed,2025-07-05,5
+T-000628,ACC-00109,2026-08-06,Account change,Medium,Closed,2026-08-12,4
+T-000629,ACC-00109,2025-08-09,Spare parts,Medium,Open,,
+T-000630,ACC-00109,2025-02-01,Invoice question,Medium,Closed,2025-02-09,4
+T-000631,ACC-00110,2025-06-29,Spare parts,Low,Closed,2025-07-05,5
+T-000632,ACC-00110,2025-04-23,Installation,Medium,Closed,2025-04-29,3
+T-000633,ACC-00110,2026-06-08,Account change,Low,Closed,2026-06-10,5
+T-000634,ACC-00110,2026-07-27,Delivery delay,Medium,Closed,2026-08-10,3
+T-000635,ACC-00110,2026-07-11,Invoice question,Low,Closed,2026-07-18,5
+T-000636,ACC-00110,2026-02-24,Delivery delay,Medium,Closed,2026-03-05,3
+T-000637,ACC-00110,2025-03-29,Delivery delay,Low,Closed,2025-04-01,4
+T-000638,ACC-00110,2026-05-07,Invoice question,High,Closed,2026-05-14,4
+T-000639,ACC-00110,2026-06-15,Invoice question,Low,Closed,2026-06-19,4
+T-000640,ACC-00110,2025-12-27,Invoice question,Medium,Closed,2026-01-07,5
+T-000641,ACC-00110,2026-02-06,Installation,Medium,Closed,2026-02-06,2
+T-000642,ACC-00110,2026-05-04,Spare parts,Medium,Closed,2026-05-16,5
+T-000643,ACC-00112,2025-01-28,Invoice question,Medium,Closed,2025-02-11,4
+T-000644,ACC-00112,2025-01-21,Product defect,Low,Closed,2025-01-31,4
+T-000645,ACC-00113,2026-07-06,Delivery delay,Low,Closed,2026-07-15,5
+T-000646,ACC-00114,2025-08-13,Account change,Low,Closed,2025-09-05,5
+T-000647,ACC-00114,2025-04-20,Delivery delay,High,Closed,2025-04-21,5
+T-000648,ACC-00114,2025-07-17,Delivery delay,Low,Closed,2025-08-09,4
+T-000649,ACC-00114,2025-07-03,Delivery delay,Medium,Closed,2025-07-04,3
+T-000650,ACC-00114,2025-12-02,Delivery delay,Medium,Closed,2025-12-05,4
+T-000651,ACC-00114,2025-07-22,Warranty claim,Medium,Closed,2025-07-28,4
+T-000652,ACC-00114,2026-03-21,Warranty claim,Low,Closed,2026-04-04,3
+T-000653,ACC-00114,2025-06-29,Spare parts,Low,Closed,2025-07-24,4
+T-000654,ACC-00114,2025-03-02,Product defect,Medium,Closed,2025-03-03,5
+T-000655,ACC-00114,2026-08-13,Invoice question,Low,Closed,2026-08-13,4
+T-000656,ACC-00114,2026-02-10,Spare parts,Medium,Closed,2026-02-11,5
+T-000657,ACC-00114,2025-05-26,Delivery delay,Medium,Closed,2025-05-31,4
+T-000658,ACC-00114,2026-06-12,Spare parts,High,Closed,2026-06-17,4
+T-000659,ACC-00114,2026-08-07,Warranty claim,Medium,Closed,2026-08-17,5
+T-000660,ACC-00114,2026-09-22,Account change,Low,Closed,2026-09-28,3
+T-000661,ACC-00114,2026-11-12,Warranty claim,High,Waiting on customer,,
+T-000662,ACC-00116,2025-10-11,Spare parts,High,Closed,2025-10-17,4
+T-000663,ACC-00116,2025-09-20,Product defect,Low,Closed,2025-10-01,2
+T-000664,ACC-00116,2025-11-03,Delivery delay,Low,Closed,2025-11-11,5
+T-000665,ACC-00116,2026-06-05,Account change,High,Closed,2026-06-09,4
+T-000666,ACC-00116,2026-02-15,Installation,Medium,Closed,2026-02-18,2
+T-000667,ACC-00117,2025-02-05,Invoice question,Low,Closed,2025-02-27,2
+T-000668,ACC-00118,2025-09-14,Spare parts,Low,Closed,2025-09-19,5
+T-000669,ACC-00118,2025-03-06,Invoice question,Medium,Closed,2025-03-20,3
+T-000670,ACC-00118,2026-04-26,Product defect,High,Closed,2026-05-02,3
+T-000671,ACC-00118,2026-06-27,Delivery delay,Urgent,Closed,2026-06-28,4
+T-000672,ACC-00118,2025-11-22,Product defect,Medium,Closed,2025-11-26,5
+T-000673,ACC-00119,2026-08-20,Invoice question,Low,Closed,2026-09-07,4
+T-000674,ACC-00119,2025-01-30,Invoice question,Low,Closed,2025-02-08,4
+T-000675,ACC-00120,2025-07-12,Spare parts,Medium,Closed,2025-07-19,5
+T-000676,ACC-00120,2026-03-07,Spare parts,Low,Closed,2026-03-13,4
+T-000677,ACC-00120,2025-08-31,Spare parts,Medium,Closed,2025-09-03,5
+T-000678,ACC-00120,2025-01-02,Spare parts,Low,Closed,2025-01-10,4
+T-000679,ACC-00121,2025-08-04,Spare parts,High,Closed,2025-08-12,5
+T-000680,ACC-00121,2026-01-29,Spare parts,Medium,Closed,2026-01-31,4
+T-000681,ACC-00121,2026-03-11,Product defect,Low,Closed,2026-03-19,4
+T-000682,ACC-00121,2026-11-09,Delivery delay,Low,Open,,
+T-000683,ACC-00121,2026-03-14,Invoice question,Medium,Closed,2026-03-19,4
+T-000684,ACC-00121,2025-05-17,Delivery delay,Medium,Closed,2025-05-25,4
+T-000685,ACC-00122,2025-03-01,Account change,Low,Closed,2025-03-25,1
+T-000686,ACC-00122,2026-01-01,Product defect,Low,Closed,2026-01-16,4
+T-000687,ACC-00122,2026-05-03,Product defect,High,Closed,2026-05-03,4
+T-000688,ACC-00122,2025-02-08,Installation,Medium,Closed,2025-02-10,3
+T-000689,ACC-00122,2025-04-01,Product defect,Low,Closed,2025-04-25,4
+T-000690,ACC-00122,2026-04-03,Warranty claim,Low,Closed,2026-04-12,4
+T-000691,ACC-00122,2025-04-19,Product defect,Medium,Closed,2025-04-24,4
+T-000692,ACC-00123,2026-03-20,Delivery delay,Low,Closed,2026-03-27,5
+T-000693,ACC-00123,2025-08-17,Spare parts,Medium,Closed,2025-08-30,2
+T-000694,ACC-00124,2025-02-28,Product defect,Medium,Open,,
+T-000695,ACC-00124,2026-05-16,Product defect,Low,Closed,2026-05-31,4
+T-000696,ACC-00124,2025-03-06,Delivery delay,High,Closed,2025-03-13,3
+T-000697,ACC-00124,2026-03-24,Warranty claim,Low,Closed,2026-04-15,3
+T-000698,ACC-00124,2025-02-16,Invoice question,High,Closed,2025-02-17,2
+T-000699,ACC-00124,2025-02-25,Invoice question,Low,Closed,2025-03-02,4
+T-000700,ACC-00124,2025-10-11,Delivery delay,Low,Closed,2025-10-16,1
+T-000701,ACC-00124,2026-03-18,Invoice question,High,Closed,2026-03-20,4
+T-000702,ACC-00125,2025-11-22,Spare parts,High,Closed,2025-11-30,5
+T-000703,ACC-00125,2026-10-22,Invoice question,High,In progress,,
+T-000704,ACC-00125,2025-07-29,Product defect,Medium,Closed,2025-08-09,4
+T-000705,ACC-00125,2025-08-16,Invoice question,Medium,Closed,2025-08-20,4
+T-000706,ACC-00125,2026-11-12,Invoice question,Medium,Open,,
+T-000707,ACC-00125,2025-05-02,Invoice question,High,Closed,2025-05-07,4
+T-000708,ACC-00125,2026-06-08,Spare parts,Medium,Closed,2026-06-17,4
+T-000709,ACC-00125,2025-09-20,Account change,Medium,Closed,2025-09-26,5
+T-000710,ACC-00125,2025-11-10,Delivery delay,Medium,Closed,2025-11-21,5
+T-000711,ACC-00125,2025-08-28,Spare parts,Urgent,Closed,2025-08-30,4
+T-000712,ACC-00127,2025-06-11,Account change,Medium,Closed,2025-06-18,4
+T-000713,ACC-00127,2025-02-25,Delivery delay,Medium,Closed,2025-03-08,4
+T-000714,ACC-00127,2025-10-06,Invoice question,Medium,Closed,2025-10-14,5
+T-000715,ACC-00127,2025-07-10,Invoice question,Medium,Closed,2025-07-21,2
+T-000716,ACC-00127,2025-05-10,Spare parts,Medium,Closed,2025-05-16,3
+T-000717,ACC-00127,2026-08-10,Account change,Medium,Closed,2026-08-16,5
+T-000718,ACC-00127,2025-09-04,Delivery delay,Low,Closed,2025-09-22,5
+T-000719,ACC-00127,2026-08-09,Product defect,Low,Closed,2026-08-28,2
+T-000720,ACC-00127,2025-09-01,Delivery delay,Low,Closed,2025-09-14,5
+T-000721,ACC-00127,2025-08-22,Spare parts,Low,Closed,2025-09-04,3
+T-000722,ACC-00127,2026-01-22,Installation,Medium,Closed,2026-01-31,3
+T-000723,ACC-00127,2026-05-06,Spare parts,Medium,Closed,2026-05-18,4
+T-000724,ACC-00128,2026-03-27,Delivery delay,High,Closed,2026-03-31,4
+T-000725,ACC-00128,2025-01-03,Product defect,Low,Closed,2025-01-08,4
+T-000726,ACC-00128,2026-06-04,Warranty claim,Medium,Closed,2026-06-15,4
+T-000727,ACC-00128,2025-06-23,Account change,Low,Closed,2025-06-26,4
+T-000728,ACC-00128,2025-08-03,Product defect,Low,Closed,2025-08-13,4
+T-000729,ACC-00128,2025-10-08,Delivery delay,Low,Closed,2025-10-30,4
+T-000730,ACC-00128,2026-11-04,Spare parts,Urgent,Open,,
+T-000731,ACC-00129,2026-06-29,Spare parts,Medium,Closed,2026-07-06,3
+T-000732,ACC-00129,2025-06-18,Delivery delay,High,Closed,2025-06-18,1
+T-000733,ACC-00130,2026-09-20,Product defect,High,Closed,2026-09-25,3
+T-000734,ACC-00130,2026-05-10,Spare parts,Medium,Closed,2026-05-18,4
+T-000735,ACC-00130,2026-07-14,Installation,Urgent,Closed,2026-07-15,4
+T-000736,ACC-00130,2025-11-24,Product defect,Medium,Closed,2025-12-05,4
+T-000737,ACC-00131,2025-03-13,Spare parts,Low,Closed,2025-03-29,1
+T-000738,ACC-00131,2025-08-24,Account change,Medium,Closed,2025-09-07,4
+T-000739,ACC-00131,2025-07-27,Invoice question,Low,Closed,2025-08-15,1
+T-000740,ACC-00131,2025-03-09,Spare parts,High,Closed,2025-03-10,2
+T-000741,ACC-00131,2025-10-13,Warranty claim,Low,Closed,2025-10-15,5
+T-000742,ACC-00131,2026-03-27,Delivery delay,Medium,Open,,
+T-000743,ACC-00131,2025-10-21,Spare parts,Low,Closed,2025-11-11,4
+T-000744,ACC-00131,2025-05-27,Product defect,Medium,Closed,2025-06-08,5
+T-000745,ACC-00131,2025-07-21,Installation,High,Closed,2025-07-25,5
+T-000746,ACC-00131,2025-09-11,Delivery delay,Low,Closed,2025-09-12,3
+T-000747,ACC-00131,2026-01-13,Installation,Medium,Closed,2026-01-28,1
+T-000748,ACC-00131,2026-01-01,Spare parts,Medium,Closed,2026-01-16,5
+T-000749,ACC-00131,2026-02-20,Product defect,Low,Closed,2026-03-05,5
+T-000750,ACC-00132,2025-05-05,Installation,Medium,Closed,2025-05-11,4
+T-000751,ACC-00132,2025-11-06,Spare parts,Low,Closed,2025-11-23,4
+T-000752,ACC-00132,2025-05-09,Spare parts,Medium,Closed,2025-05-12,5
+T-000753,ACC-00132,2026-04-24,Delivery delay,Medium,Closed,2026-05-07,3
+T-000754,ACC-00132,2026-02-26,Account change,Low,Closed,2026-03-08,3
+T-000755,ACC-00132,2026-02-02,Delivery delay,Low,Closed,2026-02-25,4
+T-000756,ACC-00132,2026-05-02,Delivery delay,Medium,Closed,2026-05-17,5
+T-000757,ACC-00132,2025-07-24,Delivery delay,Medium,Closed,2025-07-27,4
+T-000758,ACC-00133,2026-10-21,Spare parts,Low,Closed,2026-10-29,4
+T-000759,ACC-00133,2025-04-14,Delivery delay,Low,Closed,2025-04-15,3
+T-000760,ACC-00133,2025-09-19,Delivery delay,Low,Closed,2025-10-04,3
+T-000761,ACC-00133,2026-04-18,Installation,Low,Closed,2026-05-11,4
+T-000762,ACC-00134,2025-11-17,Invoice question,High,Closed,2025-11-25,4
+T-000763,ACC-00134,2025-03-16,Spare parts,Medium,Closed,2025-03-30,4
+T-000764,ACC-00134,2026-06-28,Account change,High,Closed,2026-06-30,5
+T-000765,ACC-00134,2026-02-22,Spare parts,Low,Closed,2026-02-28,4
+T-000766,ACC-00134,2025-09-08,Invoice question,Urgent,Closed,2025-09-08,2

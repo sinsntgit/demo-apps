@@ -244,6 +244,8 @@ a.report-card { display: block; text-decoration: none; color: inherit; } a.repor
 .kg .e { stroke: var(--accent); stroke-width: 2; }
 .kg .e.sugg { stroke: var(--text-3); stroke-width: 1.5; stroke-dasharray: 6 5; }
 .kg .e.ent { stroke: var(--good); stroke-width: 1.5; stroke-dasharray: 2 4; }
+.kg .e.match { stroke: #d9822b; stroke-width: 3; }
+.kg .e.match.sugg { stroke: #d9822b; stroke-width: 2; stroke-dasharray: 7 5; }
 .kg .hit { stroke: transparent; stroke-width: 12; cursor: pointer; }
 .kg .n { cursor: pointer; }
 .kg .n rect { fill: var(--surface-2); stroke: var(--border-strong); stroke-width: 1.2; }
@@ -258,3 +260,4 @@ a.report-card { display: block; text-decoration: none; color: inherit; } a.repor
 .kg-key i { display: inline-block; width: 26px; height: 0; border-top: 2px solid var(--accent); }
 .kg-key i.k-sugg { border-top: 1.5px dashed var(--text-3); }
 .kg-key i.k-ent { border-top: 2px dotted var(--good); }
+.kg-key i.k-match { border-top: 3px solid #d9822b; }

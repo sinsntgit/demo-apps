@@ -11,7 +11,7 @@ const OUT = process.argv[2], B = 'http://localhost:8010/';
   const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); } catch (e) { console.log('FAIL', name, '-', e.message.split('\n')[0]); await page.screenshot({ path: `${OUT}/FAIL-${name.replace(/\W+/g, '_')}.png` }); } };
   await page.goto(B); await call('POST', '/api/auth/login', { email: 'admin@example.com', password: 'Admin-Passw0rd!' });
   await call('POST', '/api/admin/models', { name: 'Demo model', provider: 'openai_compatible', model_id: 'fake-1', base_url: 'http://127.0.0.1:8765/v1', is_default: true });
-  const sap = (await call('GET', '/api/connections')).find(c => c.name.includes('SAP'));
+  const sap = (await call('GET', '/api/connections')).find(c => c.name.includes('SAP Sales'));
   const item = text => page.locator('.item', { hasText: text });
 
   await step('relationships tab shows joins from verified SQL and suggestions', async () => {

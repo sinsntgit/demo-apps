@@ -44,11 +44,11 @@ def test_companies_are_isolated(two, fake_llm):
     assert not beta.get("/api/auth/me").json()["is_platform_admin"]
     assert beta.get("/api/admin/companies").status_code == 403
     listed = {c["name"]: c for c in a.get("/api/admin/companies").json()}
-    assert listed["Beta Ltd"]["users"] == 2 and listed["Beta Ltd"]["data_models"] == 2
+    assert listed["Beta Ltd"]["users"] == 2 and listed["Beta Ltd"]["data_models"] == 4     # retail, SAP, CRM, SAP + CRM
 
     # data models: the sample names exist in both companies; each sees only its own
     mine = beta.get("/api/connections").json()
-    assert sorted(c["name"] for c in mine) == ["Sample: Retail sales", "Sample: SAP Sales & Finance"]
+    assert sorted(c["name"] for c in mine) == ["Sample: CRM", "Sample: Retail sales", "Sample: SAP + CRM", "Sample: SAP Sales & Finance"]
     assert conn1 not in [c["id"] for c in mine]
     for call in (lambda: beta.get(f"/api/connections/{conn1}/schema"), lambda: beta.get(f"/api/training/{conn1}"),
                  lambda: beta.post("/api/chat/ask", headers=H, json={"connection_id": conn1, "question": "revenue by region"}),
@@ -98,7 +98,7 @@ def test_companies_are_isolated(two, fake_llm):
 def test_shared_models_settings_suspension_and_logo(two, fake_llm):
     a, beta, ana = two["a"], two["beta"], two["ana"]
     url = f"http://127.0.0.1:{FAKE_PORT}/v1"
-    beta_conn = beta.get("/api/connections").json()[0]["id"]
+    beta_conn = next(c["id"] for c in beta.get("/api/connections").json() if c["name"] == "Sample: Retail sales")
     beta_cid = two["company"]["id"]
 
     # a platform model: offered to the first company only, then to Beta; Beta may switch it off

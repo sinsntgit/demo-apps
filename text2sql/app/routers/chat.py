@@ -15,6 +15,10 @@ from .training import upsert_pair
 router = APIRouter(prefix="/api", tags=["chat"])
 
 
+COMBINED_NOT_YET = ("Questions across a combined data model are not available yet - they arrive in the next update. "
+                    "For now you can set it up and check how its data models match (Data models page).")
+
+
 class AskIn(BaseModel):
     connection_id: int
     model_id: int | None = None
@@ -170,6 +174,8 @@ def ask(body: AskIn, request: Request, user: User = Depends(current_user), db: S
     conn = get_connection(db, user, body.connection_id)
     if not conn.is_active:
         raise HTTPException(400, "This data model is disabled.")
+    if conn.db_type == "combined":
+        raise HTTPException(400, COMBINED_NOT_YET)
     model = _pick_model(db, user, body.model_id)
     review_first = body.review_first and sees_sql(user)      # reviewing SQL needs to see it
     graph.refresh(db, conn)                                  # join paths up to date, committed before this question is recorded
@@ -227,6 +233,8 @@ def rephrase(body: RephraseIn, user: User = Depends(current_user), db: Session =
     conn = get_connection(db, user, body.connection_id)
     if not conn.is_active:
         raise HTTPException(400, "This data model is disabled.")
+    if conn.db_type == "combined":
+        raise HTTPException(400, COMBINED_NOT_YET)
     chosen = next((m for m in tenancy.models_for(db, user.company_id) if m.id == cfg["rephrase_model_id"]), None)
     model = chosen if chosen and chosen.enabled else _pick_model(db, user, body.model_id)
     history = []

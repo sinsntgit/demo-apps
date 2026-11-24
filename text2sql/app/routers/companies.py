@@ -101,8 +101,8 @@ def create_company(body: CompanyIn, request: Request, me: User = Depends(platfor
     audit(db, request, me, "company.created", name, f"admin={body.admin_email.strip() or '-'} samples={body.samples}", company_id=None)
     db.commit()
     if body.samples:
-        from ..main import add_sample_model
-        add_sample_model("sap_training.json", c.id)
+        from ..main import add_samples
+        add_samples(c.id)
     return {**_summary(db, c, me), **out}
 
 
