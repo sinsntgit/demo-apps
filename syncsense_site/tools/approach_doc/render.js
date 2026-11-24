@@ -1,5 +1,5 @@
 // Renders approach.html to the assessment PDF.
-// Usage: node tools/approach_doc/render.js assets/docs/bi-readiness-assessment-approach.pdf [png-dir]
+// Usage: node tools/approach_doc/render.js assets/docs/syncsense-data-assessment-approach.pdf [png-dir]
 const { chromium } = require('playwright');
 const path = require('path');
 (async () => {

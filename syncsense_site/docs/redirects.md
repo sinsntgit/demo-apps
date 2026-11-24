@@ -13,3 +13,4 @@ Old Website Builder URL → new URL. Implemented in `src/.htaccess`.
 | `/ai-and-llm-use-cases` | `/use-cases/tax-professional-services/` |
 | `/manufacturing-from-factory-floor-to-pandl` | `/use-cases/manufacturing/` |
 | `/financial-analytics` | `/use-cases/manufacturing/` |
+| `/assets/docs/bi-readiness-assessment-approach.pdf` | `/assets/docs/syncsense-data-assessment-approach.pdf` |
