@@ -317,3 +317,24 @@ def test_platform_admin_adds_and_moves_people(two):
     a.delete(f"/api/admin/users/{r['id']}", headers=H)
     beta.delete(f"/api/admin/users/{st['id']}", headers=H)
     beta.delete(f"/api/admin/groups/{gid}", headers=H)
+
+
+def test_a_new_data_model_never_inherits_a_deleted_ones_files(admin):
+    """Database ids can be reused after a delete; the uploaded files must go with the data model."""
+    from app import config
+    client = admin[0]
+    a = client.post("/api/connections", headers=H, json={"name": "Files to delete", "db_type": "files", "config": {}}).json()
+    client.post(f"/api/connections/{a['id']}/files", headers=H, files=[("uploads", ("secret_salaries.csv", b"name,salary\nx,1\n", "text/csv"))])
+    folder = config.FILES_DIR / str(a["id"])
+    assert (folder / "secret_salaries.csv").exists()
+    assert client.delete(f"/api/connections/{a['id']}", headers=H).status_code == 200
+    assert not folder.exists()
+    folder.mkdir(parents=True)                              # what older versions left behind
+    (folder / "left_over.csv").write_bytes(b"a\n1\n")
+    b = client.post("/api/connections", headers=H, json={"name": "Fresh files", "db_type": "files", "config": {}}).json()
+    assert b["id"] == a["id"]                               # SQLite reuses the freed id: the case that leaked
+    stale = config.FILES_DIR / str(b["id"])
+    assert not (stale / "left_over.csv").exists() and not (stale / "secret_salaries.csv").exists()
+    client.post(f"/api/connections/{b['id']}/sync", headers=H)
+    assert client.get(f"/api/connections/{b['id']}/schema").json().get("tables", []) == []
+    client.delete(f"/api/connections/{b['id']}", headers=H)

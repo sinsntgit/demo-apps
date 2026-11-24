@@ -445,6 +445,7 @@
 <tr><td><b>Documents</b></td><td>Upload existing material: data dictionaries, KPI definitions, design documents.</td><td>PDF, Word, Excel, Markdown, text, SQL, CSV, JSON, YAML, HTML; up to 20 MB. Split into passages automatically; the relevant passages are picked per question. Uploading a file with the same name replaces the earlier version.</td></tr>
 <tr><td><b>Extra DDL</b></td><td>CREATE TABLE / VIEW statements for objects that schema sync cannot see.</td><td>Rarely needed.</td></tr>
 <tr><td><b>Schema</b></td><td>The tables and columns read from the source. Press <b>Sync schema from source</b> after the database structure changes.</td><td>Only names, types, keys and comments are read. Column comments in the database are passed to the model — they are free documentation.</td></tr>
+<tr><td><b>Relationships</b></td><td>How the tables join, and the business words for them (see below).</td><td>Mostly filled in for you from the database's keys and the joins in your verified examples. Check the suggestions.</td></tr>
 <tr><td><b>Review queue</b></td><td><b>Reported problems</b> (answers users said are incorrect, with what and why) and answers that analysts confirmed or corrected, waiting for approval.</td><td>Fix or explain each reported problem; approve the confirmed answers that are right, edit first if nearly right, reject the rest.</td></tr>
 </table>
 <h3>Reported problems: turning a user's report into training</h3>
@@ -458,6 +459,24 @@
 </ul>
 <figure><img src="/static/help/img/review-fix.png" alt="The Fix the SQL window with the user's reason, the question, the corrected SQL, a Test button with five result rows and a message to the user"><figcaption>Test the corrected SQL before saving it; the message is shown to the user under their answer.</figcaption></figure>
 <p>The optional <b>Message to …</b> appears under the user's answer, so they know what changed. The dashboard banner reminds stewards while reports are waiting.</p>
+<h3>Relationships: how the tables join</h3>
+<p>The <b>Relationships</b> tab is a map of the data model: which tables join to which, on which columns, and which business things (Customer, Invoice, Material) live where. It holds <b>names and keys only, never row data</b>. When someone asks a question, AskData looks up the tables involved and gives the AI model the <b>join paths</b> between them, so it joins on the right columns - for example <code>kna1.KUNNR = vbrk.KUNRG</code> in the SAP sample.</p>
+<figure><img src="/static/help/img/relationships.png" alt="The Relationships tab with a summary line, the Add join, Add entity and Rebuild buttons, and suggestions with Confirm, Edit and Reject"><figcaption>Training → Relationships: a summary, then the suggestions to check.</figcaption></figure>
+<p>Where the joins come from:</p>
+<table>
+<tr><th>Source</th><th>Used</th></tr>
+<tr><td><b>Foreign keys</b> in the database, read by schema sync</td><td>Straight away (confirmed automatically)</td></tr>
+<tr><td><b>Verified SQL</b>: every <code>JOIN … ON</code> in your approved question → SQL examples</td><td>Straight away - a steward already approved that SQL. The SAP sample's 19 examples give 17 joins this way.</td></tr>
+<tr><td><b>Matching names</b>: the same key-like column in two tables, where one of them holds it as its key</td><td>Only after a steward <b>confirms</b> it. Until then it is a suggestion and is never given to the AI.</td></tr>
+<tr><td><b>Added by a steward</b> with <b>＋ Add join</b></td><td>Straight away</td></tr>
+</table>
+<p>For each suggestion you see the join, the evidence and a confidence score. <b>✓ Confirm</b> uses it from the next question; <b>Edit</b> lets you change the columns and say how many rows are on each side before confirming; <b>✗ Reject</b> stops it being used and it is never suggested again (rejected joins are listed at the bottom, with <b>Restore</b>). Joins that come from foreign keys or verified SQL can be rejected too, if they are wrong; their columns cannot be edited.</p>
+<figure><img src="/static/help/img/relationship-edit.png" alt="Edit join: left and right table, the column pair, another column pair for composite keys, and rows on each side"><figcaption>Editing a suggested join before confirming it.</figcaption></figure>
+<p><b>Rows on each side</b> (N:1, 1:N, 1:1) tells the AI where one side has many rows per row on the other - for example many invoices per customer - so that it totals before joining and does not count anything twice. Leave it on <i>Not sure</i> when you do not know. A join on several columns (a composite key, such as company code + document number + fiscal year) is added with <b>＋ Another column pair</b>.</p>
+<figure><img src="/static/help/img/relationships-confirmed.png" alt="Confirmed joins with where each came from: Verified SQL and the verified example it was found in"><figcaption>Confirmed joins, each with where it came from.</figcaption></figure>
+<p><b>Business entities.</b> <b>＋ Add entity</b> records a business thing, the words people use for it, and the table that holds it - for example <i>Customer</i>, also called <i>client, sold-to party, account</i>, stored in <code>kna1</code> with the key <code>KUNNR</code>. When a question uses one of those words, the AI is told which table holds it and how to join to it - useful where table and column names are cryptic, as in SAP.</p>
+<figure><img src="/static/help/img/entity-form.png" alt="Add a business entity: name, also called, description, and the table and key column that store it"><figcaption>Adding a business entity.</figcaption></figure>
+<p>The relationships are kept up to date by themselves: after a schema sync, and whenever a verified example is added, approved, corrected or removed, the automatic part is worked out again on the next question. Your decisions - confirmations, rejections, edits, your own joins - are never overwritten. <b>⟳ Rebuild</b> does the same on request. Every change is recorded in the audit log.</p>
 <h3>Working in a large window</h3>
 <p>Every training editor has a <b>⤢ Maximise</b> button at the top right, next to the ✕. It expands the editor to the full screen — useful for long SQL, DDL or documentation — and <b>⤡</b> restores it. The <b>⤢</b> button on each item in the lists, on each uploaded document and on each table in the Schema tab opens that item full-size for reading.</p>
 <figure><img src="/static/help/img/maximise.png" alt="A training editor maximised to the full window"><figcaption>A training editor, maximised.</figcaption></figure>
@@ -473,6 +492,7 @@
 <li>Sync the schema.</li>
 <li>Write documentation for every metric people ask about and every non-obvious code or flag.</li>
 <li>Add examples for your ten most common questions.</li>
+<li>Check the suggestions on the Relationships tab, and add the business entities people ask about.</li>
 <li>Watch the dashboard's query log for failed and corrected questions. Each one tells you what note or example is missing.</li>
 <li>Clear the review queue regularly.</li>
 </ol>

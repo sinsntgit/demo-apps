@@ -96,6 +96,7 @@ def create(body: ConnIn, request: Request, user: User = Depends(admin_only), db:
                    sample_columns=body.sample_columns, masked_columns=body.masked_columns, created_by=user.id)
     db.add(c)
     db.flush()
+    connectors.clear_managed_folder(c.id)          # files left behind by a deleted data model that had this id
     audit(db, request, user, "connection.created", c.name, body.db_type)
     db.commit()
     return _public(c, db, True)
@@ -138,6 +139,8 @@ def remove(conn_id: int, request: Request, user: User = Depends(admin_only), db:
     audit(db, request, user, "connection.deleted", c.name)
     db.delete(c)
     db.commit()
+    if c.db_type == "files":
+        connectors.clear_managed_folder(conn_id)    # the uploaded files go with the data model
     return {"ok": True}
 
 

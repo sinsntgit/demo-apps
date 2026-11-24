@@ -152,6 +152,15 @@ def files_folder(conn_id, cfg) -> Path:
     return p
 
 
+def clear_managed_folder(conn_id: int) -> None:
+    """Remove the app-managed upload folder of a data model (never a server folder an admin pointed it at).
+    Database ids can be reused after a delete (SQLite), so a new data model must never start with an old one's files."""
+    import shutil
+    p = config.FILES_DIR / str(conn_id)
+    if p.is_dir():
+        shutil.rmtree(p, ignore_errors=True)
+
+
 def _ident(name: str) -> str:
     s = re.sub(r"\W+", "_", name.strip().lower()).strip("_") or "t"
     return ("t_" + s) if s[0].isdigit() else s

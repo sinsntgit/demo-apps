@@ -42,8 +42,9 @@ These are the product's promises. A change that weakens one is wrong even if the
 
 1. **No result data goes to the AI model.** `app/engine.py::build_prompt` (and the smaller
    `build_rephrase_prompt` for ✨ Rephrase: table/column names, documentation titles, similar verified
-   questions, earlier questions — no SQL) are the *only* places content is assembled for a model: schema metadata, approved training text, earlier questions + SQL, the new
-   question. Summaries, chart suggestions and report text are computed locally (`app/summarize.py`).
+   questions, earlier questions — no SQL) are the *only* places content is assembled for a model: schema metadata, confirmed
+   join paths and entities from the metadata graph (`app/graph.py::prompt_section` - names and keys only), approved training
+   text, earlier questions + SQL, the new question. Summaries, chart suggestions and report text are computed locally (`app/summarize.py`).
    Database error text sent for auto-repair is scrubbed of literals (`scrub_error`). The only opt-in
    exception is per-connection sample values of admin-listed columns. `tests/test_platform.py` records
    every request the model receives and asserts result values are absent — keep that test meaningful.
@@ -99,6 +100,7 @@ Python 3.11+ · FastAPI · SQLAlchemy 2 (metadata store: SQLite by default, Post
 | `rowfilter.py` | Row-level filters: which apply to a user (all / role / group / user), validation, and the rewrite of every reference to a filtered table into a filtered sub-select. |
 | `connectors.py` | One engine per connection; schema introspection; `run_query` (row cap, timeout, type conversion, column `type`/`role`/`additive`); DuckDB loader for Excel/CSV with file access switched off; optional sample values. |
 | `retrieval.py` | Local BM25 over training items; document chunking. No embeddings API. |
+| `graph.py` | Metadata graph (names, keys, relationships - never data): `GraphEntity` / `GraphBinding` / `GraphEdge`. Edges from schema FKs and from `JOIN ON/USING` in approved SQL pairs (sqlglot, aliases resolved per SELECT, CTEs ignored) are confirmed automatically; same-name key-like columns are *suggested*. `rebuild` merges with stored rows and never overwrites a steward decision (`decided_by`); rejected pairs are never re-suggested. `ensure`/`refresh` rebuild when `Connection.graph_signature` (schema + approved SQL) changes - covering every path that changes training; `refresh` runs at the start of `chat.ask`, before anything is written. `prompt_section` connects the question's seed tables (entities, tables of the top examples, BM25) through confirmed edges (BFS) and returns the *Join paths* text and the tables to send first. |
 | `llm.py` | Providers: `anthropic` (official SDK), `openai`, `openai_compatible`. Tolerant JSON answer parser. |
 | `engine.py` | The pipeline: `build_prompt` → `generate` → `execute` (guard → filters → run → mask → summarise, with auto-repair) and `run_sql` (same for stored SQL, used by reports). |
 | `predict.py` | Predictive analysis: script templates (forecast, classify, regress, cluster, anomaly), feature selection, `run(spec, columns, rows)` → narrative, metrics, plot specs, tables, stats, warnings and the exact code that ran. |
@@ -107,13 +109,14 @@ Python 3.11+ · FastAPI · SQLAlchemy 2 (metadata store: SQLite by default, Post
 | `mailer.py` | Email senders: connect/verify/send, simulation mode, email log. |
 | `pptx_export.py` | Report → PowerPoint (python-pptx), fed by `reporting.render` and its chart PNGs. Built-in 16:9 design with the company logo and an accent colour taken from it, or the company's template (`routers/companies.py::template_path`): its layouts are used, sample slides dropped, empty placeholders removed, geometry taken from the template. Check visually: `soffice --headless --convert-to pdf` then `pdftoppm`. |
 | `reporting.py` | Report access, component validation, live `render` per viewer, server-side charts (`chart_panels`, `draw_panel`), `build_pdf` (row/column layout), schedules (`next_run`, `make_snapshot`, `run_due`, scheduler thread). |
-| `routers/` | `auth`, `connections`, `training`, `chat`, `reports`, `analytics`, `admin` (users, groups, senders, email log, data access, filters, models, settings, audit). |
+| `routers/` | `auth`, `connections`, `training`, `chat`, `reports`, `analytics`, `graph` (Relationships: edges and entities, stewards+, company-checked, audited), `admin` (users, groups, senders, email log, data access, filters, models, settings, audit). |
 
 ### The ask pipeline (the heart of the product)
 
 ```
 POST /api/chat/ask
-  engine.generate   build_prompt (schema + BM25-retrieved docs/examples + last 3 turns) -> llm.complete -> parse JSON
+  graph.refresh     rebuild the data model's graph if its schema / approved SQL changed (committed before the run is recorded)
+  engine.generate   build_prompt (schema + join paths + BM25-retrieved docs/examples + last 3 turns) -> llm.complete -> parse JSON
   engine.execute    sqlguard.check -> rowfilter.apply -> connectors.run_query -> _mask
                     on DB error: scrub_error -> ask model to repair (max N) -> retry
                     summarize.summarize + suggest_chart -> stored on QueryRun
@@ -189,6 +192,7 @@ screen, lazy-imported from `js/app.js`.
 | `js/core.js` | `h()` DOM builder, `fill()`, `api()`, `modal()` (maximisable), `toast`, `confirmDialog`, `field/check/select/tabs`, formatting, SQL highlight/pretty-print, theme. |
 | `js/app.js` | Boot, role-filtered nav, router, identity re-check (see gotcha 12). |
 | `js/results.js` | A chat answer: SQL review/edit/feedback, `chartConfig`/`chartPanels`/`chartBlock`, `dataTable`, `summaryBlock`, exports. Reused by reports and the dashboard. |
+| `js/relationships.js` | Training → Relationships tab: suggestions (confirm / edit / reject), confirmed joins, rejected, business entities. |
 | `js/chat.js`, `reports.js`, `training.js`, `connections.js`, `dashboard.js`, `admin.js`, `account.js`, `auth.js`, `help.js` | As named. |
 | `help/help.html` + `help/img/` | The manual and its screenshots. |
 
@@ -245,7 +249,7 @@ Design defaults that have served well:
 ```bash
 python -m pytest -q                       # API-level tests, a few seconds
 tests/e2e/run.sh                          # browser suites against a fresh instance (see file header)
-tests/e2e/run.sh reports                  # one suite: features | reports | groups | predictive | sharing | rephrase | resultsonly | tenancy | session
+tests/e2e/run.sh reports                  # one suite: features | reports | groups | predictive | sharing | rephrase | resultsonly | tenancy | graph | session
 T2S_TEST_PG=user:pw@host:5432/db python -m pytest tests/test_postgres.py   # live Postgres, optional
 ```
 
@@ -343,6 +347,10 @@ No filler, no internal identifiers, no claiming more than the checks showed.
     (`shotRun` in `tests/e2e/predictive.js`). Help images for tall answers are crops of those captures.
 21. **Big one-line edits to dense JS** are where syntax slips happen. Edit in small, anchored
     replacements, and syntax-check after each file.
+22. **Database ids are reused after a delete (SQLite).** Anything stored on disk by id must go with its row: deleting an
+    Excel/CSV data model removes its upload folder (`connectors.clear_managed_folder`), and creating one clears any folder
+    left behind by older versions - otherwise a new data model, even in another company, would show a deleted one's files.
+23. **sqlglot argument names change between versions** (`from` became `from_`). Read `Select` arguments defensively.
 
 ---
 

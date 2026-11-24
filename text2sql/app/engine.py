@@ -1,10 +1,12 @@
 """The question -> SQL -> result pipeline.
 
 Privacy boundary: `build_prompt` (and the smaller `build_rephrase_prompt`) are the only places content is assembled for the model.
-It contains schema metadata, approved training text, earlier questions + SQL, and the
+It contains schema metadata, confirmed join paths and entities from the metadata graph (names and keys only),
+approved training text, earlier questions + SQL, and the
 new question. Query results are never included. Database error text used for automatic
 repair is scrubbed of literals first (`scrub_error`).
 """
+import logging
 import re
 
 from sqlalchemy import select
@@ -13,8 +15,10 @@ from sqlalchemy.orm import Session
 import concurrent.futures
 import json
 
-from . import connectors, llm, predict, retrieval, rowfilter, security, sqlguard, summarize
+from . import connectors, graph, llm, predict, retrieval, rowfilter, security, sqlguard, summarize
 from .models import Connection, LLMModel, QueryRun, TrainingItem
+
+log = logging.getLogger("text2sql.engine")
 
 MAX_FULL_SCHEMA_TABLES = 40
 SCHEMA_CHAR_BUDGET = 60_000
@@ -153,16 +157,33 @@ def build_prompt(db: Session, conn: Connection, question: str, history: list[Que
     doc_hits = retrieval.top(search, docs, lambda d: d.title + " " + d.content, 6)
 
     ddl_all = [(t, connectors.table_ddl(t)) for t in tables]
+    hint = search + " " + " ".join(p.sql for p in ex)
+    example_sql = " ".join(p.sql for p in ex).lower()
+    in_examples = [t for t, _ in ddl_all if re.search(rf"\b{re.escape(t['name'].lower())}\b", example_sql)]
+    g = {"text": "", "tables": [], "edges": [], "entities": []}
+    try:        # the metadata graph (kept up to date by graph.refresh in the ask route): entities and confirmed join paths
+        seeds = []                  # most relevant first: the tables of the best-matching verified examples, in the order used
+        for p in ex[:3]:
+            low = p.sql.lower()
+            hits = sorted((m.start(), connectors.table_fqn(t)) for t, _ in ddl_all
+                          for m in [re.search(rf"\b{re.escape(t['name'].lower())}\b", low)] if m)
+            seeds += [name for _, name in hits]
+        seeds += [connectors.table_fqn(t) for t, _ in retrieval.top(search, ddl_all, lambda x: x[1].replace("_", " "), 4)]
+        g = graph.prompt_section(db, conn, search, seeds)
+    except Exception:
+        log.exception("metadata graph skipped for data model #%s", conn.id)
     if len(tables) <= MAX_FULL_SCHEMA_TABLES and sum(len(d) for _, d in ddl_all) <= SCHEMA_CHAR_BUDGET:
         chosen = ddl_all
-    else:   # large schema: send the most relevant tables + any used by the retrieved examples
-        hint = search + " " + " ".join(p.sql for p in ex)
-        ranked = retrieval.top(hint, ddl_all, lambda x: x[1].replace("_", " "), 15)
-        names = {connectors.table_fqn(t) for t, _ in ranked}
-        example_sql = " ".join(p.sql for p in ex).lower()
-        for t, d in ddl_all:
-            if connectors.table_fqn(t) not in names and re.search(rf"\b{re.escape(t['name'].lower())}\b", example_sql):
+    else:   # large schema: the graph's tables first, then the most relevant tables + any used by the retrieved examples
+        by_name = {connectors.table_fqn(t).lower(): (t, d) for t, d in ddl_all}
+        ranked = [by_name[n.lower()] for n in g["tables"] if n.lower() in by_name]
+        for t, d in retrieval.top(hint, ddl_all, lambda x: x[1].replace("_", " "), 15):
+            if (t, d) not in ranked:
                 ranked.append((t, d))
+        names = {connectors.table_fqn(t) for t, _ in ranked}
+        for t in in_examples:
+            if connectors.table_fqn(t) not in names:
+                ranked.append((t, connectors.table_ddl(t)))
         chosen, used = [], 0
         for t, d in ranked:
             if used + len(d) > SCHEMA_CHAR_BUDGET:
@@ -178,6 +199,8 @@ def build_prompt(db: Session, conn: Connection, question: str, history: list[Que
     if len(chosen) < len(tables):
         others = [connectors.table_fqn(t) for t, _ in ddl_all if (t, _) not in chosen][:200]
         parts.append("Other tables that exist (columns not shown): " + ", ".join(others))
+    if g["text"]:
+        parts.append("\n## Join paths\n" + g["text"])
     if doc_hits:
         parts.append("\n## Business documentation")
         parts += [f"### {d.title or d.document_name or 'Note'}\n{d.content}" for d in doc_hits]
@@ -198,7 +221,8 @@ def build_prompt(db: Session, conn: Connection, question: str, history: list[Que
                            predictive=PREDICTIVE.format() if predictive else "",
                            analysis_key=', "analysis": <object as described above, or null>' if predictive else "") + "\n\n" + stable
     context = {"tables": [connectors.table_fqn(t) for t, _ in chosen], "examples": [p.id for p in ex],
-               "docs": [d.id for d in doc_hits], "history_turns": min(len(history), 3)}
+               "docs": [d.id for d in doc_hits], "history_turns": min(len(history), 3),
+               "join_paths": len(g["edges"]), "entities": g["entities"]}
     return system, "\n\n".join(tail), context
 
 

@@ -9,9 +9,10 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 
 from . import config, security
+from . import connectors as connectors_mod
 from .db import Base, SessionLocal, engine
 from .models import Connection, LLMModel, TrainingItem, User
-from .routers import admin, analytics, auth, chat, companies, connections, reports, training
+from .routers import admin, analytics, auth, chat, companies, connections, graph, reports, training
 
 log = logging.getLogger("text2sql")
 STATIC = config.BASE_DIR / "static"
@@ -169,6 +170,7 @@ def add_sample_model(spec_file: str, company_id: int):
         db.add(conn)
         db.flush()
         dest = config.FILES_DIR / str(conn.id)
+        connectors_mod.clear_managed_folder(conn.id)
         dest.mkdir(parents=True, exist_ok=True)
         for f in folder.glob("*.csv"):
             shutil.copy(f, dest / f.name)
@@ -202,6 +204,7 @@ def add_retail_sample(db, company_id: int):
     db.add(conn)
     db.flush()
     dest = config.FILES_DIR / str(conn.id)
+    connectors_mod.clear_managed_folder(conn.id)
     dest.mkdir(parents=True, exist_ok=True)
     for f in sample.glob("*.csv"):
         shutil.copy(f, dest / f.name)
@@ -281,7 +284,7 @@ async def security_layer(request: Request, call_next):
     return response
 
 
-for r in (auth.router, connections.router, training.router, chat.router, admin.router, analytics.router, reports.router,
+for r in (auth.router, connections.router, training.router, chat.router, admin.router, analytics.router, reports.router, graph.router,
           companies.router):
     app.include_router(r)
 

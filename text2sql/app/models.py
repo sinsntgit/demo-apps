@@ -72,6 +72,7 @@ class Connection(Base):
     created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+    graph_signature: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)   # schema + verified SQL the graph was built from
 
 
 class ConnectionAccess(Base):
@@ -347,3 +348,53 @@ class RephraseLog(Base):
     llm_ms: Mapped[int] = mapped_column(Integer, default=0)
     used: Mapped[bool] = mapped_column(Boolean, default=False)            # a question was then asked with it
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
+# ---- metadata graph: names, keys and relationships only - never row data (app/graph.py) -------------------------------
+class GraphEntity(Base):
+    """A business thing (Customer, Invoice, Material) with the words people use for it."""
+    __tablename__ = "graph_entities"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    synonyms: Mapped[list] = mapped_column(JSON, default=list)
+    description: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+
+class GraphBinding(Base):
+    """Where an entity is stored: one table of one data model, with its key columns."""
+    __tablename__ = "graph_bindings"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("graph_entities.id", ondelete="CASCADE"), index=True)
+    connection_id: Mapped[int] = mapped_column(ForeignKey("connections.id", ondelete="CASCADE"), index=True)
+    table_name: Mapped[str] = mapped_column(String(255))
+    key_columns: Mapped[list] = mapped_column(JSON, default=list)
+    source_of_truth: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class GraphEdge(Base):
+    """One way to join two tables. Within one data model both sides have the same connection_id.
+    status: suggested (never used until confirmed) | confirmed | rejected (remembered, not suggested again)."""
+    __tablename__ = "graph_edges"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    left_connection_id: Mapped[int] = mapped_column(ForeignKey("connections.id", ondelete="CASCADE"), index=True)
+    left_table: Mapped[str] = mapped_column(String(255))
+    left_columns: Mapped[list] = mapped_column(JSON, default=list)
+    right_connection_id: Mapped[int] = mapped_column(ForeignKey("connections.id", ondelete="CASCADE"), index=True)
+    right_table: Mapped[str] = mapped_column(String(255))
+    right_columns: Mapped[list] = mapped_column(JSON, default=list)
+    kind: Mapped[str] = mapped_column(String(10), default="join")            # fk | join | match
+    cardinality: Mapped[str] = mapped_column(String(5), default="")          # '' (unknown) | 1:1 | 1:N | N:1  (left : right)
+    normalisation: Mapped[str] = mapped_column(String(30), default="")       # cross-source key rule (phase 2)
+    origin: Mapped[str] = mapped_column(String(20), default="steward")       # schema | verified_sql | names | steward
+    status: Mapped[str] = mapped_column(String(10), default="suggested")
+    evidence: Mapped[list] = mapped_column(JSON, default=list)
+    confidence: Mapped[float] = mapped_column(Float, default=0)
+    decided_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)     # a steward's decision is never overwritten by a rebuild
+    decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)

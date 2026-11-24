@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
-from .. import connectors, engine, predict, reporting, security, sqlguard, summarize, tenancy
+from .. import connectors, engine, graph, predict, reporting, security, sqlguard, summarize, tenancy
 from ..db import get_db, now
 from ..deps import audit, can_use, current_user, get_connection, get_settings, sees_sql
 from ..models import ISSUE_TYPES, ROLES, Connection, Conversation, ConversationShare, LLMModel, QueryRun, RephraseLog, User, UserGroup
@@ -172,6 +172,7 @@ def ask(body: AskIn, request: Request, user: User = Depends(current_user), db: S
         raise HTTPException(400, "This data model is disabled.")
     model = _pick_model(db, user, body.model_id)
     review_first = body.review_first and sees_sql(user)      # reviewing SQL needs to see it
+    graph.refresh(db, conn)                                  # join paths up to date, committed before this question is recorded
 
     if body.conversation_id:
         conv = _conv(db, user, body.conversation_id, edit=True)

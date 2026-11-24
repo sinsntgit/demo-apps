@@ -1,6 +1,7 @@
 // Training data per data model: schema, documentation, question/SQL pairs, documents, review queue.
 import { h, fill, prettySQL, api, busy, fail, toast, modal, field, select, tabs, confirmDialog, highlightSQL, fmtTime, download } from './core.js';
 import { runCard } from './results.js';
+import { relationshipsTab } from './relationships.js';
 
 const SOURCE = { manual: 'added manually', upload: 'uploaded', import: 'imported', confirmed: 'confirmed by a user', correction: 'user correction' };
 
@@ -29,6 +30,7 @@ export async function trainingView(root, arg) {
       ['files', `Documents (${new Set(of('document').map(d => d.document_name)).size})`, () => filesTab(of('document'))],
       ['ddl', `Extra DDL (${n('ddl')})`, () => docsTab(of('ddl'), 'ddl')],
       ['schema', 'Schema', el => { schemaTab(el); }],
+      ['relations', 'Relationships', el => { relationshipsTab(el, connId); }],
       ['review', `Review queue${waiting ? ` (${waiting})` : ''}`, () => reviewTab(data.items.filter(i => i.status === 'pending'), issues)],
     ], tab || (waiting ? 'review' : 'pairs'));
     fill(body, t);
