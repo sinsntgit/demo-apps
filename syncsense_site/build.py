@@ -432,7 +432,7 @@ def home_hero():
 
 
 def home_about():
-    stats = [("25+", "years", "of enterprise data, BI and data integration delivery", "dark"),
+    stats = [("25+", "years", "of combined experience in enterprise data, BI and integration", "dark"),
              ("3", "products", "AskData, Ontology Studio and Ovantaa CRM, all running in your environment", "tint"),
              ("22", "ready-made ontologies", "across 19 industries, built on standards such as FIBO and HL7 FHIR", "tint"),
              ("10+", "projects", "executed", "dark")]
@@ -1139,7 +1139,7 @@ def write_llms():
     arts = "\n".join(f"- [{a['h1']}]({SITE}{a['path']})" for a in ARTICLES)
     txt = f"""# SyncSense
 
-> SyncSense is a data and AI company in Mumbai, India. It builds AI products (AskData for Text-to-SQL, Ontology Studio, Ovantaa CRM) and provides data management, BI and AI consulting and contract staffing. It helps organisations get trusted answers from data spread across many systems, in plain English, without waiting on IT. The team has 25+ years of enterprise data, BI and data integration delivery.
+> SyncSense is a data and AI company in Mumbai, India. It builds AI products (AskData for Text-to-SQL, Ontology Studio, Ovantaa CRM) and provides data management, BI and AI consulting and contract staffing. It helps organisations get trusted answers from data spread across many systems, in plain English, without waiting on IT. The team brings 25+ years of combined experience in enterprise data, BI and data integration.
 
 ## Products
 - [AskData: Text-to-SQL]({SITE}/products/text-to-sql/): business users ask questions of their own databases in plain English and get SQL, a table, a chart and a summary. Runs in the customer's environment; the AI model receives only the question and table descriptions, never result data. Read-only by design.
