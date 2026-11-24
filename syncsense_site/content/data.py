@@ -609,7 +609,7 @@ CASE_STUDIES = [
             ("Faster", "Response times", "Automated drafting cuts time to reply."),
             ("Shorter", "Release cycles", "Less time to support new versions and features."),
         ],
-        "disclosure": "Client: a CRM product company (name withheld), 2024.",
+        "disclosure": "Client: a CRM product company (name withheld).",
         "related": [("Data & AI consulting", CONS), ("Ovantaa CRM", CRM)],
     },
     {
@@ -961,7 +961,7 @@ CASE_DETAILS = {
                     "Give field staff a simple assistant; consistent answers matter more than long ones."]},
     "genai-email-support-assistant": {
         "glance": [("Sector", "Software (CRM product)"), ("Built", "GenAI email assistant with human approval"),
-                   ("Technology", "Hybrid search over the knowledge base, persona-based prompts"), ("Result", "50% lower product support cost"), ("Year", "2024")],
+                   ("Technology", "Hybrid search over the knowledge base, persona-based prompts"), ("Result", "50% lower product support cost")],
         "lessons": ["Keep a person approving every reply until accuracy is proven on real tickets.",
                     "Ground replies in the knowledge base and add new articles as soon as they are published.",
                     "Measure repeat queries; better first answers reduce volume as much as faster ones."]},
