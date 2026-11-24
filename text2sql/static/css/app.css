@@ -236,3 +236,25 @@ a.report-card { display: block; text-decoration: none; color: inherit; } a.repor
 .nav .company span { font-size: 12.5px; font-weight: 600; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .logo-box { width: 180px; height: 64px; border: 1px dashed var(--border); border-radius: 8px; display: grid; place-items: center; background: var(--surface); overflow: hidden; }
 .logo-box img { max-width: 170px; max-height: 56px; object-fit: contain; }
+
+/* Training → Relationships diagram (metadata graph) */
+.kg { display: block; width: 100%; height: 600px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; cursor: grab; touch-action: none; user-select: none; }
+.kg.grabbing { cursor: grabbing; }
+.kg text { font-family: inherit; }
+.kg .e { stroke: var(--accent); stroke-width: 2; }
+.kg .e.sugg { stroke: var(--text-3); stroke-width: 1.5; stroke-dasharray: 6 5; }
+.kg .e.ent { stroke: var(--good); stroke-width: 1.5; stroke-dasharray: 2 4; }
+.kg .hit { stroke: transparent; stroke-width: 12; cursor: pointer; }
+.kg .n { cursor: pointer; }
+.kg .n rect { fill: var(--surface-2); stroke: var(--border-strong); stroke-width: 1.2; }
+.kg .n text { fill: var(--text); font-size: 12px; font-weight: 600; pointer-events: none; }
+.kg .n.ent rect { fill: var(--good-soft); stroke: var(--good); }
+.kg .n.sel rect { stroke: var(--accent); stroke-width: 2.5; }
+.kg .n:focus { outline: none; }
+.kg .n:focus rect { stroke: var(--accent); }
+.kg .dim { opacity: .15; }
+.kg .elabel { pointer-events: none; fill: var(--accent); font-size: 11px; font-weight: 600; paint-order: stroke; stroke: var(--surface); stroke-width: 4px; }
+.kg-key { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); }
+.kg-key i { display: inline-block; width: 26px; height: 0; border-top: 2px solid var(--accent); }
+.kg-key i.k-sugg { border-top: 1.5px dashed var(--text-3); }
+.kg-key i.k-ent { border-top: 2px dotted var(--good); }

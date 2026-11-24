@@ -60,7 +60,8 @@ def _view(db: Session, conn) -> dict:
             "entities": [{"id": ent.id, "name": ent.name, "synonyms": ent.synonyms or [], "description": ent.description,
                           "bindings": [{"table": b.table_name, "key_columns": b.key_columns or [], "source_of_truth": b.source_of_truth}
                                        for b in binds]} for ent, binds in ents],
-            "counts": {s: sum(1 for e in edges if e.status == s) for s in graph.STATUSES}}
+            "counts": {s: sum(1 for e in edges if e.status == s) for s in graph.STATUSES},
+            "found": graph.diagnose(db, conn)}
 
 
 def _check_side(conn, table: str, columns: list[str]) -> tuple[str, list[str]]:

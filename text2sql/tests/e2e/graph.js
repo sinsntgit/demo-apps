@@ -16,7 +16,12 @@ const OUT = process.argv[2], B = 'http://localhost:8010/';
 
   await step('relationships tab shows joins from verified SQL and suggestions', async () => {
     await page.goto(B + '#/training/' + sap.id); await page.reload(); await page.waitForSelector('.tabs');
-    await page.click('.tabs button:has-text("Relationships")'); await page.waitForSelector('h2:has-text("Confirmed joins")');
+    await page.click('.tabs button:has-text("Relationships")'); await page.waitForSelector('svg.kg');            // opens on the diagram
+    await page.click('summary:has-text("Where these joins come from")');       // closed when joins already exist
+    const found = await page.locator('details:has-text("Where these joins come from")').innerText();
+    if (!found.includes('Approved question → SQL examples: 19, of which')) throw new Error('source panel: ' + found.slice(0, 200));
+    await page.locator('details:has-text("Where these joins come from")').screenshot({ path: `${OUT}/relationships-sources.png` });
+    await page.click('button:text-is("☰ List")'); await page.waitForSelector('h2:has-text("Confirmed joins")');
     await page.waitForSelector('code:text("vbrk.VBELN = vbrp.VBELN")');
     await page.waitForSelector('code:text("kna1.KUNNR = vbrk.KUNRG")');
     const n = Number((await page.locator('h2:has-text("Confirmed joins")').innerText()).match(/\((\d+)\)/)[1]);
@@ -51,6 +56,31 @@ const OUT = process.argv[2], B = 'http://localhost:8010/';
     await page.evaluate(() => document.querySelector('h2[style]:nth-of-type(1)') && [...document.querySelectorAll('h2')].find(x => x.textContent.startsWith('Confirmed joins')).scrollIntoView());
     await page.evaluate(() => document.querySelectorAll('.toast').forEach(t => t.remove())); await page.waitForTimeout(300);
     await page.screenshot({ path: `${OUT}/relationships-confirmed.png` });
+  });
+
+  await step('the diagram shows tables, joins and the entity, and a click shows a table\'s joins', async () => {
+    await page.click('button:text-is("◉ Diagram")'); await page.waitForSelector('svg.kg g.n');
+    if (await page.locator('svg.kg line.e.sugg').count() !== 0) throw new Error('suggestions should be hidden by default');
+    const n = await page.locator('svg.kg g.n').count(), confirmedLines = await page.locator('svg.kg line.e:not(.sugg):not(.ent)').count();
+    if (n < 20 || confirmedLines < 17) throw new Error(`nodes ${n}, confirmed lines ${confirmedLines}`);
+    if (await page.locator('svg.kg g.n.ent').count() !== 1) throw new Error('entity node missing');
+    const box = await page.locator('svg.kg').boundingBox();
+    const inside = await page.evaluate(() => [...document.querySelectorAll('svg.kg g.n')].every(g => { const r = g.getBoundingClientRect(), s = document.querySelector('svg.kg').getBoundingClientRect();
+      return r.left >= s.left - 1 && r.right <= s.right + 1 && r.top >= s.top - 1 && r.bottom <= s.bottom + 1; }));
+    if (!inside) throw new Error('some tables are drawn outside the diagram');
+    await page.locator('svg.kg').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `${OUT}/relationships-diagram.png` });
+    await page.click('label.check:has-text("Show suggestions")'); await page.waitForSelector('svg.kg line.e.sugg');
+    await page.click('label.check:has-text("Show suggestions")'); await page.waitForFunction(() => !document.querySelector('svg.kg line.e.sugg'));
+    await page.locator('svg.kg g.n:has(text:text-is("vbrk"))').click();
+    await page.waitForSelector('.card .item b:text-is("vbrk")');
+    await page.waitForSelector('.card code:text("kna1.KUNNR = vbrk.KUNRG")');
+    if (await page.locator('svg.kg text.elabel').count() < 2) throw new Error('join labels not shown for the selected table');
+    if (await page.locator('svg.kg g.n.dim').count() === 0) throw new Error('unrelated tables not dimmed');
+    await page.locator('svg.kg').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `${OUT}/relationships-diagram-selected.png` });
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.wheel(0, -400); await page.waitForTimeout(200);
+    const vb = await page.getAttribute('svg.kg', 'viewBox'); if (vb.split(' ')[2] >= 1100) throw new Error('zoom did nothing: ' + vb);
   });
 
   await step('the join paths and the entity reach the AI model', async () => {

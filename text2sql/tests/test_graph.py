@@ -185,3 +185,46 @@ def test_only_stewards_of_the_same_company(admin):
     assert other.put(f"/api/graph/edges/{edge['id']}", headers=H, json={"action": "reject"}).status_code == 404
     assert other.post(f"/api/graph/{sap}/rebuild", headers=H).status_code == 404
     client.delete(f"/api/admin/users/{made['id']}", headers=H)
+
+
+def test_business_style_names_and_join_styles():
+    """Excel-style column names ('Customer Code', 'Material No') and joins written in WHERE, without table prefixes,
+    or wrapped in TRIM / CAST are all recognised; names differing only in spacing and case are matched."""
+    from app import graph
+    T = lambda name, cols: {"schema": None, "name": name, "type": "table", "comment": "", "fks": [],
+                            "columns": [{"name": c, "type": "VARCHAR", "pk": False} for c in cols]}
+    tables = {t["name"]: t for t in (T("sales", ["Invoice No", "Customer Code", "Material No", "Plant", "Region", "Brand"]),
+                                     T("customers", ["Customer Code", "Customer Name", "Region"]),
+                                     T("materials", ["material_no", "Material Description", "Brand"]),
+                                     T("plants", ["Plant", "Plant Name"]))}
+    j = lambda sql: [(a["name"], b, c["name"], d) for a, b, c, d in graph.sql_joins(sql, "files", tables)]
+    assert j('SELECT 1 FROM sales s, customers c WHERE s."Customer Code" = c."Customer Code" AND c."Region" = \'N\'') == \
+        [("sales", ["Customer Code"], "customers", ["Customer Code"])]
+    assert j('SELECT 1 FROM sales JOIN materials ON sales."Material No" = material_no') == [("sales", ["Material No"], "materials", ["material_no"])]
+    assert j('SELECT 1 FROM sales s JOIN plants p ON TRIM(s."Plant") = CAST(p."Plant" AS VARCHAR)') == [("sales", ["Plant"], "plants", ["Plant"])]
+    assert j('SELECT 1 FROM sales s WHERE s."Region" IN (SELECT c."Region" FROM customers c)') == []      # not a join
+    sugg = {(e["left_table"], e["right_table"]) for e in graph.name_suggestions(tables, set(), 1)}
+    assert sugg == {("customers", "sales"), ("sales", "materials"), ("sales", "plants")}                   # not Region, not Brand
+    assert graph.words("CustomerCode") == ["customer", "code"] and graph.keylike("Material No") and not graph.keylike("Region")
+
+
+def test_the_tab_explains_where_the_joins_come_from(admin):
+    client = admin[0]
+    c = client.post("/api/connections", headers=H, json={"name": "Graph POC files", "db_type": "files", "config": {}}).json()
+    files = [("uploads", ("sales.csv", b"Invoice No,Customer Code,Plant,Value\n1,C1,P1,10\n", "text/csv")),
+             ("uploads", ("customers.csv", b"Customer Code,Customer Name,Region\nC1,Acme,North\n", "text/csv")),
+             ("uploads", ("plants.csv", b"Plant,Plant Name\nP1,Pune\n", "text/csv"))]
+    client.post(f"/api/connections/{c['id']}/files", headers=H, files=files)
+    client.post(f"/api/connections/{c['id']}/sync", headers=H)
+    f = client.get(f"/api/graph/{c['id']}").json()["found"]
+    assert f["file_based"] and f["foreign_keys"] == 0 and f["examples"] == 0
+    client.post(f"/api/training/{c['id']}", headers=H, json={"kind": "sql_pair", "question": "Value by region",
+        "sql": 'SELECT c."Region", SUM(s."Value") FROM sales s, customers c WHERE s."Customer Code" = c."Customer Code" GROUP BY 1'})
+    client.post(f"/api/training/{c['id']}", headers=H, json={"kind": "sql_pair", "question": "Customers with sales in Pune",
+        "sql": 'SELECT c."Customer Name" FROM customers c WHERE EXISTS (SELECT 1 FROM sales s WHERE s."Customer Code" = c."Customer Code")'})
+    g = client.get(f"/api/graph/{c['id']}").json()
+    assert _find(g["edges"], "sales", ["Customer Code"], "customers", ["Customer Code"])["status"] == "confirmed"
+    assert _find(g["edges"], "sales", ["Plant"], "plants", ["Plant"])["status"] == "suggested"
+    f = g["found"]
+    assert f["examples"] == 2 and f["examples_with_joins"] == 1 and f["joins_not_read"] == ["Customers with sales in Pune"]
+    client.delete(f"/api/connections/{c['id']}", headers=H)

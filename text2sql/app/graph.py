@@ -41,11 +41,35 @@ DIALECT = {"postgres": "postgres", "mysql": "mysql", "singlestore": "mysql", "ms
 GENERIC = {"id", "name", "description", "desc", "status", "type", "comment", "comments", "created_at", "updated_at", "created",
            "updated", "date", "amount", "value", "quantity", "qty", "price", "title", "text", "note", "notes", "email", "phone",
            "city", "country", "currency", "discount", "unit_price", "total", "remarks", "label", "code"}
-KEYLIKE = re.compile(r"(^id$|_?id$|_no$|_nr$|_num$|number$|_code$|_key$|_cd$|^[A-Z]{4,6}$)", re.I)
+GENERIC_NORM = set()            # filled below, once norm() exists
+KEY_WORDS = {"id", "no", "nr", "num", "number", "code", "key", "cd", "sku", "ref", "uuid", "guid", "pk"}
+SAP_LIKE = re.compile(r"^[A-Z]{4,6}$")          # SAP-style field names: KUNNR, MATNR, BUKRS
 NOT_KEY_TYPES = re.compile(r"float|double|real|decimal|numeric|money|date|time|bool|json|blob|bytea|binary", re.I)
 
 
 # ------------------------------------------------------------------------------------------- schema helpers
+def words(name: str) -> list[str]:
+    """'Customer Code', 'customer_code', 'CustomerCode', 'customerCODE' -> ['customer', 'code']."""
+    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", name.strip())
+    return [w for w in re.split(r"[^A-Za-z0-9]+", spaced.lower()) if w]
+
+
+def norm(name: str) -> str:
+    return "".join(words(name))
+
+
+GENERIC_NORM.update(norm(g) for g in GENERIC)
+
+
+def keylike(name: str, table: str = "") -> bool:
+    """A name that looks like an identifier: ends in id / no / code / key…, is an SAP-style field (KUNNR), or is named
+    after its own table (Plant in plants, customer in customer)."""
+    w = words(name)
+    if not w:
+        return False
+    t = norm(table.split(".")[-1]) if table else ""
+    return w[-1] in KEY_WORDS or bool(SAP_LIKE.match(name.strip())) or (bool(t) and norm(name) in (t, t.rstrip("s"), t[:-2] if t.endswith("es") else t))
+
 def tables_of(conn: Connection) -> dict:
     """{lower-case table name: table dict}; fully qualified and bare names both resolve when unambiguous."""
     out, bare = {}, {}
@@ -101,9 +125,26 @@ def fk_edges(tables: dict) -> list[dict]:
     return out
 
 
+def _side(node, alias: dict, sources: list, other=None):
+    """(table dict, column name) for one side of an equality: a column, or a column wrapped in a function or CAST
+    (TRIM(s.code), CAST(p.plant AS TEXT)). A column without a table prefix is resolved when exactly one of the query's
+    tables (other than the opposite side's) has it."""
+    if not isinstance(node, exp.Column):
+        cols = list(node.find_all(exp.Column)) if isinstance(node, (exp.Func, exp.Cast, exp.Paren)) else []
+        if len(cols) != 1:
+            return None
+        node = cols[0]
+    if node.table:
+        t = alias.get(node.table.lower())
+        return (t, _col(t, node.name)) if t and _col(t, node.name) else None
+    cands = [t for t in sources if t is not other and _col(t, node.name)]
+    return (cands[0], _col(cands[0], node.name)) if len(cands) == 1 else None
+
+
 def sql_joins(sql: str, db_type: str, tables: dict) -> list[tuple]:
-    """(left table, [cols], right table, [cols]) for every JOIN ... ON a.x = b.y [AND ...] / USING (...) between two real
-    tables of this schema. Aliases are resolved per SELECT; CTEs, sub-queries and literal conditions are ignored."""
+    """(left table, [cols], right table, [cols]) for every equality between columns of two real tables of this schema:
+    JOIN ... ON a.x = b.y [AND ...], JOIN ... USING (...), and joins written in WHERE (FROM a, b WHERE a.x = b.y).
+    Aliases are resolved per SELECT; CTEs, sub-queries and literal conditions are ignored."""
     try:
         tree = sqlglot.parse_one(sql, read=DIALECT.get(db_type, "duckdb"))
     except Exception:
@@ -111,54 +152,55 @@ def sql_joins(sql: str, db_type: str, tables: dict) -> list[tuple]:
     ctes = {c.alias_or_name.lower() for c in tree.find_all(exp.CTE)}
     found = []
     for sel in tree.find_all(exp.Select):
-        sources = []
         frm = sel.args.get("from_") or sel.args.get("from")       # the argument's name differs between sqlglot versions
-        if frm is not None and isinstance(frm.this, exp.Table):
-            sources.append(frm.this)
         joins = sel.args.get("joins") or []
-        sources += [j.this for j in joins if isinstance(j.this, exp.Table)]
+        nodes = ([frm.this] if frm is not None and isinstance(frm.this, exp.Table) else []) + \
+                [j.this for j in joins if isinstance(j.this, exp.Table)]
         alias = {}
-        for tb in sources:
+        for tb in nodes:
             name = (f"{tb.db}.{tb.name}" if tb.db else tb.name).lower()
-            if name in ctes or name not in tables:
-                continue
-            alias[tb.alias_or_name.lower()] = tables[name]
-        prev = []                                   # tables seen so far in this FROM, for USING
-        if frm is not None and isinstance(frm.this, exp.Table):
-            prev = [frm.this]
-        for j in joins:
-            pairs = {}
-            on = j.args.get("on")
-            if on is not None:
-                for eq in on.find_all(exp.EQ):
-                    l, r = eq.left, eq.right
-                    if not (isinstance(l, exp.Column) and isinstance(r, exp.Column) and l.table and r.table):
-                        continue
-                    lt, rt = alias.get(l.table.lower()), alias.get(r.table.lower())
-                    if not lt or not rt or lt is rt:
-                        continue
-                    lc, rc = _col(lt, l.name), _col(rt, r.name)
-                    if not lc or not rc:
-                        continue
-                    k = (id(lt), id(rt))
-                    if (id(rt), id(lt)) in pairs:      # keep one orientation per table pair
-                        k, lt, rt, lc, rc = (id(rt), id(lt)), rt, lt, rc, lc
-                    pairs.setdefault(k, [lt, [], rt, []])
-                    pairs[k][1].append(lc)
-                    pairs[k][3].append(rc)
+            if name not in ctes and name in tables:
+                alias[tb.alias_or_name.lower()] = tables[name]
+        sources = list({id(t): t for t in alias.values()}.values())
+        if len(sources) < 2:
+            continue
+        pairs = {}
+
+        def add(lt, lc, rt, rc):
+            if lt is rt:
+                return
+            k = (id(lt), id(rt))
+            if (id(rt), id(lt)) in pairs:              # keep one orientation per table pair
+                k, lt, rt, lc, rc = (id(rt), id(lt)), rt, lt, rc, lc
+            p = pairs.setdefault(k, [lt, [], rt, []])
+            if lc not in p[1] or rc not in p[3]:
+                p[1].append(lc)
+                p[3].append(rc)
+
+        conds = [j.args.get("on") for j in joins if j.args.get("on") is not None]
+        if sel.args.get("where") is not None:
+            conds.append(sel.args["where"].this)
+        for cond in conds:
+            for eq in cond.find_all(exp.EQ):
+                if eq.find_ancestor(exp.Select) is not sel:          # inside a sub-query: that SELECT handles it
+                    continue
+                l = _side(eq.left, alias, sources)
+                r = _side(eq.right, alias, sources, other=l[0] if l else None)
+                if l and not r:
+                    continue
+                if r and not l:
+                    l = _side(eq.left, alias, sources, other=r[0])
+                if l and r:
+                    add(l[0], l[1], r[0], r[1])
+        seen = [alias.get(nodes[0].alias_or_name.lower())] if nodes else []
+        for j in joins:                                    # USING (col): the joined table and an earlier one that has col
+            rt = alias.get(j.this.alias_or_name.lower()) if isinstance(j.this, exp.Table) else None
             for col in j.args.get("using") or []:
-                rt = alias.get(j.this.alias_or_name.lower()) if isinstance(j.this, exp.Table) else None
-                for p in prev:
-                    lt = alias.get(p.alias_or_name.lower())
-                    if lt and rt and lt is not rt and _col(lt, col.name) and _col(rt, col.name):
-                        pairs.setdefault((id(lt), id(rt)), [lt, [], rt, []])
-                        pairs[(id(lt), id(rt))][1].append(_col(lt, col.name))
-                        pairs[(id(lt), id(rt))][3].append(_col(rt, col.name))
-                        break
-            if isinstance(j.this, exp.Table):
-                prev.append(j.this)
-            for lt, lcols, rt, rcols in pairs.values():
-                found.append((lt, lcols, rt, rcols))
+                lt = next((t for t in seen if t is not None and t is not rt and _col(t, col.name)), None)
+                if lt and rt and _col(rt, col.name):
+                    add(lt, _col(lt, col.name), rt, _col(rt, col.name))
+            seen.append(rt)
+        found += [tuple(p) for p in pairs.values()]
     return found
 
 
@@ -195,11 +237,12 @@ def name_suggestions(tables: dict, known: set, conn_id: int = 0) -> list[dict]:
     by_col = {}
     for t in ts:
         for pos, c in enumerate(t["columns"]):
-            n = c["name"].lower()
-            if n in GENERIC or NOT_KEY_TYPES.search(c.get("type") or "") or not KEYLIKE.search(c["name"]):
+            n = norm(c["name"])
+            if not n or n in GENERIC_NORM or NOT_KEY_TYPES.search(c.get("type") or ""):
                 continue
             home = bool(c.get("pk")) if has_pk else pos < 2
             by_col.setdefault(n, []).append((t, c, home))
+    by_col = {n: hs for n, hs in by_col.items() if any(keylike(c["name"], connectors.table_fqn(t)) for t, c, _ in hs)}
     limit = max(6, int(len(ts) * 0.25))
     linked = {(k[0][1], k[1][1]) for k in known}          # table pairs that already have a join of any status
     out = []
@@ -218,7 +261,8 @@ def name_suggestions(tables: dict, known: set, conn_id: int = 0) -> list[dict]:
                     continue
                 known.add(k)
                 score = (0.6 if rc.get("pk") else 0.45) + (0.1 if len(holders) <= 3 else 0) + (0.05 if lhome else 0)
-                why = [f"Same column name '{lc['name']}' in both tables",
+                why = [f"Same column name '{lc['name']}' in both tables" if lc["name"] == rc["name"]
+                       else f"Same name once spacing and case are ignored: '{lc['name']}' and '{rc['name']}'",
                        f"{rc['name']} is the {'primary key' if rc.get('pk') else 'leading (likely key) column'} of {connectors.table_fqn(rt)}"]
                 out.append({"left_table": connectors.table_fqn(lt), "left_columns": [lc["name"]],
                             "right_table": connectors.table_fqn(rt), "right_columns": [rc["name"]],
@@ -239,6 +283,32 @@ def signature(db: Session, conn: Connection) -> str:
     for p in _pairs(db, conn.id):
         h.update(f"{p.id}:{p.sql}".encode())
     return h.hexdigest()
+
+
+def diagnose(db: Session, conn: Connection) -> dict:
+    """What the automatic part was built from, in words a steward can act on (shown on the Relationships tab)."""
+    tables = tables_of(conn)
+    approved = _pairs(db, conn.id)
+    waiting = db.scalar(select(func.count()).where(TrainingItem.connection_id == conn.id, TrainingItem.kind == "sql_pair",
+                                                   TrainingItem.status == "pending"))
+    with_joins, unread, unparsed = 0, [], []
+    names = {k for k in tables}
+    for p in approved:
+        try:
+            tree = sqlglot.parse_one(p.sql or "", read=DIALECT.get(conn.db_type, "duckdb"))
+        except Exception:
+            unparsed.append(p.question)
+            continue
+        if sql_joins(p.sql or "", conn.db_type, tables):
+            with_joins += 1
+            continue
+        used = {(f"{t.db}.{t.name}" if t.db else t.name).lower() for t in tree.find_all(exp.Table)} & names
+        if len({id(tables[u]) for u in used}) > 1:              # several tables, but no join we could read
+            unread.append(p.question)
+    return {"tables": len({id(t) for t in tables.values()}), "foreign_keys": len(fk_edges(tables)), "examples": len(approved),
+            "examples_with_joins": with_joins, "examples_waiting": waiting or 0,
+            "joins_not_read": [q[:160] for q in unread[:8]], "joins_not_read_count": len(unread),
+            "unparsed": [q[:160] for q in unparsed[:5]], "file_based": conn.db_type == "files"}
 
 
 def edge_key(e) -> tuple:
