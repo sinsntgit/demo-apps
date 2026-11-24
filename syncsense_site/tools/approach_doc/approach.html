@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SyncSense Free data and reporting assessment: Approach</title>
+<style>
+@font-face { font-family: Poppins; font-weight: 400; src: url(../../assets/fonts/poppins-latin-400-normal.woff2) format("woff2"); }
+@font-face { font-family: Poppins; font-weight: 500; src: url(../../assets/fonts/poppins-latin-500-normal.woff2) format("woff2"); }
+@font-face { font-family: Poppins; font-weight: 600; src: url(../../assets/fonts/poppins-latin-600-normal.woff2) format("woff2"); }
+@font-face { font-family: Poppins; font-weight: 700; src: url(../../assets/fonts/poppins-latin-700-normal.woff2) format("woff2"); }
+@page { size: 297mm 210mm; margin: 0; }
+:root {
+  --navy: #0b1166; --navy2: #1a237e; --teal: #087482; --teal2: #0aa3b5; --tealsoft: #e3f4f6;
+  --ink: #16181d; --mute: #5b6170; --line: #d9dce3; --soft: #f4f5f8; --amber: #b7791f; --amsoft: #fdf3e1;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { counter-reset: pg; font-family: Poppins, Arial, sans-serif; color: var(--ink); font-size: 10.5pt; line-height: 1.5; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.slide { width: 297mm; height: 210mm; position: relative; overflow: hidden; page-break-after: always; padding: 15mm 18mm 16mm; background: #fff; }
+.slide { counter-increment: pg; } .pg::after { content: counter(pg); }
+.slide:last-child { page-break-after: auto; }
+h1, h2, h3, h4 { margin: 0; line-height: 1.2; letter-spacing: -.01em; }
+p { margin: 0 0 2.2mm; }
+ul { margin: 0; padding-left: 4.5mm; } li { margin-bottom: 1.4mm; }
+
+/* running elements */
+.tracker { display: flex; gap: 1.5mm; font-size: 7pt; text-transform: uppercase; letter-spacing: .08em; color: var(--mute); margin-bottom: 4mm; }
+.tracker span { padding: .6mm 2.4mm; border-radius: 1mm; background: var(--soft); }
+.tracker span.on { background: var(--navy); color: #fff; }
+.title { font-size: 19pt; font-weight: 600; color: var(--navy); max-width: 235mm; margin-bottom: 2.5mm; }
+.lede { font-size: 10.5pt; color: var(--mute); max-width: 230mm; margin-bottom: 6mm; }
+.rule { height: .6mm; width: 22mm; background: var(--teal); margin: 0 0 4mm; }
+.foot { position: absolute; left: 18mm; right: 18mm; bottom: 7mm; display: flex; justify-content: space-between; align-items: flex-end; font-size: 7pt; color: var(--mute); border-top: .25mm solid var(--line); padding-top: 2mm; }
+.foot b { color: var(--navy); font-weight: 600; }
+.note { position: absolute; left: 18mm; right: 18mm; bottom: 14mm; font-size: 7pt; color: var(--mute); }
+.tag { display: inline-block; font-size: 7pt; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--teal); }
+.illus { display: inline-block; font-size: 6.8pt; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--amber); background: var(--amsoft); border-radius: 1mm; padding: .5mm 2mm; }
+
+/* cover */
+.cover { background: linear-gradient(120deg, #060a3d 0%, var(--navy) 55%, #1b2a9a 100%); color: #fff; padding: 0; }
+.cover .net { position: absolute; right: -20mm; top: 0; width: 170mm; height: 210mm; opacity: .5; }
+.cover .inner { position: absolute; left: 22mm; top: 22mm; right: 110mm; bottom: 20mm; display: flex; flex-direction: column; }
+.brand { display: flex; align-items: center; gap: 3mm; }
+.brand img { width: 12mm; height: 12mm; border-radius: 2.5mm; }
+.brand b { font-size: 14pt; font-weight: 600; display: block; line-height: 1.1; }
+.brand i { font-style: normal; font-size: 7.5pt; color: #8fe3ee; }
+.cover .kicker { margin-top: 34mm; font-size: 8pt; letter-spacing: .14em; text-transform: uppercase; color: #8fe3ee; font-weight: 600; }
+.cover h1 { font-size: 32pt; font-weight: 600; margin: 4mm 0 5mm; line-height: 1.1; }
+.cover .sub { font-size: 12pt; color: #d6daf5; max-width: 150mm; }
+.cover .meta { margin-top: auto; display: flex; gap: 12mm; font-size: 8pt; color: #c3c8ee; }
+.cover .meta b { display: block; color: #fff; font-weight: 600; font-size: 9pt; }
+.cover .bar { position: absolute; left: 0; bottom: 0; width: 100%; height: 2.2mm; background: linear-gradient(90deg, var(--teal2), var(--teal) 40%, transparent); }
+
+/* divider */
+.divider { background: var(--navy); color: #fff; }
+.divider .num { position: absolute; left: 18mm; top: 40mm; font-size: 90pt; font-weight: 700; color: rgba(255,255,255,.1); line-height: 1; }
+.divider .txt { position: absolute; left: 18mm; top: 92mm; max-width: 180mm; }
+.divider .txt .tag { color: #8fe3ee; }
+.divider h2 { font-size: 28pt; font-weight: 600; margin: 3mm 0 4mm; }
+.divider p { color: #c9cdf0; font-size: 11pt; }
+
+/* contents */
+.toc { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14mm; margin-top: 4mm; }
+.toc div { display: grid; grid-template-columns: 14mm 1fr 10mm; align-items: baseline; padding: 3.4mm 0; border-bottom: .25mm solid var(--line); }
+.toc .n { font-size: 16pt; font-weight: 600; color: var(--teal); }
+.toc .t { font-weight: 600; color: var(--navy); font-size: 11pt; }
+.toc .t small { display: block; font-weight: 400; color: var(--mute); font-size: 8.5pt; }
+.toc .p { text-align: right; color: var(--mute); font-size: 9pt; }
+
+/* generic boxes */
+.cols { display: grid; gap: 6mm; }
+.c2 { grid-template-columns: 1fr 1fr; } .c3 { grid-template-columns: repeat(3, 1fr); } .c4 { grid-template-columns: repeat(4, 1fr); }
+.c-3-2 { grid-template-columns: 3fr 2fr; } .c-2-3 { grid-template-columns: 2fr 3fr; }
+.box { border: .3mm solid var(--line); border-radius: 2mm; padding: 4.5mm 5mm; background: #fff; }
+.box.soft { background: var(--soft); border-color: var(--soft); }
+.box.navy { background: var(--navy); border-color: var(--navy); color: #fff; }
+.box.navy h3 { color: #fff; } .box.navy p, .box.navy li { color: #d6daf5; }
+.box.teal { background: var(--tealsoft); border-color: var(--tealsoft); }
+.box h3 { font-size: 11pt; font-weight: 600; color: var(--navy); margin-bottom: 2mm; }
+.box p, .box li { font-size: 9pt; color: #353a46; }
+.kicker2 { font-size: 7.5pt; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--teal); margin-bottom: 1.5mm; }
+.ticks { list-style: none; padding: 0; } .ticks li { position: relative; padding-left: 5mm; }
+.ticks li::before { content: ""; position: absolute; left: 0; top: 1.6mm; width: 2.2mm; height: 2.2mm; border-radius: 50%; background: var(--teal); }
+.crosses li::before { background: #b9bdc8; }
+
+/* exec summary */
+.sumrow { display: grid; grid-template-columns: 40mm 1fr; gap: 6mm; padding: 3.2mm 0; border-bottom: .25mm solid var(--line); }
+.sumrow h4 { font-size: 9.5pt; color: var(--teal); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.sumrow p { font-size: 9.6pt; margin: 0; }
+.factbar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4mm; margin-top: 5mm; }
+.fact { background: var(--navy); color: #fff; border-radius: 2mm; padding: 4mm; }
+.fact b { display: block; font-size: 15pt; font-weight: 600; line-height: 1.1; }
+.fact span { font-size: 8pt; color: #c9cdf0; }
+
+/* symptoms */
+.sym { display: grid; grid-template-columns: 11mm 1fr; gap: 3.5mm; align-items: start; }
+.ic { width: 11mm; height: 11mm; border-radius: 2mm; background: var(--tealsoft); display: grid; place-items: center; }
+.ic svg { width: 6mm; height: 6mm; stroke: var(--teal); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.so { margin-top: 6mm; display: grid; grid-template-columns: 1fr 9mm 1fr; align-items: center; }
+.so .arrow { font-size: 18pt; color: var(--teal); text-align: center; }
+
+/* chevrons */
+.chev { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5mm; margin-bottom: 4mm; }
+.chev div { position: relative; background: var(--navy); color: #fff; height: 15mm; display: flex; flex-direction: column; justify-content: center; padding-left: 9mm; clip-path: polygon(0 0, calc(100% - 6mm) 0, 100% 50%, calc(100% - 6mm) 100%, 0 100%, 6mm 50%); }
+.chev div:first-child { clip-path: polygon(0 0, calc(100% - 6mm) 0, 100% 50%, calc(100% - 6mm) 100%, 0 100%); padding-left: 5mm; }
+.chev div:nth-child(2) { background: var(--navy2); } .chev div:nth-child(3) { background: #0d5f7a; } .chev div:nth-child(4) { background: var(--teal); }
+.chev b { font-size: 11pt; font-weight: 600; } .chev span { font-size: 7.5pt; color: #d6daf5; }
+.phgrid { display: grid; grid-template-columns: 30mm repeat(4, 1fr); gap: 0; border-top: .3mm solid var(--navy); }
+.phgrid > div { padding: 2.6mm 3mm; border-bottom: .25mm solid var(--line); font-size: 8.4pt; }
+.phgrid .rh { font-weight: 600; color: var(--navy); font-size: 8pt; text-transform: uppercase; letter-spacing: .04em; background: var(--soft); }
+.phgrid ul { padding-left: 3.5mm; } .phgrid li { margin-bottom: .8mm; }
+
+/* framework */
+.fw { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5mm; }
+.pillar { border-radius: 2mm; overflow: hidden; border: .3mm solid var(--line); }
+.pillar .ph { background: var(--navy); color: #fff; padding: 4mm 5mm; }
+.pillar:nth-child(2) .ph { background: #0d5f7a; } .pillar:nth-child(3) .ph { background: var(--teal); }
+.pillar .ph b { font-size: 12pt; font-weight: 600; display: block; } .pillar .ph span { font-size: 8pt; color: #dfe3fa; }
+.pillar .dim { padding: 2.6mm 5mm; border-bottom: .25mm solid var(--line); font-size: 8.6pt; }
+.pillar .dim b { color: var(--navy); font-weight: 600; display: block; font-size: 9pt; }
+.pillar .q { background: var(--soft); padding: 3mm 5mm; font-size: 8.2pt; color: #353a46; }
+.pillar .q b { color: var(--teal); font-weight: 600; }
+
+/* maturity */
+.mat { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2mm; align-items: end; }
+.lvl { border-radius: 2mm 2mm 0 0; color: #fff; padding: 3.5mm 4mm; display: flex; flex-direction: column; justify-content: flex-start; }
+.lvl .n { font-size: 20pt; font-weight: 700; line-height: 1; opacity: .9; }
+.lvl b { font-size: 10.5pt; font-weight: 600; margin: 1.5mm 0 1.5mm; display: block; }
+.lvl p { font-size: 8pt; color: rgba(255,255,255,.88); margin: 0; }
+.l1 { height: 52mm; background: #8a90a8; } .l2 { height: 62mm; background: #4f5a9e; } .l3 { height: 72mm; background: var(--navy2); } .l4 { height: 82mm; background: #0d5f7a; } .l5 { height: 92mm; background: var(--teal); }
+.matbase { height: .6mm; background: var(--ink); margin-bottom: 3mm; }
+.mlegend { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2mm; font-size: 7.8pt; color: var(--mute); }
+
+/* gantt */
+.gantt { width: 100%; border-collapse: collapse; font-size: 8.4pt; }
+.gantt th { font-weight: 600; color: #fff; background: var(--navy); padding: 2mm 2.5mm; text-align: left; font-size: 8pt; }
+.gantt th.d { text-align: center; width: 13mm; padding: 2mm 0; }
+.gantt td { border-bottom: .25mm solid var(--line); padding: 1.9mm 2.5mm; vertical-align: middle; }
+.gantt td.cell { padding: 1mm 0; border-left: .25mm dashed #e4e6ec; }
+.gantt .bar { height: 4mm; border-radius: 1mm; background: var(--navy2); margin: 0 .6mm; }
+.gantt .bar.t { background: var(--teal); } .gantt .bar.m { background: transparent; position: relative; }
+.gantt .bar.m::after { content: ""; position: absolute; left: 50%; top: 0; width: 4mm; height: 4mm; background: var(--amber); transform: translateX(-50%) rotate(45deg); }
+.gantt .ph td { background: var(--soft); font-weight: 600; color: var(--navy); }
+.gantt td.who { color: var(--mute); font-size: 7.8pt; }
+
+/* deliverables */
+.deliv { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4mm; }
+.deliv .box { display: flex; flex-direction: column; }
+.deliv .num { font-size: 22pt; font-weight: 700; color: var(--teal); line-height: 1; margin-bottom: 2mm; }
+.deliv .fmt { margin-top: auto; padding-top: 2.5mm; border-top: .25mm solid var(--line); font-size: 7.8pt; color: var(--mute); }
+.deliv .fmt b { color: var(--navy); }
+
+/* scorecard */
+.score { width: 100%; border-collapse: collapse; font-size: 8.5pt; }
+.score th { text-align: left; font-weight: 600; font-size: 7.8pt; color: var(--mute); text-transform: uppercase; letter-spacing: .04em; padding: 1.6mm 2mm; border-bottom: .4mm solid var(--navy); }
+.score td { padding: 2mm; border-bottom: .25mm solid var(--line); vertical-align: middle; }
+.score td.p { font-weight: 600; color: var(--navy); }
+.dots { display: flex; gap: 1.2mm; }
+.dots i { width: 3.4mm; height: 3.4mm; border-radius: 50%; background: #e4e6ec; display: block; }
+.dots i.f { background: var(--navy2); }
+.dots i.t { background: transparent; border: .45mm solid var(--teal); }
+.rag { display: inline-block; width: 13mm; text-align: center; font-size: 7pt; font-weight: 600; border-radius: 1mm; padding: .4mm 0; color: #fff; }
+.rag.r { background: #b42318; } .rag.a { background: var(--amber); } .rag.g { background: #1e7b4f; }
+.legend { display: flex; gap: 6mm; font-size: 7.5pt; color: var(--mute); margin-top: 2.5mm; align-items: center; }
+.legend span { display: inline-flex; align-items: center; gap: 1.5mm; }
+.legend .rag { width: auto; padding: .4mm 1.6mm; }
+
+/* matrix */
+.matrix { position: relative; height: 112mm; border-left: .4mm solid var(--ink); border-bottom: .4mm solid var(--ink); margin: 2mm 0 0 8mm; }
+.matrix .q { position: absolute; width: 50%; height: 50%; padding: 2.5mm 3mm; font-size: 7.5pt; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.matrix .q1 { left: 0; top: 0; background: var(--tealsoft); color: var(--teal); }
+.matrix .q2 { left: 50%; top: 0; background: #eef0f8; color: var(--navy2); }
+.matrix .q3 { left: 0; top: 50%; background: #fafbfc; color: var(--mute); }
+.matrix .q4 { left: 50%; top: 50%; background: #f6f6f8; color: var(--mute); }
+.matrix .pt { position: absolute; transform: translate(-50%, -50%); width: 7mm; height: 7mm; border-radius: 50%; background: var(--navy); color: #fff; font-size: 7.5pt; font-weight: 600; display: grid; place-items: center; }
+.matrix .ax { position: absolute; font-size: 7.5pt; color: var(--mute); font-weight: 600; }
+.matrix .ax.x { bottom: -6mm; right: 0; } .matrix .ax.y { left: -8mm; top: 0; writing-mode: vertical-rl; transform: rotate(180deg); }
+.ilist { font-size: 8.6pt; } .ilist div { display: grid; grid-template-columns: 7mm 1fr; gap: 2mm; padding: 2mm 0; border-bottom: .25mm solid var(--line); }
+.ilist i { font-style: normal; width: 5.5mm; height: 5.5mm; border-radius: 50%; background: var(--navy); color: #fff; font-size: 7pt; font-weight: 600; display: grid; place-items: center; }
+
+/* roles */
+.raci { width: 100%; border-collapse: collapse; font-size: 8.4pt; }
+.raci th { background: var(--navy); color: #fff; font-weight: 600; font-size: 8pt; padding: 2mm 2.5mm; text-align: left; }
+.raci td { padding: 2.2mm 2.5mm; border-bottom: .25mm solid var(--line); vertical-align: top; }
+.raci td:first-child { font-weight: 600; color: var(--navy); width: 42mm; }
+
+/* creds */
+.cred { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; }
+.cred .box { padding: 4mm; }
+.cred .stat { font-size: 12.5pt; white-space: nowrap; font-weight: 700; color: var(--teal); line-height: 1.05; margin: 1mm 0 1.5mm; }
+.cred .sec { font-size: 7pt; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--mute); }
+.cred h3 { font-size: 9.4pt; }
+.cred p { font-size: 8.2pt; }
+
+/* next */
+.steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4mm; counter-reset: s; }
+.steps .box { position: relative; padding-top: 9mm; }
+.steps .box::before { counter-increment: s; content: counter(s); position: absolute; top: 3mm; left: 5mm; width: 6mm; height: 6mm; border-radius: 50%; background: var(--teal); color: #fff; font-weight: 600; font-size: 8pt; display: grid; place-items: center; line-height: 6mm; text-align: center; }
+.contact { background: linear-gradient(120deg, #060a3d, var(--navy) 60%, #1b2a9a); color: #fff; border-radius: 2.5mm; padding: 7mm 8mm; display: grid; grid-template-columns: 1.4fr 1fr; gap: 8mm; align-items: center; margin-top: 7mm; }
+.contact h3 { font-size: 15pt; font-weight: 600; margin-bottom: 2mm; }
+.contact p { color: #d6daf5; font-size: 9.5pt; margin: 0; }
+.contact dl { margin: 0; display: grid; grid-template-columns: 22mm 1fr; gap: 1.6mm 3mm; font-size: 9.5pt; }
+.contact dt { color: #8fe3ee; font-weight: 600; font-size: 8pt; text-transform: uppercase; letter-spacing: .05em; padding-top: .5mm; }
+.contact dd { margin: 0; }
+.disc { font-size: 7pt; color: var(--mute); margin-top: 5mm; }
+</style>
+</head>
+<body>
+
+<!-- 1 COVER -->
+<section class="slide cover">
+  <svg class="net" viewBox="0 0 400 500" aria-hidden="true">
+    <g stroke="#5fd0de" stroke-width=".7" fill="none" opacity=".55">
+      <path d="M40 80 L150 40 L260 110 L370 60 M150 40 L170 170 L260 110 L330 220 L370 60 M40 80 L90 210 L170 170 L230 300 L330 220 L380 340 M90 210 L60 340 L150 390 L230 300 L310 430 L380 340 M60 340 L150 390 L120 480 M150 390 L250 470 L310 430 M170 170 L60 340"/>
+    </g>
+    <g fill="#8fe3ee"><circle cx="40" cy="80" r="3"/><circle cx="150" cy="40" r="4"/><circle cx="260" cy="110" r="3.5"/><circle cx="370" cy="60" r="3"/><circle cx="170" cy="170" r="5"/><circle cx="90" cy="210" r="3"/><circle cx="330" cy="220" r="4"/><circle cx="230" cy="300" r="5.5"/><circle cx="60" cy="340" r="3"/><circle cx="380" cy="340" r="3"/><circle cx="150" cy="390" r="4"/><circle cx="310" cy="430" r="3.5"/><circle cx="120" cy="480" r="3"/><circle cx="250" cy="470" r="3"/></g>
+  </svg>
+  <div class="inner">
+    <div class="brand"><img src="../../assets/img/logo-512.png" alt=""><div><b>SyncSense</b><i>Data in sync. Decisions that make sense.</i></div></div>
+    <p class="kicker">Approach document</p>
+    <h1>Free data and reporting assessment</h1>
+    <p class="sub">A fixed-scope review of one data area that ends with a clear diagnosis, a prioritised roadmap and a working prototype on your own data.</p>
+    <div class="meta">
+      <div><b>Prepared by</b>SyncSense Data &amp; AI Team</div>
+      <div><b>Version</b>1.0 · November 2026</div>
+      <div><b>Contact</b>sales@syncsense.in</div>
+    </div>
+  </div>
+  <div class="bar"></div>
+</section>
+
+<!-- 2 CONTENTS -->
+<section class="slide">
+  <div class="tracker"><span class="on">Contents</span></div>
+  <h2 class="title">Contents</h2>
+  <div class="rule"></div>
+  <div class="toc">
+    <div><span class="n">01</span><span class="t">Executive summary<small>The assessment on one page</small></span><span class="p">3</span></div>
+    <div><span class="n">05</span><span class="t">Deliverables<small>What you receive, and an illustrative scorecard</small></span><span class="p">10</span></div>
+    <div><span class="n">02</span><span class="t">Context and objectives<small>Why reporting breaks, and what the assessment answers</small></span><span class="p">4</span></div>
+    <div><span class="n">06</span><span class="t">Governance, roles and data security<small>Who does what; how your data is protected</small></span><span class="p">13</span></div>
+    <div><span class="n">03</span><span class="t">Our approach<small>Four phases and an indicative workplan</small></span><span class="p">6</span></div>
+    <div><span class="n">07</span><span class="t">Why SyncSense<small>Team background and selected results</small></span><span class="p">15</span></div>
+    <div><span class="n">04</span><span class="t">Assessment framework<small>Three pillars, nine dimensions, five maturity levels</small></span><span class="p">8</span></div>
+    <div><span class="n">08</span><span class="t">After the assessment and next steps<small>Your options, and how to start</small></span><span class="p">16</span></div>
+  </div>
+  <div class="foot"><span><b>SyncSense</b> · Free data and reporting assessment · Approach</span><span class="pg"></span></div>
+</section>
+
+<!-- 3 EXEC SUMMARY -->
+<section class="slide">
+  <div class="tracker"><span class="on">01 Executive summary</span><span>02 Context</span><span>03 Approach</span><span>04 Framework</span><span>05 Deliverables</span><span>06 Governance</span><span>07 Why SyncSense</span><span>08 Next steps</span></div>
+  <h2 class="title">In a few weeks, you will know where your reporting breaks, what to fix first, and what good looks like on your own data</h2>
+  <div class="rule"></div>
+  <div class="sumrow"><h4>The situation</h4><p>Most organisations already hold the data they need. The problem is getting a reliable, current answer out of it: numbers are rebuilt by hand in spreadsheets, reports disagree, and a few people hold the knowledge that keeps reporting running.</p></div>
+  <div class="sumrow"><h4>What we offer</h4><p>A free, fixed-scope assessment of <b>one data area</b> (for example, finance reporting, sales performance or claims). We review sources, definitions and current reports, score readiness across people, process and technology, and build a working prototype on your data.</p></div>
+  <div class="sumrow"><h4>How it runs</h4><p>Four phases: <b>Scope → Review → Prototype → Present</b>. Read-only access only. One senior SyncSense architect leads from the first conversation to the final presentation.</p></div>
+  <div class="sumrow"><h4>What you receive</h4><p>An audit and gap analysis, a readiness scorecard, a prioritised modernisation roadmap, a working prototype and a business impact summary measured against your own baseline.</p></div>
+  <div class="sumrow"><h4>What it costs</h4><p>Nothing. The scope is fixed so that it can stay free, and there is no obligation to continue. You decide on next steps after the final presentation.</p></div>
+  <div class="factbar">
+    <div class="fact"><b>1</b><span>data area, agreed with you at scoping</span></div>
+    <div class="fact"><b>4</b><span>phases, each ending in a visible output</span></div>
+    <div class="fact"><b>Read-only</b><span>access to one source or an extract you provide</span></div>
+    <div class="fact"><b>₹0</b><span>fee, with no obligation to continue</span></div>
+  </div>
+  <div class="foot"><span><b>SyncSense</b> · Free data and reporting assessment · Approach</span><span class="pg"></span></div>
+</section>
+
+<!-- 5 SYMPTOMS -->
+<section class="slide">
+  <div class="tracker"><span>01 Executive summary</span><span class="on">02 Context</span><span>03 Approach</span><span>04 Framework</span><span>05 Deliverables</span><span>06 Governance</span><span>07 Why SyncSense</span><span>08 Next steps</span></div>
+  <h2 class="title">The data usually exists; what fails is the path from source system to a trusted answer</h2>
+  <p class="lede">Six patterns we see most often when we review reporting. Each one has a different root cause, so each needs a different fix.</p>
+  <div class="cols c3" style="gap:5mm 7mm">
+    <div class="sym"><div class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></div><div><h3 style="font-size:10.5pt;color:var(--navy);font-weight:600;margin-bottom:1mm">Scattered sources</h3><p style="font-size:9pt">ERP, core systems, Tally, SaaS tools and spreadsheets each hold part of the picture, with no single place where they meet.</p></div></div>
+    <div class="sym"><div class="ic"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M4 10h16M10 4v16"/></svg></div><div><h3 style="font-size:10.5pt;color:var(--navy);font-weight:600;margin-bottom:1mm">Manual, Excel-dependent reporting</h3><p style="font-size:9pt">Monthly packs are rebuilt by hand. Every copy-paste is a chance for error, and the work repeats every cycle.</p></div></div>
+    <div class="sym"><div class="ic"><svg viewBox="0 0 24 24"><path d="M12 3v18M5 8l7-5 7 5"/><path d="M5 16l7 5 7-5"/></svg></div><div><h3 style="font-size:10.5pt;color:var(--navy);font-weight:600;margin-bottom:1mm">Conflicting definitions</h3><p style="font-size:9pt">“Revenue” or “active customer” means different things in different teams, so meetings start by arguing about whose number is right.</p></div></div>
+    <div class="sym"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></div><div><h3 style="font-size:10.5pt;color:var(--navy);font-weight:600;margin-bottom:1mm">Single points of failure</h3><p style="font-size:9pt">One analyst or one macro keeps reporting alive. When that person is away, the report is late or wrong.</p></div></div>
+    <div class="sym"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></div><div><h3 style="font-size:10.5pt;color:var(--navy);font-weight:600;margin-bottom:1mm">Slow answers to new questions</h3><p style="font-size:9pt">Dashboards answer the questions someone thought of months ago. Follow-up questions join an analytics backlog.</p></div></div>
+    <div class="sym"><div class="ic"><svg viewBox="0 0 24 24"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/></svg></div><div><h3 style="font-size:10.5pt;color:var(--navy);font-weight:600;margin-bottom:1mm">AI pilots that stall</h3><p style="font-size:9pt">Proofs of concept look good on clean sample data, then stall on undocumented definitions, data quality and access rules.</p></div></div>
+  </div>
+  <div class="so">
+    <div class="box soft"><div class="kicker2">So what</div><p style="margin:0;font-size:9.4pt">Buying another tool rarely fixes these patterns on its own. The first step is an honest diagnosis of where the path from source to answer breaks, and why.</p></div>
+    <div class="arrow">→</div>
+    <div class="box navy"><div class="kicker2" style="color:#8fe3ee">Our response</div><p style="margin:0;font-size:9.4pt">A short, evidence-based assessment on one data area, ending with a roadmap and a prototype you can try, before any larger investment.</p></div>
+  </div>
+  <div class="foot"><span><b>SyncSense</b> · Free data and reporting assessment · Approach</span><span class="pg"></span></div>
+</section>
+
+<!-- 6 OBJECTIVES & SCOPE -->
+<section class="slide">
+  <div class="tracker"><span>01 Executive summary</span><span class="on">02 Context</span><span>03 Approach</span><span>04 Framework</span><span>05 Deliverables</span><span>06 Governance</span><span>07 Why SyncSense</span><span>08 Next steps</span></div>
+  <h2 class="title">The assessment answers four questions, within a deliberately narrow scope</h2>
+  <div class="rule"></div>
+  <div class="cols c-3-2">
+    <div>
+      <div class="kicker2">Key questions the assessment answers</div>
+      <div class="cols c2" style="gap:4mm">
+        <div class="box"><span class="tag">Q1 · Where are we today?</span><p style="margin-top:1.5mm">How data flows from source systems to reports, where it is handled manually, and how mature the data area is across people, process and technology.</p></div>
+        <div class="box"><span class="tag">Q2 · What is holding us back?</span><p style="margin-top:1.5mm">The root causes behind late, manual or conflicting numbers, traced to specific sources, definitions or steps.</p></div>
+        <div class="box"><span class="tag">Q3 · What should we fix first?</span><p style="margin-top:1.5mm">A prioritised list of initiatives, sequenced by business value and effort, with quick wins separated from foundational work.</p></div>
+        <div class="box"><span class="tag">Q4 · What will good look like?</span><p style="margin-top:1.5mm">A working prototype on your data, so the future state is something you can try, not a slide you have to imagine.</p></div>
+      </div>
+    </div>
+    <div>
+      <div class="kicker2">Scope</div>
+      <div class="box teal" style="margin-bottom:4mm"><h3>In scope</h3><ul class="ticks">
+        <li>One data area, such as finance reporting, sales, claims or operations</li>
+        <li>Your top questions for that area, agreed at scoping</li>
+        <li>Read-only review of the relevant sources, definitions and reports</li>
+        <li>One working prototype: AskData on your questions, or a dashboard of your KPIs</li></ul></div>
+      <div class="box"><h3>Out of scope</h3><ul class="ticks crosses">
+        <li>An enterprise-wide audit of every system</li>
+        <li>Changes to production systems or data</li>
+        <li>Production build, migration or roll-out (offered separately if you choose)</li></ul></div>
+    </div>
+  </div>
+  <div class="box soft" style="margin-top:6mm;display:grid;grid-template-columns:46mm 1fr;gap:5mm;align-items:center"><div class="kicker2" style="margin:0">Example data areas</div><p style="margin:0;font-size:9.2pt">Finance month-end pack · Sales and distributor performance · Insurance claims · Collections and receivables · Procurement and supplier performance · Plant and production reporting</p></div>
+  <div class="foot"><span><b>SyncSense</b> · Free data and reporting assessment · Approach</span><span class="pg"></span></div>
+</section>
+
+<!-- 7 APPROACH -->
+<section class="slide">
+  <div class="tracker"><span>01 Executive summary</span><span>02 Context</span><span class="on">03 Approach</span><span>04 Framework</span><span>05 Deliverables</span><span>06 Governance</span><span>07 Why SyncSense</span><span>08 Next steps</span></div>
+  <h2 class="title">A four-phase approach: each phase builds on the last and ends in an output you can review</h2>
+  <div class="rule"></div>
+  <div class="chev">
+    <div><b>1 · Scope</b><span>Agree the area and success criteria</span></div>
+    <div><b>2 · Review</b><span>Diagnose sources, definitions, reports</span></div>
+    <div><b>3 · Prototype</b><span>Build on your own data</span></div>
+    <div><b>4 · Present</b><span>Findings, roadmap, decision</span></div>
+  </div>
+  <div class="phgrid">
+    <div class="rh">Objective</div>
+    <div>Agree one data area, the top business questions and how success will be judged.</div>
+    <div>Understand how data moves from source to report today, and where and why it breaks.</div>
+    <div>Show what the future state looks like, working on your data.</div>
+    <div>Give you the evidence and the plan to decide what to do next.</div>
+    <div class="rh">Key activities</div>
+    <div><ul><li>Kick-off with the business sponsor</li><li>Select the data area and 10–20 priority questions</li><li>Confirm access, contacts and confidentiality</li></ul></div>
+    <div><ul><li>Stakeholder interviews: report users, producers, IT</li><li>Read-only review of sources and data quality</li><li>Trace current reports and definitions end to end</li><li>Score readiness against the framework</li></ul></div>
+    <div><ul><li>Model the core entities and business definitions</li><li>Connect the prototype to one source or extract</li><li>Answer your priority questions; record accuracy</li></ul></div>
+    <div><ul><li>Walk through findings and scorecard</li><li>Demonstrate the prototype live</li><li>Agree priorities and the roadmap</li></ul></div>
+    <div class="rh">Your input</div>
+    <div>Sponsor, data owner and IT contact named; list of questions</div>
+    <div>Short interviews; read-only access or an extract; sample reports</div>
+    <div>Review of interim answers with the data owner</div>
+    <div>Sponsor and key stakeholders attend the final session</div>
+    <div class="rh">Output</div>
+    <div><b>Scope note</b>: area, questions, success criteria</div>
+    <div><b>Current-state map</b> and readiness scores</div>
+    <div><b>Working prototype</b> with an accuracy log</div>
+    <div><b>Final report</b>, roadmap and impact summary</div>
+  </div>
+  <div class="foot"><span><b>SyncSense</b> · Free data and reporting assessment · Approach</span><span class="pg"></span></div>
+</section>
+
+<!-- 10 WORKPLAN -->
+<section class="slide">
+  <div class="tracker"><span>01 Executive summary</span><span>02 Context</span><span class="on">03 Approach</span><span>04 Framework</span><span>05 Deliverables</span><span>06 Governance</span><span>07 Why SyncSense</span><span>08 Next steps</span></div>
+  <h2 class="title">An indicative three-week workplan; exact timing is agreed with you at scoping</h2>
+  <div class="rule"></div>
+  <table class="gantt">
+    <thead><tr><th style="width:92mm">Activity</th><th style="width:44mm">Led by</th><th class="d">Wk 1a</th><th class="d">Wk 1b</th><th class="d">Wk 2a</th><th class="d">Wk 2b</th><th class="d">Wk 3a</th><th class="d">Wk 3b</th></tr></thead>
+    <tbody>
+      <tr class="ph"><td colspan="8">1 · Scope</td></tr>
+      <tr><td>Kick-off; confirm area, questions and success criteria</td><td class="who">Sponsor + SyncSense lead</td><td class="cell"><div class="bar"></div></td><td class="cell"></td><td class="cell"></td><td class="cell"></td><td class="cell"></td><td class="cell"></td></tr>
+      <tr><td>Access, contacts and confidentiality agreed</td><td class="who">IT contact</td><td class="cell"><div class="bar"></div></td><td class="cell"><div class="bar"></div></td><td class="cell"></td><td class="cell"></td><td class="cell"></td><td class="cell"></td></tr>
+      <tr class="ph"><td colspan="8">2 · Review</td></tr>
+      <tr><td>Stakeholder interviews</td><td class="who">SyncSense lead</td><td class="cell"></td><td class="cell"><div class="bar"></div></td><td class="cell"><div class="bar"></div></td><td class="cell"></td><td class="cell"></td><td class="cell"></td></tr>
+      <tr><td>Source, data quality and report review (read-only)</td><td class="who">SyncSense analyst</td><td class="cell"></td><td class="cell"><div class="bar"></div></td><td class="cell"><div class="bar"></div></td><td class="cell"></td><td class="cell"></td><td class="cell"></td></tr>
+      <tr><td>Readiness scoring and gap analysis</td><td class="who">SyncSense lead</td><td class="cell"></td><td class="cell"></td><td class="cell"><div class="bar"></div></td><td class="cell"><div class="bar"></div></td><td class="cell"></td><td class="cell"></td></tr>
+      <tr class="ph"><td colspan="8">3 · Prototype</td></tr>
+      <tr><td>Model core entities and definitions; connect one source</td><td class="who">SyncSense analyst</td><td class="cell"></td><td class="cell"></td><td class="cell"><div class="bar t"></div></td><td class="cell"><div class="bar t"></div></td><td class="cell"></td><td class="cell"></td></tr>
+      <tr><td>Answer priority questions; review with data owner</td><td class="who">SyncSense + data owner</td><td class="cell"></td><td class="cell"></td><td class="cell"></td><td class="cell"><div class="bar t"></div></td><td class="cell"><div class="bar t"></div></td><td class="cell"></td></tr>
+      <tr class="ph"><td colspan="8">4 · Present</td></tr>
+      <tr><td>Roadmap and business impact summary</td><td class="who">SyncSense lead</td><td class="cell"></td><td class="cell"></td><td class="cell"></td><td class="cell"></td><td class="cell"><div class="bar"></div></td><td class="cell"><div class="bar"></div></td></tr>
+      <tr><td>Final presentation and live prototype demo</td><td class="who">Sponsor + stakeholders</td><td class="cell"></td><td class="cell"></td><td class="cell"></td><td class="cell"></td><td class="cell"></td><td class="cell"><div class="bar m"></div></td></tr>
+    </tbody>
+  </table>
+  <div class="legend"><span><i style="width:6mm;height:3mm;background:var(--navy2);border-radius:1mm;display:inline-block"></i> Assessment activity</span><span><i style="width:6mm;height:3mm;background:var(--teal);border-radius:1mm;display:inline-block"></i> Prototype build</span><span><i style="width:3mm;height:3mm;background:var(--amber);transform:rotate(45deg);display:inline-block"></i> Decision point</span><span>a / b = first / second half of the week</span></div>
+  <div class="foot"><span><b>SyncSense</b> · Free data and reporting assessment · Approach</span><span class="pg"></span></div>
+</section>
+
+<!-- 8 FRAMEWORK -->
+<section class="slide">
+  <div class="tracker"><span>01 Executive summary</span><span>02 Context</span><span>03 Approach</span><span class="on">04 Framework</span><span>05 Deliverables</span><span>06 Governance</span><span>07 Why SyncSense</span><span>08 Next steps</span></div>
+  <h2 class="title">We assess readiness across three pillars and nine dimensions, so findings trace to a specific cause</h2>
+  <div class="rule"></div>
+  <div class="fw">
+    <div class="pillar"><div class="ph"><b>People and organisation</b><span>Will people use and trust the answers?</span></div>
+      <div class="dim"><b>Sponsorship and ownership</b>A named business owner for the data area and its outcomes.</div>
+      <div class="dim"><b>Skills and capacity</b>Who builds reports today, how much depends on a few individuals.</div>
+      <div class="dim"><b>Data culture and adoption</b>Whether decisions use reports, or reports are rebuilt in Excel.</div>
+      <div class="q"><b>Why it matters:</b> without ownership and buy-in, even the best tools go unused.</div></div>
+    <div class="pillar"><div class="ph"><b>Process and governance</b><span>Is the data reliable and defined once?</span></div>
+      <div class="dim"><b>Definitions and business rules</b>Whether KPIs such as revenue have one written, agreed definition.</div>
+      <div class="dim"><b>Data quality</b>Completeness, accuracy and timeliness of the data feeding reports.</div>
+      <div class="dim"><b>Reporting workflow and controls</b>Manual steps, reconciliations, sign-offs and access rules.</div>
+      <div class="q"><b>Why it matters:</b> unreliable or undefined data produces confident but wrong answers.</div></div>
+    <div class="pillar"><div class="ph"><b>Technology and architecture</b><span>Can the platform deliver at scale?</span></div>
+      <div class="dim"><b>Sources and integration</b>How systems connect, and how much is extracted by hand.</div>
+      <div class="dim"><b>Storage and modelling</b>Warehouse, lake or semantic layer, and how well it models the business.</div>
+      <div class="dim"><b>Analytics and AI tooling</b>BI tools, self-service, and readiness for Text-to-SQL or AI use cases.</div>
+      <div class="q"><b>Why it matters:</b> tools matched to real needs scale without unnecessary cost or complexity.</div></div>
+  </div>
+  <div class="foot"><span><b>SyncSense</b> · Free data and reporting assessment · Approach</span><span class="pg"></span></div>
+</section>
+
+<!-- 9 MATURITY -->
+<section class="slide">
+  <div class="tracker"><span>01 Executive summary</span><span>02 Context</span><span>03 Approach</span><span class="on">04 Framework</span><span>05 Deliverables</span><span>06 Governance</span><span>07 Why SyncSense</span><span>08 Next steps</span></div>
+  <h2 class="title">Each dimension is scored on a five-level maturity scale, against evidence rather than opinion</h2>
+  <p class="lede">We score the current state and agree a realistic target state with you. The gap between them drives the roadmap.</p>
+  <div class="mat">
+    <div class="lvl l1"><span class="n">1</span><b>Ad hoc</b><p>Reports built by hand from exports. Definitions live in people’s heads. Numbers often disagree.</p></div>
+    <div class="lvl l2"><span class="n">2</span><b>Repeatable</b><p>Regular reports exist but depend on manual steps and key individuals. Some definitions written down.</p></div>
+    <div class="lvl l3"><span class="n">3</span><b>Defined</b><p>Core sources integrated; agreed KPI definitions; scheduled refresh; basic data quality checks.</p></div>
+    <div class="lvl l4"><span class="n">4</span><b>Managed</b><p>Single source of truth; governed access; quality monitored; business users self-serve routine questions.</p></div>
+    <div class="lvl l5"><span class="n">5</span><b>Optimised</b><p>Trusted, explainable answers in plain English; shared business model reused by reports and AI.</p></div>
+  </div>
+  <div class="matbase"></div>
+  <div class="mlegend"><span>Typical sign: the monthly pack takes days</span><span>Typical sign: reporting stops when one person is away</span><span>Typical sign: dashboards trusted, but new questions wait</span><span>Typical sign: most questions answered without IT</span><span>Typical sign: AI use cases reach production</span></div>
+  <div class="foot"><span><b>SyncSense</b> · Free data and reporting assessment · Approach</span><span class="pg"></span></div>
+</section>
+
+<!-- 11 DELIVERABLES -->
+<section class="slide">
+  <div class="tracker"><span>01 Executive summary</span><span>02 Context</span><span>03 Approach</span><span>04 Framework</span><span class="on">05 Deliverables</span><span>06 Governance</span><span>07 Why SyncSense</span><span>08 Next steps</span></div>
+  <h2 class="title">You receive four deliverables: a diagnosis, a plan, a working prototype and the business case to act</h2>
+  <div class="rule"></div>
+  <div class="deliv">
+    <div class="box"><div class="num">01</div><h3>Audit and gap analysis</h3><p>A review of current data workflows that identifies manual bottlenecks, Excel dependencies and single points of failure, with a readiness score for each of the nine dimensions.</p><div class="fmt"><b>Format:</b> report and scorecard (PDF)</div></div>
+    <div class="box"><div class="num">02</div><h3>Modernisation roadmap</h3><p>A step-by-step plan to move from manual reporting to automated, current dashboards and plain-English questions, sequenced into quick wins, foundations and scale-up.</p><div class="fmt"><b>Format:</b> roadmap and initiative list</div></div>
+    <div class="box"><div class="num">03</div><h3>Working prototype</h3><p>A prototype on your own data: usually AskData answering your priority questions, or a dashboard showing how your KPIs will look, with a log of which answers were verified.</p><div class="fmt"><b>Format:</b> live demo; access during review</div></div>
+    <div class="box"><div class="num">04</div><h3>Business impact summary</h3><p>Where time could be saved, where errors come from and what it would take to scale, measured against your own baseline rather than an industry benchmark.</p><div class="fmt"><b>Format:</b> one-page summary for the sponsor</div></div>
+  </div>
+  <div class="box soft" style="margin-top:6mm;display:grid;grid-template-columns:40mm 1fr;gap:5mm;align-items:center"><div class="kicker2" style="margin:0">Our standard</div><p style="margin:0;font-size:9.2pt">Every finding is traceable to evidence: a source, a report, a definition or an interview. Every recommendation names what it fixes, the effort involved and who would own it. We do not quote accuracy figures before measuring them on your questions.</p></div>
+  <div class="foot"><span><b>SyncSense</b> · Free data and reporting assessment · Approach</span><span class="pg"></span></div>
+</section>
+
+<!-- 12 SCORECARD -->
+<section class="slide">
+  <div class="tracker"><span>01 Executive summary</span><span>02 Context</span><span>03 Approach</span><span>04 Framework</span><span class="on">05 Deliverables</span><span>06 Governance</span><span>07 Why SyncSense</span><span>08 Next steps</span></div>
+  <span class="illus">Illustrative example · not client data</span>
+  <h2 class="title" style="margin-top:2mm">The readiness scorecard shows current and target maturity for each dimension, and where the gaps are largest</h2>
+  <div class="cols c-3-2" style="margin-top:3mm">
+    <table class="score">
+      <thead><tr><th>Pillar</th><th>Dimension</th><th>Maturity (1–5)</th><th>Gap</th></tr></thead>
+      <tbody>
+        <tr><td class="p" rowspan="3">People</td><td>Sponsorship and ownership</td><td><div class="dots"><i class="f"></i><i class="f"></i><i class="f"></i><i class="t"></i><i></i></div></td><td><span class="rag g">Low</span></td></tr>
+        <tr><td>Skills and capacity</td><td><div class="dots"><i class="f"></i><i class="f"></i><i class="t"></i><i class="t"></i><i></i></div></td><td><span class="rag a">Medium</span></td></tr>
+        <tr><td>Data culture and adoption</td><td><div class="dots"><i class="f"></i><i class="f"></i><i class="t"></i><i class="t"></i><i></i></div></td><td><span class="rag a">Medium</span></td></tr>
+        <tr><td class="p" rowspan="3">Process</td><td>Definitions and business rules</td><td><div class="dots"><i class="f"></i><i class="t"></i><i class="t"></i><i class="t"></i><i></i></div></td><td><span class="rag r">High</span></td></tr>
+        <tr><td>Data quality</td><td><div class="dots"><i class="f"></i><i class="f"></i><i class="t"></i><i class="t"></i><i></i></div></td><td><span class="rag a">Medium</span></td></tr>
+        <tr><td>Reporting workflow and controls</td><td><div class="dots"><i class="f"></i><i class="t"></i><i class="t"></i><i class="t"></i><i></i></div></td><td><span class="rag r">High</span></td></tr>
+        <tr><td class="p" rowspan="3">Technology</td><td>Sources and integration</td><td><div class="dots"><i class="f"></i><i class="f"></i><i class="t"></i><i class="t"></i><i></i></div></td><td><span class="rag a">Medium</span></td></tr>
+        <tr><td>Storage and modelling</td><td><div class="dots"><i class="f"></i><i class="t"></i><i class="t"></i><i class="t"></i><i></i></div></td><td><span class="rag r">High</span></td></tr>
+        <tr><td>Analytics and AI tooling</td><td><div class="dots"><i class="f"></i><i class="f"></i><i class="f"></i><i class="t"></i><i></i></div></td><td><span class="rag g">Low</span></td></tr>
+      </tbody>
+    </table>
+    <div>
+      <div class="box navy"><div class="kicker2" style="color:#8fe3ee">How to read this example</div>
+        <ul style="padding-left:4mm"><li>Filled dots show current maturity; outlined dots show the agreed target.</li>
+        <li>The largest gaps sit in <b style="color:#fff">definitions</b>, <b style="color:#fff">reporting workflow</b> and <b style="color:#fff">modelling</b>: the organisation has tools, but no shared definition of its KPIs.</li>
+        <li>The roadmap would therefore start with a shared data model and written definitions, not a new BI tool.</li></ul></div>
+      <div class="legend" style="flex-wrap:wrap;gap:3mm 6mm"><span><span class="dots"><i class="f"></i></span> Current</span><span><span class="dots"><i class="t"></i></span> Target</span><span><span class="rag r">High</span> gap ≥ 2 levels</span><span><span class="rag a">Medium</span> 1–2</span><span><span class="rag g">Low</span> ≤ 1</span></div>
+    </div>
+  </div>
+  <div class="foot"><span><b>SyncSense</b> · Free data and reporting assessment · Approach</span><span class="pg"></span></div>
+</section>
+
+<!-- 13 ROADMAP / PRIORITISATION -->
+<section class="slide">
+  <div class="tracker"><span>01 Executive summary</span><span>02 Context</span><span>03 Approach</span><span>04 Framework</span><span class="on">05 Deliverables</span><span>06 Governance</span><span>07 Why SyncSense</span><span>08 Next steps</span></div>
+  <span class="illus">Illustrative example · not client data</span>
+  <h2 class="title" style="margin-top:2mm">Recommendations are prioritised by value and effort, then sequenced into a phased roadmap</h2>
+  <div class="cols c2" style="margin-top:3mm;gap:10mm">
+    <div>
+      <div class="matrix">
+        <div class="q q1">Quick wins</div><div class="q q2">Strategic projects</div><div class="q q3">Fill-ins</div><div class="q q4">Reconsider</div>
+        <div class="pt" style="left:18%;top:20%">1</div><div class="pt" style="left:32%;top:34%">2</div><div class="pt" style="left:64%;top:16%">3</div><div class="pt" style="left:78%;top:30%">4</div><div class="pt" style="left:26%;top:66%">5</div><div class="pt" style="left:70%;top:76%">6</div>
+        <span class="ax y">Business value →</span><span class="ax x">Effort and complexity →</span>
+      </div>
+    </div>
+    <div>
+      <div class="ilist">
+        <div><i>1</i><span><b>Write down the ten core KPI definitions</b> and agree an owner for each.</span></div>
+        <div><i>2</i><span><b>Automate the monthly extract</b> from the ERP that is currently copied by hand.</span></div>
+        <div><i>3</i><span><b>Build a shared data model</b> (warehouse or ontology) for the data area.</span></div>
+        <div><i>4</i><span><b>Roll out plain-English questions</b> on the shared model, with access rules.</span></div>
+        <div><i>5</i><span><b>Add data quality checks</b> to the nightly load.</span></div>
+        <div><i>6</i><span><b>Replace the legacy reporting server</b>; revisit after phase 2.</span></div>
+      </div>
+      <div class="cols c3" style="gap:2mm;margin-top:5mm">
+        <div class="box teal" style="padding:3mm"><div class="kicker2">Phase 1 · Quick wins</div><p style="font-size:8pt;margin:0">Definitions, automated extracts, quality checks</p></div>
+        <div class="box soft" style="padding:3mm"><div class="kicker2">Phase 2 · Foundations</div><p style="font-size:8pt;margin:0">Shared data model, governed access</p></div>
+        <div class="box soft" style="padding:3mm"><div class="kicker2">Phase 3 · Scale</div><p style="font-size:8pt;margin:0">Self-service and AI on the shared model</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span><b>SyncSense</b> · Free data and reporting assessment · Approach</span><span class="pg"></span></div>
+</section>
+
+<!-- 14 GOVERNANCE -->
+<section class="slide">
+  <div class="tracker"><span>01 Executive summary</span><span>02 Context</span><span>03 Approach</span><span>04 Framework</span><span>05 Deliverables</span><span class="on">06 Governance</span><span>07 Why SyncSense</span><span>08 Next steps</span></div>
+  <h2 class="title">A small joint team with clear roles keeps the assessment light on your people’s time</h2>
+  <div class="rule"></div>
+  <div class="cols c2" style="gap:8mm">
+    <div>
+      <div class="kicker2">Your team</div>
+      <table class="raci"><thead><tr><th>Role</th><th>Responsibilities</th></tr></thead><tbody>
+        <tr><td>Business sponsor</td><td>Chooses the data area and questions; attends kick-off and the final presentation; decides next steps.</td></tr>
+        <tr><td>Data owner</td><td>Knows the data and the reports; joins interviews; reviews prototype answers for correctness.</td></tr>
+        <tr><td>IT contact</td><td>Arranges read-only access or an extract; confirms security requirements.</td></tr>
+        <tr><td>Report users (2–4)</td><td>Short interviews on how reports are produced and used today.</td></tr>
+      </tbody></table>
+    </div>
+    <div>
+      <div class="kicker2">SyncSense team</div>
+      <table class="raci"><thead><tr><th>Role</th><th>Responsibilities</th></tr></thead><tbody>
+        <tr><td>Senior architect (lead)</td><td>Single point of contact from first call to final presentation; runs interviews, scoring and the roadmap.</td></tr>
+        <tr><td>Data and BI analyst</td><td>Reviews sources and data quality; builds the prototype and the accuracy log.</td></tr>
+        <tr><td>Product specialist (as needed)</td><td>Configures AskData, Ontology Studio or dashboards for the prototype.</td></tr>
+      </tbody></table>
+      <div class="box soft" style="margin-top:5mm"><div class="kicker2">Working rhythm</div><ul class="ticks"><li>Kick-off and final presentation with the sponsor</li><li>A short weekly check-in to review progress and open questions</li><li>Shared issue list for access, data and definition questions</li></ul></div>
+    </div>
+  </div>
+  <div class="foot"><span><b>SyncSense</b> · Free data and reporting assessment · Approach</span><span class="pg"></span></div>
+</section>
+
+<!-- 15 SECURITY -->
+<section class="slide">
+  <div class="tracker"><span>01 Executive summary</span><span>02 Context</span><span>03 Approach</span><span>04 Framework</span><span>05 Deliverables</span><span class="on">06 Governance</span><span>07 Why SyncSense</span><span>08 Next steps</span></div>
+  <h2 class="title">Your data stays under your control: read-only access, minimal data, used only for the assessment</h2>
+  <div class="rule"></div>
+  <div class="cols c3">
+    <div class="box"><div class="ic" style="margin-bottom:3mm"><svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div><h3>Read-only, least access</h3><p>We work in your environment or on an extract you provide. Database accounts are read-only and limited to the tables the data area needs. We never change production systems.</p></div>
+    <div class="box"><div class="ic" style="margin-bottom:3mm"><svg viewBox="0 0 24 24"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/></svg></div><h3>Confidentiality</h3><p>We sign a confidentiality agreement if you need one before any data is shared. Data is used only for the assessment and is deleted or returned at the end.</p></div>
+    <div class="box"><div class="ic" style="margin-bottom:3mm"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7"/><circle cx="18" cy="16" r="3"/></svg></div><h3>Personal data and AI</h3><p>Personal data can be masked or excluded. If the prototype uses AskData, the language model sees questions and table descriptions, not your rows. A self-hosted model is available where required.</p></div>
+  </div>
+  <div class="box navy" style="margin-top:6mm;display:grid;grid-template-columns:50mm 1fr;gap:6mm;align-items:center"><div class="kicker2" style="color:#8fe3ee;margin:0">Regulatory context</div><p style="margin:0">For organisations in India, keeping personal data inside your own environment simplifies compliance with the Digital Personal Data Protection Act, 2023. We follow your internal security and access policies throughout.</p></div>
+  <div class="cols c3" style="margin-top:6mm;gap:5mm">
+    <div class="box soft"><div class="kicker2">Before we start</div><ul class="ticks"><li>Confidentiality agreement signed, if required</li><li>Tables and fields needed listed and agreed</li><li>Read-only account or extract arranged by your IT</li></ul></div>
+    <div class="box soft"><div class="kicker2">During the assessment</div><ul class="ticks"><li>Access limited to the named SyncSense team</li><li>No copies outside the agreed environment</li><li>Personal fields masked where not needed</li></ul></div>
+    <div class="box soft"><div class="kicker2">At the end</div><ul class="ticks"><li>Access revoked</li><li>Extracts deleted or returned</li><li>Written confirmation on request</li></ul></div>
+  </div>
+  <div class="foot"><span><b>SyncSense</b> · Free data and reporting assessment · Approach</span><span class="pg"></span></div>
+</section>
+
+<!-- 16 WHY SYNCSENSE -->
+<section class="slide">
+  <div class="tracker"><span>01 Executive summary</span><span>02 Context</span><span>03 Approach</span><span>04 Framework</span><span>05 Deliverables</span><span>06 Governance</span><span class="on">07 Why SyncSense</span><span>08 Next steps</span></div>
+  <h2 class="title">Our team has delivered enterprise data, BI and AI work for more than 25 years, with measurable results</h2>
+  <div class="cols c-2-3" style="gap:7mm;margin-top:3mm">
+    <div>
+      <div class="cols c2" style="gap:3mm;margin-bottom:4mm">
+        <div class="fact"><b>25+</b><span>years of enterprise data, BI and integration delivery</span></div>
+        <div class="fact"><b>10+</b><span>projects executed</span></div>
+        <div class="fact"><b>3</b><span>products: AskData, Ontology Studio, Ovantaa CRM</span></div>
+        <div class="fact"><b>7</b><span>industries, from insurance to manufacturing</span></div>
+      </div>
+      <div class="box soft"><div class="kicker2">What makes us different</div><ul class="ticks">
+        <li>Senior architects lead every engagement; background spans SAS, Oracle, Deloitte, BDO and leading analytics firms</li>
+        <li>Vendor-neutral advice: Alteryx, dbt, Fivetran, SAS, Azure Data Fabric, Snowflake, SingleStore</li>
+        <li>Our own products, used only where they fit</li></ul></div>
+    </div>
+    <div>
+      <div class="kicker2">Selected results (client names withheld)</div>
+      <div class="cred">
+        <div class="box"><span class="sec">Consulting · Actuarial</span><div class="stat">4+ hrs → &lt;30 min</div><h3>Actuarial report preparation</h3><p>Text-to-SQL agents on a 1.4 TB database; 5,000 client reports a month.</p></div>
+        <div class="box"><span class="sec">Consumer goods</span><div class="stat">90%</div><h3>Faster campaign insight</h3><p>Agentic Text-to-SQL cut time-to-insight from 3–5 days to under 30 minutes.</p></div>
+        <div class="box"><span class="sec">Tax · Legal</span><div class="stat">4–5 wks → 1 wk</div><h3>GST dispute filing</h3><p>AI legal intelligence for drafting and research on GST disputes.</p></div>
+        <div class="box"><span class="sec">Software</span><div class="stat">50%</div><h3>Lower support cost</h3><p>A GenAI email assistant for a CRM product company’s support team.</p></div>
+        <div class="box"><span class="sec">Insurance</span><div class="stat">8-person team</div><h3>Managed BI unit</h3><p>Runs data freshness, scheduled reports, development and support.</p></div>
+        <div class="box"><span class="sec">Finance</span><div class="stat">Tally → Power BI</div><h3>Multi-company finance</h3><p>Consolidated finance dashboards across many group companies.</p></div>
+      </div>
+    </div>
+  </div>
+  <p class="note">Full case studies at www.syncsense.in/case-studies. Results are as reported for each engagement; your results depend on your data and scope.</p>
+  <div class="foot"><span><b>SyncSense</b> · Free data and reporting assessment · Approach</span><span class="pg"></span></div>
+</section>
+
+<!-- 17 NEXT STEPS -->
+<section class="slide">
+  <div class="tracker"><span>01 Executive summary</span><span>02 Context</span><span>03 Approach</span><span>04 Framework</span><span>05 Deliverables</span><span>06 Governance</span><span>07 Why SyncSense</span><span class="on">08 Next steps</span></div>
+  <h2 class="title">After the assessment you choose the next step, or stop, with no obligation either way</h2>
+  <div class="rule"></div>
+  <div class="cols c4" style="gap:4mm">
+    <div class="box"><div class="kicker2">Option A</div><h3>Act on it yourselves</h3><p>Keep the report, scorecard and roadmap and deliver it with your own team. Many quick wins need no outside help.</p></div>
+    <div class="box"><div class="kicker2">Option B</div><h3>Four-week pilot</h3><p>Turn the prototype into a pilot on one real source, with success criteria agreed up front: accuracy, users, time to answer.</p></div>
+    <div class="box"><div class="kicker2">Option C</div><h3>Implementation project</h3><p>SyncSense delivers the roadmap: data warehouse or model, pipelines, dashboards and AI, from pilot to production.</p></div>
+    <div class="box"><div class="kicker2">Option D</div><h3>Contract staffing</h3><p>Vetted data, BI and AI specialists join your team, or a managed team runs the function for you.</p></div>
+  </div>
+  <div class="contact">
+    <div><h3>Start your free assessment</h3><p>Tell us the data area you would like reviewed and your top questions. We will reply within one business day to arrange a short scoping call.</p></div>
+    <dl><dt>Email</dt><dd>sales@syncsense.in</dd><dt>Phone</dt><dd>+91 91364 33008</dd><dt>Web</dt><dd>www.syncsense.in/free-data-assessment</dd><dt>Based in</dt><dd>Mumbai, India · clients in India, the Middle East, Africa and the UK</dd></dl>
+  </div>
+  <p class="disc">This document describes SyncSense’s standard approach. Scope, timing and deliverables for your assessment are confirmed in writing at scoping. Pages marked “Illustrative example” do not contain client data. © 2026 SyncSense. All rights reserved.</p>
+  <div class="foot"><span><b>SyncSense</b> · Free data and reporting assessment · Approach</span><span class="pg"></span></div>
+</section>
+
+</body>
+</html>
