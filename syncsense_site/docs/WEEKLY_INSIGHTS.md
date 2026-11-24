@@ -33,7 +33,7 @@ If any step fails (for example the deploy), still commit and push the article, a
 - Plain language. No buzzwords (leverage, synergy, best-in-class, cutting-edge, unlock, revolutionise, seamless, empower, game-changing, leading provider). No "It's not X, it's Y" patterns. At most two em dashes.
 - Link to at least two relevant pages on the site (a product, a product use-case page, an industry page or a case study) and end with a CTA to book a demo or request the free data assessment.
 - Header fields: `path` (`/insights/<slug>/`), `schema: ["Article"]`, `title` (under 60 characters, ending `| SyncSense`), `description` (140 to 155 characters), `keyword`, `h1`, `short` (breadcrumb label), `date`, `read` (minutes).
-- Author is Santosh Tiwari (added automatically by the build).
+- Author is "SyncSense Data & AI Team" (added automatically by the build). Never add a personal name.
 
 ## LinkedIn post rules
 

@@ -29,7 +29,7 @@ The technical foundation is strong: static HTML, Lighthouse 100 on mobile, uniqu
 | Speed and Core Web Vitals | Good. Lighthouse 100; LCP 1.0–1.3 s, CLS 0. Pages about 4 KB gzipped HTML. |
 | Mobile | Good. Responsive at 375–2560 px, no horizontal scroll. |
 | HTTPS | Good on the preview. HSTS header not set; add after launch once HTTPS is confirmed on syncsense.in. |
-| Structured data | Organization on every page; ProfessionalService, SoftwareApplication, Service, FAQPage, BreadcrumbList, Article and Person where relevant. Run Google's Rich Results Test after launch. |
+| Structured data | Organization on every page; ProfessionalService, SoftwareApplication, Service, FAQPage, BreadcrumbList and Article where relevant. Run Google's Rich Results Test after launch. |
 
 ### On-page
 | Issue | Impact | Recommendation |
@@ -43,7 +43,7 @@ The technical foundation is strong: static HTML, Lighthouse 100 on mobile, uniqu
 |---|---|---|
 | Case studies are thin (165–345 words) and have no dates | High for trust and ranking | Add per case: timeline, team size, technology used, what was hard, and one approved quote. These pages are the strongest E-E-A-T signal on the site. |
 | Only 3 articles | Medium | The Monday schedule fixes this over time. Prioritise topics with search demand (Text-to-SQL, DPDP Act for AI, GraphRAG, GST invoicing). |
-| No author page | Medium | Add Santosh’s photo, bio and personal LinkedIn on About; articles already link there. |
+| No author page | Medium | Resolved: articles are credited to the SyncSense Data & AI Team, linking to About. |
 | No comparison or alternative pages | Medium | Consider honest pages such as “AskData vs BI tool Q&A features” or “Ovantaa CRM vs Zoho CRM for GST invoicing”, with facts only. |
 
 ### Video

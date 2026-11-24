@@ -15,7 +15,7 @@ Generated alongside this file by `python3 build.py`:
 | Lighthouse mobile: Home, Text-to-SQL, Ontology Builder, Insurance | 100 / 100 / 100 / 100 on Performance, Accessibility, Best Practices and SEO. LCP 1.0–1.2 s, CLS 0, TBT 0–80 ms |
 | Layout at 375, 768 and 1440 px | All 35 pages: no horizontal scroll, one H1 each |
 | Links and anchors | No broken internal links or anchors |
-| JSON-LD | Valid JSON on every page; Organization, ProfessionalService, SoftwareApplication, Service, FAQPage, BreadcrumbList, Article and Person types used |
+| JSON-LD | Valid JSON on every page; Organization, ProfessionalService, SoftwareApplication, Service, FAQPage, BreadcrumbList and Article types used |
 | Copy rules | No banned words; no page with more than 2 em dashes; use cases labelled "Example scenario" |
 | Forms | Valid submission emails sales@syncsense.in and redirects to /thank-you/; missing fields or an unknown industry return to the form with an error; honeypot sends nothing; header injection blocked |
 | Redirects | All 9 old URLs return 301 to their new pages on the preview |

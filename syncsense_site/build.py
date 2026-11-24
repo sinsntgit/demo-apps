@@ -40,7 +40,7 @@ PHONE = "+91 9136433008"
 PHONE_LINK = "+919136433008"
 CITY = "Mumbai, India"
 LINKEDIN = "https://www.linkedin.com/company/data-syncsense/"
-FOUNDER = "Santosh Tiwari"
+AUTHOR = "SyncSense Data & AI Team"
 TAGLINE = "Data in sync. Decisions that make sense."
 # YouTube demo videos (IDs). Played in the on-page viewer via youtube-nocookie.com, loaded only on click.
 VIDEOS = {
@@ -61,7 +61,7 @@ VIDEO_META = {
 }
 VIDEO_PAGES = {"/": ["askdata-short", "ontology-short", "crm"], "/products/text-to-sql/": ["askdata-short", "askdata-full"],
                "/products/ontology-builder/": ["ontology-short", "ontology-full"], "/products/crm/": ["crm"]}
-FOUNDER_YOUTUBE = "https://www.youtube.com/@santoshtiwari5068"
+YOUTUBE = "https://www.youtube.com/@santoshtiwari5068"
 BOOKING_URL = ""  # Calendly link. Empty: "Book a demo" opens the contact form with Demo selected.
 DEMO_HREF = BOOKING_URL or "/contact/?interest=demo#form"
 SHARE_IMAGE = "/assets/img/share.png"
@@ -639,7 +639,6 @@ def render_tokens(body, meta):
 
 # ---------------------------------------------------------------- JSON-LD
 ORG_ID = SITE + "/#organization"
-FOUNDER_ID = SITE + "/about/#founder"
 
 
 def org_ld():
@@ -647,7 +646,7 @@ def org_ld():
         "@type": "Organization", "@id": ORG_ID, "name": NAME, "url": SITE + "/",
         "logo": SITE + "/assets/img/logo-512.png", "email": EMAIL, "telephone": PHONE,
         "address": {"@type": "PostalAddress", "addressLocality": "Mumbai", "addressRegion": "Maharashtra", "addressCountry": "IN"},
-        "founder": {"@id": FOUNDER_ID}, "sameAs": [LINKEDIN],
+        "sameAs": [LINKEDIN, YOUTUBE],
     }
 
 
@@ -675,15 +674,12 @@ def jsonld(meta, path):
             "@type": "Service", "name": s["name"], "serviceType": s["type"], "url": url, "provider": {"@id": ORG_ID},
             "areaServed": AREAS, "description": strip_ph(meta["description"]),
         })
-    if "Person" in kinds:
-        graph.append({"@type": "Person", "@id": FOUNDER_ID, "name": FOUNDER, "jobTitle": "Founder",
-                      "worksFor": {"@id": ORG_ID}, "url": SITE + "/about/", "sameAs": [FOUNDER_YOUTUBE]})
     if "Article" in kinds:
         graph.append({
             "@type": "Article", "headline": strip_ph(meta["h1"]), "description": strip_ph(meta["description"]),
             "datePublished": meta["date"], "dateModified": meta.get("modified", meta["date"]), "url": url,
             "mainEntityOfPage": url, "image": SITE + SHARE_IMAGE,
-            "author": {"@type": "Person", "@id": FOUNDER_ID, "name": FOUNDER, "url": SITE + "/about/"},
+            "author": {"@type": "Organization", "name": AUTHOR, "url": SITE + "/about/"},
             "publisher": {"@id": ORG_ID},
         })
     if "CaseStudy" in kinds:
@@ -788,7 +784,7 @@ def layout(meta, body):
     <a class="footer-logo" href="/"><img src="{LOGO}" alt="" width="44" height="44" loading="lazy"><span><strong>SyncSense</strong><em>{TAGLINE}</em></span></a>
     <div class="social">
       <a href="{LINKEDIN}" rel="noopener" target="_blank" aria-label="SyncSense on LinkedIn"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4.98 3.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM3 9.5h4V21H3zM9.5 9.5h3.8v1.6h.1c.5-1 1.8-2 3.8-2 4 0 4.8 2.6 4.8 6V21h-4v-5.1c0-1.2 0-2.8-1.7-2.8s-2 1.3-2 2.7V21h-4z"/></svg></a>
-      <a href="{FOUNDER_YOUTUBE}" rel="noopener" target="_blank" aria-label="SyncSense demos on YouTube"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M23 7.2a3 3 0 0 0-2.1-2.1C19 4.6 12 4.6 12 4.6s-7 0-8.9.5A3 3 0 0 0 1 7.2 31 31 0 0 0 .5 12a31 31 0 0 0 .5 4.8 3 3 0 0 0 2.1 2.1c1.9.5 8.9.5 8.9.5s7 0 8.9-.5a3 3 0 0 0 2.1-2.1 31 31 0 0 0 .5-4.8 31 31 0 0 0-.5-4.8zM9.8 15.1V8.9L15.2 12z"/></svg></a>
+      <a href="{YOUTUBE}" rel="noopener" target="_blank" aria-label="SyncSense demos on YouTube"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M23 7.2a3 3 0 0 0-2.1-2.1C19 4.6 12 4.6 12 4.6s-7 0-8.9.5A3 3 0 0 0 1 7.2 31 31 0 0 0 .5 12a31 31 0 0 0 .5 4.8 3 3 0 0 0 2.1 2.1c1.9.5 8.9.5 8.9.5s7 0 8.9-.5a3 3 0 0 0 2.1-2.1 31 31 0 0 0 .5-4.8 31 31 0 0 0-.5-4.8zM9.8 15.1V8.9L15.2 12z"/></svg></a>
     </div>
   </div>
   <div class="wrap footer-grid">
@@ -1107,7 +1103,7 @@ def article_page(a):
     meta.setdefault("schema", ["Article"])
     meta["nav"] = "insights"
     meta["breadcrumbs"] = [["Insights", "/insights/"], [a["short"], None]]
-    byline = (f'<p class="byline">By <a href="/about/">{FOUNDER}</a>, Founder, SyncSense · '
+    byline = (f'<p class="byline">By <a href="/about/">{AUTHOR}</a> · '
               f'<time datetime="{a["date"]}">{a["date_label"]}</time> · {a["read"]} min read</p>')
     body = f"""<article class="article"><div class="wrap narrow">
 <p class="eyebrow">Insights</p>
@@ -1142,7 +1138,7 @@ def write_llms():
     arts = "\n".join(f"- [{a['h1']}]({SITE}{a['path']})" for a in ARTICLES)
     txt = f"""# SyncSense
 
-> SyncSense is a data and AI company in Mumbai, India. It builds AI products (AskData for Text-to-SQL, Ontology Studio, Ovantaa CRM) and provides data management, BI and AI consulting and contract staffing. It helps organisations get trusted answers from data spread across many systems, in plain English, without waiting on IT. Founded by {FOUNDER}; the team has 25+ years of enterprise data, BI and data integration delivery.
+> SyncSense is a data and AI company in Mumbai, India. It builds AI products (AskData for Text-to-SQL, Ontology Studio, Ovantaa CRM) and provides data management, BI and AI consulting and contract staffing. It helps organisations get trusted answers from data spread across many systems, in plain English, without waiting on IT. The team has 25+ years of enterprise data, BI and data integration delivery.
 
 ## Products
 - [AskData: Text-to-SQL]({SITE}/products/text-to-sql/): business users ask questions of their own databases in plain English and get SQL, a table, a chart and a summary. Runs in the customer's environment; the AI model receives only the question and table descriptions, never result data. Read-only by design.
