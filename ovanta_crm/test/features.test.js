@@ -306,3 +306,25 @@ test('delete all: admin-only, typed confirmation, guards, cascades, audited', as
   assert.ok((await api('GET', '/api/users')).body.length >= 4, 'users are never purged');
   assert.ok((await api('GET', '/api/audit')).body.some((a) => a.action === 'delete_all' && a.entity === 'contacts'), 'purge is audited');
 });
+
+test('Tag 1-4: shared dropdown list on leads, accounts and deals; rename follows data, removal clears it; usable in filters and segments', async () => {
+  const cust = (await api('GET', '/api/customization')).body;
+  for (const e of ['contacts', 'accounts', 'deals']) assert.deepEqual(cust.entities[e].fields.filter((f) => /^cf_tag[1-4]$/.test(f.key)).map((f) => f.label), ['Tag 1', 'Tag 2', 'Tag 3', 'Tag 4'], e);
+  const t0 = (await api('GET', '/api/customization/tags')).body; assert.deepEqual(t0.list, ['Text2SQL', 'AI Consulting', 'Staffing', 'BI Reporting']);
+  const ct = (await api('POST', '/api/contacts', { first_name: 'Tagy', email: 'tagy@t.example', custom: { cf_tag1: 'Text2SQL', cf_tag2: 'Staffing' } })).body;
+  assert.equal((await api('GET', `/api/contacts/${ct.id}`)).body.custom.cf_tag2, 'Staffing');
+  const bad = await api('POST', '/api/contacts', { first_name: 'Nope', email: 'nope@t.example', custom: { cf_tag1: 'Not in list' } }); assert.equal(bad.status, 400);
+  const dl = (await api('POST', '/api/deals', { name: 'Tag deal', amount: 100, custom: { cf_tag3: 'Staffing' } })); assert.ok(dl.status < 300, JSON.stringify(dl.body));
+  assert.ok((await api('GET', '/api/contacts?cf_tag2=Staffing')).body.rows.some((r) => r.id === ct.id), 'list filter');
+  assert.ok((await api('POST', '/api/segments/preview', { filter: { match: 'all', rules: [{ field: 'custom.cf_tag1', op: 'is', value: 'Text2SQL' }] } })).body.matching >= 1, 'segment rule on Tag 1');
+  // the field editor cannot override the shared list
+  const f = cust.entities.contacts.fields.find((x) => x.key === 'cf_tag1');
+  await api('PUT', `/api/customization/fields/${f.id}`, { label: 'Product line', options: ['Hacked'] });
+  const after = (await api('GET', '/api/customization')).body.entities.contacts.fields.find((x) => x.key === 'cf_tag1'); assert.equal(after.label, 'Product line'); assert.deepEqual(after.options, t0.list);
+  // rename + remove
+  const r = await api('PUT', '/api/customization/tags', { items: [{ orig: 'Text2SQL', text: 'Text-to-SQL' }, { orig: 'AI Consulting', text: 'AI Consulting' }, { orig: 'BI Reporting', text: 'BI Reporting' }, { orig: null, text: 'Analytics' }] });
+  assert.equal(r.status, 200, JSON.stringify(r.body)); assert.deepEqual(r.body.list, ['Text-to-SQL', 'AI Consulting', 'BI Reporting', 'Analytics']);
+  const c2 = (await api('GET', `/api/contacts/${ct.id}`)).body.custom; assert.equal(c2.cf_tag1, 'Text-to-SQL', 'rename updated the record'); assert.equal(c2.cf_tag2, undefined, 'removed tag cleared');
+  assert.equal((await api('PUT', '/api/customization/tags', { items: [{ text: 'a' }, { text: 'A' }] })).status, 400, 'duplicates refused');
+  assert.equal((await api('PUT', '/api/customization/tags', { items: [] })).status, 400, 'empty list refused');
+});

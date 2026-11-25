@@ -1,4 +1,5 @@
 import { SYSTEM_ROLES } from './permissions.js';
+import { installTagFields } from './tags-core.js';
 
 /** Give built-in roles any permission keys they do not have yet (new features), without touching choices an admin already made. */
 function fillMissingPerms(db) {
@@ -241,6 +242,10 @@ BEGIN SELECT RAISE(ABORT, 'Issued invoices cannot be changed. Issue a credit or 
   {
     version: 19, name: 'campaign_footer_text',
     up(db) { if (!hasColumn(db, 'campaigns', 'footer_text')) db.exec('ALTER TABLE campaigns ADD COLUMN footer_text TEXT'); },
+  },
+  {
+    version: 20, name: 'tags_1_to_4',
+    up(db) { installTagFields(db); },
   },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

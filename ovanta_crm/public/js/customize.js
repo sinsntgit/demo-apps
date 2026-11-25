@@ -96,6 +96,32 @@ function fieldModal(entity, field, done) {
     } });
 }
 
+// ------------------------------------------------------------------ shared tag choices (Tag 1 - Tag 4)
+async function tagsCard(el, redraw) {
+  if (!el) return;
+  const t = await api('GET', '/customization/tags');
+  let items = t.list.map((x) => ({ orig: x, text: x })); let dirty = false;
+  const use = (name) => { const u = t.usage[name]; return u ? u.contacts + u.accounts + u.deals : 0; };
+  const draw = () => {
+    setHtml(el, html`<div class="card"><div class="hd"><h2>Tags</h2><span class="muted small">Tag 1 – Tag 4 on leads/contacts, accounts and deals all choose from this list</span><span class="grow"></span>${dirty ? html`<span class="badge">unsaved</span>` : ''}<button class="btn sm" data-act="tadd">+ Add tag</button><button class="btn sm primary" data-act="tsave" ${dirty ? '' : raw('disabled')}>Save tags</button></div>
+      <div class="bd"><p class="small muted" style="margin-top:0">Each record can carry up to four tags, picked from dropdowns named Tag 1 to Tag 4 (rename those labels, or show them as columns, under <i>Custom fields</i> below). Renaming a tag here updates every record that uses it; removing one clears it from the records that use it.</p>
+      ${items.map((x, i) => html`<div class="row" style="align-items:center;margin-bottom:6px"><input data-i="${i}" value="${x.text}" maxlength="${t.max.length}" aria-label="Tag name" style="flex:1"><span class="small muted nowrap" style="width:120px">${x.orig && use(x.orig) ? `${use(x.orig)} record${use(x.orig) === 1 ? '' : 's'}` : x.orig ? 'unused' : 'new'}</span>
+        <button class="btn sm" data-act="tup" data-i="${i}" aria-label="Move up">↑</button><button class="btn sm" data-act="tdown" data-i="${i}" aria-label="Move down">↓</button><button class="btn sm danger" data-act="trm" data-i="${i}" aria-label="Remove tag">✕</button></div>`)}
+      ${items.length ? '' : html`<div class="empty">No tags yet. Add at least one.</div>`}</div></div>`);
+  };
+  el.oninput = (e) => { if (e.target.dataset.i !== undefined && e.target.tagName === 'INPUT') { items[+e.target.dataset.i].text = e.target.value; if (!dirty) { dirty = true; const b = el.querySelector('[data-act=tsave]'); if (b) b.disabled = false; } } };
+  on(el, {
+    tadd: () => { items.push({ orig: null, text: '' }); dirty = true; draw(); el.querySelectorAll('input[data-i]')[items.length - 1]?.focus(); },
+    tup: (b) => { const i = +b.dataset.i; if (i > 0) { [items[i - 1], items[i]] = [items[i], items[i - 1]]; dirty = true; draw(); } },
+    tdown: (b) => { const i = +b.dataset.i; if (i < items.length - 1) { [items[i + 1], items[i]] = [items[i], items[i + 1]]; dirty = true; draw(); } },
+    trm: async (b) => { const x = items[+b.dataset.i]; const n = x.orig ? use(x.orig) : 0;
+      if (n && !(await confirmBox(`“${x.orig}” is used on ${n} record${n === 1 ? '' : 's'}. Removing it clears the tag from them when you save. Remove it?`, 'Remove'))) return;
+      items.splice(+b.dataset.i, 1); dirty = true; draw(); },
+    tsave: async () => { try { await api('PUT', '/customization/tags', { items }); toast('Tags saved', 'ok'); await loadCustomization(); redraw(); } catch (x) { fail(x); } },
+  });
+  draw();
+}
+
 // ------------------------------------------------------------------ page
 export async function customize(root) {
   let entity = sessionStorage.getItem('custEntity') || 'deals'; let L = null; let dirty = false; let dragKey = null; let showArchived = false;
@@ -109,6 +135,7 @@ export async function customize(root) {
     setHtml(root, html`<div class="topbar"><h1>Customisation</h1><span class="grow"></span></div>
       <p class="muted" style="margin-top:-8px">Add your own fields to deals, accounts and contacts (for example <i>Partner</i>, <i>Partner margin</i>, <i>Deal type</i>, <i>Deal details</i>), then arrange them into sections and save the form layout everyone sees.</p>
       <div class="tabs">${ENTITIES.map(([k, l]) => html`<button class="${entity === k ? 'on' : ''}" data-act="tab" data-e="${k}">${l}</button>`)}</div>
+      <div id="tagcard" style="margin-bottom:16px"></div>
       ${entity === 'deals' ? html`<div id="stagecard" style="margin-bottom:16px"></div>` : ''}
       <div class="card"><div class="hd"><h2>Custom fields</h2><span class="muted small">${active.length} active</span><span class="grow"></span><button class="btn primary sm" data-act="fnew">+ Add field</button></div>
         ${active.length ? html`<div class="tablewrap"><table><thead><tr><th>Field</th><th>Type</th><th>Settings</th><th></th></tr></thead><tbody>${active.map((f) => html`<tr><td><b>${f.label}</b><div class="small muted mono">${f.key}</div></td><td class="small">${typeLabel(f.type)}${f.type === 'lookup' ? ` → ${f.config.target}` : ''}${['dropdown', 'multiselect'].includes(f.type) ? html`<div class="muted">${f.options.slice(0, 4).join(', ')}${f.options.length > 4 ? ` +${f.options.length - 4}` : ''}</div>` : ''}</td>
@@ -119,6 +146,7 @@ export async function customize(root) {
         <button class="btn sm" data-act="sadd">+ Add section</button><button class="btn sm" data-act="preview">Preview form</button><button class="btn sm danger" data-act="lreset">Reset to default</button><button class="btn sm primary" data-act="lsave">Save layout</button></div>
         <div class="bd"><p class="small muted" style="margin-top:0">This is the form used when creating or editing ${ENTITIES.find((e) => e[0] === entity)[1].toLowerCase()}. <b>Drag</b> fields between sections (or use ↑ ↓), choose one or two columns per section, and drag optional standard fields to “Not on the form” to hide them. Required fields and custom fields cannot be hidden — archive a custom field to remove it.</p><div id="layoutarea"></div></div></div>`);
     drawLayout();
+    tagsCard($('#tagcard', root), draw).catch(fail);
     if (entity === 'deals') stagesCard($('#stagecard', root)).catch(fail);
   };
 

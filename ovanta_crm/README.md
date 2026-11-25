@@ -93,6 +93,12 @@ Custom values appear on the record's detail page (grouped by your sections), in 
 * **Invoicing starts in India GST** (INR, 18 %, GSTIN, CGST+SGST within your state and IGST across states; demo invoices are Indian). Saudi Arabia (ZATCA), UAE (FTA) or any other country can be chosen under *Billing settings*. Upgrading moves only an untouched Saudi **demo** profile to India; a profile you set up yourself is never changed. The account form follows the mode (GSTIN and *State (GST place of supply)* for India; VAT/TRN, Arabic name, building no. and district for the Gulf).
 * **Overdue deals**: open deals whose expected close date has passed show **⚠ Overdue N days** on the board (red edge) and in red in the list. Won and lost deals never do.
 
+## Tag 1 – Tag 4 on leads, accounts and deals (1.28)
+
+* Contacts/leads, **accounts and deals** each have four dropdowns, **Tag 1 to Tag 4**, so a record can be categorised along four lines (for example Text2SQL · AI Consulting · Staffing · BI Reporting). The choices come from **one shared list** that administrators edit under **Customisation → Tags** (any tab): add, rename, reorder or remove. Renaming a tag updates every record that uses it; removing one clears it from those records (the screen shows how many use each tag, and asks first).
+* The dropdowns are ordinary custom fields, so they work everywhere: forms and detail pages, list filters ("Tag 1: all"), search, CSV import columns, and **segments** (rules *Contact: Tag 1…4* and *Account: Tag 1…4*). Rename the labels, or tick *Show in lists* to make them columns, under *Custom fields*.
+* The older comma-separated field is now labelled **Free tags**; the import tag still writes there.
+
 ## Search by tag everywhere (1.27.4)
 
 * **Contacts / Leads:** the search box also matches tags (plus the Tag filter from 1.27.3). **AI search** and keyword search find contacts by tag as well.

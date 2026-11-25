@@ -1,8 +1,11 @@
 import { GET, POST, PUT, DELETE, bad } from './http.js';
 import { customizationBundle, createField, updateField, setArchived, purgeField, saveLayout, resetLayout, ENTITIES_WITH_CUSTOM } from './customfields.js';
 
+import { tagsOut, saveTags } from './tags.js';
 const entityOf = (e) => { if (!ENTITIES_WITH_CUSTOM.includes(e)) throw bad('Unknown record type'); return e; };
 GET('/api/customization', () => customizationBundle());
+GET('/api/customization/tags', () => tagsOut());
+PUT('/api/customization/tags', ({ body, user }) => saveTags(user, body.items));
 POST('/api/customization/fields', ({ body, user }) => createField(user, entityOf(body.entity), body));
 PUT('/api/customization/fields/:id', ({ params, body, user }) => updateField(user, params.id, body));
 POST('/api/customization/fields/:id/archive', ({ params, user }) => setArchived(user, params.id, true));

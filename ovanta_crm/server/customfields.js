@@ -16,7 +16,7 @@ export const BUILTIN = {
     { key: 'email', label: 'Email', type: 'email' }, { key: 'phone', label: 'Phone', type: 'tel' }, { key: 'title', label: 'Job title', type: 'text' },
     { key: 'account_id', label: 'Company', type: 'select', source: 'accounts' }, { key: 'status', label: 'Status', type: 'select', options: ['lead', 'qualified', 'customer', 'churned'], default: 'lead', noBlank: true },
     { key: 'source', label: 'Source', type: 'text', placeholder: 'Website, Referral…' }, { key: 'owner_id', label: 'Owner', type: 'select', source: 'users', noBlank: true, default: '@me' },
-    { key: 'tags', label: 'Tags (comma separated)', type: 'text' }, { key: 'subscribed', label: 'Subscribed to marketing email', type: 'checkbox', default: true },
+    { key: 'tags', label: 'Free tags (comma separated)', type: 'text' }, { key: 'subscribed', label: 'Subscribed to marketing email', type: 'checkbox', default: true },
   ],
   accounts: [
     { key: 'name', label: 'Company name', type: 'text', required: true }, { key: 'industry', label: 'Industry', type: 'text' }, { key: 'website', label: 'Website', type: 'url', placeholder: 'https://' },
@@ -82,7 +82,7 @@ function cleanDef(entity, body, existing) {
   }
   if (['text', 'textarea'].includes(type)) config.maxLength = Math.min(type === 'text' ? 1000 : 5000, Math.max(1, Math.round(num(cfg.maxLength, 'Maximum length') ?? (type === 'text' ? 255 : 2000))));
   if (type === 'lookup') { if (!['accounts', 'contacts'].includes(cfg.target ?? existing?.config?.target)) throw bad('Choose what the field links to (accounts or contacts)'); config.target = cfg.target ?? existing.config.target; }
-  const options = ['dropdown', 'multiselect'].includes(type) ? optList(body.options ?? existing?.options ?? []) : [];
+  const options = ['dropdown', 'multiselect'].includes(type) ? optList(existing && /^cf_tag[1-4]$/.test(existing.key) ? existing.options : body.options ?? existing?.options ?? []) : []; // Tag 1-4 choices come from the shared tag list
   if (['dropdown', 'multiselect'].includes(type) && !options.length) throw bad('Add at least one option to the list');
   let vw = body.visible_when === undefined ? existing?.visible_when ?? null : body.visible_when;
   if (vw) {
