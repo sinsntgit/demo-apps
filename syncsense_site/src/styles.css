@@ -216,7 +216,7 @@ mark.ph { background: var(--mark); color: #5c4400; padding: 0 .25em; border-radi
 .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 560px) { .row-2 { grid-template-columns: 1fr; } }
 .form label { display: grid; gap: 6px; font-weight: 600; font-size: .95rem; }
-.form input[type=text], .form input[type=email], .form select, .form textarea { width: 100%; font: inherit; font-weight: 400; color: var(--ink); padding: 11px 13px; border: 1px solid #b9c0cf; border-radius: 10px; background: var(--white); }
+.form input[type=text], .form input[type=email], .form input[type=tel], .form select, .form textarea { width: 100%; font: inherit; font-weight: 400; color: var(--ink); padding: 11px 13px; border: 1px solid #b9c0cf; border-radius: 10px; background: var(--white); }
 .form fieldset { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 0; }
 .form legend { font-weight: 600; font-size: .95rem; padding: 0 4px; }
 .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; }

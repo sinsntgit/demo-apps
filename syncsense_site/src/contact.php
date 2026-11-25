@@ -54,6 +54,7 @@ $name     = one_line(field('name', 120));
 $email    = one_line(field('email', 200));
 $company  = one_line(field('company', 160));
 $role     = one_line(field('role', 120));
+$phone    = one_line(field('phone', 30));
 $industry = one_line(field('industry', 60));
 $message  = field('message', 5000);
 $source   = SOURCES[field('source', 20)] ?? 'Website form';
@@ -65,7 +66,8 @@ if (isset($_POST['interest']) && is_array($_POST['interest'])) {
     }
 }
 
-if ($name === '' || $company === '' || !filter_var($email, FILTER_VALIDATE_EMAIL) || !in_array($industry, INDUSTRIES, true)) {
+if ($name === '' || $company === '' || !filter_var($email, FILTER_VALIDATE_EMAIL) || !in_array($industry, INDUSTRIES, true)
+    || ($phone !== '' && !preg_match('/^[0-9+()\s.\-]{6,30}$/', $phone))) {
     back_with_error();
 }
 
@@ -74,6 +76,7 @@ $lines = [
     'Form:        ' . $source,
     'Name:        ' . $name,
     'Work email:  ' . $email,
+    'Phone:       ' . ($phone !== '' ? $phone : '-'),
     'Company:     ' . $company,
     'Role:        ' . ($role !== '' ? $role : '-'),
     'Industry:    ' . $industry,

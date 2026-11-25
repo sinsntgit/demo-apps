@@ -170,9 +170,12 @@ def form(kind="contact"):
       <label>Company* <input type="text" name="company" autocomplete="organization" required maxlength="160"></label>
       <label>Role <input type="text" name="role" autocomplete="organization-title" maxlength="120" placeholder="e.g. Head of Finance"></label>
     </div>
-    <label>Industry*
-      <select name="industry" required><option value="">Choose your industry</option>{industries}</select>
-    </label>
+    <div class="row-2">
+      <label>Phone <input type="tel" name="phone" autocomplete="tel" maxlength="30" pattern="[0-9+\\(\\)\\s.\\-]{{6,30}}" placeholder="e.g. +91 98765 43210" title="Digits, spaces, +, - and brackets only"></label>
+      <label>Industry*
+        <select name="industry" required><option value="">Choose your industry</option>{industries}</select>
+      </label>
+    </div>
     <fieldset><legend>Interested in</legend><div class="checks">{boxes}</div></fieldset>
     <label>{msg_label} <textarea name="message" maxlength="5000" rows="5"></textarea></label>
     <p class="note">We use these details only to reply to you. See our <a href="/privacy-policy/">privacy policy</a>.</p>
