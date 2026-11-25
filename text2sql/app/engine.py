@@ -57,6 +57,7 @@ How a plan runs:
 - Each step is ONE read-only SELECT (CTEs allowed) on ONE data model, in that data model's SQL dialect, using only its tables and columns. Steps cannot see each other.
 - The platform runs the steps, then runs your "combine" query in DuckDB SQL over the step results, which are available as tables named after the steps (s1, s2, ...). The combine query can only use those tables.
 - Use one step per data model you need. If one data model is enough, write one step and combine "SELECT * FROM s1".
+- When one data model must be filtered by what another one returns (for example "SAP invoices of the CRM accounts with urgent tickets"), a step may use the values of a column an EARLIER step returned, written exactly as the whole list of an IN: WHERE k.KUNRG IN ({{{{s1.customer_no}}}}) - or with a key rule: IN ({{{{s1.sap_no|strip_zeros}}}}). The platform fills in at most {max_keys} distinct values; you never see them. Make the earlier step return the key already in the form the later data model stores it (for example padded with leading zeros), or compare a cleaned column (for example LTRIM(k.KUNRG, '0') IN ({{{{s1.sap_no|to_text}}}})). Prefer joining in the combine query when both sides are small enough.
 
 Rules:
 - Each step may return at most {step_rows} rows and all steps together at most {total_rows}. Aggregate inside the steps (for example totals per customer or per month) and return detail rows only when the question asks for them.
@@ -202,6 +203,7 @@ def build_plan_prompt(db: Session, combined: Connection, question: str, history:
             tail.append(f"Question: {h.question}\nPlan:\n{h.final_sql or h.generated_sql}")
     tail.append(f"## Question\n{question}")
     system = PLAN_SYSTEM.format(step_rows=f"{int(cfg['combined_step_max_rows']):,}", total_rows=f"{int(cfg['combined_total_max_rows']):,}",
+                                max_keys=f"{int(cfg.get('combined_max_keys') or 1000):,}",
                                 max_rows=cfg["max_rows"], predictive=PREDICTIVE.format().replace("your SQL", "your combine query") if predictive else "",
                                 analysis_key=', "analysis": <object as described above, or null>' if predictive else "")
     context["history_turns"] = min(len(history), 3)
@@ -519,7 +521,7 @@ def execute_plan(db: Session, run: QueryRun, combined: Connection, cfg: dict, mo
         _set_plan(run, new, members, generated=True)
         run.explanation = ans["explanation"] or run.explanation
         run.followups = ans["followups"] or run.followups
-    run.plan = {**run.plan, "steps": [{**s, **{k: v for k, v in r.items() if k in ("data_model", "rows", "ms", "filters", "columns")}}
+    run.plan = {**run.plan, "steps": [{**s, **{k: v for k, v in r.items() if k in ("data_model", "rows", "ms", "filters", "columns", "keys")}}
                                       for s, r in zip(run.plan["steps"], res["steps"])]}
     run.context = {**(run.context or {}), "filters": res["filters"], "warnings": res["warnings"]}
     return _finish(run, res, cfg, spec)

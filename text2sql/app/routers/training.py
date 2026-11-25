@@ -63,7 +63,11 @@ def checked_plan(db: Session, conn, raw) -> tuple[dict, str]:
     try:
         plan = planner.clean(raw, members)
         for st in plan["steps"]:
-            st["sql"] = sqlguard.check(st["sql"], members[st["source"]].db_type).sql
+            db_type = members[st["source"]].db_type
+            if planner.refs(st["sql"]):      # keys from an earlier step: check the placement and the filled-in SQL
+                sqlguard.check(planner.fill_keys(st["sql"], db_type, {i: ["0"] for i in range(len(planner.refs(st["sql"])))}), db_type)
+            else:
+                st["sql"] = sqlguard.check(st["sql"], db_type).sql
         plan["combine"] = planner.check_combine(plan["combine"], [s["id"] for s in plan["steps"]]).sql
     except (planner.PlanError, sqlguard.SQLBlocked) as e:
         raise HTTPException(400, f"Plan rejected: {e}")

@@ -55,7 +55,8 @@ DEFAULT_SETTINGS = {
     # combined data models (questions across several data models)
     "combined_max_sources": 4,     # data models per combined data model (2 to 6)
     "combined_step_max_rows": 200000,   # rows one source may return to a combined answer before it fails
-    "combined_total_max_rows": 500000,  # rows held across all sources of one combined answer        # AI model that rephrases; 0 = the model the user picked for the question
+    "combined_total_max_rows": 500000,  # rows held across all sources of one combined answer
+    "combined_max_keys": 1000,     # keys one step may pass to a later step (WHERE x IN ({{s1.col}}))
     # outgoing email, for scheduled reports
     "smtp_host": "",
     "smtp_port": 587,

@@ -314,7 +314,7 @@ _LIMITS = {"max_rows": (1, 50000), "query_timeout_s": (5, 900), "rate_limit_per_
            "session_hours": (1, 168), "max_repair_attempts": (0, 5), "lockout_attempts": (3, 20),
            "lockout_minutes": (1, 1440), "smtp_port": (1, 65535), "analysis_max_rows": (100, 500000),
            "rephrase_model_id": (0, 2**31 - 1), "combined_max_sources": (2, 6), "combined_step_max_rows": (1000, 2_000_000),
-           "combined_total_max_rows": (1000, 5_000_000)}
+           "combined_total_max_rows": (1000, 5_000_000), "combined_max_keys": (10, 10_000)}
 
 
 def _public_settings(db: Session, admin: User) -> dict:

@@ -128,6 +128,19 @@ const OUT = process.argv[2], B = 'http://localhost:8010/';
     const rows = await page.locator('.run table tbody tr').count(); if (rows !== 3) throw new Error('rows after edit ' + rows);
   });
 
+  await step('a step filtered by keys an earlier step found', async () => {
+    await page.fill('.composer textarea', 'SAP invoices in 2025 for customers with open urgent CRM tickets'); await page.press('.composer textarea', 'Enter');
+    await page.waitForSelector('.run:last-of-type h3:has-text("Plan · 2 steps")', { timeout: 20000 });
+    const run = page.locator('.run').last();
+    await run.locator('.plan button:text-is("s2 · sap")').click();
+    const badge = await run.locator('.plan .badge:has-text("keys from s1.sap_no")').innerText();
+    if (!/🔑 \d+ keys? from s1\.sap_no/.test(badge)) throw new Error('keys badge: ' + badge);
+    await run.locator('.plan pre.sql:has-text("{{s1.sap_no|to_text}}")').waitFor();
+    await run.locator('button:text-is("Table")').click(); await run.locator('table tbody tr').first().waitFor();
+    await noToasts(); await page.setViewportSize({ width: 1320, height: 1300 });
+    await run.screenshot({ path: `${OUT}/combined-keys.png` }); await page.setViewportSize({ width: 1320, height: 900 });
+  });
+
   await step('a plan that matches nothing explains why', async () => {
     await page.click('button:has-text("New chat")').catch(() => {});
     await page.fill('.composer textarea', 'Customers and tickets without the key rule'); await page.press('.composer textarea', 'Enter');

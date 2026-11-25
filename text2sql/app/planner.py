@@ -8,11 +8,21 @@ person's row filters for that member (`rowfilter`), `connectors.run_query` and t
 values are replaced *before* the results are combined, so nothing the person may not see can come out of the combine
 step. Step results are loaded into a new in-memory DuckDB with external access switched off and the configuration
 locked; the combine SQL is checked read-only and may only name step tables. Nothing here talks to the AI model.
+
+Passing keys between steps (phase 5): a step may filter on the values another, *earlier* step returned, written as
+`col IN ({{s1.column}})` or `col IN ({{s1.column|strip_zeros}})` (a key rule from matching.NORMALISATIONS). The earlier step
+runs first, for this person, with their filters and masking; its distinct non-empty values (at most `combined_max_keys`) are
+inserted by sqlglot as literals of the receiving data model's dialect - never by string concatenation - and the filled SQL is
+parsed again and must contain exactly those values, in the same places, before it goes through the read-only guard and the
+person's row filters like any step. Masked columns cannot be passed, nor values containing a backslash or NUL (databases
+disagree on backslash escapes). The AI model never sees the keys: plans keep the placeholder, and errors are scrubbed.
 """
 import concurrent.futures
+import decimal
 import re
 import time
 
+import sqlglot
 from sqlglot import exp
 from sqlalchemy.orm import Session
 
@@ -21,6 +31,8 @@ from .models import Connection
 
 MAX_STEPS = 8
 STEP_ID = re.compile(r"^s[1-9]$")
+KEY_REF = re.compile(r"\{\{\s*(s[1-9])\.([A-Za-z_][A-Za-z0-9_]*)\s*(?:\|\s*([a-z_]+)\s*)?\}\}")
+SENTINEL = "askdata_key_{}_x"
 
 
 class PlanError(connectors.ConnectorError):
@@ -60,9 +72,18 @@ def clean(raw, members: dict[str, Connection]) -> dict:
         sql = sqlguard._strip(str(st.get("sql") or ""))
         if not sql:
             raise PlanError(f"Step {sid} has no SQL.")
+        for ref, col, rule in KEY_REF.findall(sql):
+            if ref not in seen:
+                raise PlanError(f"Step {sid} uses keys from {ref}, which must be an earlier step of the plan.")
+            if (rule or "") not in matching.NORMALISATIONS:
+                raise PlanError(f"Step {sid}: “{rule}” is not a key rule; use one of {', '.join(r for r in matching.NORMALISATIONS if r)}.")
+        if "{{" in KEY_REF.sub("", sql):
+            raise PlanError(f"Step {sid}: write keys from another step as {{{{s1.column}}}} or {{{{s1.column|strip_zeros}}}}.")
         seen.add(sid)
         steps.append({"id": sid, "source": source, "sql": sql})
     combine = sqlguard._strip(str(raw.get("combine") or ""))
+    if "{{" in combine:
+        raise PlanError("Keys from a step can only be used inside another step, not in the combine query (join the step tables there).")
     if not combine:
         if len(steps) != 1:
             raise PlanError("The plan has no combine step.")
@@ -102,6 +123,101 @@ def check_combine(sql: str, step_ids: list[str]) -> sqlguard.Checked:
     return checked
 
 
+# ---- passing keys between steps -------------------------------------------------------------------------------------------
+def refs(sql: str) -> list[tuple[str, str, str]]:
+    return [(r, c, k or "") for r, c, k in KEY_REF.findall(sql)]
+
+
+def _key_values(step: dict, column: str, rule: str, max_keys: int, sid: str) -> list:
+    """The distinct, non-empty values of an earlier step's column, after the key rule. Raises PlanError / LimitError."""
+    cols = [c["name"].lower() for c in step["columns"]]
+    if column.lower() not in cols:
+        raise PlanError(f"Step {sid} uses {{{{{step['id']}.{column}}}}}, but step {step['id']} returns no column “{column}”"
+                        f" (it returns: {', '.join(c['name'] for c in step['columns'])}).")
+    i = cols.index(column.lower())
+    if step["columns"][i].get("masked"):
+        raise PlanError(f"Step {sid} cannot use {step['id']}.{column} as keys: the column is masked, and matching on its values "
+                        "would reveal them.")
+    out, seen = [], set()
+    for row in step["_rows"]:
+        v = row[i]
+        if v is None or v == "":
+            continue
+        if rule:
+            v = matching.normalise(rule, v)
+            if v is None or v == "":
+                continue
+        if isinstance(v, bool):
+            v = str(v).lower()
+        if isinstance(v, float):
+            v = int(v) if v.is_integer() else v
+        if isinstance(v, str) and ("\\" in v or "\x00" in v):
+            raise PlanError(f"A key in {step['id']}.{column} contains a backslash or a control character, which cannot be passed "
+                            "safely to another data model. Join the steps in the combine query instead.")
+        k = (type(v).__name__ if not isinstance(v, (int, float, decimal.Decimal)) else "n", str(v))
+        if k not in seen:
+            seen.add(k)
+            out.append(v)
+    if len(out) > max_keys:
+        raise LimitError(f"Step {step['id']} returned more than {max_keys:,} different values of {column} to pass to step {sid}. "
+                         "Narrow the first step (for example a shorter period or one region), or join the steps in the combine "
+                         "query instead. An administrator can change the limit under Admin → Settings → Combined data models.")
+    return out
+
+
+def _literal(v) -> exp.Expression:
+    if isinstance(v, (int, decimal.Decimal)) or (isinstance(v, float) and v == v and v not in (float("inf"), float("-inf"))):
+        text = format(v, "f") if isinstance(v, decimal.Decimal) else repr(v) if isinstance(v, float) else str(v)
+        if not re.fullmatch(r"-?\d+(\.\d+)?(e-?\d+)?", text, re.I):
+            raise PlanError("A key value is not a plain number.")
+        return exp.Literal.number(text)
+    return exp.Literal.string(str(v))
+
+
+def fill_keys(sql: str, db_type: str, values: dict[int, list]) -> str:
+    """Put each placeholder's values into the step's SQL as literals of its dialect. Each placeholder must be the whole
+    list of an IN (...). The result is parsed again and must hold exactly these values in those places."""
+    dialect = sqlguard.SQLGLOT_DIALECT.get(db_type)
+    n = iter(range(10_000))
+    template = KEY_REF.sub(lambda m: SENTINEL.format(next(n)), sql)
+    try:
+        tree = sqlglot.parse_one(template, read=dialect)
+    except Exception:
+        raise PlanError("A step that uses keys from another step could not be read; write it as one plain SELECT.")
+    ins = []
+    for idx in values:
+        name = SENTINEL.format(idx)
+        nodes = [c for c in tree.find_all(exp.Column) if c.name.lower() == name]
+        if len(nodes) != 1:
+            raise PlanError("Keys from another step must be written as the whole list of an IN, for example "
+                            "WHERE customer IN ({{s1.customer}}), outside quotes.")
+        col = nodes[0]
+        parent = col.parent
+        if not isinstance(parent, exp.In) or parent.args.get("query") or len(parent.expressions) != 1 or parent.expressions[0] is not col:
+            raise PlanError("Keys from another step must be written as the whole list of an IN, for example "
+                            "WHERE customer IN ({{s1.customer}}).")
+        ins.append((parent, values[idx]))
+    expected = []
+    for node, vals in ins:
+        if vals:
+            node.set("expressions", [_literal(v) for v in vals])
+            expected.append([(lit.is_string, lit.this) for lit in node.expressions])
+        else:       # nothing to match: IN () is never true (NOT IN () always is)
+            node.replace(exp.Paren(this=exp.EQ(this=exp.Literal.number(1), expression=exp.Literal.number(0))))
+    filled = tree.sql(dialect=dialect)
+    # the safety check: read the filled SQL back and compare every inserted list, in order, with what was inserted
+    try:
+        back = sqlglot.parse_one(filled, read=dialect)
+    except Exception:
+        raise PlanError("The keys could not be inserted safely.")
+    lists = [[(lit.is_string, lit.this) for lit in i.expressions] for i in back.find_all(exp.In)
+             if i.expressions and all(isinstance(e, exp.Literal) for e in i.expressions)]
+    if "askdata_key_" in filled.lower() or \
+            [x for x in lists if x in expected] != expected or sum(len(x) for x in expected) > sum(len(x) for x in lists):
+        raise PlanError("The keys could not be inserted safely.")
+    return filled
+
+
 def _limit_msg(what: str, limit: int) -> str:
     return (f"{what} more than {limit:,} rows, the limit for questions across data models. Ask for totals rather than "
             "detail (for example per customer or per month), or for a shorter period. An administrator can change the limit "
@@ -110,46 +226,69 @@ def _limit_msg(what: str, limit: int) -> str:
 
 def run(db: Session, combined: Connection, plan: dict, cfg: dict, user, cap: int) -> dict:
     """Run a cleaned plan for this person. Returns a result like `connectors.run_query` plus
-    {"steps": [...], "filters": [...], "warnings": [...], "combine_sql"}. Raises SQLBlocked / ConnectorError / PlanError."""
+    {"steps": [...], "filters": [...], "warnings": [...], "combine_sql"}. Raises SQLBlocked / ConnectorError / PlanError.
+    Steps that use keys from earlier steps run after them; the others run side by side."""
     members = members_by_alias(db, combined)
     step_cap, total_cap = int(cfg["combined_step_max_rows"]), int(cfg["combined_total_max_rows"])
-    prepared = []
+    max_keys = int(cfg.get("combined_max_keys") or 1000)
     for st in plan["steps"]:
         conn = members.get(st["source"])
         if conn is None:
             raise PlanError(f"Step {st['id']}: the data model “{st['source']}” is no longer part of this combined model.")
         if not conn.is_active:
             raise PlanError(f"Step {st['id']}: the data model “{conn.name}” is disabled.")
+        if not refs(st["sql"]):         # guard every step that can be checked now, before anything runs
+            try:
+                sqlguard.check(st["sql"], conn.db_type)
+            except sqlguard.SQLBlocked as e:
+                raise sqlguard.SQLBlocked(f"Step {st['id']} ({st['source']}): {e}")
+    combine_checked = check_combine(plan["combine"], [s["id"] for s in plan["steps"]])
+    from .engine import _mask
+
+    def prepare(st):
+        conn = members[st["source"]]
+        sql, keys = st["sql"], None
+        found = refs(sql)
+        if found:
+            vals = {i: _key_values(done[r], c, k, max_keys, st["id"]) for i, (r, c, k) in enumerate(found)}
+            sql = fill_keys(sql, conn.db_type, vals)
+            keys = [{"from": f"{r}.{c}", "rule": k, "count": len(vals[i])} for i, (r, c, k) in enumerate(found)]
         try:
-            checked = sqlguard.check(st["sql"], conn.db_type)
+            checked = sqlguard.check(sql, conn.db_type)
         except sqlguard.SQLBlocked as e:
             raise sqlguard.SQLBlocked(f"Step {st['id']} ({st['source']}): {e}")
         to_run, applied = rowfilter.apply(checked, rowfilter.applicable(db, user, conn) if user is not None else [], conn.db_type, user)
-        prepared.append((st, conn, checked, to_run, applied))
-    combine_checked = check_combine(plan["combine"], [s["id"] for s in plan["steps"]])
+        return st, conn, checked, to_run, applied, keys
 
     def one(item):
-        st, conn, checked, to_run, applied = item
+        st, conn, checked, to_run, applied, keys = item
         try:
             return connectors.run_query(conn, security.decrypt_json(conn.config_enc), to_run, step_cap, cfg["query_timeout_s"])
         except connectors.ConnectorError as e:
             raise type(e)(f"Step {st['id']} ({st['source']}): {e}")
 
     t0 = time.time()
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(prepared))) as pool:
-        results = list(pool.map(one, prepared))          # the first failing step raises here
-    steps, total, filters = [], 0, []
-    from .engine import _mask
-    for (st, conn, checked, to_run, applied), res in zip(prepared, results):
-        if res["truncated"]:
-            raise LimitError(_limit_msg(f"Step {st['id']} ({conn.name}) would read", step_cap))
-        _mask(conn, checked, res)                         # masked values never reach the combine step
-        total += len(res["rows"])
-        filters += [f for f in applied if f not in filters]
-        steps.append({"id": st["id"], "source": st["source"], "data_model": conn.name, "sql": st["sql"], "final_sql": checked.sql,
-                      "rows": len(res["rows"]), "ms": res["ms"], "filters": len(applied), "columns": res["columns"], "_rows": res["rows"]})
-    if total > total_cap:
-        raise LimitError(_limit_msg("Together the steps would read", total_cap))
+    done, total, filters, waiting = {}, 0, [], list(plan["steps"])
+    while waiting:
+        wave = [st for st in waiting if all(r in done for r, _, _ in refs(st["sql"]))]
+        if not wave:
+            raise PlanError("The steps depend on each other in a circle; a step can only use keys from an earlier step.")
+        prepared = [prepare(st) for st in wave]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(prepared))) as pool:
+            results = list(pool.map(one, prepared))      # the first failing step raises here
+        for (st, conn, checked, to_run, applied, keys), res in zip(prepared, results):
+            if res["truncated"]:
+                raise LimitError(_limit_msg(f"Step {st['id']} ({conn.name}) would read", step_cap))
+            _mask(conn, checked, res)                     # masked values never reach a later step or the combine step
+            total += len(res["rows"])
+            filters += [f for f in applied if f not in filters]
+            done[st["id"]] = {"id": st["id"], "source": st["source"], "data_model": conn.name, "sql": st["sql"],
+                              "rows": len(res["rows"]), "ms": res["ms"], "filters": len(applied), "columns": res["columns"],
+                              "_rows": res["rows"], **({"keys": keys} if keys else {})}
+        if total > total_cap:
+            raise LimitError(_limit_msg("Together the steps would read", total_cap))
+        waiting = [st for st in waiting if st["id"] not in done]
+    steps = [done[st["id"]] for st in plan["steps"]]
     out = _combine(steps, combine_checked.sql, cap, cfg["query_timeout_s"])
     out["warnings"] = _warnings(steps, combine_checked, out)
     for s in steps:
@@ -276,5 +415,5 @@ def plan_dto(plan: dict | None) -> dict | None:
     """What the answer panel shows: each step with its source, SQL, rows, time and filters, then the combine SQL."""
     if not plan:
         return None
-    return {"steps": [{k: s.get(k) for k in ("id", "source", "data_model", "sql", "rows", "ms", "filters", "columns")} for s in plan["steps"]],
+    return {"steps": [{k: s.get(k) for k in ("id", "source", "data_model", "sql", "rows", "ms", "filters", "columns", "keys")} for s in plan["steps"]],
             "combine": plan["combine"], "edited": bool(plan.get("generated")) and not same(plan, plan["generated"])}

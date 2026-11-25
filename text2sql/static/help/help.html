@@ -648,6 +648,7 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 <tr><td>Data models in one combined model</td><td>4</td><td>2 to 6.</td></tr>
 <tr><td>Rows read from one data model per step</td><td>200,000</td><td>A step that would read more stops the answer with a message.</td></tr>
 <tr><td>Rows in one combined answer before joining</td><td>500,000</td><td>The total read by all steps of one answer.</td></tr>
+<tr><td>Keys one step may pass to the next</td><td>1,000</td><td>Different values an earlier step can hand to a later one (10 to 10,000).</td></tr>
 </table>
 <h3 id="combined-ask">Asking across data models</h3>
 <p>Pick the combined data model on the Ask page and ask as usual. Instead of one SQL query, the AI writes a <b>plan</b>:</p>
@@ -662,6 +663,15 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 <li><b>Row limits:</b> a step that would read more than the limit, or steps that together read more than the total, stop with a clear message instead of an approximate answer. Ask for totals (per customer, per month) rather than detail.</li>
 <li><b>Warnings</b> appear above the result when no rows matched across the data models (check the key rule) or when the key repeats on both sides, which can count rows more than once.</li>
 <li>Shared chats, reports, PDFs, PowerPoint and scheduled emails re-run the plan with each viewer's own access, as for any answer. People set to see results only never see the plan.</li>
+</ul>
+<h3 id="combined-keys">Filtering one data model by another</h3>
+<p>Some questions need one system to be filtered by what another one finds: <i>“SAP invoices in 2025 for customers with open urgent CRM tickets”</i>. Joining everything in the combine step would mean reading every SAP invoice first. Instead, a later step can use the values an earlier step returned: the CRM step finds the customer numbers, and the SAP step reads only those customers' invoices. In the SQL this is written <code>IN ({{s1.sap_no}})</code>, or with a key rule, <code>IN ({{s1.sap_no|strip_zeros}})</code>; the step tab shows <b>🔑 2 keys from s1.sap_no</b>.</p>
+<figure><img src="/static/help/img/combined-keys.png" alt="An answer whose SAP step uses 2 keys from the CRM step s1.sap_no, with the placeholder in its SQL, and two customers in the result"><figcaption>The SAP step reads only the customers the CRM step found.</figcaption></figure>
+<ul>
+<li>The earlier step runs first, with <b>your</b> data filters and masked columns, so you only ever pass keys you are allowed to see. A masked column can never be passed — matching on it would reveal its values.</li>
+<li>The values are put into the later step's SQL by AskData as plain values of that database's SQL, and the result is read back and checked to contain exactly those values before it runs. A value can never change the query around it. Values containing a backslash are refused (databases disagree on what a backslash means).</li>
+<li>The AI model never sees the keys: it only writes the placeholder.</li>
+<li>At most 1,000 different keys can be passed (Admin → Settings → Combined data models). Above that the answer stops with a message: narrow the first step, or ask for the steps to be joined in the combine step.</li>
 </ul>
 <h3 id="combined-training">Training a combined data model</h3>
 <p>A combined data model uses all the training of each of its data models (schema, notes, verified examples), plus its own, under <b>Training</b> — pick it from the list (it is marked <i>(combined)</i>):</p>
@@ -891,7 +901,7 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 <tr><td>AI model that rephrases</td><td>The user's model</td><td>Pick a smaller, cheaper model here to keep rephrasing cheap; rewording does not need the most capable model.</td></tr>
 <tr><td>Allow predictive questions</td><td>On</td><td>Master switch for forecasts, predictions, segmentation, key drivers and anomalies. Users still opt in per question with <i>Use predictive capability</i>. See <a href="#/help/predictive">Predictive questions</a>.</td></tr>
 <tr><td>Rows a predictive question may read</td><td>50,000</td><td>Models need history, so predictive questions use this larger limit instead of <i>Maximum rows returned</i>.</td></tr>
-<tr><td>Combined data models: data models in one, rows per step, rows per answer</td><td>4 · 200,000 · 500,000</td><td>See <a href="#/help/combined">Combined data models</a>.</td></tr>
+<tr><td>Combined data models: data models in one, rows per step, rows per answer, keys passed between steps</td><td>4 · 200,000 · 500,000 · 1,000</td><td>See <a href="#/help/combined">Combined data models</a>.</td></tr>
 <tr><td>Keep result snapshots in chat history</td><td>On</td><td>Off = results are never stored by AskData; users re-run to see them again.</td></tr>
 <tr><td>When an analyst confirms or corrects SQL</td><td>Approval first</td><td>Whether analyst feedback trains the model straight away or waits in the review queue.</td></tr>
 <tr><td>Web address of this app</td><td>blank</td><td>Used for the “open the live report” link in report emails.</td></tr>

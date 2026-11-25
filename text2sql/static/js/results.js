@@ -509,7 +509,9 @@ export function runCard(run, ctx = {}) {
     const box = h('div', {});
     const t = tabs[tab];
     const info = t.st ? [h('b', {}, t.st.data_model || t.st.source), t.st.rows != null ? ` · ${fmtNum(t.st.rows)} row${t.st.rows === 1 ? '' : 's'} read` : '',
-      t.st.ms != null ? ` · ${t.st.ms} ms` : '', t.st.filters ? h('span', { class: 'badge warn', style: 'margin-left:6px' }, `🔒 ${t.st.filters} data filter${t.st.filters === 1 ? '' : 's'} applied`) : null]
+      t.st.ms != null ? ` · ${t.st.ms} ms` : '',
+      ...(t.st.keys || []).map(k => h('span', { class: 'badge', style: 'margin-left:6px', title: 'Values found by an earlier step, used here to filter this data model. They stay on this server; the AI never sees them.' },
+        `🔑 ${fmtNum(k.count)} key${k.count === 1 ? '' : 's'} from ${k.from}`)), t.st.filters ? h('span', { class: 'badge warn', style: 'margin-left:6px' }, `🔒 ${t.st.filters} data filter${t.st.filters === 1 ? '' : 's'} applied`) : null]
       : ['Runs on the AskData server over the step results (', plan.steps.map(st => st.id).join(', '), '); it can read nothing else.'];
     if (editing) {
       const ta = h('textarea', { class: 'sql-edit', spellcheck: 'false', 'aria-label': `SQL of ${t.label}`, oninput: e => { drafts[tab] = e.target.value; } }, drafts[tab]);

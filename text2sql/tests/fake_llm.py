@@ -104,7 +104,19 @@ SAP_SALES = ("SELECT c.KUNNR AS customer, c.NAME1 AS customer_name, "
              "FROM vbrk k JOIN kna1 c ON c.KUNNR = k.KUNRG WHERE k.FKDAT BETWEEN DATE '2025-01-01' AND DATE '2025-12-31' GROUP BY 1, 2")
 CRM_OPEN = "SELECT sap_no, COUNT(*) AS open_tickets FROM tickets t JOIN accounts a ON a.account_id = t.account_id WHERE t.status <> 'Closed' AND a.sap_no IS NOT NULL GROUP BY 1"
 STRIP = "coalesce(nullif(ltrim(trim(CAST({} AS VARCHAR)), '0'), ''), '0')"
+URGENT_KEYS = ("SELECT DISTINCT a.sap_no FROM tickets t JOIN accounts a ON a.account_id = t.account_id "
+               "WHERE t.status <> 'Closed' AND t.priority = 'Urgent' AND a.sap_no IS NOT NULL")
+SAP_FOR_KEYS = ("SELECT c.KUNNR AS customer, c.NAME1 AS customer_name, k.WAERK AS currency, COUNT(*) AS invoices_2025, "
+                "ROUND(SUM(CASE WHEN k.VBTYP = 'M' THEN k.NETWR ELSE -k.NETWR END), 2) AS net_sales "
+                "FROM vbrk k JOIN kna1 c ON c.KUNNR = k.KUNRG WHERE k.FKDAT BETWEEN DATE '2025-01-01' AND DATE '2025-12-31' "
+                "AND LTRIM(k.KUNRG, '0') IN ({{s1.sap_no|to_text}}) GROUP BY 1, 2, 3")
 PLANS = [
+    ("keys out of order", {"steps": [{"id": "s1", "source": "sap", "sql": SAP_FOR_KEYS.replace("s1.", "s2.")},
+                                     {"id": "s2", "source": "crm", "sql": URGENT_KEYS}], "combine": "SELECT * FROM s1"}),
+    ("keys from every ticket", {"steps": [{"id": "s1", "source": "crm", "sql": "SELECT ticket_id, a.sap_no FROM tickets t JOIN accounts a ON a.account_id = t.account_id WHERE a.sap_no IS NOT NULL"},
+                                          {"id": "s2", "source": "sap", "sql": SAP_FOR_KEYS}], "combine": "SELECT * FROM s2"}),
+    ("urgent", {"steps": [{"id": "s1", "source": "crm", "sql": URGENT_KEYS}, {"id": "s2", "source": "sap", "sql": SAP_FOR_KEYS}],
+                "combine": "SELECT customer_name, currency, invoices_2025, net_sales FROM s2 ORDER BY currency, net_sales DESC"}),
     ("plan broken", None),
     ("every billing item", {"steps": [{"id": "s1", "source": "sap", "sql": "SELECT * FROM vbrp"},
                                       {"id": "s2", "source": "crm", "sql": CRM_OPEN}],

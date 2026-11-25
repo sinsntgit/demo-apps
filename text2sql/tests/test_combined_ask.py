@@ -149,7 +149,8 @@ def test_row_filters_and_masking_apply_to_each_step(setup):
     try:
         run = _ask(c, combo, model, Q)["run"]
         assert run["status"] == "success" and set(_col(run, "net_sales_2025")) == {"••••••"}
-        assert any(_col(run, "open_tickets"))                       # the unmasked CRM side still answers
+        assert run["plan"]["steps"][1]["rows"] > 0                  # the unmasked CRM side still answers (the order of the
+                                                                    # masked sales is arbitrary, so the top 10 may have no tickets)
     finally:
         c.put(f"/api/connections/{sap['id']}", headers=H, json={**sap, "masked_columns": sap.get("masked_columns") or []})
 
