@@ -16,11 +16,13 @@ export async function campaignList(root) {
       <div class="card kpi"><div class="l">Emails sent</div><div class="v">${num(tSent)}</div></div>
       <div class="card kpi"><div class="l">Avg open rate</div><div class="v">${rate(tOpen, tSent)}</div></div>
       <div class="card kpi"><div class="l">Avg click rate</div><div class="v">${rate(tClick, tSent)}</div></div></div>
+    ${camps.length ? html`<input type="search" id="listq" class="mt" placeholder="Search campaigns by name, subject, audience or tag…" aria-label="Search campaigns" style="max-width:420px">` : ''}
     <div class="card mt">${camps.length ? html`<div class="tablewrap"><table><thead><tr><th>Campaign</th><th>Status</th><th>Audience</th><th>Sent</th><th>Open rate</th><th>Click rate</th><th>Date</th><th></th></tr></thead><tbody>
-      ${camps.map((c) => html`<tr><td><a href="#/campaigns/${c.id}"><b>${c.name}</b></a><div class="small muted">${c.subject}</div></td><td>${badge(c.status)}</td><td>${c.segment_name || html`<span class="muted">—</span>`}</td>
+      ${camps.map((c) => html`<tr data-q="${[c.name, c.subject, c.segment_name, ...(c.segment_tags || [])].filter(Boolean).join(' ').toLowerCase()}"><td><a href="#/campaigns/${c.id}"><b>${c.name}</b></a><div class="small muted">${c.subject}</div></td><td>${badge(c.status)}</td><td>${c.segment_name || html`<span class="muted">—</span>`}${(c.segment_tags || []).map((t) => html` <span class="badge">${t}</span>`)}</td>
         <td>${c.sent || '—'}</td><td>${c.sent ? rate(c.opened, c.sent) : '—'}</td><td>${c.sent ? rate(c.clicked, c.sent) : '—'}</td>
         <td class="small">${c.status === 'scheduled' ? 'Sends ' + fmtDateTime(c.scheduled_at) : c.sent_at ? fmtDate(c.sent_at) : 'Created ' + fmtDate(c.created_at)}</td>
         <td class="nowrap"><button class="btn sm" data-act="dup" data-id="${c.id}">Duplicate</button>${allow('campaigns.delete') && c.status !== 'sending' ? html` <button class="btn sm danger" data-act="del" data-id="${c.id}" aria-label="Delete">✕</button>` : ''}</td></tr>`)}</tbody></table></div>` : html`<div class="empty">No campaigns yet. Create your first one.</div>`}</div>`);
+  hookListSearch(root);
   on(root, {
     new: () => modal({ title: 'New campaign', body: field({ name: 'name', label: 'Campaign name', required: true, placeholder: 'e.g. Autumn webinar invite' }), submitLabel: 'Create',
       onSubmit: async (f) => { const c = await api('POST', '/campaigns', { name: f.name.value, from_name: store.meta.defaults.fromName, from_email: store.meta.defaults.fromEmail }); location.hash = `#/campaigns/${c.id}`; } }),
@@ -29,6 +31,13 @@ export async function campaignList(root) {
     del: async (el) => { if (await confirmBox('Delete this campaign and its tracking data?', 'Delete')) { await api('DELETE', `/campaigns/${el.dataset.id}`); campaignList(root); } },
   });
 }
+
+/** Live filter for a table: rows carry data-q (lower-case searchable text). */
+function hookListSearch(root) {
+  const box = root.querySelector('#listq'); if (!box) return;
+  box.addEventListener('input', () => { const q = box.value.trim().toLowerCase(); root.querySelectorAll('tbody tr[data-q]').forEach((tr) => { tr.hidden = !!q && !tr.dataset.q.includes(q); }); });
+}
+const segTags = (s) => (s.filter?.rules || []).filter((r) => r.field === 'tags' && r.value).map((r) => String(r.value).trim());
 
 // =============== Campaign editor / report ===============
 export async function campaignDetail(root, id) {
@@ -61,7 +70,7 @@ async function editor(root, c) {
       <div class="small muted" style="margin:-6px 0 10px">Adds an invisible image and routes links through the CRM, so it needs an internet address. Turning it off makes emails look more personal.</div>
       <div id="trackwarn"></div>
       <label>Footer address <span class="muted small">(your postal address, shown above the unsubscribe line)</span><textarea name="footer_text" rows="2" maxlength="400" placeholder="${store.meta.footerAddress ? 'Blank = workspace default: ' + store.meta.footerAddress : 'e.g. SyncSense Consulting, 12 MG Road, Bengaluru 560001'}">${c.footer_text || ''}</textarea></label>
-      <label>Audience segment<select name="segment_id"><option value="">Choose a segment…</option>${segments.map((s) => html`<option value="${s.id}" ${c.segment_id === s.id ? raw('selected') : ''}>${s.name} (${s.size} emailable)</option>`)}</select></label>
+      <label>Audience segment<select name="segment_id"><option value="">Choose a segment…</option>${segments.map((s) => html`<option value="${s.id}" ${c.segment_id === s.id ? raw('selected') : ''}>${s.name} (${s.size} emailable)${segTags(s).length ? ' · tag: ' + segTags(s).join(', ') : ''}</option>`)}</select></label>
       <div id="audience" class="small muted" style="margin:-4px 0 12px"></div>
       ${aiPanel()}
       <label>Start from template<select id="tplpick"><option value="">— keep current content —</option>${templates.map((t) => html`<option value="${t.id}">${t.name}</option>`)}</select></label>
@@ -196,7 +205,7 @@ function ruleRow(r, i) {
   const noVal = ['is_empty', 'is_not_empty'].includes(r.op);
   return html`<div class="rule" data-i="${i}"><select data-k="field" aria-label="Field">${Object.entries(F).map(([k, v]) => html`<option value="${k}" ${k === r.field ? raw('selected') : ''}>${v.label}</option>`)}</select>
     <select data-k="op" aria-label="Operator">${store.meta.segmentOps.map((o) => html`<option value="${o}" ${o === r.op ? raw('selected') : ''}>${opLabels[o]}</option>`)}</select>
-    ${noVal ? html`<span></span>` : f.type === 'enum' ? html`<select data-k="value" aria-label="Value">${f.options.map((o) => html`<option ${o === r.value ? raw('selected') : ''}>${o}</option>`)}</select>` : html`<input data-k="value" value="${r.value}" aria-label="Value" type="${f.type === 'date' ? 'date' : 'text'}">`}
+    ${noVal ? html`<span></span>` : f.type === 'enum' ? html`<select data-k="value" aria-label="Value">${f.options.map((o) => html`<option ${o === r.value ? raw('selected') : ''}>${o}</option>`)}</select>` : html`<input data-k="value" value="${r.value}" aria-label="Value" type="${f.type === 'date' ? 'date' : 'text'}" ${f.type === 'tags' ? raw('list="tagopts" placeholder="start typing a tag"') : ''}>`}
     <button type="button" class="btn sm danger" data-act="rm" aria-label="Remove rule">✕</button></div>`;
 }
 function segmentModal(seg, done) {
@@ -213,7 +222,7 @@ function segmentModal(seg, done) {
   modal({ title: seg ? 'Edit segment' : 'New segment', wide: true, submitLabel: 'Save segment',
     body: html`${field({ name: 'name', label: 'Segment name', required: true }, seg || {})}${field({ name: 'description', label: 'Description' }, seg || {})}
       <label>Contacts must match <select id="match" style="display:inline;width:auto"><option value="all" ${st.match === 'all' ? raw('selected') : ''}>ALL</option><option value="any" ${st.match === 'any' ? raw('selected') : ''}>ANY</option></select> of these rules</label>
-      <div id="rules"></div><button type="button" class="btn sm" data-act="add">+ Add rule</button>
+      <div id="rules"></div><datalist id="tagopts">${(store.meta.contactTags || []).map((t) => html`<option value="${t}"></option>`)}</datalist><button type="button" class="btn sm" data-act="add">+ Add rule</button>
       <div id="segprev" class="card kpi mt small"></div><p class="small muted">Unsubscribed contacts and contacts without an email address are always excluded at send time.</p>`,
     onOpen: (form) => {
       draw(form);
@@ -234,9 +243,11 @@ export async function segments(root) {
   const draw = async () => {
     const segs = await api('GET', '/segments');
     setHtml(root, html`${page('Segments', html`<a class="btn" href="#/campaigns">← Campaigns</a><button class="btn primary" data-act="new">+ New segment</button>${allow('data.purge') ? html`<button class="btn danger" data-act="purge">Delete all…</button>` : ''}`)}
-      <div class="card">${segs.length ? html`<div class="tablewrap"><table><thead><tr><th>Segment</th><th>Rules</th><th>Emailable</th><th></th></tr></thead><tbody>${segs.map((s) => html`<tr><td><b>${s.name}</b><div class="small muted">${s.description || ''}</div></td>
+      ${segs.length ? html`<input type="search" id="listq" placeholder="Search segments by name, rule or tag…" aria-label="Search segments" style="max-width:420px;margin-bottom:12px">` : ''}
+      <div class="card">${segs.length ? html`<div class="tablewrap"><table><thead><tr><th>Segment</th><th>Rules</th><th>Emailable</th><th></th></tr></thead><tbody>${segs.map((s) => html`<tr data-q="${[s.name, s.description, ...s.filter.rules.map((r) => `${r.field} ${r.value}`)].filter(Boolean).join(' ').toLowerCase()}"><td><b>${s.name}</b><div class="small muted">${s.description || ''}</div></td>
         <td class="small">${s.filter.rules.length ? s.filter.rules.map((r) => `${store.meta.segmentFields[r.field]?.label || r.field} ${r.op.replace(/_/g, ' ')} ${r.value}`).join(s.filter.match === 'any' ? ' OR ' : ' AND ') : 'Everyone'}</td>
         <td><b>${s.size}</b> <span class="muted small">of ${s.total_matching}</span></td><td class="nowrap"><button class="btn sm" data-act="edit" data-id="${s.id}">Edit</button>${allow('segments.delete') ? html` <button class="btn sm danger" data-act="del" data-id="${s.id}" aria-label="Delete">✕</button>` : ''}</td></tr>`)}</tbody></table></div>` : html`<div class="empty">No segments yet.</div>`}</div>`);
+    hookListSearch(root);
     on(root, {
       purge: () => purgeModal('segments', draw), new: () => segmentModal(null, draw), edit: (el) => segmentModal(segs.find((s) => String(s.id) === el.dataset.id), draw),
       del: async (el) => { if (await confirmBox('Delete this segment? Campaigns using it will lose their audience.', 'Delete')) { await api('DELETE', `/segments/${el.dataset.id}`); draw(); } },

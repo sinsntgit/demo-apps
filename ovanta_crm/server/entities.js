@@ -35,7 +35,7 @@ export const ENTITIES = {
     fields: { first_name: T.text, last_name: T.text, email: T.text, phone: T.text, title: T.text, account_id: T.fk, status: T.text, source: T.text, tags: T.text, subscribed: T.bool, owner_id: T.fk },
     required: ['first_name'],
     enums: { status: ['lead', 'qualified', 'customer', 'churned'] },
-    search: ['c.first_name', 'c.last_name', 'c.email', 'c.title', 'ac.name', "c.first_name || ' ' || COALESCE(c.last_name,'')"],
+    search: ['c.first_name', 'c.last_name', 'c.email', 'c.title', 'ac.name', 'c.tags', "c.first_name || ' ' || COALESCE(c.last_name,'')"],
     filters: { status: 'c.status', source: 'c.source', owner_id: 'c.owner_id', account_id: 'c.account_id', subscribed: 'c.subscribed' },
     sorts: { name: 'c.first_name', email: 'c.email', status: 'c.status', created_at: 'c.created_at', account: 'ac.name' },
     defaultSort: 'c.created_at DESC',

@@ -325,7 +325,8 @@ function campaignInput(b, existing) {
   if ('name' in out && !out.name) throw bad('Campaign name is required');
   return out;
 }
-GET('/api/campaigns', () => all(`${CAMPAIGN_LIST} ORDER BY c.created_at DESC, c.id DESC`));
+const tagsOfFilter = (raw) => { try { return (JSON.parse(raw).rules || []).filter((r) => r.field === 'tags' && r.value).map((r) => String(r.value).trim()); } catch { return []; } };
+GET('/api/campaigns', () => { const seg = new Map(all('SELECT id, filter FROM segments').map((s) => [s.id, tagsOfFilter(s.filter)])); return all(`${CAMPAIGN_LIST} ORDER BY c.created_at DESC, c.id DESC`).map((c) => ({ ...c, segment_tags: seg.get(c.segment_id) || [] })); });
 GET('/api/campaigns/outbox', () => outboxLog.slice(0, 100));
 GET('/api/campaigns/:id', ({ params }) => {
   const c = campaignById(params.id);

@@ -34,7 +34,7 @@ const BASE = {
   contacts: {
     label: 'Contacts', perm: 'contacts.view', owner: 'c.owner_id', alias: 'c',
     from: 'contacts c LEFT JOIN accounts ac ON ac.id=c.account_id LEFT JOIN users u ON u.id=c.owner_id',
-    select: 'c.id, c.first_name, c.last_name, c.email, c.title, c.status, c.custom, ac.name AS account_name', text: [FULLNAME('c'), 'c.email', 'c.title', 'ac.name', 'c.phone'], sort: 'c.created_at DESC',
+    select: 'c.id, c.first_name, c.last_name, c.email, c.title, c.status, c.custom, ac.name AS account_name', text: [FULLNAME('c'), 'c.email', 'c.title', 'ac.name', 'c.phone', 'c.tags'], sort: 'c.created_at DESC',
     fields: { name: [FULLNAME('c'), 'text'], email: ['c.email', 'text'], phone: ['c.phone', 'text'], title: ['c.title', 'text'], status: ['c.status', 'enum', ['lead', 'qualified', 'customer', 'churned']],
       source: ['c.source', 'text'], tags: ['c.tags', 'text'], subscribed: ['c.subscribed', 'bool'], converted: ['(c.converted_at IS NOT NULL)', 'bool'], owner: ['u.name', 'text'], account: ['ac.name', 'text'], created_at: ['c.created_at', 'date'] },
     row: (r) => ({ id: r.id, title: `${r.first_name} ${r.last_name || ''}`.trim(), subtitle: [r.title, r.account_name, r.email, r.status].filter(Boolean).join(' · '), link: `#/contacts/${r.id}` }),

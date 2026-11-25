@@ -93,6 +93,12 @@ Custom values appear on the record's detail page (grouped by your sections), in 
 * **Invoicing starts in India GST** (INR, 18 %, GSTIN, CGST+SGST within your state and IGST across states; demo invoices are Indian). Saudi Arabia (ZATCA), UAE (FTA) or any other country can be chosen under *Billing settings*. Upgrading moves only an untouched Saudi **demo** profile to India; a profile you set up yourself is never changed. The account form follows the mode (GSTIN and *State (GST place of supply)* for India; VAT/TRN, Arabic name, building no. and district for the Gulf).
 * **Overdue deals**: open deals whose expected close date has passed show **⚠ Overdue N days** on the board (red edge) and in red in the list. Won and lost deals never do.
 
+## Search by tag everywhere (1.27.4)
+
+* **Contacts / Leads:** the search box also matches tags (plus the Tag filter from 1.27.3). **AI search** and keyword search find contacts by tag as well.
+* **Segments:** the tag rule suggests the tags already in use as you type, and the segments list has a search box (name, rules, tags).
+* **Campaigns:** the list has a search box that matches name, subject, audience and the tags the audience uses; those tags show as badges beside the audience, and the audience picker in the editor shows `tag: …` next to tag-based segments.
+
 ## Tag your imports (1.27.3)
 
 * The contact/lead **Import CSV** window now starts with **Tag for this upload**: one or several tags (comma-separated) added to every imported contact, including existing ones that get updated. Contacts has a new **Tag** filter listing every tag in use, so you can pull up a batch later; segments can filter by tag too.

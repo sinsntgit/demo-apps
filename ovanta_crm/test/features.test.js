@@ -230,6 +230,10 @@ test('import options: default tag/source, subscribed column, skip-existing', asy
   assert.match((await api('GET', '/api/contacts?q=multi@imp.example')).body.rows[0].tags, /mumbai-leads.*expo-2026|expo-2026.*mumbai-leads/, 'several tags separated by commas');
   assert.ok((await api('GET', '/api/meta')).body.contactTags.includes('mumbai-leads'), 'tag list for the filter');
   assert.ok((await api('GET', '/api/contacts?tag=mumbai-leads')).body.rows.some((r) => r.email === 'multi@imp.example'), 'filter by tag');
+  assert.ok((await api('GET', '/api/contacts?q=mumbai-leads')).body.rows.some((r) => r.email === 'multi@imp.example'), 'the search box finds contacts by tag');
+  const sg = await api('POST', '/api/segments', { name: 'Mumbai batch', filter: { match: 'all', rules: [{ field: 'tags', op: 'is', value: 'mumbai-leads' }] } });
+  const cp = await api('POST', '/api/campaigns', { name: 'Mumbai push', subject: 's', body_html: '<p>x</p>', segment_id: sg.body.id });
+  assert.deepEqual((await api('GET', '/api/campaigns')).body.find((x) => x.id === cp.body.id).segment_tags, ['mumbai-leads'], 'campaign list shows the tags its audience uses');
   const again = await api('POST', '/api/contacts/import', { options: { update_existing: false }, rows: [{ first_name: 'Opt', email: 'opt1@imp.example' }] });
   assert.equal(again.body.skipped, 1); assert.equal(again.body.updated, 0);
 });
