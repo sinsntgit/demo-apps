@@ -93,6 +93,10 @@ Custom values appear on the record's detail page (grouped by your sections), in 
 * **Invoicing starts in India GST** (INR, 18 %, GSTIN, CGST+SGST within your state and IGST across states; demo invoices are Indian). Saudi Arabia (ZATCA), UAE (FTA) or any other country can be chosen under *Billing settings*. Upgrading moves only an untouched Saudi **demo** profile to India; a profile you set up yourself is never changed. The account form follows the mode (GSTIN and *State (GST place of supply)* for India; VAT/TRN, Arabic name, building no. and district for the Gulf).
 * **Overdue deals**: open deals whose expected close date has passed show **⚠ Overdue N days** on the board (red edge) and in red in the list. Won and lost deals never do.
 
+## Tag your imports (1.27.3)
+
+* The contact/lead **Import CSV** window now starts with **Tag for this upload**: one or several tags (comma-separated) added to every imported contact, including existing ones that get updated. Contacts has a new **Tag** filter listing every tag in use, so you can pull up a batch later; segments can filter by tag too.
+
 ## Your own address in campaign emails (1.27.2)
 
 * The built-in "Ovantaa Inc., San Francisco" footer address is gone. Each campaign has a **Footer address** box (shown above the unsubscribe line, live in the preview); leave it blank to use the workspace default set under **Settings → Email delivery → Default footer address** (admins). With neither set, the footer shows only the unsubscribe line and the deliverability check reminds you to add an address. `COMPANY_ADDRESS` still works as a last fallback.

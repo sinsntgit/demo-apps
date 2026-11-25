@@ -65,7 +65,7 @@ export function checkPassword(p) {
 // ---------- Meta ----------
 GET('/api/meta', () => ({
   version: config.version, currency: currencyMeta(), billing: (() => { const b = getBilling(); return { jurisdiction: b.jurisdiction, country: b.country, reminders_enabled: !!b.reminders.enabled, tax_label: b.tax_label }; })(),
-  stages: stagesForClient().stages, stageLabels: stagesForClient().labels, mergeTags: MERGE_TAGS, footerAddress: footerAddress({}), segmentFields: Object.fromEntries(Object.entries(segmentFields()).map(([k, v]) => [k, { label: v.label, type: v.type, options: v.options }])),
+  stages: stagesForClient().stages, stageLabels: stagesForClient().labels, mergeTags: MERGE_TAGS, footerAddress: footerAddress({}), contactTags: [...new Set(all("SELECT tags FROM contacts WHERE tags IS NOT NULL AND tags<>''").flatMap((r) => r.tags.split(',').map((t) => t.trim()).filter(Boolean)))].sort((a, b) => a.localeCompare(b)).slice(0, 300), segmentFields: Object.fromEntries(Object.entries(segmentFields()).map(([k, v]) => [k, { label: v.label, type: v.type, options: v.options }])),
   segmentOps: SEGMENT_OPS, users: all('SELECT id,name,role FROM users WHERE active=1 ORDER BY name'),
   industries: all("SELECT DISTINCT industry v FROM accounts WHERE industry IS NOT NULL ORDER BY 1").map((r) => r.v),
   sources: all("SELECT DISTINCT source v FROM contacts WHERE source IS NOT NULL ORDER BY 1").map((r) => r.v),
@@ -165,7 +165,7 @@ POST('/api/contacts/import', ({ body, user }) => {
   if (!rows) throw bad('rows array required');
   if (rows.length > 5000) throw bad('Import is limited to 5,000 rows at a time');
   const opts = body.options || {};
-  const defTag = String(opts.tag || '').trim().replace(/,/g, '').slice(0, 60);
+  const defTags = [...new Set(String(opts.tag || '').split(',').map((x) => x.trim().slice(0, 60)).filter(Boolean))].slice(0, 10);
   const defSource = String(opts.source || '').trim().slice(0, 80);
   const defStatus = ['lead', 'qualified', 'customer', 'churned'].includes(opts.status) ? opts.status : null;
   const res = { created: 0, updated: 0, skipped: 0, errors: [] };
@@ -189,7 +189,7 @@ POST('/api/contacts/import', ({ body, user }) => {
           const old = existing ? JSON.parse(existing.custom || '{}') : {};
           data.custom = JSON.stringify(mergeCustom('contacts', row.custom && typeof row.custom === 'object' ? row.custom : existing ? undefined : {}, { existing: old, record: { ...(existing || {}), ...data }, isCreate: !existing }));
         }
-        if (defTag) { const t = new Set([...(existing?.tags || '').split(','), ...(data.tags || '').split(',')].map((x) => x.trim()).filter(Boolean)); t.add(defTag); data.tags = [...t].join(', '); }
+        if (defTags.length) { const t = new Set([...(existing?.tags || '').split(','), ...(data.tags || '').split(',')].map((x) => x.trim()).filter(Boolean)); defTags.forEach((x) => t.add(x)); data.tags = [...t].join(', '); }
         if (existing) {
           if (opts.update_existing === false) { res.skipped++; return; }
           const cols = Object.keys(data).filter((k) => data[k] !== null);
@@ -204,7 +204,7 @@ POST('/api/contacts/import', ({ body, user }) => {
       } catch (e) { res.skipped++; if (res.errors.length < 20) res.errors.push(`Row ${i + 2}: ${e.message}`); }
     });
   });
-  audit(user, 'import', 'contacts', null, `${res.created} created, ${res.updated} updated`);
+  audit(user, 'import', 'contacts', null, `${res.created} created, ${res.updated} updated${defTags.length ? `, tagged ${defTags.join(', ')}` : ''}`);
   if (res.created + res.updated > 0) notify(['contact.imported'], { name: 'Import' }, { count: res.created + res.updated, created: res.created, updated: res.updated }, user);
   return res;
 });

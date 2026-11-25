@@ -225,6 +225,11 @@ test('import options: default tag/source, subscribed column, skip-existing', asy
   const c = (await api('GET', '/api/contacts?q=opt1@imp.example')).body.rows[0];
   assert.equal(c.subscribed, 0); assert.equal(c.source, 'Expo'); assert.equal(c.status, 'qualified'); assert.match(c.tags, /expo-2026/);
   assert.match((await api('GET', '/api/contacts?q=opt2@imp.example')).body.rows[0].tags, /vip.*expo-2026|expo-2026.*vip/);
+  const multi = await api('POST', '/api/contacts/import', { options: { tag: 'mumbai-leads, expo-2026' }, rows: [{ first_name: 'Multi', email: 'multi@imp.example' }] });
+  assert.equal(multi.body.created, 1);
+  assert.match((await api('GET', '/api/contacts?q=multi@imp.example')).body.rows[0].tags, /mumbai-leads.*expo-2026|expo-2026.*mumbai-leads/, 'several tags separated by commas');
+  assert.ok((await api('GET', '/api/meta')).body.contactTags.includes('mumbai-leads'), 'tag list for the filter');
+  assert.ok((await api('GET', '/api/contacts?tag=mumbai-leads')).body.rows.some((r) => r.email === 'multi@imp.example'), 'filter by tag');
   const again = await api('POST', '/api/contacts/import', { options: { update_existing: false }, rows: [{ first_name: 'Opt', email: 'opt1@imp.example' }] });
   assert.equal(again.body.skipped, 1); assert.equal(again.body.updated, 0);
 });
