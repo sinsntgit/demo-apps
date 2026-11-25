@@ -21,7 +21,10 @@ export async function connectionsView(root) {
     const status = h('span', { class: 'small' });
     const testBtn = h('button', { class: 'btn sm', onclick: () => busy(testBtn, async () => {
       status.textContent = 'Testing…'; const r = await api('POST', `/api/connections/${c.id}/test`);
-      fill(status, h('span', { class: 'badge ' + (r.ok ? 'good' : 'bad') }, r.ok ? '✓ ' : '✗ ', r.message));
+      const w = r.write_access;
+      fill(status, h('span', { class: 'badge ' + (r.ok ? 'good' : 'bad') }, r.ok ? '✓ ' : '✗ ', r.message),
+        w ? h('div', { class: 'small', style: 'margin-top:6px' }, w.can_write === true ? h('span', { class: 'badge warn' }, '⚠ This account can change data') : w.can_write === false ? h('span', { class: 'badge good' }, '🔒 Read-only') : h('span', { class: 'badge' }, 'Privileges not checked'),
+          ' ', w.detail) : null);
     }) }, 'Test connection');
     const syncBtn = h('button', { class: 'btn sm', onclick: () => busy(syncBtn, async () => { const r = await api('POST', `/api/connections/${c.id}/sync`); toast(`Schema synced: ${r.tables} tables, ${r.columns} columns`); draw(); }) }, '⟳ Sync schema');
     return h('div', { class: 'card' }, h('div', { class: 'row top wrap' },

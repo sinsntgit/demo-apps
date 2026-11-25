@@ -23,6 +23,12 @@ const OUT = process.argv[2], B = 'http://localhost:8010/';
     await page.screenshot({ path: `${OUT}/datamodels.png` });
   });
 
+  await step('test connection says whether the account could change data', async () => {
+    await card('Sample: CRM').locator('button:text-is("Test connection")').click();
+    await card('Sample: CRM').locator('.badge:has-text("Read-only")').waitFor();
+    await card('Sample: CRM').screenshot({ path: `${OUT}/connection-readonly.png` });
+  });
+
   await step('matches screen: the confirmed customer-number match and its value check', async () => {
     await card('Sample: SAP + CRM').locator('button:has-text("Matches")').click();
     await page.waitForSelector('.modal h3:has-text("Confirmed matches (1)")');

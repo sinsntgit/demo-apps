@@ -177,10 +177,12 @@ def remove(conn_id: int, request: Request, user: User = Depends(admin_only), db:
 @router.post("/{conn_id}/test")
 def test(conn_id: int, user: User = Depends(steward_up), db: Session = Depends(get_db)):
     c = get_connection(db, user, conn_id)
+    cfg = security.decrypt_json(c.config_enc) if c.config_enc else {}
     try:
-        return {"ok": True, "message": connectors.test(c, security.decrypt_json(c.config_enc))}
+        msg = connectors.test(c, cfg)
     except connectors.ConnectorError as e:
         return {"ok": False, "message": str(e)}
+    return {"ok": True, "message": msg, "write_access": connectors.write_access(c, cfg)}
 
 
 @router.post("/{conn_id}/sync")

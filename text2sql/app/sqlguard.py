@@ -20,7 +20,7 @@ _FORBIDDEN_NODES = tuple(
         "Insert", "Update", "Delete", "Merge", "Create", "Drop", "Alter", "AlterTable", "TruncateTable",
         "Command", "Into", "Grant", "Revoke", "Set", "Use", "Copy", "Pragma", "Transaction", "Commit",
         "Rollback", "LoadData", "Attach", "Detach", "Kill", "Execute", "Lock", "Analyze", "Refresh",
-        "Export", "Put", "Get", "Cache", "Uncache", "Comment", "Install",
+        "Export", "Put", "Get", "Cache", "Uncache", "Comment", "Install", "NextValueFor", "Summarize",
     ) if hasattr(exp, n)
 )
 
@@ -33,12 +33,33 @@ _FORBIDDEN_FUNCS = {
     "utl_http", "utl_file", "dbms_scheduler", "dbms_lock", "system$wait", "read_csv", "read_csv_auto",
     "read_parquet", "read_json", "read_json_auto", "read_text", "read_blob", "glob", "getenv",
     "sqlite_scan", "postgres_scan", "mysql_scan", "httpfs",
+    # functions that change something from inside a SELECT: sequences, locks, notifications, server administration
+    "nextval", "setval", "currval", "lastval", "pg_notify", "get_lock", "release_lock", "release_all_locks",
+    "pg_reload_conf", "pg_promote", "pg_import_system_collations", "pg_log_backend_memory_contexts",
+    # DuckDB: run SQL text, or read files and metadata outside the loaded tables
+    "query", "query_table", "sniff_csv", "parquet_scan", "parquet_metadata", "parquet_schema", "parquet_file_metadata",
+    "parquet_kv_metadata", "iceberg_scan", "delta_scan", "sqlite_attach", "postgres_attach", "read_ndjson",
+    "read_ndjson_auto", "read_json_objects", "read_json_objects_auto",
 }
+# whole families of such functions, by name prefix
+_FORBIDDEN_PREFIXES = ("lo_", "pg_advisory", "pg_try_advisory", "pg_create_", "pg_drop_", "pg_replication_", "pg_logical_",
+                       "pg_stat_reset", "pg_file_", "pg_wal_", "pg_backup_", "pg_start_backup", "pg_stop_backup", "pg_switch_",
+                       "pg_rotate_", "pg_copy_", "pg_terminate", "pg_cancel", "dblink", "dbms_", "utl_", "system$", "xp_", "sp_")
+# what the parser may not see as a function call: Oracle/Snowflake sequences (seq.NEXTVAL), package procedures
+# (DBMS_STATS.GATHER_TABLE_STATS(...)), SQL Server sequences and locking table hints
+_TEXT_SCREEN = [
+    (re.compile(r"\.\s*nextval\b", re.I), "Sequences cannot be advanced in read-only mode (NEXTVAL)."),
+    (re.compile(r"\bnext\s+value\s+for\b", re.I), "Sequences cannot be advanced in read-only mode (NEXT VALUE FOR)."),
+    (re.compile(r"\b(dbms_\w+|utl_\w+|owa_\w+|htp|apex_\w+|sys\.dbms_\w+)\s*\.\s*\w+", re.I), "Database packages cannot be called in read-only mode."),
+    (re.compile(r"\bsystem\$\w+", re.I), "System functions cannot be called in read-only mode."),
+    (re.compile(r"\b(updlock|xlock|tablockx|tablock|holdlock|paglock|rowlock)\b", re.I), "Locking table hints are not allowed in read-only mode."),
+]
 
 _FALLBACK_BAD = re.compile(
     r"\b(insert|update|delete|merge|create|drop|alter|truncate|grant|revoke|exec|execute|call|copy|"
     r"into|attach|detach|pragma|set|use|begin|commit|rollback|lock|kill|shutdown|load|install|"
-    r"replace\s+into|outfile|dumpfile)\b", re.I)
+    r"replace\s+into|outfile|dumpfile|comment\s+on|rename|vacuum|reindex|refresh|notify|listen|upsert|handler|"
+    r"optimize|purge|flashback|undrop|unload|reset|unset|checkpoint|cluster\s+\w+\s*(?:using|;|$))\b", re.I)
 
 
 class SQLBlocked(Exception):
@@ -88,16 +109,29 @@ def check(sql: str, db_type: str) -> Checked:
         if isinstance(node, _FORBIDDEN_NODES):
             raise SQLBlocked(f"Statement type not allowed in read-only mode: {type(node).__name__.upper()}.")
     for name in _func_names(tree):
-        if name in _FORBIDDEN_FUNCS:
+        if name in _FORBIDDEN_FUNCS or name.startswith(_FORBIDDEN_PREFIXES):
             raise SQLBlocked(f"Function not allowed: {name}().")
+    _screen(sql)
     tables = sorted({".".join(p for p in (t.db, t.name) if p) for t in tree.find_all(exp.Table) if t.name})
     return Checked(sql=sql, tables=tables, parsed=True, tree=tree)
 
 
+def _bare(sql: str) -> str:
+    """The SQL without comments and string literals (so a word inside a quoted value never counts)."""
+    bare = re.sub(r"--[^\n]*|/\*.*?\*/", " ", sql, flags=re.S)
+    return re.sub(r"'(?:[^']|'')*'", "''", bare)
+
+
+def _screen(sql: str):
+    bare = _bare(sql)
+    for pattern, message in _TEXT_SCREEN:
+        if pattern.search(bare):
+            raise SQLBlocked(message)
+
+
 def _fallback(sql: str) -> Checked:
     """Used when the dialect parser cannot read vendor-specific syntax: strict keyword screen."""
-    bare = re.sub(r"--[^\n]*|/\*.*?\*/", " ", sql, flags=re.S)
-    bare = re.sub(r"'(?:[^']|'')*'", "''", bare)
+    bare = _bare(sql)
     if ";" in bare:
         raise SQLBlocked("Only a single SQL statement is allowed.")
     if not re.match(r"^\s*\(*\s*(select|with)\b", bare, re.I):
@@ -106,8 +140,9 @@ def _fallback(sql: str) -> Checked:
     if m:
         raise SQLBlocked(f"Keyword not allowed in read-only mode: {m.group(1).upper()}.")
     for name in re.findall(r"\b([a-z_$][\w$]*)\s*\(", bare, re.I):
-        if name.lower() in _FORBIDDEN_FUNCS:
+        if name.lower() in _FORBIDDEN_FUNCS or name.lower().startswith(_FORBIDDEN_PREFIXES):
             raise SQLBlocked(f"Function not allowed: {name}().")
+    _screen(sql)
     return Checked(sql=sql, parsed=False)
 
 

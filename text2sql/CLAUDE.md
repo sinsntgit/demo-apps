@@ -50,7 +50,11 @@ These are the product's promises. A change that weakens one is wrong even if the
    every request the model receives and asserts result values are absent — keep that test meaningful.
 2. **Read-only on source databases.** Every statement, model-written or user-edited or stored in a
    report, goes through `app/sqlguard.py::check` (single SELECT; no DML/DDL/file/sleep functions).
-   Never add a code path that executes SQL on a source without it.
+   Never add a code path that executes SQL on a source without it. Behind it (do not remove any): `connectors._READ_ONLY` /
+   `_READ_ONLY_CHECK` make the session read-only (Postgres via connect options + `SHOW transaction_read_only`; MySQL, Oracle)
+   and refuse the query if that fails; every SQLAlchemy query is rolled back; DuckDB queries run in `BEGIN … ROLLBACK`;
+   `connectors.write_access` reports on Test connection whether the account could write; `chat._audit_blocked` audits refusals.
+   `tests/test_readonly.py` lists what must be refused and what must still pass - extend both lists together.
 3. **Access control is enforced on the server.** Data-model access (`deps.can_use`), row filters
    (`app/rowfilter.py`), masking (`engine._mask`) and report access (`reporting.can_view/can_edit`) are
    applied server-side on every path — chat, edited SQL, shared chats, reports, PDFs, scheduled emails.
@@ -278,7 +282,8 @@ Design defaults that have served well:
 python -m pytest -q                       # API-level tests, a few seconds
 tests/e2e/run.sh                          # browser suites against a fresh instance (see file header)
 tests/e2e/run.sh reports                  # one suite: features | reports | groups | predictive | sharing | rephrase | resultsonly | tenancy | graph | combined | session
-T2S_TEST_PG=user:pw@host:5432/db python -m pytest tests/test_postgres.py   # live Postgres, optional
+T2S_TEST_PG=reader:r3ader@host:5432/shop T2S_TEST_PG_OWNER=writer:wr1ter python -m pytest tests/test_postgres.py
+                                          # live Postgres, optional; set up with tests/fixtures/pg_shop.sql
 ```
 
 - `tests/fake_llm.py` is a stand-in model (OpenAI- and Anthropic-shaped endpoints) with canned SQL for

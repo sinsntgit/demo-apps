@@ -432,6 +432,19 @@
 <p>If even table and column names must stay inside your network, your administrator can configure a self-hosted AI model.</p>
 </section>
 
+<section id="readonly" data-title="Your data is never changed">
+<h2>Your data is never changed</h2>
+<p>AskData only reads. Nothing it runs — SQL written by the AI, SQL you edit, a stored report, a step of a plan across data models — can add, change or delete rows, change a table's structure, or change descriptions, permissions or other metadata in your database. Four layers make sure of it, so that a mistake in one is caught by the next:</p>
+<ol>
+<li><b>The read-only check.</b> Every statement is read by AskData before it is sent: only a single <code>SELECT</code> is allowed. Refused: <code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>, <code>MERGE</code>, <code>TRUNCATE</code>, <code>CREATE</code>, <code>ALTER</code>, <code>DROP</code>, <code>RENAME</code>, <code>COMMENT ON</code> and description procedures, <code>GRANT</code>/<code>REVOKE</code>, procedure calls, locking reads (<code>FOR UPDATE</code>), several statements at once, changing session settings — and functions that change something from inside a <code>SELECT</code>: sequences (<code>nextval</code>, <code>NEXTVAL</code>, <code>NEXT VALUE FOR</code>), locks, database packages (<code>DBMS_…</code>, <code>UTL_…</code>), server administration and file access.</li>
+<li><b>A read-only database session.</b> On PostgreSQL, MySQL and Oracle every query runs in a session the database itself keeps read-only, and AskData checks this before each query: if the database does not confirm it, the query is not run. Every query is rolled back afterwards. Excel / CSV data models run every query in a transaction that is always rolled back, and the files on disk are never written.</li>
+<li><b>Your database account.</b> <b>Test connection</b> on the Data models page now says whether the account could change data: <span class="badge good">🔒 Read-only</span> or <span class="badge warn">⚠ This account can change data</span>, with what it may do (owns tables, can insert, is a superuser…). Use an account that may only <code>SELECT</code> — see <a href="#/help/datamodels">Connecting data</a> for the commands. It is the strongest guarantee because it does not depend on AskData at all.</li>
+<li><b>The audit log.</b> Every refused statement is recorded under Admin → Audit log as <i>query.blocked</i>, with who asked and why it was refused.</li>
+</ol>
+<figure><img src="/static/help/img/connection-readonly.png" alt="Test connection result on the Sample: CRM data model: OK, and a green Read-only badge"><figcaption>Test connection reports whether the account can change data.</figcaption></figure>
+<p>SQL Server, SingleStore and Snowflake have no read-only session AskData can switch on: there, layers 1, 3 and 4 apply, and the account's own permissions are what stops a change at the database. Snowflake's privileges are not checked automatically — make sure its role has only <code>USAGE</code> and <code>SELECT</code>.</p>
+</section>
+
 <section id="training" data-title="Training (stewards)" data-role="Data stewards &amp; administrators">
 <h2>Training the system</h2>
 <p>“Training” here means giving the model the knowledge it needs about <i>your</i> data. Nothing is retrained: each time a question is asked, AskData finds the most relevant pieces of what you have taught it and hands them to the model along with the schema. Changes take effect on the very next question.</p>

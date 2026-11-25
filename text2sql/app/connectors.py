@@ -139,12 +139,20 @@ def forget(conn_id):
         _duck.pop(conn_id, None)
 
 
-_SESSION_SETUP = {
-    "mysql": ["SET SESSION TRANSACTION READ ONLY", "SET SESSION MAX_EXECUTION_TIME={ms}"],
-    "singlestore": [],
-    "mssql": ["SET TRANSACTION ISOLATION LEVEL READ COMMITTED"],
+# Read-only sessions, the database's own guarantee behind the SQL check: if one cannot be switched on, the query is refused
+# (never run without it). Postgres starts every session read-only (connect options) and that is verified per query.
+_READ_ONLY = {
+    "mysql": ["SET SESSION TRANSACTION READ ONLY"],
     "oracle": ["SET TRANSACTION READ ONLY"],
 }
+_READ_ONLY_CHECK = {"postgres": ("SHOW transaction_read_only", "on")}
+# optional session settings (time limits, isolation): best effort
+_SESSION_SETUP = {
+    "mysql": ["SET SESSION MAX_EXECUTION_TIME={ms}"],
+    "mssql": ["SET TRANSACTION ISOLATION LEVEL READ COMMITTED"],
+}
+READ_ONLY_FAILED = ("The database did not accept a read-only session, so the query was not run. AskData only runs queries "
+                    "in read-only mode on {db}. Ask the database administrator to check the account, or use a read-only replica.")
 
 
 # ---- Excel / CSV folders via DuckDB -------------------------------------------------
@@ -321,10 +329,16 @@ def run_query(conn, cfg: dict, sql: str, max_rows: int, timeout_s: int) -> dict:
         if conn.db_type == "files":
             cur = _duck_db(conn.id, cfg).cursor()
             holder["cancel"] = cur.interrupt
-            cur.execute(sql)
-            names = [d[0] for d in cur.description or []]
-            rows = cur.fetchmany(max_rows + 1)
-            cur.close()
+            cur.execute("BEGIN TRANSACTION")      # always rolled back: nothing can change the loaded tables
+            try:
+                cur.execute(sql)
+                names = [d[0] for d in cur.description or []]
+                rows = cur.fetchmany(max_rows + 1)
+            finally:
+                try:
+                    cur.execute("ROLLBACK")
+                finally:
+                    cur.close()
         else:
             eng = _engine(conn.id, conn.db_type, cfg, timeout_s, conn.updated_at)
             with eng.connect() as c:
@@ -333,6 +347,15 @@ def run_query(conn, cfg: dict, sql: str, max_rows: int, timeout_s: int) -> dict:
                         c.exec_driver_sql(stmt.format(ms=timeout_s * 1000))
                     except Exception:
                         c.rollback()
+                try:
+                    for stmt in _READ_ONLY.get(conn.db_type, []):
+                        c.exec_driver_sql(stmt)
+                    probe = _READ_ONLY_CHECK.get(conn.db_type)
+                    if probe and str(c.exec_driver_sql(probe[0]).scalar()).lower() != probe[1]:
+                        raise ValueError("not read-only")
+                except Exception:
+                    c.rollback()
+                    raise ConnectorError(READ_ONLY_FAILED.format(db=DB_TYPES[conn.db_type]["label"]))
                 if conn.db_type == "oracle":
                     try:
                         c.connection.driver_connection.call_timeout = timeout_s * 1000
@@ -360,6 +383,69 @@ def run_query(conn, cfg: dict, sql: str, max_rows: int, timeout_s: int) -> dict:
         raise
     except Exception as e:
         raise ConnectorError(_clean_error(e))
+
+
+_WRITE_PROBE = {
+    "postgres": "SELECT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user), "
+                "(SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind IN ('r', 'p', 'v', 'm') "
+                "AND n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname NOT LIKE 'pg\\_%' "
+                "AND (pg_has_role(c.relowner, 'USAGE') OR has_table_privilege(c.oid, 'INSERT,UPDATE,DELETE,TRUNCATE'))), "
+                "(SELECT count(*) FROM pg_namespace n WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') "
+                "AND n.nspname NOT LIKE 'pg\\_%' AND has_schema_privilege(n.oid, 'CREATE'))",
+    "mysql": "SHOW GRANTS", "singlestore": "SHOW GRANTS",
+    "mssql": "SELECT IS_SRVROLEMEMBER('sysadmin'), IS_ROLEMEMBER('db_owner'), IS_ROLEMEMBER('db_datawriter'), IS_ROLEMEMBER('db_ddladmin'), "
+             "HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'INSERT'), HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'UPDATE'), "
+             "HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'DELETE'), HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'ALTER')",
+    "oracle": "SELECT (SELECT COUNT(*) FROM user_tables), (SELECT COUNT(*) FROM session_privs WHERE privilege IN ('INSERT ANY TABLE', "
+              "'UPDATE ANY TABLE', 'DELETE ANY TABLE', 'DROP ANY TABLE', 'ALTER ANY TABLE', 'CREATE ANY TABLE', 'CREATE TABLE', "
+              "'COMMENT ANY TABLE')), (SELECT COUNT(*) FROM user_tab_privs WHERE privilege IN ('INSERT', 'UPDATE', 'DELETE', 'ALTER')) FROM dual",
+}
+
+
+def write_access(conn, cfg) -> dict:
+    """Could this database account change data, structure or descriptions if AskData ever let a statement through?
+    {"can_write": True | False | None (not known), "detail": "..."}. Read-only probes of the account's own privileges."""
+    if conn.db_type == "files":
+        return {"can_write": False, "detail": "Files are read into memory; AskData never changes them."}
+    sql = _WRITE_PROBE.get(conn.db_type)
+    if not sql:
+        return {"can_write": None, "detail": "AskData cannot check this database's privileges automatically. Make sure the account "
+                                             "may only read (SELECT): no INSERT, UPDATE, DELETE, CREATE, ALTER or OWNERSHIP."}
+    try:
+        rows = run_query(conn, cfg, sql, 200, 15)["rows"]
+    except ConnectorError as e:
+        return {"can_write": None, "detail": f"The account's privileges could not be checked ({e})."}
+    found = []
+    if conn.db_type == "postgres":
+        su, tables, schemas = rows[0]
+        if su:
+            found.append("it is a superuser")
+        if tables:
+            found.append(f"it can change or owns {tables} table(s) or view(s)")
+        if schemas:
+            found.append(f"it can create tables in {schemas} schema(s)")
+    elif conn.db_type in ("mysql", "singlestore"):
+        grants = " ".join(str(r[0]) for r in rows).upper()
+        hits = sorted(set(re.findall(r"\b(ALL PRIVILEGES|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|INDEX|TRIGGER|REFERENCES)\b", grants)))
+        if hits:
+            found.append("its grants include " + ", ".join(hits))
+    elif conn.db_type == "mssql":
+        names = ["sysadmin", "db_owner", "db_datawriter", "db_ddladmin", "INSERT", "UPDATE", "DELETE", "ALTER"]
+        hits = [n for n, v in zip(names, rows[0]) if v == 1]
+        if hits:
+            found.append("it has " + ", ".join(hits))
+    elif conn.db_type == "oracle":
+        own, sys_privs, obj_privs = rows[0]
+        if own:
+            found.append(f"it owns {own} table(s)")
+        if sys_privs:
+            found.append(f"it has {sys_privs} system privilege(s) that change tables")
+        if obj_privs:
+            found.append(f"it may change {obj_privs} table(s) of other users")
+    if found:
+        return {"can_write": True, "detail": "This database account could change data or structure: " + "; ".join(found) + ". "
+                "AskData never sends anything but read-only queries, but a read-only account (SELECT only) is the strongest guarantee."}
+    return {"can_write": False, "detail": "The account can only read."}
 
 
 def test(conn, cfg) -> str:

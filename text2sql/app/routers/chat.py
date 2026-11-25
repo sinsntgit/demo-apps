@@ -142,6 +142,13 @@ def _viewer_dto(db: Session, viewer: User, conn: Connection, run: QueryRun, cfg:
     return dto
 
 
+def _audit_blocked(db: Session, request: Request, user: User, conn: Connection, run: QueryRun):
+    """A statement the read-only guard refused (model-written or edited) is recorded in the audit log."""
+    if run.status == "blocked":
+        db.flush()                       # so the entry names the answer
+        audit(db, request, user, "query.blocked", conn.name, f"run #{run.id}: {run.error[:300]}")
+
+
 def _pick_model(db: Session, user: User, model_id: int | None) -> LLMModel:
     """The chosen AI model if this person's company may use it, else the company's default."""
     usable = {m.id: m for m in tenancy.models_for(db, user.company_id) if m.enabled}
@@ -220,6 +227,7 @@ def ask(body: AskIn, request: Request, user: User = Depends(current_user), db: S
             engine.execute(db, run, conn, cfg, model, prompt, user=user)
     conv.updated_at = now()
     audit(db, request, user, "query.asked", conn.name, f"run status={run.status}")
+    _audit_blocked(db, request, user, conn, run)
     db.commit()
     return {"conversation": {"id": conv.id, "title": conv.title}, "run": shaped(run_dto(run), user)}
 
@@ -286,6 +294,7 @@ def execute(run_id: int, body: ExecIn, request: Request, user: User = Depends(cu
         engine.execute_plan(db, run, conn, cfg, user=user)
         audit(db, request, user, "query.executed", conn.name,
               f"run #{run.id} status={run.status}{' (edited plan)' if run.edited else ''}")
+        _audit_blocked(db, request, user, conn, run)
         db.commit()
         return shaped(run_dto(run), user)
     if body.plan is not None:
@@ -303,6 +312,7 @@ def execute(run_id: int, body: ExecIn, request: Request, user: User = Depends(cu
     engine.execute(db, run, conn, cfg, user=user)
     audit(db, request, user, "query.executed", conn.name,
           f"run #{run.id} status={run.status}{' (edited SQL)' if run.edited else ''}")
+    _audit_blocked(db, request, user, conn, run)
     db.commit()
     return shaped(run_dto(run), user)
 

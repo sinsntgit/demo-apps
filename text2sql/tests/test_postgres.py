@@ -74,3 +74,44 @@ def test_claude_provider_path(pg):
     assert run["status"] == "success" and run["input_tokens"] == 900 and run["cost"] == pytest.approx(0.0048)
     emails = ask(client, conn, m["id"], "customer email list")["run"]
     assert emails["status"] == "success" and all(r[1] == "••••••" for r in emails["rows"])
+
+
+OWNER = os.environ.get("T2S_TEST_PG_OWNER")          # e.g. writer:wr1ter - an account that owns the tables (tests/fixtures/pg_shop.sql)
+
+
+def test_write_access_is_reported(pg):
+    client, conn, _ = pg
+    r = client.post(f"/api/connections/{conn}/test", headers=H).json()
+    assert r["ok"] and r["write_access"]["can_write"] is False, r
+
+
+@pytest.mark.skipif(not OWNER, reason="T2S_TEST_PG_OWNER not set")
+def test_even_an_owner_account_cannot_change_anything(pg):
+    """Layer 2 on a live server: an account that owns the tables, with the SQL check bypassed, still changes nothing -
+    data, sequences, structure, descriptions - because every session is read-only."""
+    from app import connectors, security
+    from app.db import SessionLocal
+    from app.models import Connection
+    client, conn, _ = pg
+    user, pw = OWNER.split(":", 1)
+    host, port, dbname = re.match(r".+?@(.+?):(\d+)/(.+)", DSN).groups()
+    made = client.post("/api/connections", headers=H, json={"name": "PG shop (owner)", "db_type": "postgres", "config": {
+        "host": host, "port": port, "database": dbname, "username": user, "password": pw}}).json()
+    try:
+        r = client.post(f"/api/connections/{made['id']}/test", headers=H).json()
+        assert r["ok"] and r["write_access"]["can_write"] is True and "owns 2 table" in r["write_access"]["detail"]
+        with SessionLocal() as db:
+            c = db.get(Connection, made["id"])
+            cfg = security.decrypt_json(c.config_enc)
+            state = "SELECT (SELECT count(*) FROM orders), (SELECT sum(amount) FROM orders), (SELECT last_value FROM orders_order_id_seq), " \
+                    "obj_description('orders'::regclass), (SELECT count(*) FROM information_schema.columns WHERE table_name = 'orders')"
+            before = connectors.run_query(c, cfg, state, 1, 10)["rows"]
+            for bad in ("SELECT touch()", "SELECT nextval('orders_order_id_seq')", "SELECT setval('orders_order_id_seq', 1)",
+                        "UPDATE orders SET amount = 0", "DELETE FROM orders", "INSERT INTO customers VALUES (99, 'x', 'x', 'x')",
+                        "COMMENT ON TABLE orders IS 'changed'", "ALTER TABLE orders ADD COLUMN x int", "DROP TABLE orders",
+                        "CREATE TABLE extra (a int)", "TRUNCATE orders", "GRANT ALL ON orders TO PUBLIC"):
+                with pytest.raises(connectors.ConnectorError, match="read-only"):
+                    connectors.run_query(c, cfg, bad, 5, 10)              # straight to the database, past the SQL check
+            assert connectors.run_query(c, cfg, state, 1, 10)["rows"] == before
+    finally:
+        client.delete(f"/api/connections/{made['id']}", headers=H)
