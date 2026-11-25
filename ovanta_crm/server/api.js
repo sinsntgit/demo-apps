@@ -21,6 +21,7 @@ import { sendAccessLink } from './invites.js';
 import crypto from 'node:crypto';
 import { currencyMeta } from './currency.js';
 import { getBilling } from './invoicing.js';
+import { tagList } from './tags.js';
 
 const MGR = ['admin', 'manager'];
 
@@ -234,6 +235,22 @@ POST('/api/contacts/bulk', ({ body, user }) => {
   const editScope = scopeOf(user, 'contacts.edit'); const mine = editScope === 'own' ? ` AND owner_id = ${Number(user.id)}` : '';
   if (body.action === 'status') { const d = clean(ENTITIES.contacts, { status: body.value }, { partial: true }); run(`UPDATE contacts SET status=? WHERE id IN (${ph})${mine}`, d.status, ...ids); }
   else if (body.action === 'owner') run(`UPDATE contacts SET owner_id=? WHERE id IN (${ph})${mine}`, Number(body.value) || null, ...ids);
+  else if (body.action === 'tagset') {
+    // pick a value from the shared tag list for Tag 1-4 (slot 'auto' = the first empty one; '' clears an explicit slot)
+    const value = String(body.value ?? ''); const slot = String(body.slot || 'auto');
+    if (value && !tagList().includes(value)) throw bad('Choose a tag from the list');
+    if (!value && slot === 'auto') throw bad('Choose a tag');
+    if (slot !== 'auto' && !['1', '2', '3', '4'].includes(slot)) throw bad('Choose Tag 1 to Tag 4');
+    let changed = 0;
+    for (const c of all(`SELECT id, custom FROM contacts WHERE id IN (${ph})${mine}`, ...ids)) {
+      let cu; try { cu = JSON.parse(c.custom || '{}'); } catch { cu = {}; }
+      if (slot === 'auto') { if (Object.entries(cu).some(([k, v]) => /^cf_tag[1-4]$/.test(k) && v === value)) continue; const free = ['cf_tag1', 'cf_tag2', 'cf_tag3', 'cf_tag4'].find((k) => cu[k] == null || cu[k] === ''); if (!free) continue; cu[free] = value; }
+      else if (value) cu[`cf_tag${slot}`] = value; else delete cu[`cf_tag${slot}`];
+      run('UPDATE contacts SET custom=? WHERE id=?', JSON.stringify(cu), c.id); changed++;
+    }
+    audit(user, 'bulk_tagset', 'contacts', null, `${changed} of ${ids.length} contacts: ${slot === 'auto' ? 'first empty tag' : 'Tag ' + slot} = ${value || '(cleared)'}`);
+    return { ok: true, count: ids.length, changed };
+  }
   else if (body.action === 'tag') {
     const tag = String(body.value || '').trim().replace(/[,]/g, '');
     if (!tag) throw bad('Tag required');

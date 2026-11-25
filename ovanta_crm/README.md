@@ -93,6 +93,10 @@ Custom values appear on the record's detail page (grouped by your sections), in 
 * **Invoicing starts in India GST** (INR, 18 %, GSTIN, CGST+SGST within your state and IGST across states; demo invoices are Indian). Saudi Arabia (ZATCA), UAE (FTA) or any other country can be chosen under *Billing settings*. Upgrading moves only an untouched Saudi **demo** profile to India; a profile you set up yourself is never changed. The account form follows the mode (GSTIN and *State (GST place of supply)* for India; VAT/TRN, Arabic name, building no. and district for the Gulf).
 * **Overdue deals**: open deals whose expected close date has passed show **⚠ Overdue N days** on the board (red edge) and in red in the list. Won and lost deals never do.
 
+## Bulk "Set tag" with a dropdown (1.28.1)
+
+* On Contacts / Leads, select rows and choose **Set tag**: pick the tag from the shared list (dropdown) and where to put it: the **first empty tag slot** (keeps existing tags, skips contacts that already have it) or a specific **Tag 1–4** (replaces what is there; leave the tag empty to clear that slot). The old free-text bulk action is now **Add free tag**.
+
 ## Tag 1 – Tag 4 on leads, accounts and deals (1.28)
 
 * Contacts/leads, **accounts and deals** each have four dropdowns, **Tag 1 to Tag 4**, so a record can be categorised along four lines (for example Text2SQL · AI Consulting · Staffing · BI Reporting). The choices come from **one shared list** that administrators edit under **Customisation → Tags** (any tab): add, rename, reorder or remove. Renaming a tag updates every record that uses it; removing one clears it from those records (the screen shows how many use each tag, and asks first).

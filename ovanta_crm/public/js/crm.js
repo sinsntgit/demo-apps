@@ -128,10 +128,19 @@ export async function contacts(root) {
       { label: 'Status', sort: 'status', render: (c) => badge(c.status) }, { label: 'Source', render: (c) => c.source || '—' },
       { label: 'Owner', render: (c) => c.owner_name || '—' }, ...customColumns('contacts'), { label: 'Added', sort: 'created_at', render: (c) => fmtDate(c.created_at) },
     ],
-    bulk: [{ key: 'status', label: 'Set status' }, { key: 'tag', label: 'Add tag' }, { key: 'owner', label: 'Assign owner' }, ...(allowAll('contacts.delete') ? [{ key: 'delete', label: 'Delete', danger: true }] : [])],
+    bulk: [{ key: 'status', label: 'Set status' }, { key: 'tagset', label: 'Set tag' }, { key: 'tag', label: 'Add free tag' }, { key: 'owner', label: 'Assign owner' }, ...(allowAll('contacts.delete') ? [{ key: 'delete', label: 'Delete', danger: true }] : [])],
     onBulk: async (action, ids, done) => {
       const run = async (value) => { await api('POST', '/contacts/bulk', { action, ids, value }); toast(`Updated ${ids.length} contacts`, 'ok'); done(); };
       if (action === 'delete') { if (await confirmBox(`Delete ${ids.length} contacts permanently?`, 'Delete')) await run(); return; }
+      if (action === 'tagset') {
+        const slots = activeFields('contacts').filter((f) => /^cf_tag[1-4]$/.test(f.key)); const list = slots[0]?.options || [];
+        modal({ title: `Set a tag on ${ids.length} contacts`, submitLabel: 'Apply',
+          body: html`<label>Tag<select name="value"><option value="">— choose from the list —</option>${list.map((t) => html`<option>${t}</option>`)}</select></label>
+            <label>Put it in<select name="slot"><option value="auto">First empty tag slot (keeps existing tags)</option>${slots.map((f) => html`<option value="${f.key.slice(-1)}">${f.label} (replaces what is there)</option>`)}</select></label>
+            <p class="small muted">Choose a tag, or pick a slot and leave the tag empty to clear that slot. Contacts that already have the tag are left as they are. The list is managed under Customisation → Tags.</p>`,
+          onSubmit: async (f) => { const r = await api('POST', '/contacts/bulk', { action, ids, value: f.value.value, slot: f.slot.value }); toast(`Updated ${r.changed ?? ids.length} of ${ids.length} contacts`, 'ok'); done(); } });
+        return;
+      }
       const cfg = { status: { name: 'value', label: 'New status', type: 'select', options: STATUS, blank: false }, tag: { name: 'value', label: 'Tag', required: true }, owner: { name: 'value', label: 'Owner', type: 'select', options: userOpts(), blank: false } }[action];
       modal({ title: `Bulk update ${ids.length} contacts`, body: field(cfg), onSubmit: async (f) => run(formValues(f, [cfg]).value) });
     },

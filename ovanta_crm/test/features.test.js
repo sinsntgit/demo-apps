@@ -328,3 +328,19 @@ test('Tag 1-4: shared dropdown list on leads, accounts and deals; rename follows
   assert.equal((await api('PUT', '/api/customization/tags', { items: [{ text: 'a' }, { text: 'A' }] })).status, 400, 'duplicates refused');
   assert.equal((await api('PUT', '/api/customization/tags', { items: [] })).status, 400, 'empty list refused');
 });
+
+test('bulk "Set tag": value must come from the list; first empty slot, explicit slot, and clearing', async () => {
+  const mk = async (n, custom) => (await api('POST', '/api/contacts', { first_name: n, email: `${n.toLowerCase()}@bulk.example`, custom })).body.id;
+  const list = (await api('GET', '/api/customization/tags')).body.list; const pick = list[0], other = list[2];
+  const a = await mk('Bulka', { cf_tag1: other }), b = await mk('Bulkb', {});
+  assert.equal((await api('POST', '/api/contacts/bulk', { action: 'tagset', ids: [a, b], value: 'Not in list' })).status, 400);
+  const r = await api('POST', '/api/contacts/bulk', { action: 'tagset', ids: [a, b], value: pick });
+  assert.equal(r.status, 200); assert.equal(r.body.changed, 2);
+  const ca = (await api('GET', `/api/contacts/${a}`)).body.custom, cb = (await api('GET', `/api/contacts/${b}`)).body.custom;
+  assert.equal(ca.cf_tag1, other); assert.equal(ca.cf_tag2, pick, 'went to the first empty slot'); assert.equal(cb.cf_tag1, pick);
+  assert.equal((await api('POST', '/api/contacts/bulk', { action: 'tagset', ids: [a, b], value: pick })).body.changed, 0, 'already tagged: nothing to do');
+  await api('POST', '/api/contacts/bulk', { action: 'tagset', ids: [a], slot: '3', value: list[1] });
+  assert.equal((await api('GET', `/api/contacts/${a}`)).body.custom.cf_tag3, list[1]);
+  await api('POST', '/api/contacts/bulk', { action: 'tagset', ids: [a], slot: '3', value: '' });
+  assert.equal((await api('GET', `/api/contacts/${a}`)).body.custom.cf_tag3, undefined, 'cleared');
+});
