@@ -52,6 +52,33 @@ def _agg(runs: list[QueryRun]) -> dict:
     }
 
 
+def failure_reason(r: QueryRun) -> str:
+    """Why an answer across data models went wrong (or needs a look), in words a steward can act on; '' when it went fine."""
+    warnings = (r.context or {}).get("warnings") or []
+    if r.status == "clarification":
+        return "The AI asked a clarifying question"
+    if r.status == "blocked":
+        return "Blocked by the read-only check"
+    if r.status == "error":
+        e = r.error or ""
+        if "rows, the limit" in e:
+            return "Row limit reached - ask for totals, or raise the limit"
+        if e.startswith("Step "):
+            return "A step failed on its data model - improve that data model's training"
+        if e.startswith("Combine step") or "combine step" in e.lower():
+            return "The combine step failed"
+        if "time limit" in e:
+            return "Time limit reached"
+        return "Other error"
+    if any(w.startswith("No rows matched") for w in warnings):
+        return "Nothing matched between the data models - check the key rule"
+    if any("counted more than once" in w for w in warnings):
+        return "Keys repeated on both sides - totals may be counted twice"
+    if r.status == "success" and r.attempts > 1:
+        return "Needed an automatic repair"
+    return ""
+
+
 @router.get("/summary")
 def summary(days: int = 30, connection_id: int | None = None, model_id: int | None = None,
             user_id: int | None = None, me: User = Depends(steward_up), db: Session = Depends(get_db)):
@@ -100,9 +127,14 @@ def summary(days: int = 30, connection_id: int | None = None, model_id: int | No
                 "cost": round(sum(x.cost for x in logs), 4),
                 "avg_tokens": round(sum(x.input_tokens + x.output_tokens for x in logs) / len(logs)) if logs else 0,
                 "rephrased": outcome([r for r in runs if r.rephrase_id]), "as_typed": outcome([r for r in runs if not r.rephrase_id])}
+    combined_ids = {c.id for c in db.scalars(select(Connection).where(Connection.company_id == me.company_id, Connection.db_type == "combined"))}
+    across = [r for r in runs if r.connection_id in combined_ids]
+    combined = {"questions": len(across), "across": outcome(across), "single": outcome([r for r in runs if r.connection_id not in combined_ids]),
+                "reasons": [{"reason": k, "count": v} for k, v in Counter(r for r in map(failure_reason, across) if r).most_common()]}
     return {
         "totals": {**_agg(runs), "active_users": len({r.user_id for r in runs})},
         "rephrase": rephrase,
+        "combined": combined,
         "series": series,
         "by_model": group(lambda r: r.model_label or "(deleted model)", lambda k: k),
         "by_connection": group(lambda r: r.connection_id, lambda k: conns.get(k, f"#{k}")),

@@ -101,6 +101,7 @@ class TrainingItem(Base):
     content: Mapped[str] = mapped_column(Text, default="")        # ddl / doc text / chunk text
     question: Mapped[str] = mapped_column(Text, default="")       # sql_pair
     sql: Mapped[str] = mapped_column(Text, default="")            # sql_pair
+    plan: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)   # sql_pair of a combined data model: {"steps", "combine"}
     source: Mapped[str] = mapped_column(String(30), default="manual")  # manual|upload|import|confirmed|correction
     status: Mapped[str] = mapped_column(String(20), default="approved", index=True)  # approved|pending|rejected
     document_name: Mapped[str] = mapped_column(String(500), default="")

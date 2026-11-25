@@ -662,8 +662,18 @@ GRANT SELECT ON ALL TABLES IN SCHEMA db.public TO ROLE askdata_ro;</pre>
 <li><b>Row limits:</b> a step that would read more than the limit, or steps that together read more than the total, stop with a clear message instead of an approximate answer. Ask for totals (per customer, per month) rather than detail.</li>
 <li><b>Warnings</b> appear above the result when no rows matched across the data models (check the key rule) or when the key repeats on both sides, which can count rows more than once.</li>
 <li>Shared chats, reports, PDFs, PowerPoint and scheduled emails re-run the plan with each viewer's own access, as for any answer. People set to see results only never see the plan.</li>
-<li><b>Not yet:</b> confirming an answer across data models does not add it to training (it is recorded), and reported problems on these answers are not yet in the stewards' review queue.</li>
 </ul>
+<h3 id="combined-training">Training a combined data model</h3>
+<p>A combined data model uses all the training of each of its data models (schema, notes, verified examples), plus its own, under <b>Training</b> — pick it from the list (it is marked <i>(combined)</i>):</p>
+<ul>
+<li><b>Question → plan</b> — verified examples of questions across the data models, each with its steps and combine query. The AI is shown the most similar ones when it writes a new plan, which is the best way to make it right first time. <b>✓ Correct</b> on an answer adds it here (straight away for stewards and administrators; after a steward's approval for analysts, as for other answers), and so does a corrected plan. <b>＋ Add example</b> writes one by hand; <b>▶ Test</b> runs it first.</li>
+<li><b>Documentation</b> — business rules that span the data models, for example how customer numbers are stored in each system, or that amounts in different currencies must never be added up.</li>
+<li><b>Review queue</b> — answers people reported as incorrect. <b>✎ Fix the plan</b> shows the steps, lets you correct any of them, test the result and save it as a verified example; or add a business rule, or dismiss the report. The person who reported it sees the outcome under their answer.</li>
+</ul>
+<p>Schema, documents and extra DDL stay on each data model's own Training page. <i>Sample: SAP + CRM</i> comes with 4 verified plans and 2 business notes.</p>
+<figure><img src="/static/help/img/combined-fix-plan.png" alt="Fix the plan: the user's report, the question, step s1 on SAP and s2 on the CRM with their SQL, the combine query, and a tested result of 31 rows"><figcaption>Fixing a reported answer: correct a step or the combine query, test it, save it as a verified example.</figcaption></figure>
+<p>The <b>Dashboard</b> shows how often questions across data models are answered right first time compared with questions on one data model, and what went wrong: a row limit, nothing matched between the data models (usually the key rule), a step that failed on its data model, the read-only check, or an automatic repair.</p>
+<figure><img src="/static/help/img/combined-dashboard.png" alt="Dashboard card: Questions across data models, right first time 80%, with reasons such as nothing matched between the data models and row limit reached"><figcaption>The dashboard's view of questions across data models.</figcaption></figure>
 </section>
 
 <section id="groups" data-title="User groups (admin)" data-role="Administrators">

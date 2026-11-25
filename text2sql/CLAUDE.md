@@ -194,8 +194,14 @@ paths / docs / examples a single-model question gets - plus the confirmed matche
 steps with their row counts and the model's original plan (`generated`, for "edited"); `final_sql` / `generated_sql` hold the
 plan as readable text (`planner.text`). Every re-run path passes the stored plan: `engine.run_sql(..., plan=)` (shared chats,
 reports - the component's `plan` is copied from the run, never from the browser). `shaped()` drops the plan for results-only
-users; `reports.py` never sends it to the editor. Feedback "correct" on a combined answer is recorded but not added to
-training (phase 4).
+users; `reports.py` never sends it to the editor.
+
+Training (phase 4): `TrainingItem.plan` on `sql_pair` items of the combined connection (`sql` = `planner.text`, for search
+and display). `training.checked_plan` validates a plan like a run (members, each step's guard, `check_combine`); `upsert_pair(plan=)`
+from "correct" feedback, steward review fixes (`resolve_issue` with `plan`, which must run first) and `＋ Add example`. A combined
+model takes only `sql_pair` + `documentation`. `build_plan_prompt` adds its top-4 notes and verified plans (BM25). The sample's
+plans/notes are `sample_data/combined_training.json` (`main.add_combined_training`, own once-flag, so existing installs get them).
+Dashboard: `analytics.failure_reason` and the `combined` block of `/summary`.
 
 ### Reports
 
@@ -398,7 +404,8 @@ No filler, no internal identifiers, no claiming more than the checks showed.
 - Asking across data models (phase 3): verified with the stand-in model on the SAP + CRM sample (`tests/test_combined_ask.py`:
   totals against an independent calculation, per-member filters and masking, limits, repair, warnings, edited plans,
   results-only, shared chats, reports/PDF, privacy). Real-model plan quality is unmeasured; plans have only run on file data
-  models. Not built yet (phase 4): verified plan examples, review queue and dashboard breakdown for combined answers.
+  models. Phase 4 (training): plan examples, review-queue fixes, prompt and dashboard verified in `tests/test_combined_training.py`
+  and the combined browser suite; the 4 sample plans are run by the tests. Not built: passing keys between steps (phase 5).
 - Not built: free-form AI-written analysis code (deliberately), per-series forecasts in one question, SSO, scheduled data refresh of file models, report free-form (pixel) positioning,
   group selection in the Data models page's "Access" dialog (groups are set under Admin → Data access).
 

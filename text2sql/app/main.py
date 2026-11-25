@@ -144,9 +144,37 @@ def add_samples(company_id: int):
     add_sample_model("sap_training.json", company_id)
     add_sample_model("crm_training.json", company_id)
     add_combined_sample(company_id)
+    add_combined_training(company_id)
 
 
 COMBINED_SAMPLE = "Sample: SAP + CRM"
+
+
+def add_combined_training(company_id: int):
+    """Verified example plans and business notes for the combined sample (sample_data/combined_training.json) - once per
+    company, also for installations that got the combined sample before it had training."""
+    import json
+    from .models import Setting, TrainingItem
+    flag = _sample_flag("combined_training", company_id)
+    with SessionLocal() as db:
+        if db.get(Setting, flag):
+            return
+        comb = db.scalar(select(Connection).where(Connection.company_id == company_id, Connection.name == COMBINED_SAMPLE,
+                                                  Connection.db_type == "combined"))
+        if comb is None:
+            return                                   # not (yet) there - e.g. the SAP or CRM sample was deleted
+        spec = json.load(open(config.BASE_DIR / "sample_data" / "combined_training.json", encoding="utf-8"))
+        from . import planner
+        names = {a: c.name for a, c in planner.members_by_alias(db, comb).items()}
+        for d in spec["documentation"]:
+            db.add(TrainingItem(connection_id=comb.id, kind="documentation", title=d["title"], content=d["content"],
+                                source="manual", status="approved"))
+        for e in spec["examples"]:
+            db.add(TrainingItem(connection_id=comb.id, kind="sql_pair", question=e["question"], plan=e["plan"],
+                                sql=planner.text(e["plan"], names), source="manual", status="approved"))
+        db.add(Setting(key=flag, value={"v": True}))
+        db.commit()
+        log.info("Added training to the combined sample of company #%s", company_id)
 
 
 def add_combined_sample(company_id: int):

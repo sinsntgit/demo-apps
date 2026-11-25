@@ -169,7 +169,7 @@ def test_review_and_edit_a_plan(setup):
     assert go({"plan": {**plan, "steps": [{**plan["steps"][0], "sql": "DELETE FROM kna1"}]}})["status"] == "blocked"
     assert go({"plan": plan})["status"] == "success"
     fb = c.post(f"/api/chat/runs/{run['id']}/feedback", headers=H, json={"verdict": "correct"}).json()
-    assert fb["training"] == "recorded"
+    assert fb["training"] == "approved"                    # the edited plan became a verified example
 
 
 def test_results_only_people_never_see_the_plan(setup):

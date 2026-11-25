@@ -543,7 +543,6 @@ export function runCard(run, ctx = {}) {
       if (res.training === 'review') toast('Thanks — sent to a data steward for review. The outcome will show here.');
       else if (res.training === 'approved') toast('Saved as a verified example — the model will use it from now on.');
       else if (res.training === 'pending') toast('Thanks — sent to a data steward for approval before it is used for training.');
-      else if (res.training === 'recorded') toast('Thanks — recorded. Answers across data models are not used for training yet.');
       refresh(res.run.rows == null ? { ...res.run, rows: run.rows } : res.run);
     });
     if (run.feedback) {
@@ -551,7 +550,7 @@ export function runCard(run, ctx = {}) {
       bar.append(feedbackBadge(), ['fixed', 'noted', 'dismissed'].includes(run.issue_status) ? null : change);
       return bar;
     }
-    const yes = h('button', { class: 'btn sm good', onclick: () => send(yes, 'correct') }, run.edited && !run.plan ? '✓ Yes — save my correction for training' : tech ? '✓ Correct' : '✓ Yes, correct');
+    const yes = h('button', { class: 'btn sm good', onclick: () => send(yes, 'correct') }, run.edited ? '✓ Yes — save my correction for training' : tech ? '✓ Correct' : '✓ Yes, correct');
     const no = h('button', { class: 'btn sm danger', onclick: () => {
       const type = select([['', 'Choose…'], ...ISSUES], '');
       const note = h('textarea', { style: 'min-height:90px', placeholder: 'e.g. “March revenue should be about 1.2M — returns seem to be counted twice.”' });

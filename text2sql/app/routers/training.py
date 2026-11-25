@@ -23,11 +23,12 @@ class ItemIn(BaseModel):
     content: str = ""
     question: str = ""
     sql: str = ""
+    plan: dict | None = None        # combined data models: a verified plan instead of SQL
 
 
 def _dto(t: TrainingItem) -> dict:
     return {"id": t.id, "kind": t.kind, "title": t.title, "content": t.content, "question": t.question,
-            "sql": t.sql, "source": t.source, "status": t.status, "document_name": t.document_name,
+            "sql": t.sql, "plan": t.plan, "source": t.source, "status": t.status, "document_name": t.document_name,
             "created_at": t.created_at.isoformat(), "updated_at": t.updated_at.isoformat()}
 
 
@@ -36,25 +37,53 @@ def norm_question(q: str) -> str:
 
 
 def upsert_pair(db: Session, conn, question: str, sql: str, source: str, status: str, user_id,
-                analysis: dict | None = None) -> TrainingItem:
+                analysis: dict | None = None, plan: dict | None = None) -> TrainingItem:
     """One pair per (data model, question): a newer answer replaces the older one.
-    For predictive questions the chosen method + columns are kept with the example (in `content`)."""
+    For predictive questions the chosen method + columns are kept with the example (in `content`).
+    A combined data model's example keeps its plan (steps + combine); `sql` then holds the plan as readable text."""
     key = norm_question(question)
     extra = json.dumps(analysis) if analysis else ""
+    plan = {"steps": [{k: s[k] for k in ("id", "source", "sql")} for s in plan["steps"]], "combine": plan["combine"]} if plan else None
     for p in db.scalars(select(TrainingItem).where(TrainingItem.connection_id == conn.id,
                                                    TrainingItem.kind == "sql_pair")):
         if norm_question(p.question) == key:
-            p.sql, p.source, p.status, p.updated_at, p.content = sql, source, status, now(), extra
+            p.sql, p.source, p.status, p.updated_at, p.content, p.plan = sql, source, status, now(), extra, plan
             return p
     item = TrainingItem(connection_id=conn.id, kind="sql_pair", question=question.strip(), sql=sql, content=extra,
-                        source=source, status=status, created_by=user_id)
+                        source=source, status=status, created_by=user_id, plan=plan)
     db.add(item)
     return item
 
 
-def _check_item(body: ItemIn, conn):
+def checked_plan(db: Session, conn, raw) -> tuple[dict, str]:
+    """A combined data model's plan, validated like one that is about to run: known data models, every step through the
+    read-only guard of its own data model, the combine step limited to the step tables. Returns (plan, readable text)."""
+    from .. import planner
+    members = planner.members_by_alias(db, conn)
+    try:
+        plan = planner.clean(raw, members)
+        for st in plan["steps"]:
+            st["sql"] = sqlguard.check(st["sql"], members[st["source"]].db_type).sql
+        plan["combine"] = planner.check_combine(plan["combine"], [s["id"] for s in plan["steps"]]).sql
+    except (planner.PlanError, sqlguard.SQLBlocked) as e:
+        raise HTTPException(400, f"Plan rejected: {e}")
+    return plan, planner.text(plan, {a: c.name for a, c in members.items()})
+
+
+def _check_item(body: ItemIn, conn, db: Session):
     if body.kind not in KINDS:
         raise HTTPException(400, "Unknown training type.")
+    if conn.db_type == "combined":
+        if body.kind not in ("sql_pair", "documentation"):
+            raise HTTPException(400, "A combined data model takes verified examples and documentation notes; schema, documents and "
+                                     "extra DDL belong to each of its data models.")
+        if body.kind == "sql_pair":
+            if not body.question.strip() or not body.plan:
+                raise HTTPException(400, "Both a question and its plan are required.")
+            body.plan, body.sql = checked_plan(db, conn, body.plan)
+            return
+    elif body.plan:
+        raise HTTPException(400, "Plans are only used by combined data models.")
     if body.kind == "sql_pair":
         if not body.question.strip() or not body.sql.strip():
             raise HTTPException(400, "Both a question and its SQL are required.")
@@ -93,9 +122,9 @@ def list_items(conn_id: int, kind: str = "", status: str = "", q: str = "",
 def create(conn_id: int, body: ItemIn, request: Request, user: User = Depends(steward_up),
            db: Session = Depends(get_db)):
     conn = get_connection(db, user, conn_id)
-    _check_item(body, conn)
+    _check_item(body, conn, db)
     if body.kind == "sql_pair":
-        item = upsert_pair(db, conn, body.question, body.sql, "manual", "approved", user.id)
+        item = upsert_pair(db, conn, body.question, body.sql, "manual", "approved", user.id, plan=body.plan)
     else:
         item = TrainingItem(connection_id=conn_id, kind=body.kind, title=body.title.strip(), content=body.content,
                             source="manual", created_by=user.id)
@@ -113,8 +142,10 @@ def update(item_id: int, body: ItemIn, request: Request, user: User = Depends(st
         raise HTTPException(404, "Not found")
     conn = get_connection(db, user, item.connection_id)
     body.kind = item.kind
-    _check_item(body, conn)
+    _check_item(body, conn, db)
     item.title, item.content, item.question, item.sql = body.title.strip(), body.content, body.question.strip(), body.sql
+    if conn.db_type == "combined" and item.kind == "sql_pair":
+        item.plan = body.plan
     item.updated_at = now()
     audit(db, request, user, "training.updated", conn.name, f"{item.kind} #{item.id}")
     db.commit()
@@ -152,6 +183,8 @@ def review(item_id: int, decision: str, request: Request, user: User = Depends(s
 async def upload_document(conn_id: int, request: Request, upload: UploadFile = File(...),
                           user: User = Depends(steward_up), db: Session = Depends(get_db)):
     conn = get_connection(db, user, conn_id)
+    if conn.db_type == "combined":
+        raise HTTPException(400, "Upload documents to each data model of the combined model; they are used here too.")
     name = upload.filename or "document"
     try:
         text = docparse.extract(name, await upload.read())
@@ -188,6 +221,8 @@ async def import_pairs(conn_id: int, request: Request, upload: UploadFile = File
                        user: User = Depends(steward_up), db: Session = Depends(get_db)):
     """Bulk-load question/SQL pairs from CSV (columns: question, sql) or JSON ([{question, sql}])."""
     conn = get_connection(db, user, conn_id)
+    if conn.db_type == "combined":
+        raise HTTPException(400, "Examples for a combined data model are added one by one, or by confirming answers on the Ask page.")
     raw = (await upload.read()).decode("utf-8-sig", errors="replace")
     try:
         if (upload.filename or "").lower().endswith(".json"):
@@ -221,8 +256,8 @@ def export(conn_id: int, user: User = Depends(steward_up), db: Session = Depends
     get_connection(db, user, conn_id)
     items = db.scalars(select(TrainingItem).where(TrainingItem.connection_id == conn_id,
                                                   TrainingItem.status == "approved"))
-    return [{k: v for k, v in _dto(i).items() if k in ("kind", "title", "content", "question", "sql", "source",
-                                                       "document_name")} for i in items]
+    return [{k: v for k, v in _dto(i).items() if k in ("kind", "title", "content", "question", "sql", "plan", "source",
+                                                       "document_name") and (k != "plan" or v)} for i in items]
 
 
 # ---- reported problems: users say an answer is incorrect -> a steward fixes the training ----------------
@@ -230,13 +265,15 @@ class ResolveIn(BaseModel):
     action: str                 # example | note | dismiss
     question: str = ""          # example: the question the corrected SQL answers (default: the user's)
     sql: str = ""               # example: the corrected SQL
+    plan: dict | None = None    # example on a combined data model: the corrected plan
     title: str = ""             # note: business rule title
     content: str = ""           # note: business rule text
     comment: str = ""           # shown to the user who reported it
 
 
 class TestSqlIn(BaseModel):
-    sql: str
+    sql: str = ""
+    plan: dict | None = None    # combined data models
 
 
 @router.get("/{conn_id}/issues")
@@ -250,6 +287,7 @@ def issues(conn_id: int, status: str = "open", user: User = Depends(steward_up),
     rows = list(db.scalars(stmt.order_by(QueryRun.id.desc()).limit(300)))
     names = {u.id: u.name or u.email for u in db.scalars(select(User))}
     return [{"run_id": r.id, "question": r.question, "sql": r.final_sql, "user": names.get(r.user_id, ""),
+             "plan": {"steps": [{k: s[k] for k in ("id", "source", "sql")} for s in r.plan["steps"]], "combine": r.plan["combine"]} if r.plan else None,
              "issue_type": r.issue_type, "issue_label": ISSUE_TYPES.get(r.issue_type, r.issue_type), "reason": r.feedback_note,
              "status": r.issue_status, "resolution": r.issue_resolution, "row_count": r.row_count,
              "resolved_by": names.get(r.issue_resolved_by, "") if r.issue_resolved_by else "",
@@ -262,8 +300,9 @@ def test_sql(conn_id: int, body: TestSqlIn, user: User = Depends(steward_up), db
     from .. import connectors, engine
     from ..deps import get_settings
     conn = get_connection(db, user, conn_id)
+    plan = checked_plan(db, conn, body.plan)[0] if conn.db_type == "combined" else None
     try:
-        res = engine.run_sql(db, conn, body.sql, get_settings(db, user.company_id), user)
+        res = engine.run_sql(db, conn, body.sql, get_settings(db, user.company_id), user, plan=plan)
     except (sqlguard.SQLBlocked, connectors.ConnectorError) as e:
         raise HTTPException(400, str(e))
     return {"columns": res["columns"], "rows": res["rows"][:20], "row_count": res["row_count"]}
@@ -283,12 +322,16 @@ def resolve_issue(run_id: int, body: ResolveIn, request: Request, user: User = D
     comment = body.comment.strip()[:1000]
     if body.action == "example":
         question = body.question.strip() or run.question
+        plan = None
         try:
-            checked = sqlguard.check(body.sql, conn.db_type).sql
-            engine.run_sql(db, conn, checked, get_settings(db, user.company_id), user)          # it must actually run
+            if conn.db_type == "combined":
+                plan, checked = checked_plan(db, conn, body.plan)
+            else:
+                checked = sqlguard.check(body.sql, conn.db_type).sql
+            engine.run_sql(db, conn, checked, get_settings(db, user.company_id), user, plan=plan)    # it must actually run
         except (sqlguard.SQLBlocked, connectors.ConnectorError) as e:
-            raise HTTPException(400, f"The corrected SQL did not run: {e}")
-        upsert_pair(db, conn, question, checked, "correction", "approved", user.id, analysis=(run.analysis or {}).get("spec"))
+            raise HTTPException(400, f"The corrected {'plan' if plan else 'SQL'} did not run: {e}")
+        upsert_pair(db, conn, question, checked, "correction", "approved", user.id, analysis=(run.analysis or {}).get("spec"), plan=plan)
         run.issue_status = "fixed"
         run.issue_resolution = comment or "The answer was corrected and added to training. Ask the question again to get the corrected result."
     elif body.action == "note":

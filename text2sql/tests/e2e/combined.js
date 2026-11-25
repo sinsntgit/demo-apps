@@ -141,6 +141,58 @@ const OUT = process.argv[2], B = 'http://localhost:8010/';
     await call('PUT', '/api/admin/settings', { combined_step_max_rows: 200000 });
   });
 
+  await step('report a wrong answer, then a steward fixes its plan from the review queue', async () => {
+    await page.click('button:has-text("New chat")');
+    await page.fill('.composer textarea', 'Customers and tickets without the key rule'); await page.press('.composer textarea', 'Enter');
+    await page.waitForSelector('.run .banner.warn:has-text("No rows matched")', { timeout: 20000 });
+    await page.locator('.run').last().locator('button:text-is("✗ Incorrect")').click();
+    await page.locator('.modal select').selectOption('missing');
+    await page.fill('.modal textarea', 'No customer matched - the CRM numbers have no leading zeros.');
+    await page.click('.modal button:text-is("Send for review")'); await page.waitForSelector('.run .badge:has-text("Reported")');
+    const combo = (await call('GET', '/api/connections')).find(c => c.name === 'Sample: SAP + CRM');
+    await page.goto(B + '#/training/' + combo.id); await page.reload();
+    await page.waitForSelector('h2:has-text("Reported problems (1)")');
+    await page.click('button:text-is("✎ Fix the plan")'); await page.waitForSelector('.modal >> text=Fix the plan');
+    const ta = page.locator('.modal textarea[aria-label="Combine SQL"]');
+    await ta.fill((await ta.inputValue()).replace('s1.customer =', "ltrim(s1.customer, '0') ="));
+    await page.click('.modal button:text-is("▶ Test")'); await page.waitForSelector('.modal .tbl tbody tr');
+    await noToasts(); await page.locator('.modal').screenshot({ path: `${OUT}/combined-fix-plan.png` });
+    await page.click('.modal footer .primary'); await page.waitForSelector('.toast:has-text("Saved to training")');
+    await page.waitForSelector('text=Nothing waiting for review.');
+  });
+
+  await step('the combined Training page lists verified plans, step by step', async () => {
+    await page.click('.tabs button:has-text("Question → plan")');
+    const n = Number((await page.locator('.tabs button:has-text("Question → plan")').innerText()).match(/\((\d+)\)/)[1]);
+    if (n !== 5) throw new Error('examples ' + n);                      // 4 bundled + the fixed one
+    await page.waitForSelector('.item:has-text("How many SAP customers are missing from the CRM, by country?") >> text=s2 · crm — Sample: CRM');
+    if (await page.locator('.tabs button:has-text("Schema")').count()) throw new Error('schema tab on a combined model');
+    await page.locator('.item', { hasText: 'missing from the CRM' }).locator('button:text-is("Edit")').click();
+    await page.click('.modal button:text-is("▶ Test")'); await page.waitForSelector('.modal .tbl tbody tr');
+    const txt = await page.locator('.modal').innerText(); if (!/\d+ row\(s\)/.test(txt)) throw new Error('test output');
+    await page.click('.modal footer button:text-is("Cancel")');
+    await noToasts(); await page.setViewportSize({ width: 1320, height: 1300 });
+    await page.screenshot({ path: `${OUT}/combined-training.png` }); await page.setViewportSize({ width: 1320, height: 900 });
+  });
+
+  await step('confirming an answer across data models saves its plan', async () => {
+    await page.goto(B + '#/ask'); await page.reload(); await page.waitForSelector('.ask-bar');
+    const opts = await page.locator('.ask-bar select >> nth=0 >> option').allTextContents();
+    await page.selectOption('.ask-bar select >> nth=0', { index: opts.findIndex(o => o.startsWith('Sample: SAP + CRM')) });
+    await page.fill('.composer textarea', 'Top customers and their open tickets, to confirm'); await page.press('.composer textarea', 'Enter');
+    await page.waitForSelector('.run h3:has-text("Plan · 2 steps")', { timeout: 20000 });
+    await page.locator('.run').last().locator('button:text-is("✓ Correct")').click();
+    await page.waitForSelector('.toast:has-text("Saved as a verified example")');
+  });
+
+  await step('the dashboard shows questions across data models and why they went wrong', async () => {
+    await page.goto(B + '#/dashboard'); await page.reload(); await page.waitForSelector('h2:text-is("Questions across data models")');
+    const card = page.locator('.card', { has: page.locator('h2:text-is("Questions across data models")') });
+    const t = await card.innerText();
+    for (const want of ['Right first time', 'Row limit reached', 'Nothing matched between the data models']) if (!t.includes(want)) throw new Error('card lacks ' + want + ': ' + t);
+    await card.screenshot({ path: `${OUT}/combined-dashboard.png` });
+  });
+
   await step('delete the combined model keeps its data models', async () => {
     await page.goto(B + '#/data'); await page.reload(); await page.waitForSelector('h2:text-is("Retail + CRM")');
     await card('Retail + CRM').locator('button:text-is("Delete")').click(); await page.click('.modal footer .danger, .modal footer .primary');

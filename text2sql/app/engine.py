@@ -182,6 +182,19 @@ def build_plan_prompt(db: Session, combined: Connection, question: str, history:
                      f" In the combine query join with: {cmp}")
     parts.append("# Matches between data models\n" + ("\n".join(lines) or "(none confirmed - only questions about one data model can be answered)"))
     context["matches"] = len(lines)
+    # the combined model's own training: business notes that span the data models, and verified question -> plan examples
+    search = question + " " + " ".join(earlier[-2:])
+    notes = retrieval.top(search, _approved(db, combined.id, "documentation"), lambda d: d.title + " " + d.content, 4)
+    if notes:
+        parts.append("# Business documentation for questions across these data models\n" +
+                     "\n\n".join(f"### {d.title or 'Note'}\n{d.content}" for d in notes))
+    examples = retrieval.top(search, [p for p in _approved(db, combined.id, "sql_pair") if p.plan],
+                             lambda p: p.question + " " + p.sql, 4)
+    if examples:
+        parts.append("# Verified example plans (follow their patterns)\n" + "\n\n".join(
+            f"Question: {p.question}\nPlan: " + json.dumps({"steps": p.plan["steps"], "combine": p.plan["combine"]}, ensure_ascii=False)
+            for p in examples))
+    context.update(examples=[p.id for p in examples], docs=[d.id for d in notes])
     tail = []
     if history:
         tail.append("## Conversation so far (the new question may refer back to it)")

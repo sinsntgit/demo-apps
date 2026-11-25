@@ -364,14 +364,11 @@ def feedback(run_id: int, body: FeedbackIn, request: Request, user: User = Depen
     if run.issue_status == "open":
         run.issue_status, run.issue_type = "", ""
     run.feedback = "corrected" if run.edited else "correct"
-    if conn.db_type == "combined":      # verified plan examples arrive with training for combined models; the verdict is kept
-        audit(db, request, user, "query.feedback", conn.name, f"run #{run.id} {run.feedback} (combined data model, not added to training)")
-        db.commit()
-        return {"run": shaped(run_dto(run, rows=False), user), "training": "recorded"}
     trusted = user.role in ("admin", "steward") or get_settings(db, user.company_id)["feedback_mode"] == "instant"
     status = "approved" if trusted else "pending"
+    # a combined data model's answer becomes a verified *plan* example (steps + combine, as it ran)
     upsert_pair(db, conn, run.question, run.final_sql, "correction" if run.edited else "confirmed", status, user.id,
-                analysis=(run.analysis or {}).get("spec"))
+                analysis=(run.analysis or {}).get("spec"), plan=run.plan if conn.db_type == "combined" else None)
     audit(db, request, user, "query.feedback", conn.name, f"run #{run.id} {run.feedback} -> training {status}")
     db.commit()
     return {"run": shaped(run_dto(run, rows=False), user), "training": status}

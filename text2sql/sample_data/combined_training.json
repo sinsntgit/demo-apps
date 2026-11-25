@@ -1,0 +1,87 @@
+{
+ "name": "Sample: SAP + CRM",
+ "documentation": [
+  {
+   "title": "Customer numbers in SAP and the CRM",
+   "content": "SAP keeps the customer number KUNNR as text with leading zeros (0000100001); the CRM keeps the same number in accounts.sap_no as a number without them (100001). Always compare them with the 'Strip leading zeros' key rule. CRM accounts without sap_no are prospects that are not SAP customers yet; SAP customers without a CRM account exist too, so use a LEFT JOIN when every customer of one side must be kept."
+  },
+  {
+   "title": "Currencies when combining with SAP amounts",
+   "content": "SAP amounts are in the currency of each sales organisation / company code: 1000 Germany EUR, 2000 USA USD, 3000 UK GBP. Never add amounts of different currencies together: filter to one sales organisation or company code, or group by it. CRM tickets have no amounts."
+  }
+ ],
+ "examples": [
+  {
+   "question": "Which of our top German customers by 2025 net sales have the most open CRM tickets?",
+   "plan": {
+    "steps": [
+     {
+      "id": "s1",
+      "source": "sap",
+      "sql": "SELECT c.KUNNR AS customer, c.NAME1 AS customer_name, ROUND(SUM(CASE WHEN k.VBTYP = 'M' THEN k.NETWR ELSE -k.NETWR END), 2) AS net_sales_eur FROM vbrk k JOIN kna1 c ON c.KUNNR = k.KUNRG WHERE k.VKORG = 1000 AND k.FKDAT BETWEEN DATE '2025-01-01' AND DATE '2025-12-31' GROUP BY 1, 2"
+     },
+     {
+      "id": "s2",
+      "source": "crm",
+      "sql": "SELECT a.sap_no, COUNT(*) AS open_tickets FROM tickets t JOIN accounts a ON a.account_id = t.account_id WHERE t.status <> 'Closed' AND a.sap_no IS NOT NULL GROUP BY 1"
+     }
+    ],
+    "combine": "SELECT s1.customer_name, s1.net_sales_eur, COALESCE(s2.open_tickets, 0) AS open_tickets FROM s1 LEFT JOIN s2 ON CASE WHEN s1.customer IS NULL THEN NULL WHEN trim(CAST(s1.customer AS VARCHAR)) = '' THEN '' ELSE coalesce(nullif(ltrim(trim(CAST(s1.customer AS VARCHAR)), '0'), ''), '0') END = CASE WHEN s2.sap_no IS NULL THEN NULL WHEN trim(CAST(s2.sap_no AS VARCHAR)) = '' THEN '' ELSE coalesce(nullif(ltrim(trim(CAST(s2.sap_no AS VARCHAR)), '0'), ''), '0') END ORDER BY s1.net_sales_eur DESC LIMIT 10"
+   }
+  },
+  {
+   "question": "How many SAP customers are missing from the CRM, by country?",
+   "plan": {
+    "steps": [
+     {
+      "id": "s1",
+      "source": "sap",
+      "sql": "SELECT KUNNR AS customer, LAND1 AS country FROM kna1"
+     },
+     {
+      "id": "s2",
+      "source": "crm",
+      "sql": "SELECT DISTINCT sap_no FROM accounts WHERE sap_no IS NOT NULL"
+     }
+    ],
+    "combine": "SELECT s1.country, COUNT(*) AS sap_customers, SUM(CASE WHEN s2.sap_no IS NULL THEN 1 ELSE 0 END) AS not_in_crm FROM s1 LEFT JOIN s2 ON CASE WHEN s1.customer IS NULL THEN NULL WHEN trim(CAST(s1.customer AS VARCHAR)) = '' THEN '' ELSE coalesce(nullif(ltrim(trim(CAST(s1.customer AS VARCHAR)), '0'), ''), '0') END = CASE WHEN s2.sap_no IS NULL THEN NULL WHEN trim(CAST(s2.sap_no AS VARCHAR)) = '' THEN '' ELSE coalesce(nullif(ltrim(trim(CAST(s2.sap_no AS VARCHAR)), '0'), ''), '0') END GROUP BY 1 ORDER BY not_in_crm DESC, 1"
+   }
+  },
+  {
+   "question": "Which customers with overdue SAP receivables have open urgent or high-priority CRM tickets?",
+   "plan": {
+    "steps": [
+     {
+      "id": "s1",
+      "source": "sap",
+      "sql": "SELECT b.BUKRS AS company_code, c.KUNNR AS customer, c.NAME1 AS customer_name, ROUND(SUM(CASE WHEN b.SHKZG = 'S' THEN b.DMBTR ELSE -b.DMBTR END), 2) AS overdue_amount FROM bseg b JOIN kna1 c ON c.KUNNR = b.KUNNR WHERE b.KOART = 'D' AND b.AUGBL IS NULL AND b.ZFBDT + CAST(COALESCE(b.ZBD1T, 0) AS INTEGER) < DATE '2026-11-15' GROUP BY 1, 2, 3"
+     },
+     {
+      "id": "s2",
+      "source": "crm",
+      "sql": "SELECT a.sap_no, COUNT(*) AS urgent_open FROM tickets t JOIN accounts a ON a.account_id = t.account_id WHERE t.status <> 'Closed' AND t.priority IN ('Urgent', 'High') AND a.sap_no IS NOT NULL GROUP BY 1"
+     }
+    ],
+    "combine": "SELECT s1.company_code, s1.customer_name, s1.overdue_amount, s2.urgent_open AS open_urgent_or_high_tickets FROM s1 JOIN s2 ON CASE WHEN s1.customer IS NULL THEN NULL WHEN trim(CAST(s1.customer AS VARCHAR)) = '' THEN '' ELSE coalesce(nullif(ltrim(trim(CAST(s1.customer AS VARCHAR)), '0'), ''), '0') END = CASE WHEN s2.sap_no IS NULL THEN NULL WHEN trim(CAST(s2.sap_no AS VARCHAR)) = '' THEN '' ELSE coalesce(nullif(ltrim(trim(CAST(s2.sap_no AS VARCHAR)), '0'), ''), '0') END ORDER BY s1.company_code, s1.overdue_amount DESC"
+   }
+  },
+  {
+   "question": "What is the average CRM satisfaction score by SAP customer group?",
+   "plan": {
+    "steps": [
+     {
+      "id": "s1",
+      "source": "sap",
+      "sql": "SELECT v.KUNNR AS customer, MIN(g.KTEXT) AS customer_group FROM knvv v JOIN t151t g ON g.KDGRP = v.KDGRP AND g.SPRAS = 'E' GROUP BY 1"
+     },
+     {
+      "id": "s2",
+      "source": "crm",
+      "sql": "SELECT a.sap_no, SUM(t.satisfaction) AS satisfaction_sum, COUNT(t.satisfaction) AS rated_tickets FROM tickets t JOIN accounts a ON a.account_id = t.account_id WHERE t.satisfaction IS NOT NULL AND a.sap_no IS NOT NULL GROUP BY 1"
+     }
+    ],
+    "combine": "SELECT s1.customer_group, ROUND(SUM(s2.satisfaction_sum) * 1.0 / SUM(s2.rated_tickets), 2) AS avg_satisfaction, SUM(s2.rated_tickets) AS rated_tickets FROM s1 JOIN s2 ON CASE WHEN s1.customer IS NULL THEN NULL WHEN trim(CAST(s1.customer AS VARCHAR)) = '' THEN '' ELSE coalesce(nullif(ltrim(trim(CAST(s1.customer AS VARCHAR)), '0'), ''), '0') END = CASE WHEN s2.sap_no IS NULL THEN NULL WHEN trim(CAST(s2.sap_no AS VARCHAR)) = '' THEN '' ELSE coalesce(nullif(ltrim(trim(CAST(s2.sap_no AS VARCHAR)), '0'), ''), '0') END GROUP BY 1 ORDER BY avg_satisfaction DESC"
+   }
+  }
+ ]
+}

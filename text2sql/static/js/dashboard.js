@@ -52,7 +52,13 @@ export async function dashboardView(root) {
       h('div', { class: 'dash-grid' }, breakdown('By AI model', s.by_model, 'Model'), breakdown('By data model', s.by_connection, 'Data model')),
       h('div', { class: 'dash-grid' }, breakdown('By user', s.by_user, 'User'),
         h('div', { class: 'card' }, h('h2', {}, 'Most common failures'), s.top_errors.length ? h('table', { class: 'tbl' }, h('tbody', {}, s.top_errors.map(e => h('tr', {}, h('td', { class: 'num', style: 'width:50px' }, e.count + '×'), h('td', { class: 'small' }, e.error)))))
-          : h('div', { class: 'empty small' }, 'No failures in this period. 🎉'))));
+          : h('div', { class: 'empty small' }, 'No failures in this period. 🎉'))),
+      s.combined.questions ? h('div', { class: 'card' }, h('h2', {}, 'Questions across data models'),
+        h('p', { class: 'small', style: 'margin-top:0' }, `${fmtNum(s.combined.questions)} question${s.combined.questions === 1 ? '' : 's'} asked of combined data models. Right first time: `,
+          h('b', {}, pct(s.combined.across.first_time_rate)), ' across data models', s.combined.single.questions ? [' vs ', h('b', {}, pct(s.combined.single.first_time_rate)), ' for questions on one data model'] : '', '.'),
+        s.combined.reasons.length ? h('table', { class: 'tbl' }, h('thead', {}, h('tr', {}, h('th', {}, 'What went wrong or needs a look'), h('th', { class: 'num' }, 'Answers'))),
+          h('tbody', {}, s.combined.reasons.map(r => h('tr', {}, h('td', { class: 'small' }, r.reason), h('td', { class: 'num' }, fmtNum(r.count))))))
+          : h('div', { class: 'empty small' }, 'Every answer across data models went through first time.')) : null);
     const base = { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: ink.text, boxWidth: 12, boxHeight: 12 } } } };
     const ax = (stacked, grid) => ({ stacked, grid: { color: grid ? ink.grid : 'transparent' }, border: { color: ink.grid }, ticks: { color: ink.text, precision: 0, maxRotation: 0, autoSkipPadding: 12 }, beginAtZero: true });
     charts.push(new Chart(c1, { type: 'bar', data: { labels: s.series.map(d => d.day.slice(5)), datasets: [

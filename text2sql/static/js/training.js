@@ -6,13 +6,15 @@ import { relationshipsTab } from './relationships.js';
 const SOURCE = { manual: 'added manually', upload: 'uploaded', import: 'imported', confirmed: 'confirmed by a user', correction: 'user correction' };
 
 export async function trainingView(root, arg) {
-  const conns = (await api('GET', '/api/connections')).filter(c => c.db_type !== 'combined');   // a combined model's matches live on the Data models page
+  const conns = await api('GET', '/api/connections');
+  const conn = () => conns.find(c => c.id === connId);
+  const isCombined = () => conn()?.db_type === 'combined';
   if (!conns.length) return fill(root, h('div', { class: 'page' }, h('div', { class: 'empty' }, 'Connect a data model first (Data models).')));
   let connId = Number(arg) || conns[0].id;
   if (!conns.some(c => c.id === connId)) connId = conns[0].id;
   const body = h('div', {});
   const page = h('div', { class: 'page' }, h('div', { class: 'page-head' }, h('h1', {}, 'Training'),
-    select(conns.map(c => [c.id, c.name]), connId, v => { connId = Number(v); history.replaceState(null, '', `#/training/${v}`); draw(); }, { class: 'inline', style: 'min-width:240px' }),
+    select(conns.map(c => [c.id, c.name + (c.db_type === 'combined' ? '  (combined)' : '')]), connId, v => { connId = Number(v); history.replaceState(null, '', `#/training/${v}`); draw(); }, { class: 'inline', style: 'min-width:240px' }),
     h('span', { class: 'spacer' }),
     h('button', { class: 'btn', onclick: async () => download(`training-${connId}.json`, JSON.stringify(await api('GET', `/api/training/${connId}/export`), null, 2), 'application/json') }, '⬇ Export')),
   h('p', { class: 'muted', style: 'max-width:760px' }, 'Each data model learns separately. The model is given the schema plus the most relevant notes and verified examples below when it writes SQL — the more of your business language you capture here, the more accurate it gets.'), body);
@@ -24,6 +26,14 @@ export async function trainingView(root, arg) {
     const waiting = (data.pending || 0) + issues.length;
     const of = kind => data.items.filter(i => i.kind === kind && i.status !== 'pending');
     const n = k => data.counts[k] || 0;
+    const review = ['review', `Review queue${waiting ? ` (${waiting})` : ''}`, () => reviewTab(data.items.filter(i => i.status === 'pending'), issues)];
+    if (isCombined()) {
+      const c = conn();
+      return fill(body, h('p', { class: 'small dim', style: 'max-width:760px;margin-top:0' }, `A combined data model: ${c.members.map(m => `${m.name} (${m.alias})`).join(' + ')}. `,
+        'Each data model’s own schema, notes and examples are used for every question as well — keep them on that data model’s Training page. Matches between the data models are on Data models → 🔗 Matches.'),
+      tabs([['pairs', `Question → plan (${n('sql_pair')})`, () => pairsTab(of('sql_pair'))],
+        ['docs', `Documentation (${n('documentation')})`, () => docsTab(of('documentation'), 'documentation')], review], tab || (waiting ? 'review' : 'pairs')));
+    }
     const t = tabs([
       ['pairs', `Question → SQL (${n('sql_pair')})`, () => pairsTab(of('sql_pair'))],
       ['docs', `Documentation (${n('documentation')})`, () => docsTab(of('documentation'), 'documentation')],
@@ -31,12 +41,59 @@ export async function trainingView(root, arg) {
       ['ddl', `Extra DDL (${n('ddl')})`, () => docsTab(of('ddl'), 'ddl')],
       ['schema', 'Schema', el => { schemaTab(el); }],
       ['relations', 'Relationships', el => { relationshipsTab(el, connId); }],
-      ['review', `Review queue${waiting ? ` (${waiting})` : ''}`, () => reviewTab(data.items.filter(i => i.status === 'pending'), issues)],
+      review,
     ], tab || (waiting ? 'review' : 'pairs'));
     fill(body, t);
   }
 
+  // ---- combined data models: a plan of steps (one per data model) and a combine query -------------------------------
+  const planBlock = plan => h('div', { class: 'stack', style: 'gap:6px;margin-top:8px' }, plan.steps.map(st => h('div', {},
+    h('div', { class: 'small dim' }, `${st.id} · ${st.source} — ${conn().members.find(m => m.alias === st.source)?.name || ''}`), h('pre', { class: 'sql', style: 'margin:2px 0 0', html: highlightSQL(prettySQL(st.sql)) }))),
+    h('div', {}, h('div', { class: 'small dim' }, 'combine — on the AskData server, over the step results'), h('pre', { class: 'sql', style: 'margin:2px 0 0', html: highlightSQL(prettySQL(plan.combine)) })));
+
+  function planEditor(plan) {
+    const members = conn().members;
+    let steps = (plan?.steps || [{ id: 's1', source: members[0].alias, sql: '' }, { id: 's2', source: members[1]?.alias || members[0].alias, sql: '' }]).map(st => ({ ...st, sql: prettySQL(st.sql) }));
+    const combine = h('textarea', { class: 'sql-edit', spellcheck: 'false', 'aria-label': 'Combine SQL', style: 'min-height:110px' }, plan ? prettySQL(plan.combine) : 'SELECT *\nFROM s1\nJOIN s2 ON ...');
+    const box = h('div', { class: 'stack', style: 'gap:10px' });
+    const draw = () => fill(box, steps.map((st, i) => h('div', { class: 'stack', style: 'gap:4px' },
+      h('div', { class: 'row' }, h('b', {}, `s${i + 1}`), select(members.map(m => [m.alias, `${m.alias} — ${m.name}`]), st.source, v => { st.source = v; }, { class: 'inline', 'aria-label': `Data model of step s${i + 1}` }),
+        steps.length > 1 ? h('button', { class: 'btn sm ghost', type: 'button', title: 'Remove this step', onclick: () => { steps.splice(i, 1); draw(); } }, '✕') : null),
+      h('textarea', { class: 'sql-edit', spellcheck: 'false', 'aria-label': `SQL of step s${i + 1}`, style: 'min-height:110px', oninput: e => { st.sql = e.target.value; } }, st.sql))),
+      steps.length < 8 ? h('button', { class: 'btn sm ghost', type: 'button', onclick: () => { steps.push({ source: members[0].alias, sql: '' }); draw(); } }, '＋ Another step') : null);
+    draw();
+    return { el: h('div', { class: 'stack' }, field('Steps', box, 'one read-only SELECT per step, in that data model’s SQL; the steps are named s1, s2… in the combine query'),
+      field('Combine', combine, 'DuckDB SQL over s1, s2…; apply the key rules of the matches (Data models → 🔗 Matches)')),
+      value: () => ({ steps: steps.map((st, i) => ({ id: `s${i + 1}`, source: st.source, sql: st.sql })), combine: combine.value }) };
+  }
+
+  const testBox = (get) => {
+    const out = h('div', {});
+    const btn = h('button', { class: 'btn', type: 'button', onclick: () => busy(btn, async () => {
+      try {
+        const r = await api('POST', `/api/training/${connId}/test-sql`, get());
+        fill(out, h('div', { class: 'small dim', style: 'margin-bottom:4px' }, `${r.row_count} row(s)${r.row_count > 20 ? ' — first 20 shown' : ''}`),
+          h('div', { class: 'tbl-wrap', style: 'max-height:240px' }, h('table', { class: 'tbl' }, h('thead', {}, h('tr', {}, r.columns.map(c => h('th', {}, c.name)))),
+            h('tbody', {}, r.rows.map(row => h('tr', {}, row.map(v => h('td', {}, v == null ? '' : String(v)))))))));
+      } catch (e) { fill(out, h('div', { class: 'banner bad' }, e.message)); }
+    }) }, '▶ Test');
+    return [h('div', { class: 'row' }, btn, h('span', { class: 'small dim' }, 'Run it before saving: read-only, with your own data access.')), out];
+  };
+
+  function editPlanItem(item, tab) {
+    const question = h('input', { type: 'text', value: item?.question || '', placeholder: 'e.g. Which top SAP customers have the most open CRM tickets?' });
+    const ed = planEditor(item?.plan);
+    modal(`${item ? 'Edit' : 'Add'} question → plan example`, h('div', { class: 'stack' }, field('Question', question), ed.el, ...testBox(() => ({ plan: ed.value() }))),
+      { wide: true, maximizable: true, actions: close => [h('button', { class: 'btn', onclick: close }, 'Cancel'),
+        h('button', { class: 'btn primary', onclick: e => busy(e.target, async () => {
+          const payload = { kind: 'sql_pair', question: question.value, plan: ed.value() };
+          await (item ? api('PUT', `/api/training/item/${item.id}`, payload) : api('POST', `/api/training/${connId}`, payload));
+          close(); toast('Saved'); draw(tab);
+        }) }, 'Save')] });
+  }
+
   function editItem(kind, item, tab) {
+    if (kind === 'sql_pair' && isCombined()) return editPlanItem(item, tab);
     const isPair = kind === 'sql_pair';
     const title = h('input', { type: 'text', value: item?.title || '', placeholder: kind === 'ddl' ? 'e.g. View: monthly_sales' : 'e.g. How we define an active customer' });
     const content = h('textarea', { style: 'min-height:180px', class: kind === 'ddl' ? 'mono' : '' }, item?.content || '');
@@ -66,11 +123,12 @@ export async function trainingView(root, arg) {
       try { const r = await api('POST', `/api/training/${connId}/import-pairs`, fd); toast(`Imported ${r.added} example(s)` + (r.errors.length ? `; ${r.errors.length} skipped: ${r.errors[0]}` : ''), r.errors.length > 0 && !r.added); draw('pairs'); } catch (ex) { fail(ex); }
     } });
     return h('div', { class: 'stack' }, h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: () => editItem('sql_pair', null, 'pairs') }, '＋ Add example'),
-      h('button', { class: 'btn', onclick: () => file.click(), title: 'CSV with columns question, sql — or JSON [{question, sql}]' }, 'Import CSV / JSON'), file,
-      h('span', { class: 'small dim' }, 'Verified examples are the strongest training signal. Users add to these by confirming or correcting answers in chat.')),
+      isCombined() ? null : [h('button', { class: 'btn', onclick: () => file.click(), title: 'CSV with columns question, sql — or JSON [{question, sql}]' }, 'Import CSV / JSON'), file],
+      h('span', { class: 'small dim' }, isCombined() ? 'Verified plans show the AI how questions across these data models are answered. Users add to them by confirming or correcting answers on the Ask page.'
+        : 'Verified examples are the strongest training signal. Users add to these by confirming or correcting answers in chat.')),
     items.length ? h('div', { class: 'card flush' }, items.map(i => h('div', { class: 'item' },
       h('div', { class: 'row top' }, h('div', { style: 'flex:1;min-width:0' }, h('b', {}, i.question), h('div', { class: 'small dim' }, `${SOURCE[i.source] || i.source} · ${fmtTime(i.updated_at)}`)), actions(i, 'pairs')),
-      h('pre', { class: 'sql', style: 'margin-top:8px', html: highlightSQL(prettySQL(i.sql)) })))) : h('div', { class: 'empty' }, 'No examples yet.'));
+      i.plan ? planBlock(i.plan) : h('pre', { class: 'sql', style: 'margin-top:8px', html: highlightSQL(prettySQL(i.sql)) })))) : h('div', { class: 'empty' }, 'No examples yet.'));
   }
 
   function docsTab(items, kind) {
@@ -120,7 +178,19 @@ export async function trainingView(root, arg) {
   };
   const commentField = (issue, value = '') => { const c = h('input', { type: 'text', value, placeholder: 'Optional — shown under the answer' }); return [c, field(`Message to ${issue.user}`, c)]; };
 
+  function fixPlan(issue) {
+    const question = h('input', { type: 'text', value: issue.question });
+    const ed = planEditor(issue.plan);
+    const [comment, cf] = commentField(issue);
+    modal('Fix the plan', h('div', { class: 'stack' },
+      h('div', { class: 'banner warn' }, h('b', {}, issue.issue_label + ': '), issue.reason),
+      field('Question', question, 'saved as a verified example with the corrected plan'), ed.el, ...testBox(() => ({ plan: ed.value() })), cf),
+    { wide: true, maximizable: true, actions: close => [h('button', { class: 'btn', onclick: close }, 'Cancel'),
+      h('button', { class: 'btn primary', onclick: e => busy(e.target, () => resolve(issue, { action: 'example', question: question.value, plan: ed.value(), comment: comment.value }, close)) }, 'Save as verified example')] });
+  }
+
   function fixSql(issue) {
+    if (issue.plan) return fixPlan(issue);
     const question = h('input', { type: 'text', value: issue.question });
     const sql = h('textarea', { class: 'sql-edit', spellcheck: 'false', style: 'min-height:200px' }, prettySQL(issue.sql));
     const out = h('div', {});
@@ -171,16 +241,16 @@ export async function trainingView(root, arg) {
         h('p', { class: 'muted', style: 'margin-top:0' }, 'Answers users said are incorrect, with what is wrong and why. Fix the SQL (it becomes a verified example), add the business rule the model missed, or dismiss the report — the user sees the outcome under their answer.'),
         h('div', { class: 'card flush' }, issues.map(i => h('div', { class: 'item issue' },
           h('div', { class: 'row top' }, h('div', { style: 'flex:1;min-width:0' }, h('b', {}, i.question), h('div', { class: 'small dim' }, `reported by ${i.user} · ${fmtTime(i.created_at)} · ${i.row_count} row(s)`)),
-            h('button', { class: 'btn sm primary', onclick: () => fixSql(i) }, '✎ Fix the SQL'), h('button', { class: 'btn sm', onclick: () => addRule(i) }, '📝 Add a business rule'),
+            h('button', { class: 'btn sm primary', onclick: () => fixSql(i) }, i.plan ? '✎ Fix the plan' : '✎ Fix the SQL'), h('button', { class: 'btn sm', onclick: () => addRule(i) }, '📝 Add a business rule'),
             h('button', { class: 'btn sm ghost', onclick: () => viewAnswer(i) }, 'View answer'), h('button', { class: 'btn sm danger', onclick: () => dismiss(i) }, 'Dismiss')),
           h('div', { class: 'banner warn', style: 'margin-top:8px' }, h('b', {}, i.issue_label + ': '), i.reason),
-          h('pre', { class: 'sql', style: 'margin-top:8px', html: highlightSQL(prettySQL(i.sql)) }))))] : null,
+          i.plan ? planBlock(i.plan) : h('pre', { class: 'sql', style: 'margin-top:8px', html: highlightSQL(prettySQL(i.sql)) }))))] : null,
       items.length ? [h('h2', {}, `Confirmed answers waiting for approval (${items.length})`),
         h('p', { class: 'muted', style: 'margin-top:0' }, 'Answers that users confirmed or corrected. Approve the ones that are right; they become verified examples.'),
         h('div', { class: 'card flush' }, items.map(i => h('div', { class: 'item' },
           h('div', { class: 'row top' }, h('div', { style: 'flex:1' }, h('b', {}, i.question), h('div', { class: 'small dim' }, `${SOURCE[i.source] || i.source} · ${fmtTime(i.updated_at)}`)),
             h('button', { class: 'btn sm good', onclick: decide(i, 'approve') }, '✓ Approve'), h('button', { class: 'btn sm', onclick: () => editItem('sql_pair', i, 'review') }, 'Edit'), h('button', { class: 'btn sm danger', onclick: decide(i, 'reject') }, '✗ Reject')),
-          h('pre', { class: 'sql', style: 'margin-top:8px', html: highlightSQL(prettySQL(i.sql)) }))))] : null);
+          i.plan ? planBlock(i.plan) : h('pre', { class: 'sql', style: 'margin-top:8px', html: highlightSQL(prettySQL(i.sql)) }))))] : null);
   }
   await draw();
 }
