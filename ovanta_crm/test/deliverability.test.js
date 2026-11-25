@@ -115,3 +115,15 @@ test('domain check reads SPF, DKIM and DMARC from DNS and says how to fix what i
     const api = await call(admin, 'POST', `/api/senders/${senderId}/deliverability`); assert.equal(api.status, 200); assert.equal(api.body.domain, 'syncsense.in');
   } finally { Object.assign(dns, { resolveMx: orig.mx, resolveTxt: orig.txt, resolveCname: orig.cname }); }
 });
+
+test('campaign footer address: per-campaign text wins, then the workspace default, and no stray "Ovantaa Inc." appears', async () => {
+  const pv = (extra) => call(admin, 'POST', '/api/campaigns/preview', { subject: 's', body_html: '<p>Hi</p>', ...extra });
+  assert.ok(!(await pv({})).body.html.includes('Ovantaa Inc.'), 'the old built-in San Francisco address is gone');
+  assert.equal((await call(admin, 'PUT', '/api/settings/email-footer', { footer_address: 'Default Co, 1 Main Rd' })).status, 200);
+  assert.ok((await pv({ footer_text: '' })).body.html.includes('Default Co, 1 Main Rd'), 'workspace default used');
+  const mine = (await pv({ footer_text: 'SyncSense Consulting\n12 MG Road' })).body.html;
+  assert.ok(mine.includes('SyncSense Consulting<br>12 MG Road') && !mine.includes('Default Co'), 'campaign text overrides the default');
+  const c = await call(admin, 'POST', '/api/campaigns', { name: 'F', subject: 's', body_html: '<p>x</p>', footer_text: 'Saved Footer Ltd' });
+  assert.equal(c.body.footer_text, 'Saved Footer Ltd');
+  assert.equal((await call(admin, 'PUT', '/api/settings/email-footer', { footer_address: '' })).status, 200);
+});

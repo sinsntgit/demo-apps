@@ -49,6 +49,12 @@ export async function sendAccessLink(u, kind, by) {
 /** The address people use to reach the CRM — used in every emailed link (invitations, tasks, invoices, tracking). */
 export function applySavedBaseUrl() { if (!process.env.BASE_URL) { const v = get("SELECT value FROM settings WHERE key='base_url'")?.value; if (v) config.baseUrl = v; } }
 applySavedBaseUrl();
+GET('/api/settings/email-footer', () => ({ footer_address: String(get("SELECT value FROM settings WHERE key='email.footer_address'")?.value || '') }));
+PUT('/api/settings/email-footer', ({ body, user }) => {
+  const v = String(body.footer_address || '').trim().slice(0, 400);
+  run("INSERT INTO settings (key,value,updated_at) VALUES ('email.footer_address',?,datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at", v);
+  audit(user, 'update', 'settings', 0, 'email footer address'); return { footer_address: v };
+});
 GET('/api/settings/base-url', () => ({ base_url: config.baseUrl, from_env: !!process.env.BASE_URL, local: isLocal() }));
 PUT('/api/settings/base-url', ({ body, user }) => {
   if (process.env.BASE_URL) throw bad('The address is set by the BASE_URL environment variable on the server; change it there.');

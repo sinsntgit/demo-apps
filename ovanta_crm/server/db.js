@@ -142,6 +142,7 @@ function ensureColumn(table, col, ddl) {
 ensureColumn('campaigns', 'sender_id', 'INTEGER REFERENCES senders(id) ON DELETE SET NULL');
 ensureColumn('campaigns', 'simulated', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('campaigns', 'note', 'TEXT');
+ensureColumn('campaigns', 'footer_text', 'TEXT');
 ensureColumn('campaign_recipients', 'sender_id', 'INTEGER');
 ensureColumn('campaign_recipients', 'message_id', 'TEXT');
 ensureColumn('campaign_recipients', 'response', 'TEXT');

@@ -1,3 +1,4 @@
+import { getSetting } from './settings.js';
 import dns from 'node:dns/promises';
 import net from 'node:net';
 import { config } from './config.js';
@@ -25,7 +26,12 @@ const SPAMMY = ['free', 'guarantee', 'guaranteed', 'winner', 'won', 'cash', 'act
 const SHORTENERS = /https?:\/\/(bit\.ly|tinyurl\.com|goo\.gl|t\.co|ow\.ly|is\.gd|buff\.ly|rebrand\.ly|cutt\.ly|shorturl\.at)\//i;
 
 /** Warnings about the content, most important first. Each is { level: 'high'|'medium'|'tip', text }. */
-export function lintCampaign({ subject = '', body_html = '' } = {}) {
+/** The postal address shown in a campaign's footer: the campaign's own text, else the workspace default (Settings → Email delivery), else the COMPANY_ADDRESS variable. May be empty. */
+export function footerAddress(c = {}) {
+  return String(c.footer_text || '').trim() || String(getSetting('email.footer_address', '') || '').trim() || String(config.companyAddress || '').trim();
+}
+
+export function lintCampaign({ subject = '', body_html = '', footer_text = '' } = {}) {
   const w = []; const add = (level, text) => w.push({ level, text });
   const text = body_html.replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\{\{[^}]+\}\}/g, 'x').replace(/\s+/g, ' ').trim();
   const words = text ? text.split(' ').length : 0;
@@ -46,7 +52,8 @@ export function lintCampaign({ subject = '', body_html = '' } = {}) {
   if (!/\{\{\s*first_name/.test(body_html + subject)) add('tip', 'Greet people by name ({{first_name|there}}). Personal emails are more likely to land in Primary.');
   if (words > 400) add('tip', `${words} words. Short, conversational emails (under ~200 words) perform better.`);
   if (/<(table|style)\b/i.test(body_html) && /background(-color)?\s*:/i.test(body_html)) add('tip', 'Designed, newsletter-style HTML (tables, backgrounds) tells Gmail it is a promotion. A plain letter-style email is more likely to reach Primary.');
-  if (!config.companyAddress || /123 Example|example/i.test(config.companyAddress)) add('medium', 'Set your real postal address (COMPANY_ADDRESS) — bulk-mail rules and filters expect one in the footer.');
+  const addr = footerAddress({ footer_text });
+  if (!addr || /123 Example/i.test(addr)) add('medium', 'Add your postal address in “Footer address” below (or set a default under Settings → Email delivery) — bulk-mail rules expect one in the footer.');
   return w;
 }
 

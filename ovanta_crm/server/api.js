@@ -12,7 +12,7 @@ const displayCustom = (d, r) => { const v = r.custom?.[d.key]; if (v == null) re
 import { segmentFields, SEGMENT_OPS, parseFilter, resolveSegment } from './segments.js';
 import {
   MERGE_TAGS, renderMessage, sendTest, launchCampaign, validateForLaunch, campaignStats, outboxLog, resolveSender, isSimulated, trackingPlan } from './campaigns.js';
-import { lintCampaign, addressReach } from './deliverability.js';
+import { lintCampaign, addressReach, footerAddress } from './deliverability.js';
 import { notify, EVENTS } from './notifications.js';
 import { aiConfigured, aiModel } from './ai.js';
 import { getTheme, getSetting } from './settings.js';
@@ -65,7 +65,7 @@ export function checkPassword(p) {
 // ---------- Meta ----------
 GET('/api/meta', () => ({
   version: config.version, currency: currencyMeta(), billing: (() => { const b = getBilling(); return { jurisdiction: b.jurisdiction, country: b.country, reminders_enabled: !!b.reminders.enabled, tax_label: b.tax_label }; })(),
-  stages: stagesForClient().stages, stageLabels: stagesForClient().labels, mergeTags: MERGE_TAGS, segmentFields: Object.fromEntries(Object.entries(segmentFields()).map(([k, v]) => [k, { label: v.label, type: v.type, options: v.options }])),
+  stages: stagesForClient().stages, stageLabels: stagesForClient().labels, mergeTags: MERGE_TAGS, footerAddress: footerAddress({}), segmentFields: Object.fromEntries(Object.entries(segmentFields()).map(([k, v]) => [k, { label: v.label, type: v.type, options: v.options }])),
   segmentOps: SEGMENT_OPS, users: all('SELECT id,name,role FROM users WHERE active=1 ORDER BY name'),
   industries: all("SELECT DISTINCT industry v FROM accounts WHERE industry IS NOT NULL ORDER BY 1").map((r) => r.v),
   sources: all("SELECT DISTINCT source v FROM contacts WHERE source IS NOT NULL ORDER BY 1").map((r) => r.v),
@@ -310,7 +310,7 @@ const campaignById = (id) => { const c = get(`${CAMPAIGN_LIST} WHERE c.id=?`, id
 function campaignInput(b, existing) {
   const out = {};
   const str = (k, max) => { if (k in b) out[k] = String(b[k] ?? '').trim().slice(0, max) || null; };
-  str('name', 150); str('subject', 250);
+  str('name', 150); str('subject', 250); str('footer_text', 400);
   if ('sender_id' in b) {
     out.sender_id = b.sender_id ? Number(b.sender_id) : null;
     if (out.sender_id && !get('SELECT id FROM senders WHERE id=?', out.sender_id)) throw bad('Sender not found');
@@ -359,11 +359,12 @@ DELETE('/api/campaigns/:id', ({ params, user }) => {
 POST('/api/campaigns/:id/duplicate', ({ params, user }) => {
   const c = campaignById(params.id);
   const id = Number(run('INSERT INTO campaigns (name,subject,body_html,sender_id,segment_id,created_by) VALUES (?,?,?,?,?,?)', `${c.name} (copy)`, c.subject, c.body_html, c.sender_id, c.segment_id, user.id).lastInsertRowid);
+  if (c.footer_text) run('UPDATE campaigns SET footer_text=? WHERE id=?', c.footer_text, id);
   return campaignById(id);
 });
 POST('/api/campaigns/preview', ({ body }) => {
   const sample = { first_name: 'Alex', last_name: 'Morgan', email: 'alex@example.com', title: 'VP Operations', account_name: 'Northwind Traders' };
-  const c = { subject: String(body.subject || ''), body_html: String(body.body_html || ''), sender_id: body.sender_id ? Number(body.sender_id) : null, track: body.track === false ? 0 : 1 };
+  const c = { subject: String(body.subject || ''), body_html: String(body.body_html || ''), sender_id: body.sender_id ? Number(body.sender_id) : null, track: body.track === false ? 0 : 1, footer_text: String(body.footer_text || '').trim().slice(0, 400) };
   return { ...renderMessage(c, sample, null), warnings: lintCampaign(c), tracking: trackingPlan(c), reach: addressReach() };
 });
 POST('/api/campaigns/:id/test', async ({ params, body, user }) => {

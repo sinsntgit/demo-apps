@@ -60,6 +60,7 @@ async function editor(root, c) {
       <label class="check"><input type="checkbox" name="track" ${c.track === 0 ? '' : raw('checked')}> Track opens and clicks</label>
       <div class="small muted" style="margin:-6px 0 10px">Adds an invisible image and routes links through the CRM, so it needs an internet address. Turning it off makes emails look more personal.</div>
       <div id="trackwarn"></div>
+      <label>Footer address <span class="muted small">(your postal address, shown above the unsubscribe line)</span><textarea name="footer_text" rows="2" maxlength="400" placeholder="${store.meta.footerAddress ? 'Blank = workspace default: ' + store.meta.footerAddress : 'e.g. SyncSense Consulting, 12 MG Road, Bengaluru 560001'}">${c.footer_text || ''}</textarea></label>
       <label>Audience segment<select name="segment_id"><option value="">Choose a segment…</option>${segments.map((s) => html`<option value="${s.id}" ${c.segment_id === s.id ? raw('selected') : ''}>${s.name} (${s.size} emailable)</option>`)}</select></label>
       <div id="audience" class="small muted" style="margin:-4px 0 12px"></div>
       ${aiPanel()}
@@ -73,7 +74,7 @@ async function editor(root, c) {
     <div class="card mt"><div class="hd"><h2>Inbox check</h2><span class="grow"></span><span class="small muted">spam &amp; Promotions signals</span></div><div class="bd small" id="lint"></div></div></div></div>`);
   const form = $('#cform', root); form.addEventListener('submit', (e) => e.preventDefault());
   const frame = $('iframe', root);
-  const val = () => ({ name: form.name.value, sender_id: form.sender_id.value || null, segment_id: form.segment_id.value || null, subject: form.subject.value, body_html: form.body_html.value, track: form.track.checked });
+  const val = () => ({ name: form.name.value, sender_id: form.sender_id.value || null, segment_id: form.segment_id.value || null, subject: form.subject.value, body_html: form.body_html.value, footer_text: form.footer_text.value, track: form.track.checked });
   let lastPrev = null;
   const showLint = (p) => {
     const icon = { high: '🔴', medium: '🟠', tip: '💡' };
@@ -82,7 +83,7 @@ async function editor(root, c) {
     setHtml($('#trackwarn', root), form.track.checked && !p.tracking.tracked ? html`<div class="banner small"><b>Opens and clicks will not be tracked.</b> ${p.reach.reason} Links in the email will go straight to your website, and people unsubscribe by replying. ${allow('settings.manage') ? html`Set the internet address under <a href="#/settings">Settings → Email delivery</a>.` : ''}</div>` : '');
   };
   const refreshPreview = debounce(async () => {
-    try { const p = await api('POST', '/campaigns/preview', { subject: form.subject.value, body_html: form.body_html.value, sender_id: form.sender_id.value || null, track: form.track.checked }); lastPrev = p; frame.srcdoc = p.html; $('#subjprev', root).textContent = 'Subject: ' + p.subject; showLint(p); } catch (e) { fail(e); }
+    try { const p = await api('POST', '/campaigns/preview', { subject: form.subject.value, body_html: form.body_html.value, sender_id: form.sender_id.value || null, footer_text: form.footer_text.value, track: form.track.checked }); lastPrev = p; frame.srcdoc = p.html; $('#subjprev', root).textContent = 'Subject: ' + p.subject; showLint(p); } catch (e) { fail(e); }
   }, 350);
   form.track.addEventListener('change', () => refreshPreview());
   const refreshAudience = async () => {
@@ -183,7 +184,7 @@ async function report(root, c) {
   on(root, {
     dup: async () => { const n = await api('POST', `/campaigns/${c.id}/duplicate`); location.hash = `#/campaigns/${n.id}`; },
     refresh: () => draw(),
-    preview: async () => { const p = await api('POST', '/campaigns/preview', { subject: c.subject, body_html: c.body_html }); modal({ title: p.subject, wide: true, hideFooter: true, body: html`<iframe class="preview" sandbox="" title="Email" srcdoc="${p.html}"></iframe>` }); },
+    preview: async () => { const p = await api('POST', '/campaigns/preview', { subject: c.subject, body_html: c.body_html, footer_text: c.footer_text || '' }); modal({ title: p.subject, wide: true, hideFooter: true, body: html`<iframe class="preview" sandbox="" title="Email" srcdoc="${p.html}"></iframe>` }); },
   });
   await draw();
 }

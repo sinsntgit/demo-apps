@@ -238,6 +238,10 @@ BEGIN SELECT RAISE(ABORT, 'Issued invoices cannot be changed. Issue a credit or 
       if (v && v.sql.includes("'currency.c1'), 'USD')")) { db.exec('DROP VIEW deal_fx'); db.exec(v.sql.replace("'currency.c1'), 'USD')", "'currency.c1'), 'INR')")); }
     },
   },
+  {
+    version: 19, name: 'campaign_footer_text',
+    up(db) { if (!hasColumn(db, 'campaigns', 'footer_text')) db.exec('ALTER TABLE campaigns ADD COLUMN footer_text TEXT'); },
+  },
 ];
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 

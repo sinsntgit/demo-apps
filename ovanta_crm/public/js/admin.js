@@ -128,7 +128,8 @@ export async function settings(root) {
         <p>Sending is configured per sender mailbox under <a href="#/senders"><b>Email senders</b></a> (Google, Microsoft 365, Zoho or any SMTP server) — add one entry per address you send from. Notification emails are configured under <a href="#/notifications"><b>Notifications</b></a>.</p>
         ${admin ? html`<form id="baseurl" style="margin-top:10px"><label>Public address of this CRM <span class="muted small">(used in every emailed link: invitations, tasks, invoices, tracking)</span><input name="base_url" value="${m_baseUrl()}" placeholder="http://crm-server:3000"></label>
           <div style="display:flex;gap:8px;align-items:center"><button class="btn">Save address</button><span class="small muted" id="baseurl-note">${/\/\/(localhost|127\.)/.test(m_baseUrl()) ? '' : html`To test, open <a href="${m_baseUrl()}/t/ping" target="_blank" rel="noopener">${m_baseUrl()}/t/ping</a> on a phone using mobile data. `}${/\/\/(localhost|127\.)/.test(m_baseUrl()) ? '⚠️ “localhost” links only work on the computer running the CRM — enter the address your colleagues open.' : ''}</span></div></form>`
-          : html`<p class="muted small">Links in emails use <span class="mono">${m_baseUrl()}</span>.</p>`}</div></div></div>
+          : html`<p class="muted small">Links in emails use <span class="mono">${m_baseUrl()}</span>.</p>`}
+        ${admin ? html`<form id="footaddr" style="margin-top:14px"><label>Default footer address for campaigns <span class="muted small">(postal address shown above the unsubscribe line; each campaign can override it)</span><textarea name="footer_address" rows="2" maxlength="400" placeholder="e.g. SyncSense Consulting, 12 MG Road, Bengaluru 560001">${store.meta.footerAddress || ''}</textarea></label><button class="btn">Save footer address</button></form>` : ''}</div></div></div>
     <div class="mt" id="fxcard"></div>
     <div class="mt" id="seccard"></div>
     ${canBackup ? html`<div class="card mt"><div class="hd"><h2>Backups</h2><span class="muted small">an automatic backup is taken daily · before every upgrade a restore point is saved</span><span class="grow"></span><button class="btn sm" data-act="mkbackup">Create backup now</button><a class="btn sm primary" href="/api/admin/backup">Download backup</a></div>
@@ -139,6 +140,7 @@ export async function settings(root) {
   function m_baseUrl() { return store.meta.baseUrl; }
   securityCard($('#seccard', root), { admin }).catch(fail);
   $('#baseurl', root)?.addEventListener('submit', async (e) => { e.preventDefault(); try { const r = await api('PUT', '/settings/base-url', { base_url: e.currentTarget.base_url.value }); store.meta.baseUrl = r.base_url; toast(`Links will use ${r.base_url}`, 'ok'); settings(root); } catch (x) { fail(x); } });
+  $('#footaddr', root)?.addEventListener('submit', async (e) => { e.preventDefault(); try { const r = await api('PUT', '/settings/email-footer', { footer_address: e.currentTarget.footer_address.value }); store.meta.footerAddress = r.footer_address; toast('Footer address saved', 'ok'); } catch (x) { fail(x); } });
   currencyCard($('#fxcard', root), { admin }).catch(fail);
   $('#pw', root).addEventListener('submit', async (e) => {
     e.preventDefault(); const f = e.currentTarget;

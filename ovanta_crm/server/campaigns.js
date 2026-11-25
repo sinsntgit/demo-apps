@@ -7,7 +7,7 @@ import { bad } from './http.js';
 import { runReminders } from './receivables.js';
 import { maybeDailyBackup } from './backup.js';
 import { sendMail, getSender, defaultSender, sentLast24h } from './mailer.js';
-import { addressReach } from './deliverability.js';
+import { addressReach, footerAddress } from './deliverability.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -61,7 +61,7 @@ export function renderMessage(campaign, contact, token) {
     });
   }
   const hasUnsub = /\{\{\s*unsubscribe_url/.test(campaign.body_html);
-  const footer = hasUnsub ? '' : `<p style="font-size:12px;color:#6b7280;margin-top:32px;border-top:1px solid #e5e7eb;padding-top:12px">${esc(config.companyAddress)}<br>You received this because you are in our contact list. ${web ? `<a href="${vars.unsubscribe_url}">Unsubscribe</a>` : `To stop receiving these emails, <a href="${vars.unsubscribe_url}">reply with “Unsubscribe”</a>.`}</p>`;
+  const footer = hasUnsub ? '' : `<p style="font-size:12px;color:#6b7280;margin-top:32px;border-top:1px solid #e5e7eb;padding-top:12px">${footerAddress(campaign) ? esc(footerAddress(campaign)).replace(/\r?\n/g, '<br>') + '<br>' : ''}You received this because you are in our contact list. ${web ? `<a href="${vars.unsubscribe_url}">Unsubscribe</a>` : `To stop receiving these emails, <a href="${vars.unsubscribe_url}">reply with “Unsubscribe”</a>.`}</p>`;
   // a 1×1 image that mail apps load with the message; not display:none — some apps skip hidden images
   const pixel = track ? `<img src="${config.baseUrl}/t/o/${token}.gif" width="1" height="1" alt="" border="0" style="height:1px!important;width:1px!important;border:0;margin:0;padding:0">` : '';
   const html = `<!doctype html><html><body style="font-family:Arial,Helvetica,sans-serif;color:#111827;line-height:1.5;max-width:640px;margin:0 auto;padding:16px">${htmlBody}${footer}${pixel}</body></html>`;

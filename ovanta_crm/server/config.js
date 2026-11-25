@@ -16,7 +16,7 @@ export const config = {
   mailWebhookToken: process.env.MAIL_WEBHOOK_TOKEN || '',
   defaultFromName: process.env.FROM_NAME || 'Ovantaa CRM',
   defaultFromEmail: process.env.FROM_EMAIL || 'hello@ovantaa.example',
-  companyAddress: process.env.COMPANY_ADDRESS || 'Ovantaa Inc., 100 Market Street, San Francisco, CA',
+  companyAddress: process.env.COMPANY_ADDRESS || '',
   sendBatchSize: Number(process.env.SEND_BATCH_SIZE || 25),
   sendDelayMs: Number(process.env.SEND_DELAY_MS || 50),
   seedDemo: process.env.SEED_DEMO !== '0',
