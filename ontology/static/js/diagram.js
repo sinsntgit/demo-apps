@@ -18,7 +18,7 @@ function clip(a, bx, by) {
 }
 let uid = 0;
 
-/** opts: onNode(node), onEdge(edge), selected (node id), maxHeight (px), legend (default true),
+/** opts: onNode(node, event), picked (Set of node ids ticked by Ctrl / Shift + click), onEdge(edge), selected (node id), maxHeight (px), legend (default true),
  *  onToggle(node) - show a +/− on hierarchy boxes that have subclasses, to expand or collapse that branch,
  *  onExpandAll() / onCollapseAll() - toolbar buttons for the whole tree,
  *  maxTarget - the element that "Maximise" fills the window with (default: the diagram itself; pass a
@@ -70,14 +70,15 @@ export function diagram(spec, opts = {}) {
     }
   }
   for (const n of spec.nodes) {
-    const cls = `dg-node s-${n.style}${n.group >= 0 && n.style !== 'gap' && n.style !== 'dim' ? ' g' + (n.group % 9) : ''}${opts.selected === n.id ? ' sel' : ''}${opts.onNode && n.style !== 'root' ? ' click' : ''}`;
+    const cls = `dg-node s-${n.style}${n.group >= 0 && n.style !== 'gap' && n.style !== 'dim' ? ' g' + (n.group % 9) : ''}${opts.selected === n.id ? ' sel' : ''}${opts.picked?.has(n.id) ? ' pick' : ''}${opts.onNode && n.style !== 'root' ? ' click' : ''}`;
     const top = n.attrs.length ? n.y - n.h / 2 + 15 : n.y;
     const g = s('g', { class: cls, 'data-id': n.id },
       s('rect', { x: n.x - n.w / 2, y: n.y - n.h / 2, width: n.w, height: n.h, rx: 7 }),
       n.sub ? s('text', { x: n.x - n.w / 2 + 10, y: top + 4, class: 'dg-label' }, n.label) : s('text', { x: n.x, y: top + 4, class: 'dg-label', 'text-anchor': 'middle' }, n.label),
       n.sub ? s('text', { x: n.x + n.w / 2 - 9, y: top + 3.5, class: 'dg-sub', 'text-anchor': 'end' }, n.sub) : null,
-      n.attrs.map((a, i) => s('text', { x: n.x - n.w / 2 + 10, y: top + 20 + i * 15, class: 'dg-attr' + (a.startsWith('+') ? ' gap' : '') }, a)));
-    if (opts.onNode && n.style !== 'root') g.addEventListener('click', ev => { ev.stopPropagation(); opts.onNode(n); });
+      n.attrs.map((a, i) => s('text', { x: n.x - n.w / 2 + 10, y: top + 20 + i * 15, class: 'dg-attr' + (a.startsWith('+') ? ' gap' : '') }, a)),
+      opts.picked?.has(n.id) ? s('text', { x: n.x + n.w / 2 - 6, y: n.y - n.h / 2 + 12, class: 'dg-pickmark', 'text-anchor': 'end' }, '✓') : null);
+    if (opts.onNode && n.style !== 'root') g.addEventListener('click', ev => { ev.stopPropagation(); opts.onNode(n, ev); });
     gNodes.append(g);
     if (spec.kind === 'hierarchy' && n.kids && opts.onToggle) {           // expand / collapse this branch
       const tx = n.x + n.w / 2 + 11, title = n.collapsed ? `Expand: show the ${n.sub.replace(/^\+(\d+) more$/, '$1')} classes under ${n.label}` : `Collapse: hide the subclasses of ${n.label}`;

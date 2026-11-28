@@ -849,6 +849,11 @@ def diagram(oid: int, view: str = "hierarchy", module: str = "", uc: str = "", c
         if not u:
             raise HTTPException(404, "Use case not found")
         return layout.use_case(c, u)
+    if view == "classes":
+        ids = [x for x in cls.split(",") if x in ix["classes"]]
+        if not ids:
+            raise HTTPException(404, "Class not found")
+        return layout.selection(c, ids)
     if view == "class":
         if cls not in ix["classes"]:
             raise HTTPException(404, "Class not found")

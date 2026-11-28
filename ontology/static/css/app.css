@@ -251,6 +251,8 @@ a.report-card { display: block; text-decoration: none; color: inherit; } a.repor
 .dg-node.s-root rect { fill: var(--text); stroke: var(--text); } .dg-node.s-root .dg-label { fill: var(--bg); }
 .dg-node.s-dim rect { fill: var(--surface-2); stroke: var(--border-strong); } .dg-node.s-dim .dg-label { fill: var(--text-3); }
 .dg-node.s-gap rect { fill: var(--gapf); stroke: var(--gaps); stroke-dasharray: 5 4; }
+.dg-node.pick rect { stroke: var(--accent) !important; stroke-width: 3.2; }
+.dg-pickmark { fill: var(--accent); font-size: 12px; font-weight: 700; pointer-events: none; }
 .dg-node.s-hit rect { stroke: var(--good); stroke-width: 2.6; }
 .dg-node.g0 rect { fill: var(--g0f); stroke: var(--g0s); } .dg-node.g1 rect { fill: var(--g1f); stroke: var(--g1s); } .dg-node.g2 rect { fill: var(--g2f); stroke: var(--g2s); }
 .dg-node.g3 rect { fill: var(--g3f); stroke: var(--g3s); } .dg-node.g4 rect { fill: var(--g4f); stroke: var(--g4s); } .dg-node.g5 rect { fill: var(--g5f); stroke: var(--g5s); }
@@ -329,3 +331,15 @@ pre.code { margin: 0; background: var(--code-bg); border-radius: 9px; padding: 1
 .dg-max .split { grid-template-columns: minmax(0, 1fr) 360px; } .dg-max .side { max-height: calc(100vh - 90px); top: 0; }
 body.dg-max-open { overflow: hidden; }
 table.changes td { vertical-align: top; } table.changes tr.dim td { opacity: .6; }
+
+/* multi-class picker (diagram toolbar) */
+.mpick-wrap { position: relative; display: inline-block; }
+.mpick { position: absolute; z-index: 40; top: calc(100% + 4px); left: 0; width: 300px; padding: 8px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.18); }
+.mpick[hidden] { display: none; }
+.mpick-list { max-height: 260px; overflow: auto; margin: 6px 0; }
+.mpick-list label { display: flex; gap: 6px; align-items: baseline; padding: 3px 4px; font-size: 13px; cursor: pointer; border-radius: 5px; }
+.mpick-list label:hover { background: var(--surface-2); }
+.mpick-list input { width: auto; }
+.pickbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; font-size: 13px; }
+.pickbar .chip { display: inline-flex; gap: 4px; align-items: center; padding: 2px 4px 2px 9px; border: 1px solid var(--accent); border-radius: 99px; background: var(--surface-2); }
+.pickbar .chip button { border: 0; background: none; cursor: pointer; font-size: 15px; line-height: 1; color: var(--text-3); padding: 0 4px; }

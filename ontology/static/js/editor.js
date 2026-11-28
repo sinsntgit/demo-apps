@@ -140,43 +140,85 @@ function classPanel(ctx, id, { refresh, close, onShow }) {
       : h('div', { class: 'small dim' }, 'None yet.')));
 }
 
+// A drop-down that lets several classes be ticked. `picks` (array of ids) is changed in place; onchange() runs after each tick.
+function classPicker(ctx, picks, onchange) {
+  const cc = ctx.c, mods = Object.fromEntries(cc.modules.map(m => [m.id, m.name]));
+  const q = h('input', { type: 'search', placeholder: 'Filter classes…' }), list = h('div', { class: 'mpick-list' });
+  const btn = h('button', { class: 'btn inline', type: 'button' });
+  const panel = h('div', { class: 'mpick' }), box = h('div', { class: 'mpick-wrap' }, btn, panel);
+  panel.hidden = true;
+  const sync = () => { btn.textContent = (picks.length ? `${picks.length} class${picks.length > 1 ? 'es' : ''} selected` : 'Choose classes') + ' ▾'; };
+  const paint = () => {
+    const f = q.value.toLowerCase();
+    fill(list, cc.classes.filter(k => !f || k.label.toLowerCase().includes(f)).sort(byLabel).map(k => h('label', {},
+      h('input', { type: 'checkbox', checked: picks.includes(k.id), onchange: e => {
+        const i = picks.indexOf(k.id); if (e.target.checked && i < 0) picks.push(k.id); if (!e.target.checked && i >= 0) picks.splice(i, 1); sync(); onchange(); } }),
+      k.label, h('span', { class: 'small dim' }, mods[k.module] || ''))));
+  };
+  q.addEventListener('input', paint);
+  fill(panel, q, list, h('div', { class: 'row' }, h('button', { class: 'btn sm', type: 'button', onclick: () => { picks.length = 0; sync(); paint(); onchange(); } }, 'Clear'),
+    h('span', { class: 'spacer' }), h('button', { class: 'btn sm primary', type: 'button', onclick: () => { panel.hidden = true; } }, 'Done')));
+  btn.addEventListener('click', e => { e.stopPropagation(); panel.hidden = !panel.hidden; if (!panel.hidden) { paint(); q.focus(); } });
+  document.addEventListener('click', function away(e) { if (!box.isConnected) return document.removeEventListener('click', away); if (!box.contains(e.target)) panel.hidden = true; });
+  sync();
+  return box;
+}
+
 // ---- Diagram tab: the visual editor ------------------------------------------------------------
 export function diagramTab(el, ctx) {
   const c = ctx.c || { modules: [], classes: [], properties: [] };
   let view = 'hierarchy', module = '', focus = null, selected = null, showAttrs = true;
+  let picks = [];                       // classes chosen for the "relationships of selected classes" view (dropdown or Ctrl / Shift + click)
   const collapsed = new Set();          // hierarchy branches folded by the user
   let keep = {};                        // zoom and scroll, kept across redraws of the same view
   const fresh = () => { keep = {}; };
   if (ctx.arg && c.modules.some(m => m.id === ctx.arg)) { view = 'module'; module = ctx.arg; }
   else if (ctx.arg && cls(ctx, ctx.arg)) { view = 'class'; focus = selected = ctx.arg; }
-  const canvas = h('div', {}), side = h('div', { class: 'side' }), tools = h('div', { class: 'row wrap', style: 'margin-bottom:10px' });
-  const refresh = async sel => { if (sel !== undefined) selected = sel; if (selected) reveal(selected); if (view === 'class' && !cls(ctx, focus)) { view = 'hierarchy'; focus = null; } drawTools(); await draw(); drawSide(); };
+  const canvas = h('div', {}), side = h('div', { class: 'side' }), tools = h('div', { class: 'row wrap', style: 'margin-bottom:10px' }), bar = h('div', { class: 'pickbar', hidden: true });
+  const refresh = async sel => { if (sel !== undefined) selected = sel; if (selected) reveal(selected); if (view === 'class' && !cls(ctx, focus)) { view = 'hierarchy'; focus = null; } picks = picks.filter(x => cls(ctx, x)); drawTools(); await draw(); drawSide(); };
   const reveal = id => { let cur = cls(ctx, id)?.parent; while (cur) { collapsed.delete(cur); cur = cls(ctx, cur)?.parent; } };
   const showClass = id => { selected = id; if (view === 'class') focus = id; draw(); drawSide(); };
 
   function drawTools() {
     const cc = ctx.c || c;
-    const viewSel = select([['hierarchy', 'Class hierarchy'], ['module', 'Relationships of a module'], ['class', 'Around one class']], view, v => {
-      view = v; fresh(); if (v === 'module' && !module) module = cc.modules[0]?.id || ''; if (v === 'class' && !focus) focus = selected || cc.classes[0]?.id; draw(); drawTools(); }, { class: 'inline' });
-    const modSel = view === 'class' ? classSelect(ctx, focus) : select([...(view === 'hierarchy' ? [['', 'All modules']] : []), ...cc.modules.map(m => [m.id, m.name])], module, null, { class: 'inline' });
+    const viewSel = select([['hierarchy', 'Class hierarchy'], ['module', 'Relationships of a module'], ['classes', 'Relationships of selected classes'], ['class', 'Around one class']], view, v => {
+      view = v; fresh(); if (v === 'classes' && !picks.length && selected) picks = [selected]; if (v === 'module' && !module) module = cc.modules[0]?.id || ''; if (v === 'class' && !focus) focus = selected || cc.classes[0]?.id; draw(); drawTools(); }, { class: 'inline' });
+    const modSel = view === 'classes' ? classPicker(ctx, picks, () => { fresh(); draw(); drawBar(); }) : view === 'class' ? classSelect(ctx, focus) : select([...(view === 'hierarchy' ? [['', 'All modules']] : []), ...cc.modules.map(m => [m.id, m.name])], module, null, { class: 'inline' });
     modSel.classList.add('inline');
-    modSel.addEventListener('change', () => { fresh(); if (view === 'class') { focus = selected = modSel.value; drawSide(); } else module = modSel.value; draw(); });
+    if (view !== 'classes') modSel.addEventListener('change', () => { fresh(); if (view === 'class') { focus = selected = modSel.value; drawSide(); } else module = modSel.value; draw(); });
     const attrBox = view === 'class' ? h('label', { class: 'small dim row', style: 'gap:4px' }, h('input', { type: 'checkbox', checked: showAttrs, style: 'width:auto',
       onchange: e => { showAttrs = e.target.checked; draw(); } }), 'Show attributes') : null;
+    drawBar();
     fill(tools, h('label', { class: 'small dim' }, 'View '), viewSel, cc.classes.length ? modSel : null, attrBox, h('span', { class: 'spacer' }),
       ctx.canEdit ? [h('button', { class: 'btn primary', onclick: () => classForm(ctx, null, { module: module || undefined, parent: undefined }, id => refresh(id)) }, '＋ Class'),
         h('button', { class: 'btn', disabled: (ctx.c?.classes.length || 0) < 1, onclick: () => propForm(ctx, null, { kind: 'object', domain: selected }, () => refresh()) }, '＋ Relationship'),
         h('button', { class: 'btn', disabled: (ctx.c?.classes.length || 0) < 1, onclick: () => propForm(ctx, null, { kind: 'data', domain: selected }, () => refresh()) }, '＋ Attribute')] : null);
   }
+  function togglePick(id) {
+    picks = picks.includes(id) ? picks.filter(x => x !== id) : [...picks, id];
+    if (view === 'classes' && !picks.length) { /* nothing left to show: the view asks for a choice */ }
+    fresh(); drawTools(); draw(); drawSide();
+  }
+  function drawBar() {
+    bar.hidden = !picks.length;
+    fill(bar, picks.length ? [h('span', { class: 'dim' }, 'Selected:'),
+      picks.map(id => h('span', { class: 'chip' }, label(ctx, id), h('button', { title: 'Remove from the selection', onclick: () => togglePick(id) }, '×'))),
+      view !== 'classes' ? h('button', { class: 'btn sm primary', onclick: () => { view = 'classes'; fresh(); drawTools(); draw(); } }, '◎ Show only their relationships') : null,
+      h('button', { class: 'btn sm', onclick: () => { picks = []; fresh(); drawTools(); draw(); drawSide(); } }, 'Clear'),
+      h('span', { class: 'small dim' }, 'Ctrl / Shift + click a box to add or remove it.')] : null);
+  }
   async function draw() {
+    if (view === 'classes' && !picks.length) return fill(canvas, h('div', { class: 'card empty' }, h('p', {}, 'Choose one or more classes to see only their relationships.'),
+      h('p', { class: 'small' }, 'Use the “Choose classes” list above, or switch to another view and Ctrl / Shift + click boxes to add them to the selection.')));
     if (!ctx.c || !ctx.c.classes.length) return fill(canvas, h('div', { class: 'card empty' }, h('p', {}, 'Nothing to draw yet.'), ctx.canEdit ? h('p', { class: 'small' }, 'Press ', h('b', {}, '＋ Class'), ' to add the first class, or build the ontology with AI from the Overview tab.') : null));
     const q = new URLSearchParams({ view });
-    if (view === 'class') { q.set('cls', focus); q.set('attrs', showAttrs ? 1 : 0); } else if (module) q.set('module', module);
+    if (view === 'class') { q.set('cls', focus); q.set('attrs', showAttrs ? 1 : 0); } else if (view === 'classes') q.set('cls', picks.join(',')); else if (module) q.set('module', module);
     if (view === 'hierarchy' && collapsed.size) q.set('collapsed', [...collapsed].join(','));
     let spec;
     try { spec = await api('GET', `/api/ontologies/${ctx.id}/diagram?${q}`); } catch (e) { return fill(canvas, h('div', { class: 'banner bad' }, e.message)); }
     const tree = view === 'hierarchy';
-    const d = diagram(spec, { selected, hitLabel: 'The class in focus', onNode: n => showClass(n.id), onEdge: e => edgeMenu(e), keep, maxTarget: wrap,
+    const d = diagram(spec, { selected, picked: new Set(picks), hitLabel: view === 'classes' ? 'The selected classes' : 'The class in focus',
+      onNode: (n, ev) => (ev && (ev.ctrlKey || ev.shiftKey || ev.metaKey) && n.style !== 'gap') ? togglePick(n.id) : showClass(n.id), onEdge: e => edgeMenu(e), keep, maxTarget: wrap,
       onToggle: tree ? n => { collapsed.has(n.id) ? collapsed.delete(n.id) : collapsed.add(n.id); draw(); } : null,
       onExpandAll: tree ? () => { collapsed.clear(); draw(); } : null,
       onCollapseAll: tree ? () => { collapsed.clear(); spec.nodes.filter(n => n.kids && n.id !== '__root').forEach(n => collapsed.add(n.id)); draw(); } : null });
@@ -193,15 +235,17 @@ export function diagramTab(el, ctx) {
   }
   function drawSide() {
     if (selected && cls(ctx, selected)) return fill(side, classPanel(ctx, selected, { refresh: keep => refresh(keep === undefined ? selected : keep), onShow: showClass }),
-      view !== 'class' ? h('div', { style: 'margin-top:12px' }, h('button', { class: 'btn sm', onclick: () => { view = 'class'; focus = selected; drawTools(); draw(); drawSide(); } }, '◎ Show everything around this class')) : null);
+      h('div', { class: 'row wrap', style: 'margin-top:12px' },
+        view !== 'class' ? h('button', { class: 'btn sm', onclick: () => { view = 'class'; focus = selected; drawTools(); draw(); drawSide(); } }, '◎ Show everything around this class') : null,
+        h('button', { class: 'btn sm', title: 'Same as Ctrl / Shift + click on the box', onclick: () => togglePick(selected) }, picks.includes(selected) ? '− Remove from selection' : '＋ Add to selection')));
     fill(side, h('div', { class: 'stack' }, h('h3', {}, 'How to use the diagram'), h('ul', { class: 'bul' },
       ['Click a box to see the class: its definition, attributes and relationships.', ctx.canEdit ? 'From there: edit it, add a subclass, an attribute or a relationship, or delete it.' : null,
         ctx.canEdit ? 'Click a line (or its label) in a relationship view to edit that relationship.' : 'Click a line in a relationship view to read what it means.',
-        'Switch the view to see the hierarchy, one module’s relationships, or everything around one class.', 'Drag the background to move; use the buttons or Ctrl + scroll to zoom.',
+        'Switch the view to see the hierarchy, one module’s relationships, the relationships of the classes you select, or everything around one class.', 'Ctrl / Shift + click boxes to select several classes, then “Show only their relationships”.', 'Drag the background to move; use the buttons or Ctrl + scroll to zoom.',
         ctx.canEdit ? 'Every change is saved at once as a new version — see Versions to go back.' : null].filter(Boolean).map(x => h('li', {}, x))),
       h('p', { class: 'small dim' }, 'The layout is drawn automatically; boxes cannot be dragged to a new position.')));
   }
-  const wrap = h('div', { class: 'dg-wrap' }, tools, h('div', { class: 'split' }, canvas, side));     // what Maximise fills the window with
+  const wrap = h('div', { class: 'dg-wrap' }, tools, bar, h('div', { class: 'split' }, canvas, side));     // what Maximise fills the window with
   fill(el, wrap);
   drawTools(); draw(); drawSide();
 }

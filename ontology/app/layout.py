@@ -77,10 +77,10 @@ def hierarchy(c: dict, module: str | None = None, max_depth: int | None = None, 
 
 
 def relations(c: dict, class_ids: list, prop_ids: list | None = None, attrs: bool = True, hit: set | None = None, spread: bool = True, focus: set | None = None,
-              gap_classes: list | None = None, gap_props: list | None = None, dim: set | None = None) -> dict:
+              gap_classes: list | None = None, gap_props: list | None = None, dim: set | None = None, sub_focus: bool = False) -> dict:
     """Layered left-to-right graph of some classes and the relationships between them.
     prop_ids: limit to these properties (None = every property between the classes).
-    focus: only links that touch one of these classes are drawn."""
+    focus: only links that touch one of these classes are drawn (with `sub_focus`, also the kind-of lines)."""
     ix, grp = onto.index(c), _groups(c)
     ids = [k for i, k in enumerate(class_ids) if k in ix["classes"] and k not in class_ids[:i]]
     gap_classes, gap_props, hit, dim = gap_classes or [], gap_props or [], hit or set(), dim or set()
@@ -96,7 +96,7 @@ def relations(c: dict, class_ids: list, prop_ids: list | None = None, attrs: boo
     edges = [{"a": a, "b": b, "label": ", ".join(v[:2]) + (f" +{len(v) - 2}" if len(v) > 2 else ""), "style": "rel"} for (a, b), v in pair.items()]
     for k in ids:
         par = ix["classes"][k]["parent"]
-        if par in ids:
+        if par in ids and not (sub_focus and focus and par not in focus and k not in focus):
             edges.append({"a": par, "b": k, "label": "", "style": "sub"})
     for p in gap_props:
         if p["kind"] == "object" and p["domain"] in every and p["range"] in every:
@@ -203,6 +203,22 @@ def module_map(c: dict, module: str) -> dict:
                 outside.append(p["domain"])
     outside = list(dict.fromkeys(outside))[:12]
     return relations(c, own + outside, attrs=False, dim=set(outside), focus=set(own))
+
+
+def selection(c: dict, class_ids: list) -> dict:
+    """The chosen classes and only their relationships: every link that touches one of them, with the classes at the
+    other end shown dimmed. (Attributes are left out - this view is about how the classes connect.)"""
+    ix = onto.index(c)
+    own = [k for k in dict.fromkeys(class_ids) if k in ix["classes"]][:40]
+    outside = []
+    for p in c["properties"]:
+        if p["kind"] == "object":
+            if p["domain"] in own and p["range"] not in own:
+                outside.append(p["range"])
+            if p["range"] in own and p["domain"] not in own:
+                outside.append(p["domain"])
+    outside = [k for k in dict.fromkeys(outside) if k in ix["classes"]][:30]
+    return relations(c, own + outside, attrs=False, hit=set(own), dim=set(outside), focus=set(own), sub_focus=True)
 
 
 def use_case(c: dict, uc: dict) -> dict:

@@ -512,6 +512,21 @@ def test_diagram_collapse_and_attribute_toggle(admin):
     assert next(n for n in t["nodes"] if n["id"] == "Party")["collapsed"] is True
 
 
+def test_diagram_of_selected_classes(admin):
+    c, _ = admin
+    sample = next(o for o in c.get("/api/library").json()["ontologies"] if o["name"].startswith("Sample:"))
+    base = f"/api/ontologies/{sample['id']}/diagram?view=classes"
+    one = c.get(base + "&cls=Order").json()
+    two = c.get(base + "&cls=Order,Product,Nope").json()
+    hit = {n["id"] for n in two["nodes"] if n["style"] == "hit"}
+    assert hit == {"Order", "Product"} and any(n["style"] == "dim" for n in one["nodes"])
+    assert {n["id"] for n in one["nodes"] if n["style"] == "hit"} == {"Order"}
+    assert not any(n["attrs"] for n in two["nodes"])
+    for e in two["edges"]:                                   # every link touches a selected class
+        assert e["a"] in hit or e["b"] in hit
+    assert c.get(base + "&cls=Nope").status_code == 404 and c.get(base).status_code == 404
+
+
 def test_hermit_steps_down_when_java_cannot_reserve_memory(monkeypatch):
     """Windows with a 32-bit Java cannot reserve owlready2's default 2000 MB; the run must step down, not fail."""
     import owlready2
